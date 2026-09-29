@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, Kanban, FileText, Receipt, Settings } from 'lucide-react';
+import { Calculator, Kanban, FileText, Receipt, Settings, Rocket } from 'lucide-react';
 import { TabType } from '../../types';
 
 interface BottomNavProps {
@@ -65,6 +65,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       >
         <Settings size={20} />
         <span>Ajustes</span>
+      </button>
+
+      <button 
+        className={`nav-item ${activeTab === 'plan' ? 'active' : ''}`}
+        onClick={() => setActiveTab('plan')}
+      >
+        <Rocket size={20} />
+        <span>Plan WJG</span>
       </button>
     </nav>
   );

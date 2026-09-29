@@ -4,12 +4,14 @@ import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
   onNewQuoteClick?: () => void;
+  activeTab?: string;
+  onSelectTab?: (tab: any) => void;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSelectTab }) => {
   return (
     <header className="top-header">
-      <div className="brand-wrapper">
+      <div className="brand-wrapper" style={{ cursor: onSelectTab ? 'pointer' : 'default' }} onClick={() => onSelectTab && onSelectTab('cotizador')}>
         <img 
           src="/wjg_logo_vector.svg" 
           alt="WJGEEKS Logo" 
@@ -24,6 +26,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick }) => {
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'plan' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => onSelectTab('plan')}
+            title="Ver Roadmap y Plan de Proyecto"
+          >
+            <span>🚀 Plan WJG</span>
+          </button>
+        )}
+
         <button 
           className="btn btn-secondary btn-sm"
           onClick={() => StorageService.exportBackup()}

@@ -7,6 +7,7 @@ import { WorkOrdersPipeline } from './components/workflow/WorkOrdersPipeline';
 import { CotizacionesList } from './components/cotizaciones/CotizacionesList';
 import { CuentasCobroList } from './components/cuentasCobro/CuentasCobroList';
 import { CatalogosManager } from './components/catalogos/CatalogosManager';
+import { ProjectPlanView } from './components/plan/ProjectPlanView';
 
 import { 
   TabType, 
@@ -192,7 +193,11 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* Barra de Navegación Superior */}
-      <Navbar onNewQuoteClick={() => setActiveTab('cotizador')} />
+      <Navbar 
+        activeTab={activeTab}
+        onSelectTab={setActiveTab}
+        onNewQuoteClick={() => setActiveTab('cotizador')} 
+      />
 
       {/* Contenido Principal según Pestaña */}
       <main className="main-content">
@@ -267,6 +272,10 @@ export const App: React.FC = () => {
             onUpdateProveedores={pr => { setProveedores(pr); StorageService.saveProveedores(pr); }}
             onUpdateConfig={cfg => { setConfig(cfg); StorageService.saveConfig(cfg); }}
           />
+        )}
+
+        {activeTab === 'plan' && (
+          <ProjectPlanView />
         )}
       </main>
 
