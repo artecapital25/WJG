@@ -17,6 +17,10 @@
   - Curado UV y químico (alcohol isopropílico / etanol al 96%).
   - Mano de obra especializada (diseño/desarrollo 3D, ensamblado y pintura artística).
   - Insumos de taller (herrajes, argollas, bisutería, pinturas acrílicas y empaque).
+- **🧭 Estándar de Medidas y Ejes 3D (Slicer):**
+  - **Eje Z (Vertical / Altura ↕️):** La altura de la pieza desde la base hasta la corona. En impresión 3D en resina, este es el eje crítico que define el tiempo total de exposición de capas.
+  - **Eje X (Horizontal / Ancho ↔️):** La medida frontal de izquierda a derecha en la pantalla LCD/cama de impresión.
+  - **Eje Y (Profundidad / Fondo ↗️):** La medida de adelante hacia atrás.
 - **🟡 Modo de Cotización Parcial / Preliminar:** Permite guardar presupuestos dejando pendientes las medidas exactas o el consumo de resina para cuando se abra el archivo STL en los programas de laminación.
 
 ### 2. 📋 Historial de Cotizaciones Inteligente

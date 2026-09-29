@@ -11,7 +11,8 @@ import {
   Plus,
   Trash2,
   Sliders,
-  Scale
+  Scale,
+  Info
 } from 'lucide-react';
 import { 
   Resina, 
@@ -306,44 +307,102 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </div>
         )}
 
-        {/* Dimensiones X, Y, Z */}
+        {/* Dimensiones X, Y, Z con Explicación Visual de Ejes */}
         <div className="form-group" style={{ opacity: esParcial ? 0.75 : 1 }}>
-          <label className="form-label">
-            Dimensiones de la Pieza (Milímetros) {esParcial && <span style={{ color: '#fde047', fontWeight: 500 }}>(Opcional / Por definir)</span>}
-          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+            <label className="form-label" style={{ margin: 0 }}>
+              Dimensiones de la Pieza (Milímetros) {esParcial && <span style={{ color: '#fde047', fontWeight: 500 }}>(Opcional / Por definir)</span>}
+            </label>
+            <span style={{ fontSize: '0.72rem', color: 'var(--brand-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <Info size={13} />
+              Estándar Slicer 3D
+            </span>
+          </div>
+
+          {/* Guía Explicativa de Orientación de Ejes */}
+          <div style={{
+            background: 'rgba(56, 189, 248, 0.06)',
+            border: '1px solid rgba(56, 189, 248, 0.2)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            fontSize: '0.78rem',
+            color: 'var(--text-muted)',
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap'
+          }}>
+            <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }}>🧭 Guía de Ejes:</span>
+            <span><strong>Z</strong> = Altura Vertical ↕️ (define el tiempo de resina)</span>
+            <span>•</span>
+            <span><strong>X</strong> = Ancho Horizontal ↔️ (de lado a lado)</span>
+            <span>•</span>
+            <span><strong>Y</strong> = Profundidad / Fondo ↗️ (adelante a atrás)</span>
+          </div>
+
           <div className="dimensions-grid">
-            <div className="input-with-unit">
-              <input 
-                type="number" 
-                className="form-input" 
-                value={altoMm} 
-                onChange={e => setAltoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                title="Alto (Z)"
-                placeholder="Alto"
-              />
-              <span className="input-unit-badge">Z (mm)</span>
+            {/* Eje Z - Altura / Vertical */}
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: 'var(--brand-cyan)', fontWeight: 800 }}>Z</span> — Altura (Vertical)
+              </label>
+              <div className="input-with-unit">
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  value={altoMm} 
+                  onChange={e => setAltoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
+                  title="Alto vertical en Z (de base a corona)"
+                  placeholder="Alto"
+                />
+                <span className="input-unit-badge">mm (Z)</span>
+              </div>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
+                ↕️ Base a corona (Vertical)
+              </span>
             </div>
-            <div className="input-with-unit">
-              <input 
-                type="number" 
-                className="form-input" 
-                value={anchoMm} 
-                onChange={e => setAnchoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                title="Ancho (X)"
-                placeholder="Ancho"
-              />
-              <span className="input-unit-badge">X (mm)</span>
+
+            {/* Eje X - Ancho / Horizontal */}
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: 'var(--brand-blue)', fontWeight: 800 }}>X</span> — Ancho (Horizontal)
+              </label>
+              <div className="input-with-unit">
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  value={anchoMm} 
+                  onChange={e => setAnchoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
+                  title="Ancho horizontal en X (de lado a lado)"
+                  placeholder="Ancho"
+                />
+                <span className="input-unit-badge">mm (X)</span>
+              </div>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
+                ↔️ Lado a lado (Frente)
+              </span>
             </div>
-            <div className="input-with-unit">
-              <input 
-                type="number" 
-                className="form-input" 
-                value={profundidadMm} 
-                onChange={e => setProfundidadMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                title="Profundidad (Y)"
-                placeholder="Prof"
-              />
-              <span className="input-unit-badge">Y (mm)</span>
+
+            {/* Eje Y - Profundidad / Fondo */}
+            <div>
+              <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <span style={{ color: 'var(--brand-purple)', fontWeight: 800 }}>Y</span> — Fondo (Profundidad)
+              </label>
+              <div className="input-with-unit">
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  value={profundidadMm} 
+                  onChange={e => setProfundidadMm(Math.max(0, parseFloat(e.target.value) || 0))} 
+                  title="Profundidad en Y (de adelante hacia atrás)"
+                  placeholder="Prof"
+                />
+                <span className="input-unit-badge">mm (Y)</span>
+              </div>
+              <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
+                ↗️ Adelante a atrás (Fondo)
+              </span>
             </div>
           </div>
         </div>

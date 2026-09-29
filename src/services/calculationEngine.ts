@@ -114,7 +114,7 @@ export function calcularPieza3D(
   // 11. Descripción Técnica Detallada
   const descMedidas = esParcial && (!alto || !ancho || !prof)
     ? 'Dimensiones: [Pendiente de verificar en Software/Slicer 3D]'
-    : `Medidas: ${alto}mm x ${ancho}mm x ${prof}mm`;
+    : `Medidas: ${alto}mm (Alto Z) x ${ancho}mm (Ancho X) x ${prof}mm (Fondo Y)`;
 
   const descResina = esParcial && peso_estimado_g === 0
     ? `Impresión en ${input.resina.resumen || input.resina.tipo} [Gramos y tiempo pendientes de corte]`

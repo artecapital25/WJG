@@ -64,7 +64,7 @@ export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: Configurac
   const tableData = cotizacion.items.map((item, index) => {
     const descMedidas = item.datos_pendientes 
       ? '[Medidas y resina por verificar en Slicer]' 
-      : `${item.alto_mm} x ${item.ancho_mm} x ${item.profundidad_mm} mm`;
+      : `${item.alto_mm}mm (Z: Alto) x ${item.ancho_mm}mm (X: Ancho) x ${item.profundidad_mm}mm (Y: Fondo)`;
     let specText = `${item.nombre_item}\n${descMedidas}\n${item.resina_nombre}`;
     if (item.lista_pinturas && item.lista_pinturas.length > 0) {
       specText += `\nAcabado: ${item.lista_pinturas.map(p => `${p.nombre} (${p.cantidad_ml}ml)`).join(', ')}`;
