@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, Kanban, FileText, Receipt, Settings, Rocket } from 'lucide-react';
+import { Calculator, Kanban, FileText, Receipt, Settings, Rocket, Box } from 'lucide-react';
 import { TabType } from '../../types';
 
 interface BottomNavProps {
@@ -28,6 +28,14 @@ export const BottomNav: React.FC<BottomNavProps> = ({
           )}
         </div>
         <span>Cotizador</span>
+      </button>
+
+      <button 
+        className={`nav-item ${activeTab === 'stl' ? 'active' : ''}`}
+        onClick={() => setActiveTab('stl')}
+      >
+        <Box size={20} />
+        <span>Visor STL</span>
       </button>
 
       <button 

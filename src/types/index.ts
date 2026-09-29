@@ -1,4 +1,4 @@
-export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan';
+export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl';
 
 export interface Resina {
   id: string;

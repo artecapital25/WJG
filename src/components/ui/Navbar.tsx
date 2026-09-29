@@ -28,6 +28,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSe
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
         {onSelectTab && (
           <button 
+            className={`btn btn-sm ${activeTab === 'stl' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => onSelectTab('stl')}
+            title="Visor 3D de modelos STL y cálculo de resina"
+          >
+            <span>👁️ Visor STL</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
             className={`btn btn-sm ${activeTab === 'plan' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => onSelectTab('plan')}
             title="Ver Roadmap y Plan de Proyecto"

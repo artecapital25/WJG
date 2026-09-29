@@ -8,6 +8,7 @@ import { CotizacionesList } from './components/cotizaciones/CotizacionesList';
 import { CuentasCobroList } from './components/cuentasCobro/CuentasCobroList';
 import { CatalogosManager } from './components/catalogos/CatalogosManager';
 import { ProjectPlanView } from './components/plan/ProjectPlanView';
+import { STLAnalyzer } from './components/stl/STLAnalyzer';
 
 import { 
   TabType, 
@@ -29,6 +30,13 @@ import { StorageService } from './services/storageService';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('cotizador');
+  const [stlAppliedData, setStlAppliedData] = useState<{
+    altoMm: number;
+    anchoMm: number;
+    profundidadMm: number;
+    pesoResinaG: number;
+    nombrePieza: string;
+  } | null>(null);
 
   // Datos Maestros
   const [resinas, setResinas] = useState<Resina[]>([]);
@@ -210,6 +218,8 @@ export const App: React.FC = () => {
               personal={personal}
               config={config}
               onAgregarPieza={handleAgregarPieza}
+              onOpenSTLViewer={() => setActiveTab('stl')}
+              initialPieceData={stlAppliedData}
             />
 
             <CotizacionBuilder 
@@ -276,6 +286,16 @@ export const App: React.FC = () => {
 
         {activeTab === 'plan' && (
           <ProjectPlanView />
+        )}
+
+        {activeTab === 'stl' && (
+          <STLAnalyzer 
+            resinas={resinas}
+            onApplyToCotizador={(data) => {
+              setStlAppliedData(data);
+              setActiveTab('cotizador');
+            }}
+          />
         )}
       </main>
 

@@ -43,6 +43,14 @@ interface CotizadorFormProps {
   personal: Personal[];
   config: ConfiguracionTaller;
   onAgregarPieza: (pieza: PiezaCotizada) => void;
+  onOpenSTLViewer?: () => void;
+  initialPieceData?: {
+    altoMm?: number;
+    anchoMm?: number;
+    profundidadMm?: number;
+    pesoResinaG?: number;
+    nombrePieza?: string;
+  } | null;
 }
 
 export const CotizadorForm: React.FC<CotizadorFormProps> = ({
@@ -51,7 +59,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   insumos,
   personal,
   config,
-  onAgregarPieza
+  onAgregarPieza,
+  onOpenSTLViewer,
+  initialPieceData
 }) => {
   // Estado básico
   const [nombreItem, setNombreItem] = useState('Figura Coleccionable');
@@ -59,6 +69,21 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [altoMm, setAltoMm] = useState(60);
   const [anchoMm, setAnchoMm] = useState(60);
   const [profundidadMm, setProfundidadMm] = useState(60);
+
+  // Escuchar datos aplicados desde el Visor STL 3D
+  React.useEffect(() => {
+    if (initialPieceData) {
+      if (initialPieceData.altoMm !== undefined) setAltoMm(initialPieceData.altoMm);
+      if (initialPieceData.anchoMm !== undefined) setAnchoMm(initialPieceData.anchoMm);
+      if (initialPieceData.profundidadMm !== undefined) setProfundidadMm(initialPieceData.profundidadMm);
+      if (initialPieceData.pesoResinaG !== undefined) {
+        setPesoResinaManualG(initialPieceData.pesoResinaG);
+        setModoCalculoResina('manual');
+      }
+      if (initialPieceData.nombrePieza) setNombreItem(initialPieceData.nombrePieza);
+      setEsParcial(false);
+    }
+  }, [initialPieceData]);
   
   // Modo de Cotización Parcial / Pendiente de Slicer
   const [esParcial, setEsParcial] = useState(false);
@@ -309,14 +334,28 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
 
         {/* Dimensiones X, Y, Z con Explicación Visual de Ejes */}
         <div className="form-group" style={{ opacity: esParcial ? 0.75 : 1 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
             <label className="form-label" style={{ margin: 0 }}>
               Dimensiones de la Pieza (Milímetros) {esParcial && <span style={{ color: '#fde047', fontWeight: 500 }}>(Opcional / Por definir)</span>}
             </label>
-            <span style={{ fontSize: '0.72rem', color: 'var(--brand-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Info size={13} />
-              Estándar Slicer 3D
-            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {onOpenSTLViewer && (
+                <button
+                  type="button"
+                  onClick={onOpenSTLViewer}
+                  className="btn btn-cyan btn-sm"
+                  style={{ fontSize: '0.75rem', padding: '4px 10px', height: 'auto' }}
+                  title="Abrir visor 3D para subir y medir archivo STL"
+                >
+                  <Box size={13} />
+                  <span>📐 Medir con Visor STL 3D</span>
+                </button>
+              )}
+              <span style={{ fontSize: '0.72rem', color: 'var(--brand-cyan)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Info size={13} />
+                Estándar Slicer 3D
+              </span>
+            </div>
           </div>
 
           {/* Guía Explicativa de Orientación de Ejes */}
