@@ -14,6 +14,7 @@ export interface STLAnalysisResult {
   originalVolumeCm3: number;
   bboxVolumeCm3: number;
   isVolumeEstimated: boolean;
+  wasConvertedFromMeters: boolean;
   geometry: THREE.BufferGeometry;
 }
 
@@ -81,13 +82,25 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
   const loader = new STLLoader();
   const geometry = loader.parse(buffer);
 
-  // Computar normales y caja delimitadora
+  // Computar normales y caja delimitadora inicial
   geometry.computeVertexNormals();
   geometry.computeBoundingBox();
 
   const bbox = geometry.boundingBox || new THREE.Box3();
   const size = new THREE.Vector3();
   bbox.getSize(size);
+
+  // 1. Detección automática de escala (Metros vs Milímetros):
+  // Si la dimensión máxima es menor a 2.5 (ej. un modelo de 0.41 x 0.98 x 0.54), fue exportado en METROS.
+  // En impresión 3D (resina/filamento) se trabaja siempre en milímetros (mm).
+  let wasConvertedFromMeters = false;
+  const maxDim = Math.max(size.x, size.y, size.z);
+  if (maxDim > 0 && maxDim < 2.5) {
+    geometry.scale(1000, 1000, 1000);
+    geometry.computeBoundingBox();
+    geometry.boundingBox?.getSize(size);
+    wasConvertedFromMeters = true;
+  }
 
   // Centrar la geometría en el origen para facilitar la rotación 3D
   geometry.center();
@@ -96,13 +109,15 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
   const bboxVolumeMm3 = size.x * size.y * size.z;
   const bboxVolumeCm3 = bboxVolumeMm3 / 1000;
 
-  // Detección de malla defectuosa o no hermética:
-  // Si el cálculo da 0, NaN o es inferior al 3% de la caja envolvente, significa que el STL tiene
-  // caras invertidas, mallas disjuntas o huecos que cancelan el teorema de la divergencia.
+  // 2. Detección matemática de volumen anómalo o no hermético:
+  // - Ningún objeto tridimensional puede tener un volumen mayor al de su caja delimitadora exterior (bboxVolumeMm3).
+  // - Si el volumen calculado es <= 0, NaN o inferior al 2% de la caja, el modelo tiene caras invertidas o huecos.
+  // - Si el cálculo del teorema de la divergencia arroja un número mayor que bboxVolumeMm3, significa que la malla
+  //   no es hermética (caras abiertas) produciendo poliedros divergentes.
   let isVolumeEstimated = false;
-  if (!volumeMm3 || isNaN(volumeMm3) || volumeMm3 < (bboxVolumeMm3 * 0.03)) {
-    // Estimación física para piezas y figuras de resina: 45% del volumen de la caja envolvente
-    volumeMm3 = bboxVolumeMm3 * 0.45;
+  if (!volumeMm3 || isNaN(volumeMm3) || volumeMm3 < (bboxVolumeMm3 * 0.02) || volumeMm3 > bboxVolumeMm3) {
+    // Estimación física para piezas y figuras de resina: 35% del volumen de la caja envolvente
+    volumeMm3 = bboxVolumeMm3 * 0.35;
     isVolumeEstimated = true;
   }
 
@@ -119,9 +134,10 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
       z: Number(size.z.toFixed(2))
     },
     originalVolumeMm3: Number(volumeMm3.toFixed(2)),
-    originalVolumeCm3: Number(volumeCm3.toFixed(2)),
-    bboxVolumeCm3: Number(bboxVolumeCm3.toFixed(2)),
+    originalVolumeCm3: volumeCm3 < 0.01 ? Number(volumeCm3.toFixed(4)) : Number(volumeCm3.toFixed(2)),
+    bboxVolumeCm3: bboxVolumeCm3 < 0.01 ? Number(bboxVolumeCm3.toFixed(4)) : Number(bboxVolumeCm3.toFixed(2)),
     isVolumeEstimated,
+    wasConvertedFromMeters,
     geometry
   };
 }

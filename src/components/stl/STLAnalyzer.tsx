@@ -33,9 +33,11 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const [analysis, setAnalysis] = useState<STLAnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Escala
+  // Escala y Dimensiones deseadas
   const [escalaPorcentaje, setEscalaPorcentaje] = useState<number>(100);
   const [alturaDeseadaZ, setAlturaDeseadaZ] = useState<string>('');
+  const [anchoDeseadoX, setAnchoDeseadoX] = useState<string>('');
+  const [fondoDeseadoY, setFondoDeseadoY] = useState<string>('');
 
   // Rotación del modelo 3D (en grados)
   const [rotacionX, setRotacionX] = useState<number>(0);
@@ -95,6 +97,8 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
         setRotacionY(0);
         setRotacionZ(0);
         setAlturaDeseadaZ(result.originalDimensions.z.toString());
+        setAnchoDeseadoX(result.originalDimensions.x.toString());
+        setFondoDeseadoY(result.originalDimensions.y.toString());
         setLoading(false);
       } catch (err: any) {
         console.error('Error parseando STL:', err);
@@ -158,10 +162,12 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     };
   }, [orientacionModel, factorEscala]);
 
-  // Mantener la altura deseada sincronizada al rotar
+  // Mantener las 3 dimensiones deseadas sincronizadas al rotar o escalar
   useEffect(() => {
     if (orientacionModel) {
       setAlturaDeseadaZ((orientacionModel.size.z * factorEscala).toFixed(1));
+      setAnchoDeseadoX((orientacionModel.size.x * factorEscala).toFixed(1));
+      setFondoDeseadoY((orientacionModel.size.y * factorEscala).toFixed(1));
     }
   }, [orientacionModel, factorEscala]);
 
@@ -169,7 +175,9 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const volumenEscaladoCm3 = useMemo(() => {
     if (!analysis) return 0;
     const factorCubico = Math.pow(factorEscala, 3);
-    const volBase = analysis.originalVolumeCm3 || (analysis.bboxVolumeCm3 * 0.45) || 1;
+    const volBase = (analysis.originalVolumeCm3 && analysis.originalVolumeCm3 > 0)
+      ? analysis.originalVolumeCm3 
+      : ((analysis.bboxVolumeCm3 && analysis.bboxVolumeCm3 > 0) ? analysis.bboxVolumeCm3 * 0.35 : 0.01);
     return Number((volBase * factorCubico).toFixed(2));
   }, [analysis, factorEscala]);
 
@@ -199,12 +207,30 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     };
   }, [volumenEscaladoCm3, resinaActual, modoAhuecado, porcentajeAhuecado, factorSoportes]);
 
-  // Ajustar escala cuando el usuario escribe la altura deseada en Z
+  // Ajustar escala proporcional al escribir en cualquiera de los ejes
   const handleCambioAlturaZ = (valStr: string) => {
     setAlturaDeseadaZ(valStr);
     const zNum = parseFloat(valStr);
     if (!isNaN(zNum) && zNum > 0 && orientacionModel && orientacionModel.size.z > 0) {
       const nuevaEscala = (zNum / orientacionModel.size.z) * 100;
+      setEscalaPorcentaje(Number(nuevaEscala.toFixed(1)));
+    }
+  };
+
+  const handleCambioAnchoX = (valStr: string) => {
+    setAnchoDeseadoX(valStr);
+    const xNum = parseFloat(valStr);
+    if (!isNaN(xNum) && xNum > 0 && orientacionModel && orientacionModel.size.x > 0) {
+      const nuevaEscala = (xNum / orientacionModel.size.x) * 100;
+      setEscalaPorcentaje(Number(nuevaEscala.toFixed(1)));
+    }
+  };
+
+  const handleCambioFondoY = (valStr: string) => {
+    setFondoDeseadoY(valStr);
+    const yNum = parseFloat(valStr);
+    if (!isNaN(yNum) && yNum > 0 && orientacionModel && orientacionModel.size.y > 0) {
+      const nuevaEscala = (yNum / orientacionModel.size.y) * 100;
       setEscalaPorcentaje(Number(nuevaEscala.toFixed(1)));
     }
   };
@@ -614,16 +640,35 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               </div>
             </div>
 
-            {/* Controles de Escala Proporcional */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            {/* Notificación de auto-conversión de metros */}
+            {analysis?.wasConvertedFromMeters && (
+              <div style={{
+                background: 'rgba(56, 189, 248, 0.12)',
+                border: '1px solid rgba(56, 189, 248, 0.3)',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '0.75rem',
+                color: 'var(--brand-cyan)',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Sparkles size={16} />
+                <span><strong>Unidades normalizadas:</strong> El archivo estaba modelado en metros y fue adaptado a milímetros (mm).</span>
+              </div>
+            )}
+
+            {/* Controles de Escala Proporcional en X, Y, Z */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '12px' }}>
               <div>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>
-                  Ajustar Altura Deseada (Z en mm)
+                <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: 'var(--brand-cyan)', fontWeight: 800 }}>Z</span> (Alto mm)
                 </label>
                 <input 
                   type="number" 
                   className="form-input" 
-                  placeholder="Ej: 100"
+                  placeholder="Alto Z"
                   value={alturaDeseadaZ}
                   onChange={(e) => handleCambioAlturaZ(e.target.value)}
                   disabled={!analysis}
@@ -631,26 +676,73 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               </div>
 
               <div>
-                <label className="form-label" style={{ fontSize: '0.75rem' }}>
-                  Porcentaje de Escala ({escalaPorcentaje}%)
+                <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: 'var(--brand-blue)', fontWeight: 800 }}>X</span> (Ancho mm)
                 </label>
                 <input 
-                  type="range" 
-                  min="10" 
-                  max="400" 
-                  step="1"
-                  value={escalaPorcentaje}
-                  onChange={(e) => {
-                    const esc = parseFloat(e.target.value);
-                    setEscalaPorcentaje(esc);
-                    if (orientacionModel) {
-                      setAlturaDeseadaZ((orientacionModel.size.z * (esc / 100)).toFixed(1));
-                    }
-                  }}
+                  type="number" 
+                  className="form-input" 
+                  placeholder="Ancho X"
+                  value={anchoDeseadoX}
+                  onChange={(e) => handleCambioAnchoX(e.target.value)}
                   disabled={!analysis}
-                  style={{ width: '100%', marginTop: '10px', accentColor: 'var(--brand-cyan)' }}
                 />
               </div>
+
+              <div>
+                <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                  <span style={{ color: 'var(--brand-purple)', fontWeight: 800 }}>Y</span> (Fondo mm)
+                </label>
+                <input 
+                  type="number" 
+                  className="form-input" 
+                  placeholder="Fondo Y"
+                  value={fondoDeseadoY}
+                  onChange={(e) => handleCambioFondoY(e.target.value)}
+                  disabled={!analysis}
+                />
+              </div>
+            </div>
+
+            {/* Slider de porcentaje y atajos de escala */}
+            <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                  Factor de Escala: <strong>{escalaPorcentaje}%</strong>
+                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+                    onClick={() => setEscalaPorcentaje(prev => Number((prev * 10).toFixed(1)))}
+                    disabled={!analysis}
+                    title="Multiplicar escala por 10 si el modelo estaba en centímetros"
+                  >
+                    ×10 (cm→mm)
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '2px 8px', fontSize: '0.7rem' }}
+                    onClick={() => setEscalaPorcentaje(prev => Number(Math.max(1, prev / 10).toFixed(1)))}
+                    disabled={!analysis}
+                    title="Dividir escala por 10"
+                  >
+                    ÷10
+                  </button>
+                </div>
+              </div>
+              <input 
+                type="range" 
+                min="5" 
+                max="400" 
+                step="1"
+                value={Math.min(400, Math.max(5, escalaPorcentaje))}
+                onChange={(e) => setEscalaPorcentaje(parseFloat(e.target.value))}
+                disabled={!analysis}
+                style={{ width: '100%', accentColor: 'var(--brand-cyan)' }}
+              />
             </div>
           </div>
 
@@ -719,7 +811,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
             {analysis?.isVolumeEstimated && (
               <div style={{ background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.35)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.74rem', color: '#fde047', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Info size={14} />
-                <span>Malla con caras no herméticas detectada: Volumen estimado automáticamente al 45% de la caja envolvente.</span>
+                <span>Malla con caras abiertas o no herméticas: Volumen acotado al 35% de la caja envolvente para proteger el cálculo.</span>
               </div>
             )}
 

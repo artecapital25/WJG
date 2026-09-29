@@ -506,6 +506,11 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
               💡 Ingresa los gramos de resina que indica Lychee / Chitubox para la pieza hueca con soportes.
             </p>
           )}
+          {modoCalculoResina === 'volumen' && (
+            <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+              💡 <strong>Cálculo por Volumen:</strong> Asume un 30% de llenado de la caja envolvente (estándar para figuras y piezas de resina ahuecadas). Para mayor precisión, carga el archivo en el <strong>Visor STL 3D</strong> o ingresa <strong>Gramos Exactos</strong> del Slicer.
+            </p>
+          )}
         </div>
 
         {/* Impresora 3D y Tiempos de Fabricación */}

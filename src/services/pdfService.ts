@@ -123,10 +123,10 @@ export function crearDocPDFCotizacion(
   doc.setFontSize(7.5);
   if (esParcial) {
     doc.setTextColor(234, 179, 8); // Yellow warning
-    doc.text('⚠️ Estado: Medidas / Resina Parcial', pageWidth - 15, 23, { align: 'right' });
+    doc.text('Cotización Parcial / Preliminar', pageWidth - 15, 23, { align: 'right' });
   } else {
     doc.setTextColor(56, 189, 248); // Cyan
-    doc.text('✓ Documento Oficial de Cotización', pageWidth - 15, 23, { align: 'right' });
+    doc.text('Documento Oficial de Cotización', pageWidth - 15, 23, { align: 'right' });
   }
 
   // 2. Client Info Card
@@ -228,10 +228,10 @@ export function crearDocPDFCotizacion(
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(`• Tiempo estimado de fabricación y entrega: ${cotizacion.tiempo_entrega_estimado}`, 15, finalY + 6);
-  doc.text('• La orden entra en cola de impresión tras confirmar el 50% de anticipo.', 15, finalY + 11);
-  doc.text('• Cotización válida por 15 días a partir de la fecha de emisión.', 15, finalY + 16);
-  doc.text(`• ${cotizacion.notas || 'No incluye transporte fuera del perímetro urbano.'}`, 15, finalY + 21);
+  doc.text(`- Tiempo estimado de fabricación y entrega: ${cotizacion.tiempo_entrega_estimado}`, 15, finalY + 6);
+  doc.text('- La orden entra en cola de impresión tras confirmar el 50% de anticipo.', 15, finalY + 11);
+  doc.text('- Cotización válida por 15 días a partir de la fecha de emisión.', 15, finalY + 16);
+  doc.text(`- ${cotizacion.notas || 'No incluye transporte fuera del perímetro urbano.'}`, 15, finalY + 21);
 
   // 6. Footer
   doc.setFillColor(241, 245, 249);
@@ -427,9 +427,9 @@ export function crearDocPDFCuentaCobro(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
-  doc.text(`• Nequi: ${config.nequi}`, 20, finalY + 15);
-  doc.text(`• Daviplata: ${config.daviplata}`, 20, finalY + 21);
-  doc.text(`• Bancolombia: ${config.bancolombia} (${config.titular_cuenta})`, 20, finalY + 27);
+  doc.text(`- Nequi: ${config.nequi}`, 20, finalY + 15);
+  doc.text(`- Daviplata: ${config.daviplata}`, 20, finalY + 21);
+  doc.text(`- Bancolombia: ${config.bancolombia} (${config.titular_cuenta})`, 20, finalY + 27);
 
   // Footer
   doc.setFillColor(241, 245, 249);

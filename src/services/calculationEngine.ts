@@ -40,9 +40,14 @@ export function calcularPieza3D(
   // Si los datos están pendientes, peso de resina es 0 o manual si fue estimado
   let peso_estimado_g = 0;
   if (!esParcial) {
-    peso_estimado_g = (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0)
-      ? Number(input.pesoResinaManualG.toFixed(2))
-      : Number((volumen_cm3 * input.resina.densidad_g_cm3).toFixed(2));
+    if (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0) {
+      peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
+    } else {
+      // En modo volumen geométrico (caja envolvente X*Y*Z):
+      // Una figura o modelo 3D de resina promedio ocupa un ~30% del volumen de la caja delimitadora (ahuecado estándar).
+      const factorLlenadoEnvolvente = 0.30;
+      peso_estimado_g = Number((volumen_cm3 * input.resina.densidad_g_cm3 * factorLlenadoEnvolvente).toFixed(2));
+    }
   } else if (input.pesoResinaManualG && input.pesoResinaManualG > 0) {
     peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
   }
@@ -54,9 +59,19 @@ export function calcularPieza3D(
   // 3. Costo de Energía Eléctrica Impresora
   const costo_energia_impresion = tiempo_impresion_min * (input.impresora.costo_minuto || 6.255);
 
-  // 4. Costo de Resina con factor de merma y soportes (1.4x = 40% de merma de taller)
-  const factorMerma = config.margen_merma_resina || 1.4;
-  const costo_resina = peso_estimado_g > 0 ? peso_estimado_g * input.resina.costo_gramo * factorMerma : 0;
+  // 4. Costo de Resina con factor de merma y soportes
+  let costo_resina = 0;
+  if (peso_estimado_g > 0) {
+    if (input.modoCalculoResina === 'manual') {
+      // En modo manual (desde el Slicer Chitubox/Lychee o Visor STL 3D), los gramos ya incluyen figura y soportes.
+      // Se aplica un 10% de merma técnica de taller (residuos en película FEP, tina y lavado).
+      costo_resina = peso_estimado_g * input.resina.costo_gramo * 1.10;
+    } else {
+      // En modo volumen geométrico, se aplica el factor completo de merma y soportes configurado (1.35x - 1.4x)
+      const factorMerma = config.margen_merma_resina || 1.35;
+      costo_resina = peso_estimado_g * input.resina.costo_gramo * factorMerma;
+    }
+  }
 
   // 5. Curado Térmico / UV y Químico (Etanol / Alcohol)
   const tiempo_curado_min = peso_estimado_g >= 250 ? 15 : peso_estimado_g <= 50 ? 5 : 10;
@@ -120,7 +135,7 @@ export function calcularPieza3D(
     ? `Impresión en ${input.resina.resumen || input.resina.tipo} [Gramos y tiempo pendientes de corte]`
     : `Impresión en ${input.resina.resumen || input.resina.tipo}`;
 
-  const descripcion_tecnica = `${descMedidas}\n${descResina}\nTiempo de entrega: ${tiempo_entrega}${esParcial ? '\n⚠️ Cotización preliminar sujeta a corte en software' : ''}`;
+  const descripcion_tecnica = `${descMedidas}\n${descResina}\nTiempo de entrega: ${tiempo_entrega}${esParcial ? '\n[Cotización preliminar sujeta a corte en software]' : ''}`;
 
   return {
     id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
