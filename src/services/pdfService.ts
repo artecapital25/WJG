@@ -3,7 +3,68 @@ import autoTable from 'jspdf-autotable';
 import { Cotizacion, CuentaCobro, ConfiguracionTaller } from '../types';
 import { generateCotizacionWhatsAppUrl, generateCuentaCobroWhatsAppUrl } from './whatsappService';
 
-export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: ConfiguracionTaller): jsPDF {
+let cachedLogoDataUrl: string | null = null;
+
+/**
+ * Obtiene el logotipo vectorial de WJGEEKS 3D rasterizado como Data URL PNG de alta resolución.
+ * Se cachea en memoria para que la generación de PDFs sea ultrarrápida.
+ */
+export async function getLogoDataUrl(): Promise<string | null> {
+  if (cachedLogoDataUrl) return cachedLogoDataUrl;
+  if (typeof window === 'undefined') return null;
+
+  return new Promise((resolve) => {
+    try {
+      const img = new Image();
+      img.crossOrigin = 'Anonymous';
+
+      const timer = setTimeout(() => {
+        resolve(null);
+      }, 1500);
+
+      img.onload = () => {
+        clearTimeout(timer);
+        try {
+          const canvas = document.createElement('canvas');
+          const size = 512;
+          canvas.width = size;
+          canvas.height = size;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.drawImage(img, 0, 0, size, size);
+            cachedLogoDataUrl = canvas.toDataURL('image/png');
+            resolve(cachedLogoDataUrl);
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.warn('No se pudo rasterizar el logo para PDF:', e);
+          resolve(null);
+        }
+      };
+
+      img.onerror = () => {
+        clearTimeout(timer);
+        resolve(null);
+      };
+
+      img.src = '/wjg_logo_vector.svg';
+    } catch {
+      resolve(null);
+    }
+  });
+}
+
+// Pre-cargar logo en memoria en cuanto se cargue el módulo en el navegador
+if (typeof window !== 'undefined') {
+  getLogoDataUrl().catch(() => {});
+}
+
+export function crearDocPDFCotizacion(
+  cotizacion: Cotizacion, 
+  config: ConfiguracionTaller,
+  logoDataUrl?: string | null
+): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -12,33 +73,61 @@ export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: Configurac
 
   const pageWidth = doc.internal.pageSize.getWidth();
 
-  // 1. Header Bar
-  doc.setFillColor(15, 23, 42); // #0f172a
+  // 1. Header Bar (#0f172a)
+  doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pageWidth, 28, 'F');
 
-  // Brand Name
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text('WJGEEKS 3D', 15, 14);
+  const logo = logoDataUrl || cachedLogoDataUrl;
+  let brandTextX = 15;
 
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.setTextColor(56, 189, 248); // Cyan
-  doc.text('Impresión 3D de Precisión & Resina Artística', 15, 21);
+  if (logo) {
+    try {
+      // Dibujar logo de la empresa (20mm x 20mm centrado verticalmente en la barra de 28mm)
+      doc.addImage(logo, 'PNG', 15, 4, 20, 20);
+      brandTextX = 39;
+    } catch (e) {
+      console.warn('Error al insertar logo en PDF:', e);
+      brandTextX = 15;
+    }
+  }
 
-  // Quote Badge (Right side)
-  const esParcial = cotizacion.estado === 'Parcial' || cotizacion.items.some(i => i.datos_pendientes);
-  
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
+  // Nombre de la marca
   doc.setTextColor(255, 255, 255);
-  doc.text(`COTIZACIÓN N° ${cotizacion.numero_cot}${esParcial ? ' (PRELIMINAR)' : ''}`, pageWidth - 15, 14, { align: 'right' });
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('WJGEEKS 3D', brandTextX, 13);
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(56, 189, 248); // Cyan
+  doc.text('Impresión 3D de Precisión & Resina Artística', brandTextX, 19);
+
+  doc.setFontSize(7.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225); // Slate 300
+  doc.text('Taller de Prototipado, Fabricación Digital & Acabados', brandTextX, 24);
+
+  // Quote Badge (Lado derecho)
+  const esParcial = cotizacion.estado === 'Parcial' || cotizacion.items.some(i => i.datos_pendientes);
+  
+  doc.setFontSize(11.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(`COTIZACIÓN N° ${cotizacion.numero_cot}${esParcial ? ' (PRELIMINAR)' : ''}`, pageWidth - 15, 12, { align: 'right' });
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225);
-  doc.text(`Fecha: ${cotizacion.fecha} | ${esParcial ? 'Estado: Parcial / Pendiente Slicer' : 'Estado: Oficial'}`, pageWidth - 15, 21, { align: 'right' });
+  doc.text(`Fecha: ${cotizacion.fecha}`, pageWidth - 15, 17, { align: 'right' });
+
+  doc.setFontSize(7.5);
+  if (esParcial) {
+    doc.setTextColor(234, 179, 8); // Yellow warning
+    doc.text('⚠️ Estado: Medidas / Resina Parcial', pageWidth - 15, 23, { align: 'right' });
+  } else {
+    doc.setTextColor(56, 189, 248); // Cyan
+    doc.text('✓ Documento Oficial de Cotización', pageWidth - 15, 23, { align: 'right' });
+  }
 
   // 2. Client Info Card
   doc.setFillColor(248, 250, 252);
@@ -154,14 +243,16 @@ export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: Configurac
   return doc;
 }
 
-export function generarPDFCotizacion(cotizacion: Cotizacion, config: ConfiguracionTaller) {
-  const doc = crearDocPDFCotizacion(cotizacion, config);
+export async function generarPDFCotizacion(cotizacion: Cotizacion, config: ConfiguracionTaller) {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCotizacion(cotizacion, config, logo);
   const filename = `Cotizacion_${cotizacion.numero_cot}_${cotizacion.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   doc.save(filename);
 }
 
 export async function compartirPDFWhatsApp(cotizacion: Cotizacion, config: ConfiguracionTaller) {
-  const doc = crearDocPDFCotizacion(cotizacion, config);
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCotizacion(cotizacion, config, logo);
   const filename = `Cotizacion_${cotizacion.numero_cot}_${cotizacion.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   const blob = doc.output('blob');
   const file = new File([blob], filename, { type: 'application/pdf' });
@@ -185,7 +276,11 @@ export async function compartirPDFWhatsApp(cotizacion: Cotizacion, config: Confi
   window.open(url, '_blank', 'noopener,noreferrer');
 }
 
-export function crearDocPDFCuentaCobro(cuenta: CuentaCobro, config: ConfiguracionTaller): jsPDF {
+export function crearDocPDFCuentaCobro(
+  cuenta: CuentaCobro, 
+  config: ConfiguracionTaller,
+  logoDataUrl?: string | null
+): jsPDF {
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -198,25 +293,47 @@ export function crearDocPDFCuentaCobro(cuenta: CuentaCobro, config: Configuracio
   doc.setFillColor(15, 23, 42);
   doc.rect(0, 0, pageWidth, 28, 'F');
 
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(20);
-  doc.setFont('helvetica', 'bold');
-  doc.text('WJGEEKS 3D', 15, 14);
+  const logo = logoDataUrl || cachedLogoDataUrl;
+  let brandTextX = 15;
 
-  doc.setFontSize(9);
+  if (logo) {
+    try {
+      doc.addImage(logo, 'PNG', 15, 4, 20, 20);
+      brandTextX = 39;
+    } catch (e) {
+      console.warn('Error al insertar logo en cuenta de cobro:', e);
+      brandTextX = 15;
+    }
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('WJGEEKS 3D', brandTextX, 13);
+
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(56, 189, 248);
-  doc.text('Cuentas de Cobro & Servicios de Fabricación Digital', 15, 21);
+  doc.text('Cuentas de Cobro & Servicios de Fabricación Digital', brandTextX, 19);
 
-  doc.setFontSize(13);
-  doc.setFont('helvetica', 'bold');
-  doc.setTextColor(255, 255, 255);
-  doc.text(`CUENTA DE COBRO N° ${cuenta.numero_cc}`, pageWidth - 15, 14, { align: 'right' });
-
-  doc.setFontSize(9);
+  doc.setFontSize(7.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225);
-  doc.text(`Fecha: ${cuenta.fecha_emision}`, pageWidth - 15, 21, { align: 'right' });
+  doc.text('Taller de Modelado, Fabricación Digital & Acabados', brandTextX, 24);
+
+  doc.setFontSize(11.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(`CUENTA DE COBRO N° ${cuenta.numero_cc}`, pageWidth - 15, 12, { align: 'right' });
+
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(203, 213, 225);
+  doc.text(`Fecha: ${cuenta.fecha_emision}`, pageWidth - 15, 17, { align: 'right' });
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(56, 189, 248);
+  doc.text(`Ref. Cotización: ${cuenta.cotizacion_numero}`, pageWidth - 15, 23, { align: 'right' });
 
   // Client Info Card
   doc.setFillColor(248, 250, 252);
@@ -298,12 +415,14 @@ export function crearDocPDFCuentaCobro(cuenta: CuentaCobro, config: Configuracio
 
   // Bank Info Card
   doc.setFillColor(241, 245, 249);
-  doc.roundedRect(15, finalY, boxX - 22, 36, 3, 3, 'F');
+  doc.roundedRect(15, finalY, pageWidth - 115, 36, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(15, finalY, pageWidth - 115, 36, 3, 3, 'S');
 
-  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9.5);
-  doc.text('MEDIOS DE CONSIGNACIÓN:', 20, finalY + 8);
+  doc.setTextColor(15, 23, 42);
+  doc.text('DATOS PARA TRANSFERENCIA BANCARIA:', 20, finalY + 8);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -322,14 +441,16 @@ export function crearDocPDFCuentaCobro(cuenta: CuentaCobro, config: Configuracio
   return doc;
 }
 
-export function generarPDFCuentaCobro(cuenta: CuentaCobro, config: ConfiguracionTaller) {
-  const doc = crearDocPDFCuentaCobro(cuenta, config);
+export async function generarPDFCuentaCobro(cuenta: CuentaCobro, config: ConfiguracionTaller) {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCuentaCobro(cuenta, config, logo);
   const filename = `Cuenta_Cobro_${cuenta.numero_cc}_${cuenta.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   doc.save(filename);
 }
 
 export async function compartirPDFCuentaCobroWhatsApp(cuenta: CuentaCobro, config: ConfiguracionTaller) {
-  const doc = crearDocPDFCuentaCobro(cuenta, config);
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCuentaCobro(cuenta, config, logo);
   const filename = `Cuenta_Cobro_${cuenta.numero_cc}_${cuenta.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   const blob = doc.output('blob');
   const file = new File([blob], filename, { type: 'application/pdf' });
