@@ -35,3 +35,7 @@ dist-ssr
 __pycache__/
 *.py[cod]
 *$py.class
+
+# Large data files
+*.xlsx
+
