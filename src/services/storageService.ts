@@ -18,6 +18,7 @@ import {
   CLIENTES_INICIALES,
   CONFIGURACION_INICIAL
 } from '../data/initialData';
+import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
 
 const PROVEEDORES_INICIALES: Proveedor[] = [
   { id: 'prov-1', nombre: 'Anycubic Oficial Colombia', contacto: 'Soporte Ventas', telefono: '3150001122', rubro: 'Resinas y Maquinaria 3D', enlace_web: 'https://anycubic.com' },
@@ -79,7 +80,7 @@ export const StorageService = {
   getConfig: (): ConfiguracionTaller => loadItem(STORAGE_KEYS.CONFIG, CONFIGURACION_INICIAL),
   saveConfig: (config: ConfiguracionTaller) => saveItem(STORAGE_KEYS.CONFIG, config),
 
-  getCotizaciones: (): Cotizacion[] => loadItem(STORAGE_KEYS.COTIZACIONES, []),
+  getCotizaciones: (): Cotizacion[] => loadItem(STORAGE_KEYS.COTIZACIONES, COTIZACIONES_INICIALES),
   saveCotizaciones: (items: Cotizacion[]) => saveItem(STORAGE_KEYS.COTIZACIONES, items),
 
   getOrdenes: (): OrdenTrabajo[] => loadItem(STORAGE_KEYS.ORDENES, []),
