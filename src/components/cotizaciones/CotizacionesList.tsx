@@ -257,6 +257,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '16px' }}>
         {[
           { id: 'todos', label: 'Todas' },
+          { id: 'Parcial', label: '🟡 Parciales' },
           { id: 'Facturada', label: 'Facturadas' },
           { id: 'Aceptada', label: 'Aceptadas' },
           { id: 'Enviada', label: 'Enviadas' },
@@ -311,9 +312,13 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                         ? 'status-curado'
                         : cot.estado === 'Enviada'
                         ? 'status-imprimiendo'
+                        : cot.estado === 'Parcial'
+                        ? 'status-cola'
                         : 'status-cola'
-                    }`}>
-                      {cot.estado}
+                    }`}
+                    style={cot.estado === 'Parcial' ? { background: 'rgba(234, 179, 8, 0.2)', color: '#fde047', border: '1px solid rgba(234, 179, 8, 0.4)' } : {}}
+                    >
+                      {cot.estado === 'Parcial' ? '🟡 Parcial (Pendiente Slicer)' : cot.estado}
                     </span>
                   </div>
                   <div style={{ fontSize: '0.98rem', fontWeight: 600, marginTop: '5px' }}>

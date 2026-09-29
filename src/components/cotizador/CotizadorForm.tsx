@@ -58,6 +58,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [altoMm, setAltoMm] = useState(60);
   const [anchoMm, setAnchoMm] = useState(60);
   const [profundidadMm, setProfundidadMm] = useState(60);
+  
+  // Modo de Cotización Parcial / Pendiente de Slicer
+  const [esParcial, setEsParcial] = useState(false);
+  const [notasPendientes, setNotasPendientes] = useState('Pendiente abrir software 3D (Chitubox/Lychee) para medidas y resina exactas');
 
   // Modo de cálculo de resina: 'volumen' o 'manual'
   const [modoCalculoResina, setModoCalculoResina] = useState<'volumen' | 'manual'>('volumen');
@@ -175,7 +179,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       margenGanancia: Number(margenGanancia) || 0.40,
       imagen_url: imagenUrl,
       modoCalculoResina,
-      pesoResinaManualG: Number(pesoResinaManualG) || 0
+      pesoResinaManualG: Number(pesoResinaManualG) || 0,
+      datosPendientes: esParcial,
+      notasPendientes
     };
 
     return calcularPieza3D(input, personal, config);
@@ -185,6 +191,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     altoMm,
     anchoMm,
     profundidadMm,
+    esParcial,
+    notasPendientes,
     modoCalculoResina,
     pesoResinaManualG,
     resinaActual,
@@ -250,16 +258,66 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </div>
         </div>
 
+        {/* SELECTOR DE MODO PARCIAL / PENDIENTE DE SLICER */}
+        <div style={{
+          background: esParcial ? 'rgba(234, 179, 8, 0.12)' : 'rgba(255, 255, 255, 0.03)',
+          border: `1px solid ${esParcial ? 'rgba(234, 179, 8, 0.45)' : 'rgba(255, 255, 255, 0.08)'}`,
+          borderRadius: '10px',
+          padding: '12px 14px',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'wrap'
+        }}>
+          <div>
+            <div style={{ fontWeight: 700, fontSize: '0.88rem', color: esParcial ? '#fde047' : 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span>{esParcial ? '🟡 Cotización Parcial (Medidas / Resina Pendientes)' : '📐 Cotización Estándar (Medidas Definidas)'}</span>
+            </div>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              {esParcial 
+                ? 'Las dimensiones y resina se definirán más adelante al abrir Chitubox, Lychee o Photon Workshop.'
+                : 'Calcula con las dimensiones exactas o gramos de resina del Slicer.'}
+            </div>
+          </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600, color: esParcial ? '#fde047' : 'var(--brand-cyan)' }}>
+            <input 
+              type="checkbox"
+              checked={esParcial}
+              onChange={e => setEsParcial(e.target.checked)}
+              style={{ width: '18px', height: '18px', accentColor: '#eab308', cursor: 'pointer' }}
+            />
+            <span>Dejar pendiente de Slicer</span>
+          </label>
+        </div>
+
+        {esParcial && (
+          <div className="form-group" style={{ marginBottom: '14px' }}>
+            <label className="form-label" style={{ color: '#fde047' }}>Detalle de lo que queda pendiente</label>
+            <input 
+              type="text"
+              className="form-input"
+              value={notasPendientes}
+              onChange={e => setNotasPendientes(e.target.value)}
+              placeholder="Ej: Confirmar volumen y soportes al abrir STL en Chitubox"
+            />
+          </div>
+        )}
+
         {/* Dimensiones X, Y, Z */}
-        <div className="form-group">
-          <label className="form-label">Dimensiones de la Pieza (Milímetros)</label>
+        <div className="form-group" style={{ opacity: esParcial ? 0.75 : 1 }}>
+          <label className="form-label">
+            Dimensiones de la Pieza (Milímetros) {esParcial && <span style={{ color: '#fde047', fontWeight: 500 }}>(Opcional / Por definir)</span>}
+          </label>
           <div className="dimensions-grid">
             <div className="input-with-unit">
               <input 
                 type="number" 
                 className="form-input" 
                 value={altoMm} 
-                onChange={e => setAltoMm(Math.max(1, parseFloat(e.target.value) || 1))} 
+                onChange={e => setAltoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
                 title="Alto (Z)"
                 placeholder="Alto"
               />
@@ -270,7 +328,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 type="number" 
                 className="form-input" 
                 value={anchoMm} 
-                onChange={e => setAnchoMm(Math.max(1, parseFloat(e.target.value) || 1))} 
+                onChange={e => setAnchoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
                 title="Ancho (X)"
                 placeholder="Ancho"
               />
@@ -281,7 +339,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 type="number" 
                 className="form-input" 
                 value={profundidadMm} 
-                onChange={e => setProfundidadMm(Math.max(1, parseFloat(e.target.value) || 1))} 
+                onChange={e => setProfundidadMm(Math.max(0, parseFloat(e.target.value) || 0))} 
                 title="Profundidad (Y)"
                 placeholder="Prof"
               />

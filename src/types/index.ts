@@ -107,9 +107,11 @@ export interface PiezaCotizada {
   modo_calculo_resina?: 'volumen' | 'manual';
   lista_pinturas?: { nombre: string; cantidad_ml: number; costo: number }[];
   lista_accesorios?: { nombre: string; cantidad: number; costo: number }[];
+  datos_pendientes?: boolean;
+  notas_pendientes?: string;
 }
 
-export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada';
+export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'Parcial';
 
 export interface Cotizacion {
   id: string;

@@ -211,6 +211,7 @@ export const App: React.FC = () => {
               items={draftPieces}
               clientes={clientes}
               config={config}
+              cotizaciones={cotizaciones}
               onRemoveItem={handleRemoveDraftPiece}
               onSaveCotizacion={handleSaveCotizacion}
               onAddCliente={handleAddCliente}

@@ -28,15 +28,17 @@ export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: Configurac
   doc.text('Impresión 3D de Precisión & Resina Artística', 15, 21);
 
   // Quote Badge (Right side)
-  doc.setFontSize(13);
+  const esParcial = cotizacion.estado === 'Parcial' || cotizacion.items.some(i => i.datos_pendientes);
+  
+  doc.setFontSize(12);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(255, 255, 255);
-  doc.text(`COTIZACIÓN N° ${cotizacion.numero_cot}`, pageWidth - 15, 14, { align: 'right' });
+  doc.text(`COTIZACIÓN N° ${cotizacion.numero_cot}${esParcial ? ' (PRELIMINAR)' : ''}`, pageWidth - 15, 14, { align: 'right' });
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(203, 213, 225);
-  doc.text(`Fecha: ${cotizacion.fecha}`, pageWidth - 15, 21, { align: 'right' });
+  doc.text(`Fecha: ${cotizacion.fecha} | ${esParcial ? 'Estado: Parcial / Pendiente Slicer' : 'Estado: Oficial'}`, pageWidth - 15, 21, { align: 'right' });
 
   // 2. Client Info Card
   doc.setFillColor(248, 250, 252);
@@ -60,7 +62,10 @@ export function crearDocPDFCotizacion(cotizacion: Cotizacion, config: Configurac
 
   // 3. Table of Items
   const tableData = cotizacion.items.map((item, index) => {
-    let specText = `${item.nombre_item}\n${item.alto_mm} x ${item.ancho_mm} x ${item.profundidad_mm} mm\n${item.resina_nombre}`;
+    const descMedidas = item.datos_pendientes 
+      ? '[Medidas y resina por verificar en Slicer]' 
+      : `${item.alto_mm} x ${item.ancho_mm} x ${item.profundidad_mm} mm`;
+    let specText = `${item.nombre_item}\n${descMedidas}\n${item.resina_nombre}`;
     if (item.lista_pinturas && item.lista_pinturas.length > 0) {
       specText += `\nAcabado: ${item.lista_pinturas.map(p => `${p.nombre} (${p.cantidad_ml}ml)`).join(', ')}`;
     }

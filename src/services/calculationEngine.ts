@@ -20,6 +20,8 @@ export interface ParametrosPiezaInput {
   imagen_url?: string;
   modoCalculoResina?: 'volumen' | 'manual';
   pesoResinaManualG?: number;
+  datosPendientes?: boolean;
+  notasPendientes?: string;
 }
 
 export function calcularPieza3D(
@@ -27,29 +29,39 @@ export function calcularPieza3D(
   personal: Personal[],
   config: ConfiguracionTaller
 ): PiezaCotizada {
+  const esParcial = Boolean(input.datosPendientes);
+
   // 1. Geometría y Peso
-  const volumen_cm3 = (input.alto_mm * input.ancho_mm * input.profundidad_mm) / 1000;
+  const alto = esParcial ? (input.alto_mm || 0) : Math.max(0, input.alto_mm || 0);
+  const ancho = esParcial ? (input.ancho_mm || 0) : Math.max(0, input.ancho_mm || 0);
+  const prof = esParcial ? (input.profundidad_mm || 0) : Math.max(0, input.profundidad_mm || 0);
+  const volumen_cm3 = (alto * ancho * prof) / 1000;
   
-  // Si el usuario especificó los gramos exactos de resina (del laminador/slicer), se usan directamente
-  const peso_estimado_g = (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0)
-    ? Number(input.pesoResinaManualG.toFixed(2))
-    : Number((volumen_cm3 * input.resina.densidad_g_cm3).toFixed(2));
+  // Si los datos están pendientes, peso de resina es 0 o manual si fue estimado
+  let peso_estimado_g = 0;
+  if (!esParcial) {
+    peso_estimado_g = (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0)
+      ? Number(input.pesoResinaManualG.toFixed(2))
+      : Number((volumen_cm3 * input.resina.densidad_g_cm3).toFixed(2));
+  } else if (input.pesoResinaManualG && input.pesoResinaManualG > 0) {
+    peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
+  }
 
   // 2. Tiempo de Impresión (minutos)
   const vel = input.resina.velocidad_impresion_mm_h > 0 ? input.resina.velocidad_impresion_mm_h : 20;
-  const tiempo_impresion_min = Math.round((input.alto_mm / vel) * 60);
+  const tiempo_impresion_min = (esParcial && alto === 0) ? 0 : Math.round((alto / vel) * 60);
 
   // 3. Costo de Energía Eléctrica Impresora
   const costo_energia_impresion = tiempo_impresion_min * (input.impresora.costo_minuto || 6.255);
 
   // 4. Costo de Resina con factor de merma y soportes (1.4x = 40% de merma de taller)
   const factorMerma = config.margen_merma_resina || 1.4;
-  const costo_resina = peso_estimado_g * input.resina.costo_gramo * factorMerma;
+  const costo_resina = peso_estimado_g > 0 ? peso_estimado_g * input.resina.costo_gramo * factorMerma : 0;
 
   // 5. Curado Térmico / UV y Químico (Etanol / Alcohol)
   const tiempo_curado_min = peso_estimado_g >= 250 ? 15 : peso_estimado_g <= 50 ? 5 : 10;
   const costo_minuto_curado = input.estacionCurado ? input.estacionCurado.costo_minuto : 5.004;
-  const costo_energia_curado = tiempo_curado_min * costo_minuto_curado;
+  const costo_energia_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * costo_minuto_curado;
   
   // Insumo curado (etanol ~ 10 COP por gramo de pieza lavada)
   const costo_unitario_insumo_curado = input.insumoCurado ? input.insumoCurado.costo_unitario : 10.27;
@@ -100,15 +112,23 @@ export function calcularPieza3D(
   }
 
   // 11. Descripción Técnica Detallada
-  const descripcion_tecnica = `Medidas: ${input.alto_mm}mm x ${input.ancho_mm}mm x ${input.profundidad_mm}mm\nImpresión en ${input.resina.resumen || input.resina.tipo}\nTiempo de entrega: ${tiempo_entrega}`;
+  const descMedidas = esParcial && (!alto || !ancho || !prof)
+    ? 'Dimensiones: [Pendiente de verificar en Software/Slicer 3D]'
+    : `Medidas: ${alto}mm x ${ancho}mm x ${prof}mm`;
+
+  const descResina = esParcial && peso_estimado_g === 0
+    ? `Impresión en ${input.resina.resumen || input.resina.tipo} [Gramos y tiempo pendientes de corte]`
+    : `Impresión en ${input.resina.resumen || input.resina.tipo}`;
+
+  const descripcion_tecnica = `${descMedidas}\n${descResina}\nTiempo de entrega: ${tiempo_entrega}${esParcial ? '\n⚠️ Cotización preliminar sujeta a corte en software' : ''}`;
 
   return {
     id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     nombre_item: input.nombre_item,
     cantidad: input.cantidad,
-    alto_mm: input.alto_mm,
-    ancho_mm: input.ancho_mm,
-    profundidad_mm: input.profundidad_mm,
+    alto_mm: alto,
+    ancho_mm: ancho,
+    profundidad_mm: prof,
     volumen_cm3: Number(volumen_cm3.toFixed(2)),
     peso_estimado_g,
     resina_id: input.resina.id,
@@ -134,6 +154,8 @@ export function calcularPieza3D(
     imagen_url: input.imagen_url,
     gramos_resina_manual: input.pesoResinaManualG,
     modo_calculo_resina: input.modoCalculoResina,
+    datos_pendientes: esParcial,
+    notas_pendientes: input.notasPendientes,
     lista_pinturas: input.pinturas.map(p => ({
       nombre: p.insumo.nombre,
       cantidad_ml: p.cantidad_ml,
