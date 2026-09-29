@@ -8,17 +8,11 @@ import {
   RotateCw, 
   Maximize2, 
   Sparkles, 
-  Check, 
   ArrowRight, 
-  Compass, 
-  Layers, 
-  DollarSign, 
-  Clock, 
   Info, 
   ExternalLink,
-  Sliders,
-  CheckCircle2,
-  RefreshCw
+  RefreshCw,
+  Compass
 } from 'lucide-react';
 import { analyzeSTLFile, STLAnalysisResult } from '../../services/stlService';
 import { Resina } from '../../types';
@@ -43,6 +37,11 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const [escalaPorcentaje, setEscalaPorcentaje] = useState<number>(100);
   const [alturaDeseadaZ, setAlturaDeseadaZ] = useState<string>('');
 
+  // Rotación del modelo 3D (en grados)
+  const [rotacionX, setRotacionX] = useState<number>(0);
+  const [rotacionY, setRotacionY] = useState<number>(0);
+  const [rotacionZ, setRotacionZ] = useState<number>(0);
+
   // Configuración de impresión de resina
   const [resinaSeleccionadaId, setResinaSeleccionadaId] = useState<string>(resinas[0]?.id || '');
   const [modoAhuecado, setModoAhuecado] = useState<'solido' | 'ahuecado'>('solido');
@@ -60,11 +59,19 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   // Color de previsualización
   const [colorModelo, setColorModelo] = useState<string>('#38bdf8'); // Cyan
 
+  // Sincronizar selección de resina cuando resinas se carguen desde StorageService
+  useEffect(() => {
+    if ((!resinaSeleccionadaId || !resinas.some(r => r.id === resinaSeleccionadaId)) && resinas.length > 0) {
+      setResinaSeleccionadaId(resinas[0].id);
+    }
+  }, [resinas, resinaSeleccionadaId]);
+
   const resinaActual = resinas.find(r => r.id === resinaSeleccionadaId) || resinas[0] || {
+    id: 'res-default',
+    tipo: 'Resina Standard',
+    color: 'Negro',
     densidad_g_cm3: 1.13,
-    costo_gramo: 78.76,
-    tipo: 'Resina Standar',
-    color: 'Negro'
+    costo_gramo: 78.76
   };
 
   // Manejo de archivo subido
@@ -84,6 +91,9 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
         const result = analyzeSTLFile(buffer, file.name);
         setAnalysis(result);
         setEscalaPorcentaje(100);
+        setRotacionX(0);
+        setRotacionY(0);
+        setRotacionZ(0);
         setAlturaDeseadaZ(result.originalDimensions.z.toString());
         setLoading(false);
       } catch (err: any) {
@@ -109,20 +119,58 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   // Métricas calculadas con la escala actual
   const factorEscala = escalaPorcentaje / 100;
 
-  const dimensionesEscaladas = useMemo(() => {
-    if (!analysis) return { x: 0, y: 0, z: 0 };
+  // Orientación del modelo rotado en 3D
+  const orientacionModel = useMemo(() => {
+    if (!analysis) return null;
+
+    const geom = analysis.geometry.clone();
+    const radX = (rotacionX * Math.PI) / 180;
+    const radY = (rotacionY * Math.PI) / 180;
+    const radZ = (rotacionZ * Math.PI) / 180;
+
+    if (radX !== 0) geom.rotateX(radX);
+    if (radY !== 0) geom.rotateY(radY);
+    if (radZ !== 0) geom.rotateZ(radZ);
+
+    geom.computeBoundingBox();
+    const bbox = geom.boundingBox || new THREE.Box3();
+    const size = new THREE.Vector3();
+    bbox.getSize(size);
+
     return {
-      x: Number((analysis.originalDimensions.x * factorEscala).toFixed(2)),
-      y: Number((analysis.originalDimensions.y * factorEscala).toFixed(2)),
-      z: Number((analysis.originalDimensions.z * factorEscala).toFixed(2))
+      geometry: geom,
+      size: {
+        x: Number(size.x.toFixed(2)),
+        y: Number(size.y.toFixed(2)),
+        z: Number(size.z.toFixed(2))
+      },
+      minY: bbox.min.y
     };
-  }, [analysis, factorEscala]);
+  }, [analysis, rotacionX, rotacionY, rotacionZ]);
+
+  // Dimensiones orientadas y escaladas
+  const dimensionesEscaladas = useMemo(() => {
+    if (!orientacionModel) return { x: 0, y: 0, z: 0 };
+    return {
+      x: Number((orientacionModel.size.x * factorEscala).toFixed(2)),
+      y: Number((orientacionModel.size.y * factorEscala).toFixed(2)),
+      z: Number((orientacionModel.size.z * factorEscala).toFixed(2))
+    };
+  }, [orientacionModel, factorEscala]);
+
+  // Mantener la altura deseada sincronizada al rotar
+  useEffect(() => {
+    if (orientacionModel) {
+      setAlturaDeseadaZ((orientacionModel.size.z * factorEscala).toFixed(1));
+    }
+  }, [orientacionModel, factorEscala]);
 
   // El volumen escala al cubo del factor de escala (V = V0 * s^3)
   const volumenEscaladoCm3 = useMemo(() => {
     if (!analysis) return 0;
     const factorCubico = Math.pow(factorEscala, 3);
-    return Number((analysis.originalVolumeCm3 * factorCubico).toFixed(2));
+    const volBase = analysis.originalVolumeCm3 || (analysis.bboxVolumeCm3 * 0.45) || 1;
+    return Number((volBase * factorCubico).toFixed(2));
   }, [analysis, factorEscala]);
 
   // Gramos de resina calculados
@@ -130,21 +178,23 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     const densidad = resinaActual.densidad_g_cm3 || 1.13;
     const costoGramo = resinaActual.costo_gramo || 78.76;
 
-    // Si es ahuecado, multiplicar por el porcentaje de pared efectiva
-    const ratioRelleno = modoAhuecado === 'ahuecado' ? (porcentajeAhuecado / 100) : 1.0;
+    // Si es sólido: 100% macizo (1.0). Si es ahuecado: 35% por defecto (65% ahorro)
+    const ratioRelleno = modoAhuecado === 'solido' ? 1.0 : (porcentajeAhuecado / 100);
     
-    // Gramos netos de la figura
-    const gramosNetos = volumenEscaladoCm3 * densidad * ratioRelleno;
+    // Gramos netos de la figura (mínimo 0.1g si hay volumen)
+    const gramosNetos = volumenEscaladoCm3 > 0 
+      ? Number((volumenEscaladoCm3 * densidad * ratioRelleno).toFixed(1))
+      : 0;
     
     // Gramos brutos con soportes y merma
-    const gramosTotalesConSoportes = gramosNetos * factorSoportes;
+    const gramosTotalesConSoportes = Number((gramosNetos * factorSoportes).toFixed(1));
     
-    // Costo estimado de la resina
+    // Costo estimado de la resina en COP
     const costoAproxCOP = Math.round(gramosTotalesConSoportes * costoGramo);
 
     return {
-      gramosNetos: Number(gramosNetos.toFixed(1)),
-      gramosTotales: Number(gramosTotalesConSoportes.toFixed(1)),
+      gramosNetos,
+      gramosTotales: gramosTotalesConSoportes,
       costoAproxCOP
     };
   }, [volumenEscaladoCm3, resinaActual, modoAhuecado, porcentajeAhuecado, factorSoportes]);
@@ -153,17 +203,32 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const handleCambioAlturaZ = (valStr: string) => {
     setAlturaDeseadaZ(valStr);
     const zNum = parseFloat(valStr);
-    if (!isNaN(zNum) && zNum > 0 && analysis && analysis.originalDimensions.z > 0) {
-      const nuevaEscala = (zNum / analysis.originalDimensions.z) * 100;
+    if (!isNaN(zNum) && zNum > 0 && orientacionModel && orientacionModel.size.z > 0) {
+      const nuevaEscala = (zNum / orientacionModel.size.z) * 100;
       setEscalaPorcentaje(Number(nuevaEscala.toFixed(1)));
     }
   };
 
-  // Inicializar Three.js y actualizar la malla 3D
+  // Handlers para rotación en 90° de ejes
+  const handleRotarX = (delta: number) => {
+    setRotacionX(prev => (prev + delta + 360) % 360);
+  };
+  const handleRotarY = (delta: number) => {
+    setRotacionY(prev => (prev + delta + 360) % 360);
+  };
+  const handleRotarZ = (delta: number) => {
+    setRotacionZ(prev => (prev + delta + 360) % 360);
+  };
+  const handleResetRotacion = () => {
+    setRotacionX(0);
+    setRotacionY(0);
+    setRotacionZ(0);
+  };
+
+  // Inicializar Three.js
   useEffect(() => {
     if (!containerRef.current) return;
 
-    // Limpiar canvas anterior si existe
     containerRef.current.innerHTML = '';
 
     const width = containerRef.current.clientWidth || 400;
@@ -176,7 +241,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
 
     // 2. Cámara
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
-    camera.position.set(120, 100, 140);
+    camera.position.set(130, 110, 150);
 
     // 3. Renderizador
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
@@ -190,7 +255,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.05;
-    controls.maxPolarAngle = Math.PI / 2 + 0.1; // No bajar demasiado bajo la cama
+    controls.maxPolarAngle = Math.PI / 2 + 0.1;
     controlsRef.current = controls;
 
     // 5. Luces
@@ -205,14 +270,13 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     dirLight2.position.set(-100, -50, -100);
     scene.add(dirLight2);
 
-    // 6. Plataforma / Cama de Impresión 3D (Grid)
+    // 6. Plataforma / Cama de Impresión 3D
     const gridSize = 160;
     const gridDivisions = 16;
     const gridHelper = new THREE.GridHelper(gridSize, gridDivisions, 0x1b62b1, 0x1e293b);
     gridHelper.position.y = 0;
     scene.add(gridHelper);
 
-    // Marco de placa de construcción (Anycubic Photon Buildplate style)
     const plateGeo = new THREE.BoxGeometry(gridSize, 2, gridSize);
     const plateMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.8 });
     const plate = new THREE.Mesh(plateGeo, plateMat);
@@ -227,7 +291,6 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     };
     animate();
 
-    // Redimensionamiento
     const handleResize = () => {
       if (!containerRef.current || !rendererRef.current) return;
       const newWidth = containerRef.current.clientWidth;
@@ -244,11 +307,10 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     };
   }, []);
 
-  // Actualizar el modelo cuando cambia el análisis, la escala o el color
+  // Actualizar el modelo cuando cambia la orientación, escala o color
   useEffect(() => {
-    if (!sceneRef.current || !analysis) return;
+    if (!sceneRef.current || !orientacionModel) return;
 
-    // Eliminar malla anterior si existe
     if (meshRef.current) {
       sceneRef.current.remove(meshRef.current);
       meshRef.current.geometry.dispose();
@@ -256,7 +318,6 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
       meshRef.current = null;
     }
 
-    // Material de resina fotopolímera con brillo metálico/plástico
     const material = new THREE.MeshStandardMaterial({
       color: new THREE.Color(colorModelo),
       roughness: 0.25,
@@ -264,29 +325,25 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
       side: THREE.DoubleSide
     });
 
-    const mesh = new THREE.Mesh(analysis.geometry.clone(), material);
-
-    // Aplicar escala
+    const mesh = new THREE.Mesh(orientacionModel.geometry.clone(), material);
     mesh.scale.set(factorEscala, factorEscala, factorEscala);
 
-    // Colocar la base de la figura sobre la cama (y >= 0)
-    const currentBox = new THREE.Box3().setFromObject(mesh);
-    const minY = currentBox.min.y;
-    mesh.position.y = -minY;
+    // Apoyar exactamente la base de la figura sobre la cama (y >= 0)
+    mesh.position.y = -orientacionModel.minY * factorEscala;
 
     sceneRef.current.add(mesh);
     meshRef.current = mesh;
 
-    // Ajustar cámara para encuadrar la figura
     if (controlsRef.current) {
+      const currentBox = new THREE.Box3().setFromObject(mesh);
       const center = new THREE.Vector3();
       currentBox.getCenter(center);
       controlsRef.current.target.set(0, center.y, 0);
     }
-  }, [analysis, factorEscala, colorModelo]);
+  }, [orientacionModel, factorEscala, colorModelo]);
 
   const handleEnviarAlCotizador = () => {
-    if (!analysis || !onApplyToCotizador) return;
+    if (!analysis || !orientacionModel || !onApplyToCotizador) return;
 
     onApplyToCotizador({
       altoMm: dimensionesEscaladas.z,
@@ -304,17 +361,17 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
         <div>
           <h2 className="section-title">
             <Box size={22} color="var(--brand-cyan)" />
-            Previsualizador & Estimador de STL 3D
+            Previsualizador 3D STL & Estimador de Resina
           </h2>
           <p className="section-subtitle">
-            Carga modelos 3D, inspecciona medidas X, Y, Z, escala en tiempo real y calcula gramos de resina
+            Carga modelos 3D, rótalos (vertical/horizontal), inspecciona medidas exactas y calcula gramos de resina
           </p>
         </div>
       </div>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
         
-        {/* COLUMNA IZQUIERDA: VISOR 3D & CARGA */}
+        {/* COLUMNA IZQUIERDA: VISOR 3D & CONTROLES DE ROTACIÓN */}
         <div className="glass-card" style={{ padding: '16px', display: 'flex', flexDirection: 'column' }}>
           
           {/* Zona de Drop / Carga de Archivo */}
@@ -363,10 +420,10 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
           <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
             <div ref={containerRef} style={{ width: '100%', height: '340px' }} />
             
-            {/* Controles sobre el visor */}
+            {/* Controles flotantes sobre el visor */}
             <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', pointerEvents: 'none' }}>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.6)', padding: '3px 8px', borderRadius: '4px' }}>
-                🖱️ Rotar: Clic izq | Mover: Clic der | Zoom: Rueda
+                🖱️ Rotar cámara: Clic izq | Paneo: Clic der | Zoom: Rueda
               </span>
 
               {/* Selector de color de resina en visor */}
@@ -385,6 +442,96 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   />
                 ))}
               </div>
+            </div>
+          </div>
+
+          {/* PANEL DE ROTACIÓN Y ORIENTACIÓN 3D */}
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.03)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '10px',
+            padding: '12px',
+            marginTop: '12px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <RotateCw size={14} color="var(--brand-cyan)" />
+                <span>Orientación de la Pieza (Rotar Ejes 3D)</span>
+              </div>
+              {(rotacionX !== 0 || rotacionY !== 0 || rotacionZ !== 0) && (
+                <button 
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.7rem', padding: '2px 8px' }}
+                  onClick={handleResetRotacion}
+                  title="Restablecer rotación nativa"
+                >
+                  <RefreshCw size={11} />
+                  <span>Reset (0°)</span>
+                </button>
+              )}
+            </div>
+
+            {/* Botones directos de Parar / Acostar */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px', marginBottom: '8px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ justifyContent: 'center', fontSize: '0.76rem', padding: '7px 8px', color: rotacionX === 90 ? 'var(--brand-cyan)' : undefined }}
+                onClick={() => handleRotarX(90)}
+                disabled={!analysis}
+                title="Rotar 90° en X: Poner de pie verticalmente"
+              >
+                <span>↕️ Parar Vertical (+90° X)</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ justifyContent: 'center', fontSize: '0.76rem', padding: '7px 8px', color: rotacionX === 270 ? 'var(--brand-cyan)' : undefined }}
+                onClick={() => handleRotarX(-90)}
+                disabled={!analysis}
+                title="Rotar -90° en X: Acostar horizontalmente sobre la cama"
+              >
+                <span>↔️ Acostar Horizontal (-90° X)</span>
+              </button>
+            </div>
+
+            {/* Botones complementarios de giro */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ justifyContent: 'center', fontSize: '0.72rem', padding: '5px' }}
+                onClick={() => handleRotarY(90)}
+                disabled={!analysis}
+                title="Girar 90° lateralmente (frente a perfil)"
+              >
+                <span>🔄 Girar Y (+90°)</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ justifyContent: 'center', fontSize: '0.72rem', padding: '5px' }}
+                onClick={() => handleRotarZ(90)}
+                disabled={!analysis}
+                title="Rotar 90° en plano Z"
+              >
+                <span>↪️ Rotar Z (+90°)</span>
+              </button>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                style={{ justifyContent: 'center', fontSize: '0.72rem', padding: '5px' }}
+                onClick={() => handleRotarX(180)}
+                disabled={!analysis}
+                title="Invertir pieza de cabeza (180°)"
+              >
+                <span>🔃 Invertir (180°)</span>
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '8px', textAlign: 'center' }}>
+              🧭 Ángulos actuales: X: {rotacionX % 360}° | Y: {rotacionY % 360}° | Z: {rotacionZ % 360}°
             </div>
           </div>
 
@@ -413,7 +560,9 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   style={{ padding: '3px 8px', fontSize: '0.72rem' }}
                   onClick={() => {
                     setEscalaPorcentaje(100);
-                    setAlturaDeseadaZ(analysis.originalDimensions.z.toString());
+                    if (orientacionModel) {
+                      setAlturaDeseadaZ(orientacionModel.size.z.toString());
+                    }
                   }}
                   title="Restablecer a tamaño original 100%"
                 >
@@ -423,7 +572,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               )}
             </div>
 
-            {/* Tarjetas de Medidas X, Y, Z */}
+            {/* Tarjetas de Medidas X, Y, Z Orientadas */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '16px' }}>
               {/* Eje Z - Altura */}
               <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', padding: '10px', borderRadius: '8px', textAlign: 'center' }}>
@@ -434,7 +583,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   {dimensionesEscaladas.z} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>mm</span>
                 </div>
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                  {analysis ? `Orig: ${analysis.originalDimensions.z}mm` : 'Vertical'}
+                  {orientacionModel ? `Orientada: ${orientacionModel.size.z}mm` : 'Vertical'}
                 </div>
               </div>
 
@@ -447,7 +596,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   {dimensionesEscaladas.x} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>mm</span>
                 </div>
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                  {analysis ? `Orig: ${analysis.originalDimensions.x}mm` : 'Horizontal'}
+                  {orientacionModel ? `Orientada: ${orientacionModel.size.x}mm` : 'Horizontal'}
                 </div>
               </div>
 
@@ -460,7 +609,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   {dimensionesEscaladas.y} <span style={{ fontSize: '0.75rem', fontWeight: 500, color: 'var(--text-muted)' }}>mm</span>
                 </div>
                 <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                  {analysis ? `Orig: ${analysis.originalDimensions.y}mm` : 'Profundidad'}
+                  {orientacionModel ? `Orientada: ${orientacionModel.size.y}mm` : 'Profundidad'}
                 </div>
               </div>
             </div>
@@ -494,8 +643,8 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   onChange={(e) => {
                     const esc = parseFloat(e.target.value);
                     setEscalaPorcentaje(esc);
-                    if (analysis) {
-                      setAlturaDeseadaZ((analysis.originalDimensions.z * (esc / 100)).toFixed(1));
+                    if (orientacionModel) {
+                      setAlturaDeseadaZ((orientacionModel.size.z * (esc / 100)).toFixed(1));
                     }
                   }}
                   disabled={!analysis}
@@ -512,7 +661,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               <span>Consumo Estimado de Resina</span>
             </div>
 
-            {/* Selector de Resina y Tipo de Relleno */}
+            {/* Selector de Resina y Estructura */}
             <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '12px' }}>
               <div>
                 <label className="form-label" style={{ fontSize: '0.72rem' }}>Resina de Impresión</label>
@@ -536,31 +685,45 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                   <button 
                     type="button"
                     className={`btn btn-sm ${modoAhuecado === 'solido' ? 'btn-cyan' : 'btn-secondary'}`}
-                    style={{ flex: 1, padding: '4px 6px', fontSize: '0.75rem' }}
+                    style={{ flex: 1, padding: '6px 4px', fontSize: '0.75rem', fontWeight: 700 }}
                     onClick={() => setModoAhuecado('solido')}
                   >
-                    Sólido (100%)
+                    🧱 Sólido (100%)
                   </button>
                   <button 
                     type="button"
                     className={`btn btn-sm ${modoAhuecado === 'ahuecado' ? 'btn-cyan' : 'btn-secondary'}`}
-                    style={{ flex: 1, padding: '4px 6px', fontSize: '0.75rem' }}
+                    style={{ flex: 1, padding: '6px 4px', fontSize: '0.75rem', fontWeight: 700 }}
                     onClick={() => setModoAhuecado('ahuecado')}
                     title="Ahuecado en Slicer con agujeros de drenaje"
                   >
-                    Ahuecado
+                    🏺 Ahuecado
                   </button>
                 </div>
               </div>
             </div>
 
-            {modoAhuecado === 'ahuecado' && (
-              <div style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.75rem', color: '#fde047', marginBottom: '12px' }}>
-                ℹ️ Modo Ahuecado: Asume pared de 2mm con drenaje (~35% de resina del volumen sólido). Ahorra hasta un 65% de material.
+            {/* Mensajes informativos de modo */}
+            {modoAhuecado === 'solido' && (
+              <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.75rem', color: 'var(--brand-cyan)', marginBottom: '12px' }}>
+                🧱 <strong>Modo Sólido:</strong> La pieza se imprimirá 100% maciza de resina.
               </div>
             )}
 
-            {/* Métricas de Peso y Volumen */}
+            {modoAhuecado === 'ahuecado' && (
+              <div style={{ background: 'rgba(234, 179, 8, 0.1)', border: '1px solid rgba(234, 179, 8, 0.3)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.75rem', color: '#fde047', marginBottom: '12px' }}>
+                🏺 <strong>Modo Ahuecado:</strong> Asume pared de ~2mm con drenaje (~35% de resina). Ahorra hasta 65% de material frente al sólido.
+              </div>
+            )}
+
+            {analysis?.isVolumeEstimated && (
+              <div style={{ background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.35)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.74rem', color: '#fde047', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Info size={14} />
+                <span>Malla con caras no herméticas detectada: Volumen estimado automáticamente al 45% de la caja envolvente.</span>
+              </div>
+            )}
+
+            {/* Métricas de Peso y Volumen Calculadas */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', marginBottom: '14px' }}>
               <div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Volumen 3D:</div>
@@ -601,7 +764,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                 disabled={!analysis}
               >
                 <Sparkles size={16} />
-                <span>Aplicar Medidas y Resina al Cotizador</span>
+                <span>Aplicar Medidas Orientadas y Resina al Cotizador</span>
                 <ArrowRight size={16} />
               </button>
             )}

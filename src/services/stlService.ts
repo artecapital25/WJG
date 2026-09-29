@@ -12,6 +12,8 @@ export interface STLAnalysisResult {
   };
   originalVolumeMm3: number;
   originalVolumeCm3: number;
+  bboxVolumeCm3: number;
+  isVolumeEstimated: boolean;
   geometry: THREE.BufferGeometry;
 }
 
@@ -90,7 +92,20 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
   // Centrar la geometría en el origen para facilitar la rotación 3D
   geometry.center();
 
-  const volumeMm3 = calculateGeometryVolume(geometry);
+  let volumeMm3 = calculateGeometryVolume(geometry);
+  const bboxVolumeMm3 = size.x * size.y * size.z;
+  const bboxVolumeCm3 = bboxVolumeMm3 / 1000;
+
+  // Detección de malla defectuosa o no hermética:
+  // Si el cálculo da 0, NaN o es inferior al 3% de la caja envolvente, significa que el STL tiene
+  // caras invertidas, mallas disjuntas o huecos que cancelan el teorema de la divergencia.
+  let isVolumeEstimated = false;
+  if (!volumeMm3 || isNaN(volumeMm3) || volumeMm3 < (bboxVolumeMm3 * 0.03)) {
+    // Estimación física para piezas y figuras de resina: 45% del volumen de la caja envolvente
+    volumeMm3 = bboxVolumeMm3 * 0.45;
+    isVolumeEstimated = true;
+  }
+
   const volumeCm3 = volumeMm3 / 1000;
   const trianglesCount = (geometry.index ? geometry.index.count : geometry.attributes.position.count) / 3;
 
@@ -105,6 +120,8 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
     },
     originalVolumeMm3: Number(volumeMm3.toFixed(2)),
     originalVolumeCm3: Number(volumeCm3.toFixed(2)),
+    bboxVolumeCm3: Number(bboxVolumeCm3.toFixed(2)),
+    isVolumeEstimated,
     geometry
   };
 }
