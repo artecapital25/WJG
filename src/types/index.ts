@@ -105,6 +105,8 @@ export interface PiezaCotizada {
   imagen_url?: string;
   gramos_resina_manual?: number;
   modo_calculo_resina?: 'volumen' | 'manual';
+  tipo_estructura?: 'solido' | 'ahuecado';
+  porcentaje_relleno?: number;
   lista_pinturas?: { nombre: string; cantidad_ml: number; costo: number }[];
   lista_accesorios?: { nombre: string; cantidad: number; costo: number }[];
   datos_pendientes?: boolean;

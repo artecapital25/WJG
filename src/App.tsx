@@ -37,6 +37,8 @@ export const App: React.FC = () => {
     pesoResinaG: number;
     nombrePieza: string;
     imagenUrl?: string;
+    tipoEstructura?: 'solido' | 'ahuecado';
+    porcentajeRelleno?: number;
   } | null>(null);
 
   // Datos Maestros

@@ -31,6 +31,8 @@ interface STLAnalyzerProps {
     pesoResinaG: number;
     nombrePieza: string;
     imagenUrl?: string;
+    tipoEstructura?: 'solido' | 'ahuecado';
+    porcentajeRelleno?: number;
   }) => void;
 }
 
@@ -189,7 +191,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     const factorCubico = Math.pow(factorEscala, 3);
     const volBase = (analysis.originalVolumeCm3 && analysis.originalVolumeCm3 > 0)
       ? analysis.originalVolumeCm3 
-      : ((analysis.bboxVolumeCm3 && analysis.bboxVolumeCm3 > 0) ? analysis.bboxVolumeCm3 * 0.35 : 0.01);
+      : ((analysis.bboxVolumeCm3 && analysis.bboxVolumeCm3 > 0) ? analysis.bboxVolumeCm3 * 0.70 : 0.01);
     return Number((volBase * factorCubico).toFixed(2));
   }, [analysis, factorEscala]);
 
@@ -417,7 +419,9 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
       profundidadMm: dimensionesEscaladas.y,
       pesoResinaG: estimacionResina.gramosTotales,
       nombrePieza: analysis.fileName.replace(/\.stl$/i, ''),
-      imagenUrl: finalImg || undefined
+      imagenUrl: finalImg || undefined,
+      tipoEstructura: modoAhuecado,
+      porcentajeRelleno: modoAhuecado === 'ahuecado' ? porcentajeAhuecado : 100
     });
   };
 
@@ -793,6 +797,39 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               </div>
             )}
 
+            {/* Sugerencia cuando el archivo parece haber sido modelado en centímetros */}
+            {analysis?.wasLikelyInCentimeters && escalaPorcentaje === 100 && (
+              <div style={{
+                background: 'rgba(234, 179, 8, 0.12)',
+                border: '1px solid rgba(234, 179, 8, 0.35)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '0.75rem',
+                color: '#fde047',
+                marginBottom: '12px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Info size={16} />
+                  <span>
+                    <strong>¿Modelo en centímetros?</strong> Mide {dimensionesEscaladas.z} mm ({Number((dimensionesEscaladas.z / 10).toFixed(1))} cm). Si la escala era en cm, escala a tamaño real:
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-sm btn-cyan"
+                  style={{ padding: '3px 10px', fontSize: '0.72rem', whiteSpace: 'nowrap' }}
+                  onClick={() => setEscalaPorcentaje(1000)}
+                >
+                  Escalar ×10 (cm → mm)
+                </button>
+              </div>
+            )}
+
             {/* Controles de Escala Proporcional en X, Y, Z */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '12px' }}>
               <div>
@@ -945,7 +982,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
             {analysis?.isVolumeEstimated && (
               <div style={{ background: 'rgba(234, 179, 8, 0.12)', border: '1px solid rgba(234, 179, 8, 0.35)', borderRadius: '8px', padding: '8px 12px', fontSize: '0.74rem', color: '#fde047', marginBottom: '12px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <Info size={14} />
-                <span>Malla con caras abiertas o no herméticas: Volumen acotado al 35% de la caja envolvente para proteger el cálculo.</span>
+                <span>Malla con caras abiertas o no herméticas: Volumen estimado al 65% de la caja envolvente para proteger el cálculo.</span>
               </div>
             )}
 

@@ -57,6 +57,8 @@ interface CotizadorFormProps {
     pesoResinaG?: number;
     nombrePieza?: string;
     imagenUrl?: string;
+    tipoEstructura?: 'solido' | 'ahuecado';
+    porcentajeRelleno?: number;
   } | null;
 }
 
@@ -76,6 +78,12 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [altoMm, setAltoMm] = useState(60);
   const [anchoMm, setAnchoMm] = useState(60);
   const [profundidadMm, setProfundidadMm] = useState(60);
+  // Unidad de visualización de medidas ('mm' o 'cm')
+  const [unidadMedida, setUnidadMedida] = useState<'mm' | 'cm'>('mm');
+
+  // Tipo de estructura: 'solido' (100% como en WJGEEKS.xlsx) o 'ahuecado'
+  const [tipoEstructura, setTipoEstructura] = useState<'solido' | 'ahuecado'>('solido');
+  const [porcentajeRelleno, setPorcentajeRelleno] = useState<number>(35);
 
   // Escuchar datos aplicados desde el Visor STL 3D
   React.useEffect(() => {
@@ -86,6 +94,12 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       if (initialPieceData.pesoResinaG !== undefined) {
         setPesoResinaManualG(initialPieceData.pesoResinaG);
         setModoCalculoResina('manual');
+      }
+      if (initialPieceData.tipoEstructura) {
+        setTipoEstructura(initialPieceData.tipoEstructura);
+      }
+      if (initialPieceData.porcentajeRelleno !== undefined) {
+        setPorcentajeRelleno(initialPieceData.porcentajeRelleno);
       }
       if (initialPieceData.nombrePieza) setNombreItem(initialPieceData.nombrePieza);
       if (initialPieceData.imagenUrl) {
@@ -232,6 +246,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       margenGanancia: Number(margenGanancia) || 0.40,
       imagen_url: imagenUrl,
       modoCalculoResina,
+      tipoEstructura,
+      porcentajeRelleno,
       pesoResinaManualG: Number(pesoResinaManualG) || 0,
       datosPendientes: esParcial,
       notasPendientes
@@ -247,6 +263,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     esParcial,
     notasPendientes,
     modoCalculoResina,
+    tipoEstructura,
+    porcentajeRelleno,
     pesoResinaManualG,
     resinaActual,
     maquinaActual,
@@ -398,15 +416,39 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
             marginBottom: '12px',
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
             gap: '8px',
             flexWrap: 'wrap'
           }}>
-            <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }}>🧭 Guía de Ejes:</span>
-            <span><strong>Z</strong> = Altura Vertical ↕️ (define el tiempo de resina)</span>
-            <span>•</span>
-            <span><strong>X</strong> = Ancho Horizontal ↔️ (de lado a lado)</span>
-            <span>•</span>
-            <span><strong>Y</strong> = Profundidad / Fondo ↗️ (adelante a atrás)</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }}>🧭 Ejes:</span>
+              <span><strong>Z</strong> = Altura ↕️</span>
+              <span>•</span>
+              <span><strong>X</strong> = Ancho ↔️</span>
+              <span>•</span>
+              <span><strong>Y</strong> = Fondo ↗️</span>
+            </div>
+
+            {/* Switcher de unidad de medida */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', background: 'rgba(0,0,0,0.3)', padding: '2px 4px', borderRadius: '6px' }}>
+              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginRight: '2px' }}>Unidad:</span>
+              <button
+                type="button"
+                className={`btn btn-sm ${unidadMedida === 'mm' ? 'btn-cyan' : 'btn-secondary'}`}
+                style={{ padding: '2px 7px', fontSize: '0.7rem', minHeight: 'auto' }}
+                onClick={() => setUnidadMedida('mm')}
+              >
+                mm
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${unidadMedida === 'cm' ? 'btn-cyan' : 'btn-secondary'}`}
+                style={{ padding: '2px 7px', fontSize: '0.7rem', minHeight: 'auto' }}
+                onClick={() => setUnidadMedida('cm')}
+              >
+                cm
+              </button>
+            </div>
           </div>
 
           <div className="dimensions-grid">
@@ -419,15 +461,18 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 <input 
                   type="number" 
                   className="form-input" 
-                  value={altoMm} 
-                  onChange={e => setAltoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                  title="Alto vertical en Z (de base a corona)"
+                  value={unidadMedida === 'cm' ? Number((altoMm / 10).toFixed(2)) : altoMm} 
+                  onChange={e => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setAltoMm(Math.max(0, unidadMedida === 'cm' ? Number((val * 10).toFixed(1)) : val));
+                  }} 
+                  title="Alto vertical en Z"
                   placeholder="Alto"
                 />
-                <span className="input-unit-badge">mm (Z)</span>
+                <span className="input-unit-badge">{unidadMedida} (Z)</span>
               </div>
               <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
-                ↕️ Base a corona (Vertical)
+                ↕️ {unidadMedida === 'cm' ? `${altoMm} mm` : `${(altoMm / 10).toFixed(1)} cm`}
               </span>
             </div>
 
@@ -440,15 +485,18 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 <input 
                   type="number" 
                   className="form-input" 
-                  value={anchoMm} 
-                  onChange={e => setAnchoMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                  title="Ancho horizontal en X (de lado a lado)"
+                  value={unidadMedida === 'cm' ? Number((anchoMm / 10).toFixed(2)) : anchoMm} 
+                  onChange={e => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setAnchoMm(Math.max(0, unidadMedida === 'cm' ? Number((val * 10).toFixed(1)) : val));
+                  }} 
+                  title="Ancho horizontal en X"
                   placeholder="Ancho"
                 />
-                <span className="input-unit-badge">mm (X)</span>
+                <span className="input-unit-badge">{unidadMedida} (X)</span>
               </div>
               <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
-                ↔️ Lado a lado (Frente)
+                ↔️ {unidadMedida === 'cm' ? `${anchoMm} mm` : `${(anchoMm / 10).toFixed(1)} cm`}
               </span>
             </div>
 
@@ -461,18 +509,55 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 <input 
                   type="number" 
                   className="form-input" 
-                  value={profundidadMm} 
-                  onChange={e => setProfundidadMm(Math.max(0, parseFloat(e.target.value) || 0))} 
-                  title="Profundidad en Y (de adelante hacia atrás)"
+                  value={unidadMedida === 'cm' ? Number((profundidadMm / 10).toFixed(2)) : profundidadMm} 
+                  onChange={e => {
+                    const val = parseFloat(e.target.value) || 0;
+                    setProfundidadMm(Math.max(0, unidadMedida === 'cm' ? Number((val * 10).toFixed(1)) : val));
+                  }} 
+                  title="Profundidad en Y"
                   placeholder="Prof"
                 />
-                <span className="input-unit-badge">mm (Y)</span>
+                <span className="input-unit-badge">{unidadMedida} (Y)</span>
               </div>
               <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginTop: '3px' }}>
-                ↗️ Adelante a atrás (Fondo)
+                ↗️ {unidadMedida === 'cm' ? `${profundidadMm} mm` : `${(profundidadMm / 10).toFixed(1)} cm`}
               </span>
             </div>
           </div>
+
+          {/* Advertencia preventiva si las medidas en mm son muy pequeñas (posible confusión de cm con mm) */}
+          {unidadMedida === 'mm' && (altoMm <= 10 && altoMm > 0) && (
+            <div style={{
+              background: 'rgba(234, 179, 8, 0.12)',
+              border: '1px solid rgba(234, 179, 8, 0.35)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              fontSize: '0.74rem',
+              color: '#fde047',
+              marginTop: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              flexWrap: 'wrap'
+            }}>
+              <span>
+                💡 <strong>¿Medidas en centímetros?</strong> Ingresaste {altoMm} mm ({Number((altoMm / 10).toFixed(1))} cm). Si la pieza mide {altoMm} cm ({altoMm * 10} mm):
+              </span>
+              <button
+                type="button"
+                className="btn btn-sm btn-cyan"
+                style={{ padding: '3px 8px', fontSize: '0.72rem' }}
+                onClick={() => {
+                  setAltoMm(prev => prev * 10);
+                  setAnchoMm(prev => prev * 10);
+                  setProfundidadMm(prev => prev * 10);
+                }}
+              >
+                Convertir cm → mm (×10)
+              </button>
+            </div>
+          )}
         </div>
 
         {/* CONFIGURACIÓN DE RESINA: VOLUMEN VS GRAMOS EXACTOS (SLICER) */}
@@ -530,14 +615,64 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
               </div>
             )}
           </div>
-          {modoCalculoResina === 'manual' && (
-            <p style={{ fontSize: '0.75rem', color: 'var(--brand-cyan)', marginTop: '6px' }}>
-              💡 Ingresa los gramos de resina que indica Lychee / Chitubox para la pieza hueca con soportes.
-            </p>
-          )}
+
+          {/* Opciones en modo volumen geométrico */}
           {modoCalculoResina === 'volumen' && (
-            <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '6px' }}>
-              💡 <strong>Cálculo por Volumen:</strong> Asume un 30% de llenado de la caja envolvente (estándar para figuras y piezas de resina ahuecadas). Para mayor precisión, carga el archivo en el <strong>Visor STL 3D</strong> o ingresa <strong>Gramos Exactos</strong> del Slicer.
+            <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  Estructura Interna de la Pieza:
+                </span>
+                <div style={{ display: 'flex', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${tipoEstructura === 'solido' ? 'btn-cyan' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                    onClick={() => setTipoEstructura('solido')}
+                  >
+                    🧱 Macizo / Sólido (100%)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${tipoEstructura === 'ahuecado' ? 'btn-cyan' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+                    onClick={() => setTipoEstructura('ahuecado')}
+                  >
+                    🏺 Ahuecado ({porcentajeRelleno}%)
+                  </button>
+                </div>
+              </div>
+
+              {tipoEstructura === 'solido' ? (
+                <p style={{ fontSize: '0.74rem', color: 'var(--brand-cyan)', margin: 0 }}>
+                  🧱 <strong>Modo Sólido (WJGEEKS.xlsx):</strong> Volumen = <strong>{calculoEnVivo?.volumen_cm3 || 0} cm³</strong> | Peso macizo = <strong>{calculoEnVivo?.peso_estimado_g || 0} g</strong>. Aplica el 40% de merma de taller y soportes oficiales.
+                </p>
+              ) : (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>% de Resina respecto al volumen:</span>
+                    <input
+                      type="range"
+                      min="15"
+                      max="70"
+                      step="5"
+                      value={porcentajeRelleno}
+                      onChange={e => setPorcentajeRelleno(parseInt(e.target.value) || 35)}
+                      style={{ accentColor: 'var(--brand-cyan)', width: '120px' }}
+                    />
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--brand-cyan)' }}>{porcentajeRelleno}%</span>
+                  </div>
+                  <p style={{ fontSize: '0.74rem', color: '#fde047', margin: 0 }}>
+                    🏺 <strong>Modo Ahuecado:</strong> Asume pieza vaciada en Chitubox/Lychee con pared de 2mm (~{porcentajeRelleno}% de material).
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {modoCalculoResina === 'manual' && (
+            <p style={{ fontSize: '0.75rem', color: 'var(--brand-cyan)', marginTop: '8px', marginBottom: 0 }}>
+              💡 Ingresa los gramos de resina que indica Lychee / Chitubox para la pieza hueca con soportes. Se aplica un 10% de merma técnica de taller.
             </p>
           )}
         </div>
@@ -944,12 +1079,23 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
         {/* BARRA DE CÁLCULO EN VIVO */}
         {calculoEnVivo && (
           <div className="live-summary-card">
-            <div className="live-metrics-grid">
+            <div className="live-metrics-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))' }}>
               <div className="metric-item">
                 <div className="metric-label">Peso Resina</div>
                 <div className="metric-value">{calculoEnVivo.peso_estimado_g} g</div>
                 <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                  {modoCalculoResina === 'manual' ? 'Modo exacto' : 'Volumen sólido'}
+                  {modoCalculoResina === 'manual' 
+                    ? 'Gramos Slicer' 
+                    : (tipoEstructura === 'solido' ? 'Sólido 100%' : `Ahuecado ${porcentajeRelleno}%`)}
+                </span>
+              </div>
+              <div className="metric-item">
+                <div className="metric-label">Costo Resina</div>
+                <div className="metric-value" style={{ color: 'var(--brand-cyan)' }}>
+                  ${calculoEnVivo.costo_resina.toLocaleString('es-CO')}
+                </div>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                  {modoCalculoResina === 'manual' ? '+10% merma' : '+40% merma/sop.'}
                 </span>
               </div>
               <div className="metric-item">

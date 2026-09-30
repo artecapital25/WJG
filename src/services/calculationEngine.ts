@@ -19,6 +19,8 @@ export interface ParametrosPiezaInput {
   margenGanancia: number; // Ej: 0.40 para 40%
   imagen_url?: string;
   modoCalculoResina?: 'volumen' | 'manual';
+  tipoEstructura?: 'solido' | 'ahuecado';
+  porcentajeRelleno?: number;
   pesoResinaManualG?: number;
   datosPendientes?: boolean;
   notasPendientes?: string;
@@ -35,6 +37,9 @@ export function calcularPieza3D(
   const alto = esParcial ? (input.alto_mm || 0) : Math.max(0, input.alto_mm || 0);
   const ancho = esParcial ? (input.ancho_mm || 0) : Math.max(0, input.ancho_mm || 0);
   const prof = esParcial ? (input.profundidad_mm || 0) : Math.max(0, input.profundidad_mm || 0);
+  
+  // Volumen de la pieza en cm3 (ml): (Alto mm * Ancho mm * Profundidad mm) / 1000
+  // Fórmula exacta verificada de WJGEEKS.xlsx celda AN2: = (L2 * K2 * J2) / 1000
   const volumen_cm3 = (alto * ancho * prof) / 1000;
   
   // Si los datos están pendientes, peso de resina es 0 o manual si fue estimado
@@ -43,10 +48,13 @@ export function calcularPieza3D(
     if (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0) {
       peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
     } else {
-      // En modo volumen geométrico (caja envolvente X*Y*Z):
-      // Una figura o modelo 3D de resina promedio ocupa un ~30% del volumen de la caja delimitadora (ahuecado estándar).
-      const factorLlenadoEnvolvente = 0.30;
-      peso_estimado_g = Number((volumen_cm3 * input.resina.densidad_g_cm3 * factorLlenadoEnvolvente).toFixed(2));
+      // Modo volumen geométrico:
+      // Fórmula oficial WJGEEKS.xlsx celda AO2: =AN2*Densidad (100% Sólido / Macizo por defecto).
+      // Si el usuario especifica estructura ahuecada (ej. 35% o personalizado), se aplica dicho ratio.
+      const ratioRelleno = input.tipoEstructura === 'ahuecado'
+        ? ((input.porcentajeRelleno && input.porcentajeRelleno > 0) ? input.porcentajeRelleno / 100 : 0.35)
+        : 1.0;
+      peso_estimado_g = Number((volumen_cm3 * input.resina.densidad_g_cm3 * ratioRelleno).toFixed(2));
     }
   } else if (input.pesoResinaManualG && input.pesoResinaManualG > 0) {
     peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
@@ -67,8 +75,10 @@ export function calcularPieza3D(
       // Se aplica un 10% de merma técnica de taller (residuos en película FEP, tina y lavado).
       costo_resina = peso_estimado_g * input.resina.costo_gramo * 1.10;
     } else {
-      // En modo volumen geométrico, se aplica el factor completo de merma y soportes configurado (1.35x - 1.4x)
-      const factorMerma = config.margen_merma_resina || 1.35;
+      // En modo volumen geométrico:
+      // Fórmula oficial WJGEEKS.xlsx celda AR2: =(AO2 * Valor_gramo) * 1.4
+      // El factor 1.4 cubre el 40% de merma y soportes de producción de taller.
+      const factorMerma = config.margen_merma_resina || 1.40;
       costo_resina = peso_estimado_g * input.resina.costo_gramo * factorMerma;
     }
   }
@@ -169,6 +179,8 @@ export function calcularPieza3D(
     imagen_url: input.imagen_url,
     gramos_resina_manual: input.pesoResinaManualG,
     modo_calculo_resina: input.modoCalculoResina,
+    tipo_estructura: input.tipoEstructura || 'solido',
+    porcentaje_relleno: input.porcentajeRelleno || (input.tipoEstructura === 'ahuecado' ? 35 : 100),
     datos_pendientes: esParcial,
     notas_pendientes: input.notasPendientes,
     lista_pinturas: input.pinturas.map(p => ({
