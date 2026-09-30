@@ -12,7 +12,12 @@ import {
   Trash2,
   Sliders,
   Scale,
-  Info
+  Info,
+  Camera,
+  UploadCloud,
+  Eye,
+  Check,
+  X
 } from 'lucide-react';
 import { 
   Resina, 
@@ -23,6 +28,7 @@ import {
   PiezaCotizada 
 } from '../../types';
 import { calcularPieza3D, ParametrosPiezaInput } from '../../services/calculationEngine';
+import { processAndOptimizeImage } from '../../services/imageService';
 
 interface ItemPinturaForm {
   tempId: string;
@@ -50,6 +56,7 @@ interface CotizadorFormProps {
     profundidadMm?: number;
     pesoResinaG?: number;
     nombrePieza?: string;
+    imagenUrl?: string;
   } | null;
 }
 
@@ -81,6 +88,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
         setModoCalculoResina('manual');
       }
       if (initialPieceData.nombrePieza) setNombreItem(initialPieceData.nombrePieza);
+      if (initialPieceData.imagenUrl) {
+        setImagenUrl(initialPieceData.imagenUrl);
+        setTipoOrigenImagen('stl');
+      }
       setEsParcial(false);
     }
   }, [initialPieceData]);
@@ -111,6 +122,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [costoModeloComprado, setCostoModeloComprado] = useState(0);
   const [margenGanancia, setMargenGanancia] = useState(0.40); // 40%
   const [imagenUrl, setImagenUrl] = useState<string>('');
+  const [tipoOrigenImagen, setTipoOrigenImagen] = useState<'archivo' | 'stl' | null>(null);
+  const [isOptimizingImage, setIsOptimizingImage] = useState(false);
+  const [showImagePreviewModal, setShowImagePreviewModal] = useState(false);
 
   // Selecciones activas
   const resinaActual = resinas.find(r => r.id === resinaId) || resinas[0];
@@ -118,15 +132,28 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const estacionCurado = maquinas.find(m => m.tipo.toLowerCase().includes('curad')) || maquinas[1];
   const insumoCurado = insumos.find(i => i.nombre.toLowerCase().includes('etanol') || i.nombre.toLowerCase().includes('alcohol'));
 
-  // Manejo de imagen
+  // Manejo de imagen optimizada
+  const handleImageFile = async (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor selecciona un archivo de imagen válido (PNG, JPG o WebP).');
+      return;
+    }
+    setIsOptimizingImage(true);
+    try {
+      const optimized = await processAndOptimizeImage(file, 800, 800, 0.85);
+      setImagenUrl(optimized);
+      setTipoOrigenImagen('archivo');
+    } catch (err) {
+      console.error('Error optimizando imagen:', err);
+    } finally {
+      setIsOptimizingImage(false);
+    }
+  };
+
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagenUrl(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+      handleImageFile(file);
     }
   };
 
@@ -242,6 +269,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     e.preventDefault();
     if (!calculoEnVivo) return;
     onAgregarPieza(calculoEnVivo);
+    setImagenUrl('');
+    setTipoOrigenImagen(null);
   };
 
   return (
@@ -722,34 +751,194 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </div>
         </div>
 
-        {/* Subir Foto / Render de la Pieza */}
-        <div className="form-group">
-          <label className="form-label">
-            <ImageIcon size={14} style={{ display: 'inline', marginRight: '4px' }} />
-            Foto o Render de Referencia
-          </label>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-              Subir Foto desde Celular
-              <input 
-                type="file" 
-                accept="image/*" 
-                capture="environment"
-                onChange={handleImageUpload} 
-                style={{ display: 'none' }} 
-              />
+        {/* Foto o Render de Referencia de la Pieza */}
+        <div className="form-group" style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-subtle)', borderRadius: '12px', padding: '14px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+            <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <ImageIcon size={15} color="var(--brand-cyan)" />
+              <span>Foto o Render 3D de la Pieza</span>
             </label>
-            {imagenUrl && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <img 
-                  src={imagenUrl} 
-                  alt="Previsualización" 
-                  style={{ width: '40px', height: '40px', borderRadius: '6px', objectFit: 'cover' }} 
-                />
-                <span style={{ fontSize: '0.78rem', color: 'var(--accent-success)' }}>Foto cargada ✓</span>
-              </div>
-            )}
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+              Se incluye en la cotización y en el PDF oficial
+            </span>
           </div>
+
+          {!imagenUrl ? (
+            <div 
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={(e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                  handleImageFile(e.dataTransfer.files[0]);
+                }
+              }}
+              style={{
+                border: '2px dashed var(--border-subtle)',
+                borderRadius: '10px',
+                padding: '16px',
+                textAlign: 'center',
+                background: 'rgba(0, 0, 0, 0.2)',
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                gap: '10px'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
+                <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer', padding: '8px 14px' }}>
+                  <Camera size={15} />
+                  <span>Subir Foto (Celular / Archivo)</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment"
+                    onChange={handleImageUpload} 
+                    style={{ display: 'none' }} 
+                  />
+                </label>
+
+                {onOpenSTLViewer && (
+                  <button
+                    type="button"
+                    className="btn btn-cyan btn-sm"
+                    style={{ padding: '8px 14px' }}
+                    onClick={onOpenSTLViewer}
+                    title="Abrir Visor 3D para cargar STL y tomar captura"
+                  >
+                    <Box size={15} />
+                    <span>Tomar Captura de STL 3D</span>
+                  </button>
+                )}
+              </div>
+
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Arrastra una foto aquí o abre el visor STL para rotar y capturar el modelo 3D
+              </div>
+            </div>
+          ) : (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '14px',
+              padding: '12px 14px',
+              background: 'rgba(56, 189, 248, 0.06)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div 
+                  style={{ position: 'relative', cursor: 'pointer' }}
+                  onClick={() => setShowImagePreviewModal(true)}
+                  title="Clic para ver en tamaño completo"
+                >
+                  <img 
+                    src={imagenUrl} 
+                    alt="Previsualización pieza" 
+                    style={{
+                      width: '64px',
+                      height: '64px',
+                      borderRadius: '8px',
+                      objectFit: 'cover',
+                      border: '2px solid rgba(56, 189, 248, 0.4)',
+                      background: '#090d15'
+                    }} 
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '2px',
+                    right: '2px',
+                    background: 'rgba(0,0,0,0.7)',
+                    borderRadius: '4px',
+                    padding: '2px',
+                    display: 'flex'
+                  }}>
+                    <Eye size={12} color="#fff" />
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                    <span style={{
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: tipoOrigenImagen === 'stl' ? 'rgba(56, 189, 248, 0.2)' : 'rgba(37, 99, 235, 0.2)',
+                      color: tipoOrigenImagen === 'stl' ? 'var(--brand-cyan)' : '#93c5fd',
+                      border: `1px solid ${tipoOrigenImagen === 'stl' ? 'rgba(56, 189, 248, 0.4)' : 'rgba(37, 99, 235, 0.4)'}`
+                    }}>
+                      {tipoOrigenImagen === 'stl' ? '📸 Captura STL 3D' : '📷 Foto de Referencia'}
+                    </span>
+                    <span style={{ fontSize: '0.72rem', color: 'var(--accent-success)', display: 'flex', alignItems: 'center', gap: '3px' }}>
+                      <Check size={12} />
+                      Lista para PDF
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', fontWeight: 500 }}>
+                    {nombreItem || 'Pieza'}
+                  </div>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    Aparecerá en el PDF y en la orden de taller
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setShowImagePreviewModal(true)}
+                  title="Ver imagen en grande"
+                >
+                  <Eye size={14} />
+                  <span>Ver</span>
+                </button>
+
+                <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                  <span>Cambiar</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    capture="environment"
+                    onChange={handleImageUpload} 
+                    style={{ display: 'none' }} 
+                  />
+                </label>
+
+                {onOpenSTLViewer && (
+                  <button
+                    type="button"
+                    className="btn btn-cyan btn-sm"
+                    onClick={onOpenSTLViewer}
+                    title="Abrir Visor STL para recapturar el 3D"
+                  >
+                    <Box size={14} />
+                    <span>Visor STL</span>
+                  </button>
+                )}
+
+                <button 
+                  type="button"
+                  className="btn btn-danger btn-sm"
+                  onClick={() => {
+                    setImagenUrl('');
+                    setTipoOrigenImagen(null);
+                  }}
+                  title="Quitar foto"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          {isOptimizingImage && (
+            <div style={{ fontSize: '0.75rem', color: 'var(--brand-cyan)', marginTop: '6px' }}>
+              Optimizando imagen para cotización...
+            </div>
+          )}
         </div>
 
         {/* BARRA DE CÁLCULO EN VIVO */}
@@ -801,6 +990,73 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </button>
         </div>
       </form>
+
+      {/* Modal Lightbox para previsualizar foto en tamaño completo */}
+      {showImagePreviewModal && imagenUrl && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setShowImagePreviewModal(false)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card, #0f172a)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '14px',
+              padding: '16px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ImageIcon size={16} color="var(--brand-cyan)" />
+                <span>{nombreItem} — Vista Previa</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowImagePreviewModal(false)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderRadius: '10px', background: '#090d15', minHeight: '200px' }}>
+              <img 
+                src={imagenUrl} 
+                alt={nombreItem} 
+                style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setShowImagePreviewModal(false)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

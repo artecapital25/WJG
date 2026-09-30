@@ -14,7 +14,8 @@ import {
   X,
   User,
   Hash,
-  Sparkles
+  Sparkles,
+  Image as ImageIcon
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller } from '../../types';
@@ -42,6 +43,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   const [busqueda, setBusqueda] = useState<string>('');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('todos');
   const [criterioOrden, setCriterioOrden] = useState<TipoOrden>('reciente');
+  const [previewModalImg, setPreviewModalImg] = useState<{ url: string; title: string } | null>(null);
 
   // Función auxiliar para parsear y comparar números de cotización como "25-073"
   const parseCotNumber = (num: string): number => {
@@ -340,13 +342,33 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               </div>
 
               {/* Resumen de piezas */}
-              <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
+              <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 {cot.items.map((it) => (
-                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
-                    <span>
-                      • <strong style={{ color: 'var(--text-main)' }}>{it.nombre_item}</strong> (x{it.cantidad})
-                      {it.alto_mm > 0 && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.75rem' }}>[{it.alto_mm}x{it.ancho_mm}x{it.profundidad_mm}mm]</span>}
-                    </span>
+                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      {it.imagen_url && (
+                        <img 
+                          src={it.imagen_url} 
+                          alt={it.nombre_item} 
+                          style={{
+                            width: '28px',
+                            height: '28px',
+                            borderRadius: '5px',
+                            objectFit: 'cover',
+                            border: '1px solid var(--border-subtle)',
+                            background: '#090d15',
+                            cursor: 'pointer',
+                            flexShrink: 0
+                          }}
+                          onClick={() => setPreviewModalImg({ url: it.imagen_url!, title: it.nombre_item })}
+                          title="Clic para ver foto en grande"
+                        />
+                      )}
+                      <span>
+                        • <strong style={{ color: 'var(--text-main)' }}>{it.nombre_item}</strong> (x{it.cantidad})
+                        {it.alto_mm > 0 && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.75rem' }}>[{it.alto_mm}x{it.ancho_mm}x{it.profundidad_mm}mm]</span>}
+                      </span>
+                    </div>
                     <span style={{ fontWeight: 600 }}>${it.precio_total.toLocaleString('es-CO')}</span>
                   </div>
                 ))}
@@ -394,6 +416,73 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Modal Lightbox para foto de pieza en cotizaciones */}
+      {previewModalImg && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setPreviewModalImg(null)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card, #0f172a)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '14px',
+              padding: '16px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ImageIcon size={16} color="var(--brand-cyan)" />
+                <span>{previewModalImg.title} — Vista de Referencia</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPreviewModalImg(null)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderRadius: '10px', background: '#090d15', minHeight: '200px' }}>
+              <img 
+                src={previewModalImg.url} 
+                alt={previewModalImg.title} 
+                style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPreviewModalImg(null)}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -36,6 +36,7 @@ export const App: React.FC = () => {
     profundidadMm: number;
     pesoResinaG: number;
     nombrePieza: string;
+    imagenUrl?: string;
   } | null>(null);
 
   // Datos Maestros
@@ -74,6 +75,10 @@ export const App: React.FC = () => {
 
   const handleRemoveDraftPiece = (id: string) => {
     setDraftPieces(prev => prev.filter(p => p.id !== id));
+  };
+
+  const handleUpdateDraftPieceImage = (id: string, imagenUrl: string) => {
+    setDraftPieces(prev => prev.map(p => p.id === id ? { ...p, imagen_url: imagenUrl } : p));
   };
 
   // Guardar Cotización
@@ -228,6 +233,7 @@ export const App: React.FC = () => {
               config={config}
               cotizaciones={cotizaciones}
               onRemoveItem={handleRemoveDraftPiece}
+              onUpdatePieceImage={handleUpdateDraftPieceImage}
               onSaveCotizacion={handleSaveCotizacion}
               onAddCliente={handleAddCliente}
             />

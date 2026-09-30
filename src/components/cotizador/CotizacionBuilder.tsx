@@ -7,7 +7,11 @@ import {
   Check, 
   Plus, 
   Tag, 
-  Calendar 
+  Calendar,
+  Camera,
+  Image as ImageIcon,
+  Eye,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -18,6 +22,7 @@ import {
 } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
+import { processAndOptimizeImage } from '../../services/imageService';
 
 interface CotizacionBuilderProps {
   items: PiezaCotizada[];
@@ -25,6 +30,7 @@ interface CotizacionBuilderProps {
   config: ConfiguracionTaller;
   cotizaciones?: Cotizacion[];
   onRemoveItem: (id: string) => void;
+  onUpdatePieceImage?: (id: string, imagenUrl: string) => void;
   onSaveCotizacion: (cotizacion: Cotizacion) => void;
   onAddCliente: (cliente: Cliente) => void;
 }
@@ -35,6 +41,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   config,
   cotizaciones = [],
   onRemoveItem,
+  onUpdatePieceImage,
   onSaveCotizacion,
   onAddCliente
 }) => {
@@ -43,6 +50,21 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0);
   const [notas, setNotas] = useState('- No incluye transporte\n- Pago 50% anticipo y 50% contra entrega');
   const [showNewClientModal, setShowNewClientModal] = useState(false);
+  const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+
+  const handleItemImageUpload = async (itemId: string, file: File) => {
+    if (!onUpdatePieceImage) return;
+    if (!file.type.startsWith('image/')) {
+      alert('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
+      return;
+    }
+    try {
+      const optimized = await processAndOptimizeImage(file, 800, 800, 0.85);
+      onUpdatePieceImage(itemId, optimized);
+    } catch (e) {
+      console.error('Error optimizando foto del ítem:', e);
+    }
+  };
 
   // Detección de piezas parciales
   const tieneItemsPendientes = items.some(it => it.datos_pendientes);
@@ -255,13 +277,70 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 gap: '12px'
               }}
             >
-              {item.imagen_url && (
-                <img 
-                  src={item.imagen_url} 
-                  alt={item.nombre_item} 
-                  style={{ width: '44px', height: '44px', borderRadius: '8px', objectFit: 'cover' }} 
-                />
-              )}
+              {item.imagen_url ? (
+                <div 
+                  style={{ position: 'relative', cursor: 'pointer', flexShrink: 0 }}
+                  onClick={() => setPreviewImage({ url: item.imagen_url!, title: item.nombre_item })}
+                  title="Clic para ver imagen en tamaño completo"
+                >
+                  <img 
+                    src={item.imagen_url} 
+                    alt={item.nombre_item} 
+                    style={{
+                      width: '48px',
+                      height: '48px',
+                      borderRadius: '8px',
+                      objectFit: 'cover',
+                      border: '1px solid rgba(56, 189, 248, 0.4)',
+                      background: '#090d15'
+                    }} 
+                  />
+                  <div style={{
+                    position: 'absolute',
+                    bottom: '2px',
+                    right: '2px',
+                    background: 'rgba(0,0,0,0.7)',
+                    borderRadius: '3px',
+                    padding: '1px 2px',
+                    display: 'flex'
+                  }}>
+                    <Eye size={10} color="#fff" />
+                  </div>
+                </div>
+              ) : onUpdatePieceImage ? (
+                <label 
+                  style={{
+                    width: '48px',
+                    height: '48px',
+                    borderRadius: '8px',
+                    border: '1px dashed var(--border-subtle)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    background: 'rgba(255, 255, 255, 0.02)',
+                    color: 'var(--text-muted)',
+                    fontSize: '0.62rem',
+                    flexShrink: 0,
+                    textAlign: 'center'
+                  }}
+                  title="Adjuntar foto o render a este ítem"
+                >
+                  <Camera size={13} color="var(--brand-cyan)" />
+                  <span>+ Foto</span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    style={{ display: 'none' }}
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        handleItemImageUpload(item.id, e.target.files[0]);
+                      }
+                    }}
+                  />
+                </label>
+              ) : null}
 
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -289,14 +368,36 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 </div>
               </div>
 
-              <button 
-                type="button" 
-                className="btn btn-danger btn-sm"
-                onClick={() => onRemoveItem(item.id)}
-                title="Eliminar ítem"
-              >
-                <Trash2 size={14} />
-              </button>
+              <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {onUpdatePieceImage && (
+                  <label 
+                    className="btn btn-secondary btn-sm" 
+                    style={{ cursor: 'pointer', padding: '5px 8px' }} 
+                    title={item.imagen_url ? 'Cambiar foto de este ítem' : 'Agregar foto a este ítem'}
+                  >
+                    <Camera size={13} />
+                    <input 
+                      type="file" 
+                      accept="image/*" 
+                      style={{ display: 'none' }}
+                      onChange={(e) => {
+                        if (e.target.files && e.target.files[0]) {
+                          handleItemImageUpload(item.id, e.target.files[0]);
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+
+                <button 
+                  type="button" 
+                  className="btn btn-danger btn-sm"
+                  onClick={() => onRemoveItem(item.id)}
+                  title="Eliminar ítem"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -490,6 +591,73 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Lightbox para foto de pieza en resumen */}
+      {previewImage && (
+        <div 
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={() => setPreviewImage(null)}
+        >
+          <div 
+            style={{
+              background: 'var(--bg-card, #0f172a)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '14px',
+              padding: '16px',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              boxShadow: '0 20px 40px rgba(0,0,0,0.6)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ImageIcon size={16} color="var(--brand-cyan)" />
+                <span>{previewImage.title} — Vista de Referencia</span>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPreviewImage(null)}
+                style={{ padding: '4px 8px' }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', overflow: 'hidden', borderRadius: '10px', background: '#090d15', minHeight: '200px' }}>
+              <img 
+                src={previewImage.url} 
+                alt={previewImage.title} 
+                style={{ maxWidth: '100%', maxHeight: '70vh', objectFit: 'contain' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPreviewImage(null)}
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}

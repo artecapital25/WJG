@@ -149,7 +149,9 @@ export function crearDocPDFCotizacion(
   doc.text(`Teléfono / WhatsApp: ${cotizacion.cliente.telefono}`, 110, 48);
   doc.text(`Correo: ${cotizacion.cliente.correo || 'No especificado'}`, 110, 54);
 
-  // 3. Table of Items
+  // 3. Table of Items (Soporta columna de fotos si hay ítems con imagen o captura 3D)
+  const hasImages = cotizacion.items.some(i => !!i.imagen_url);
+
   const tableData = cotizacion.items.map((item, index) => {
     const descMedidas = item.datos_pendientes 
       ? '[Medidas y resina por verificar en Slicer]' 
@@ -161,18 +163,32 @@ export function crearDocPDFCotizacion(
     if (item.lista_accesorios && item.lista_accesorios.length > 0) {
       specText += `\nHerrajes: ${item.lista_accesorios.map(a => `${a.nombre} (x${a.cantidad})`).join(', ')}`;
     }
-    return [
-      (index + 1).toString(),
-      specText,
-      item.cantidad.toString(),
-      `$${item.precio_unitario.toLocaleString('es-CO')}`,
-      `$${item.precio_total.toLocaleString('es-CO')}`
-    ];
+
+    if (hasImages) {
+      return [
+        (index + 1).toString(),
+        '', // La celda de imagen se dibuja en didDrawCell
+        specText,
+        item.cantidad.toString(),
+        `$${item.precio_unitario.toLocaleString('es-CO')}`,
+        `$${item.precio_total.toLocaleString('es-CO')}`
+      ];
+    } else {
+      return [
+        (index + 1).toString(),
+        specText,
+        item.cantidad.toString(),
+        `$${item.precio_unitario.toLocaleString('es-CO')}`,
+        `$${item.precio_total.toLocaleString('es-CO')}`
+      ];
+    }
   });
 
   autoTable(doc, {
     startY: 68,
-    head: [['#', 'Descripción y Especificaciones', 'Cant.', 'Valor Unidad', 'Total']],
+    head: hasImages 
+      ? [['#', 'Foto / Ref.', 'Descripción y Especificaciones', 'Cant.', 'Valor Unidad', 'Total']]
+      : [['#', 'Descripción y Especificaciones', 'Cant.', 'Valor Unidad', 'Total']],
     body: tableData,
     theme: 'grid',
     headStyles: {
@@ -184,15 +200,52 @@ export function crearDocPDFCotizacion(
     },
     styles: {
       fontSize: 8.5,
-      cellPadding: 4,
-      valign: 'middle'
+      cellPadding: 3,
+      valign: 'middle',
+      minCellHeight: hasImages ? 24 : 8
     },
-    columnStyles: {
+    columnStyles: hasImages ? {
+      0: { halign: 'center', cellWidth: 8 },
+      1: { halign: 'center', cellWidth: 26 },
+      2: { cellWidth: 78 },
+      3: { halign: 'center', cellWidth: 14 },
+      4: { halign: 'right', cellWidth: 30 },
+      5: { halign: 'right', cellWidth: 30 }
+    } : {
       0: { halign: 'center', cellWidth: 10 },
       1: { cellWidth: 95 },
       2: { halign: 'center', cellWidth: 15 },
       3: { halign: 'right', cellWidth: 32 },
       4: { halign: 'right', cellWidth: 34 }
+    },
+    didDrawCell: (data) => {
+      if (hasImages && data.section === 'body' && data.column.index === 1) {
+        const item = cotizacion.items[data.row.index];
+        if (item && item.imagen_url) {
+          try {
+            const imgBoxSize = 20;
+            const x = data.cell.x + (data.cell.width - imgBoxSize) / 2;
+            const y = data.cell.y + (data.cell.height - imgBoxSize) / 2;
+
+            // Marco decorativo y fondo suave para la imagen
+            doc.setFillColor(248, 250, 252);
+            doc.roundedRect(x - 0.5, y - 0.5, imgBoxSize + 1, imgBoxSize + 1, 1, 1, 'F');
+            doc.setDrawColor(226, 232, 240);
+            doc.roundedRect(x - 0.5, y - 0.5, imgBoxSize + 1, imgBoxSize + 1, 1, 1, 'S');
+
+            // Determinar formato para jsPDF
+            const isPng = item.imagen_url.startsWith('data:image/png');
+            const format = isPng ? 'PNG' : 'JPEG';
+            doc.addImage(item.imagen_url, format, x, y, imgBoxSize, imgBoxSize);
+          } catch (e) {
+            console.warn('Error al insertar imagen de item en PDF:', e);
+          }
+        } else {
+          doc.setTextColor(148, 163, 184);
+          doc.setFontSize(7.5);
+          doc.text('—', data.cell.x + data.cell.width / 2, data.cell.y + data.cell.height / 2 + 1, { align: 'center' });
+        }
+      }
     }
   });
 

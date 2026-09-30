@@ -12,9 +12,14 @@ import {
   Info, 
   ExternalLink,
   RefreshCw,
-  Compass
+  Compass,
+  Camera,
+  Download,
+  Trash2,
+  Check
 } from 'lucide-react';
 import { analyzeSTLFile, STLAnalysisResult } from '../../services/stlService';
+import { processAndOptimizeImage, downloadDataUrl } from '../../services/imageService';
 import { Resina } from '../../types';
 
 interface STLAnalyzerProps {
@@ -25,6 +30,7 @@ interface STLAnalyzerProps {
     profundidadMm: number;
     pesoResinaG: number;
     nombrePieza: string;
+    imagenUrl?: string;
   }) => void;
 }
 
@@ -54,9 +60,14 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const containerRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const meshRef = useRef<THREE.Mesh | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const reqAnimRef = useRef<number | null>(null);
+
+  // Captura de imagen 3D
+  const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
+  const [isCapturing, setIsCapturing] = useState<boolean>(false);
 
   // Color de previsualización
   const [colorModelo, setColorModelo] = useState<string>('#38bdf8'); // Cyan
@@ -92,6 +103,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
         const buffer = e.target?.result as ArrayBuffer;
         const result = analyzeSTLFile(buffer, file.name);
         setAnalysis(result);
+        setSnapshotUrl(null);
         setEscalaPorcentaje(100);
         setRotacionX(0);
         setRotacionY(0);
@@ -268,9 +280,10 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     // 2. Cámara
     const camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 2000);
     camera.position.set(130, 110, 150);
+    cameraRef.current = camera;
 
     // 3. Renderizador
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
     renderer.setSize(width, height);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.shadowMap.enabled = true;
@@ -368,15 +381,43 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     }
   }, [orientacionModel, factorEscala, colorModelo]);
 
-  const handleEnviarAlCotizador = () => {
+  const handleTomarCaptura = async (): Promise<string | null> => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return null;
+
+    setIsCapturing(true);
+
+    try {
+      if (controlsRef.current) {
+        controlsRef.current.update();
+      }
+      rendererRef.current.render(sceneRef.current, cameraRef.current);
+      const rawData = rendererRef.current.domElement.toDataURL('image/png');
+      const optimized = await processAndOptimizeImage(rawData, 750, 750, 0.9);
+      setSnapshotUrl(optimized);
+      setTimeout(() => setIsCapturing(false), 250);
+      return optimized;
+    } catch (e) {
+      console.error('Error al capturar 3D:', e);
+      setIsCapturing(false);
+      return null;
+    }
+  };
+
+  const handleEnviarAlCotizador = async () => {
     if (!analysis || !orientacionModel || !onApplyToCotizador) return;
+
+    let finalImg = snapshotUrl;
+    if (!finalImg) {
+      finalImg = await handleTomarCaptura();
+    }
 
     onApplyToCotizador({
       altoMm: dimensionesEscaladas.z,
       anchoMm: dimensionesEscaladas.x,
       profundidadMm: dimensionesEscaladas.y,
       pesoResinaG: estimacionResina.gramosTotales,
-      nombrePieza: analysis.fileName.replace(/\.stl$/i, '')
+      nombrePieza: analysis.fileName.replace(/\.stl$/i, ''),
+      imagenUrl: finalImg || undefined
     });
   };
 
@@ -446,6 +487,44 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
           <div style={{ position: 'relative', width: '100%', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-subtle)' }}>
             <div ref={containerRef} style={{ width: '100%', height: '340px' }} />
             
+            {/* Efecto Flash al Tomar Captura */}
+            <div 
+              style={{
+                position: 'absolute',
+                inset: 0,
+                background: '#ffffff',
+                opacity: isCapturing ? 0.75 : 0,
+                pointerEvents: 'none',
+                transition: 'opacity 0.25s ease-out',
+                zIndex: 10
+              }} 
+            />
+
+            {/* Botón flotante para Tomar Captura 3D */}
+            {analysis && (
+              <button
+                type="button"
+                className="btn btn-cyan btn-sm"
+                style={{
+                  position: 'absolute',
+                  top: '10px',
+                  right: '10px',
+                  zIndex: 5,
+                  boxShadow: '0 4px 14px rgba(0,0,0,0.6)',
+                  fontSize: '0.78rem',
+                  padding: '6px 12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
+                }}
+                onClick={handleTomarCaptura}
+                title="Tomar captura de este ángulo 3D para la cotización"
+              >
+                <Camera size={14} />
+                <span>{snapshotUrl ? 'Recapturar 3D' : '📸 Tomar Captura 3D'}</span>
+              </button>
+            )}
+
             {/* Controles flotantes sobre el visor */}
             <div style={{ position: 'absolute', bottom: '10px', left: '10px', right: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', pointerEvents: 'none' }}>
               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', background: 'rgba(0,0,0,0.6)', padding: '3px 8px', borderRadius: '4px' }}>
@@ -470,6 +549,61 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               </div>
             </div>
           </div>
+
+          {/* Tarjeta de Previsualización de Captura 3D */}
+          {snapshotUrl && (
+            <div style={{
+              marginTop: '12px',
+              padding: '10px 14px',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '10px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <img 
+                  src={snapshotUrl} 
+                  alt="Captura 3D" 
+                  style={{ width: '48px', height: '48px', borderRadius: '8px', objectFit: 'cover', border: '1px solid rgba(56, 189, 248, 0.4)' }}
+                />
+                <div>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Check size={14} color="var(--brand-cyan)" />
+                    <span style={{ color: 'var(--brand-cyan)' }}>Captura 3D lista</span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                    Se incluirá automáticamente en la cotización y el PDF oficial
+                  </div>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  onClick={() => downloadDataUrl(snapshotUrl, `${analysis?.fileName.replace(/\.stl$/i, '') || 'modelo_3d'}_render.png`)}
+                  title="Descargar imagen PNG al dispositivo"
+                >
+                  <Download size={13} />
+                  <span>Descargar PNG</span>
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.72rem', padding: '4px 8px' }}
+                  onClick={() => setSnapshotUrl(null)}
+                  title="Eliminar captura actual"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* PANEL DE ROTACIÓN Y ORIENTACIÓN 3D */}
           <div style={{
@@ -851,12 +985,12 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
               <button 
                 type="button" 
                 className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '12px' }}
+                style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '0.92rem' }}
                 onClick={handleEnviarAlCotizador}
                 disabled={!analysis}
               >
                 <Sparkles size={16} />
-                <span>Aplicar Medidas Orientadas y Resina al Cotizador</span>
+                <span>{snapshotUrl ? '✓ Aplicar Medidas y Captura 3D al Cotizador' : 'Aplicar Medidas y Captura 3D al Cotizador'}</span>
                 <ArrowRight size={16} />
               </button>
             )}
