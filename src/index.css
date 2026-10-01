@@ -136,6 +136,33 @@ body {
   letter-spacing: 1px;
 }
 
+/* En móviles ocultar botones secundarios de cabecera para mantener espacio limpio y elegante */
+.desktop-header-btn {
+  display: none !important;
+}
+
+@media (min-width: 641px) {
+  .desktop-header-btn {
+    display: inline-flex !important;
+    align-items: center;
+    gap: 5px;
+  }
+}
+
+@media (max-width: 640px) {
+  .top-header {
+    padding: 10px 14px;
+  }
+  .brand-logo-img {
+    width: 32px;
+    height: 32px;
+  }
+  .brand-title {
+    font-size: 1.02rem;
+  }
+}
+
+
 /* Bottom Navigation Bar para Celulares y Escritorio */
 .bottom-nav {
   position: fixed;
