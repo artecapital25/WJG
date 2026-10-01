@@ -8,7 +8,8 @@ import {
   ConfiguracionTaller,
   Cotizacion,
   OrdenTrabajo,
-  CuentaCobro
+  CuentaCobro,
+  TarifaTamano
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -16,7 +17,8 @@ import {
   MAQUINAS_INICIALES,
   PERSONAL_INICIAL,
   CLIENTES_INICIALES,
-  CONFIGURACION_INICIAL
+  CONFIGURACION_INICIAL,
+  TARIFAS_TAMANOS_INICIALES
 } from '../data/initialData';
 import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
 
@@ -37,7 +39,8 @@ const STORAGE_KEYS = {
   CONFIG: 'wjg_configuracion',
   COTIZACIONES: 'wjg_cotizaciones',
   ORDENES: 'wjg_ordenes_trabajo',
-  CUENTAS: 'wjg_cuentas_cobro'
+  CUENTAS: 'wjg_cuentas_cobro',
+  TARIFAS_TAMANOS: 'wjg_tarifas_tamanos'
 };
 
 function loadItem<T>(key: string, fallback: T): T {
@@ -89,6 +92,9 @@ export const StorageService = {
   getCuentas: (): CuentaCobro[] => loadItem(STORAGE_KEYS.CUENTAS, []),
   saveCuentas: (items: CuentaCobro[]) => saveItem(STORAGE_KEYS.CUENTAS, items),
 
+  getTarifasTamanos: (): TarifaTamano[] => loadItem(STORAGE_KEYS.TARIFAS_TAMANOS, TARIFAS_TAMANOS_INICIALES),
+  saveTarifasTamanos: (items: TarifaTamano[]) => saveItem(STORAGE_KEYS.TARIFAS_TAMANOS, items),
+
   // Export full backup
   exportBackup: () => {
     const backup = {
@@ -102,7 +108,8 @@ export const StorageService = {
       config: StorageService.getConfig(),
       cotizaciones: StorageService.getCotizaciones(),
       ordenes: StorageService.getOrdenes(),
-      cuentas: StorageService.getCuentas()
+      cuentas: StorageService.getCuentas(),
+      tarifas_tamanos: StorageService.getTarifasTamanos()
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -126,6 +133,7 @@ export const StorageService = {
       if (data.cotizaciones) StorageService.saveCotizaciones(data.cotizaciones);
       if (data.ordenes) StorageService.saveOrdenes(data.ordenes);
       if (data.cuentas) StorageService.saveCuentas(data.cuentas);
+      if (data.tarifas_tamanos) StorageService.saveTarifasTamanos(data.tarifas_tamanos);
       return true;
     } catch (e) {
       console.error('Error importing backup:', e);

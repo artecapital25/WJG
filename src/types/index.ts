@@ -111,6 +111,19 @@ export interface PiezaCotizada {
   lista_accesorios?: { nombre: string; cantidad: number; costo: number }[];
   datos_pendientes?: boolean;
   notas_pendientes?: string;
+  tarifa_tamano_aplicada?: {
+    altura_cm: number;
+    precio_sugerido: number;
+  };
+  precio_fijado_tarifa?: boolean;
+}
+
+export interface TarifaTamano {
+  id: string;
+  altura_cm: number;
+  precio_sugerido: number;
+  descripcion?: string;
+  tiempo_estimado?: string;
 }
 
 export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'Parcial';

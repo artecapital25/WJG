@@ -17,7 +17,8 @@ import {
   UploadCloud,
   Eye,
   Check,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 import { 
   Resina, 
@@ -25,10 +26,12 @@ import {
   Insumo, 
   Personal, 
   ConfiguracionTaller, 
-  PiezaCotizada 
+  PiezaCotizada,
+  TarifaTamano 
 } from '../../types';
 import { calcularPieza3D, ParametrosPiezaInput } from '../../services/calculationEngine';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { TarifarioModal } from './TarifarioModal';
 
 interface ItemPinturaForm {
   tempId: string;
@@ -48,8 +51,10 @@ interface CotizadorFormProps {
   insumos: Insumo[];
   personal: Personal[];
   config: ConfiguracionTaller;
+  tarifasTamanos?: TarifaTamano[];
   onAgregarPieza: (pieza: PiezaCotizada) => void;
   onOpenSTLViewer?: () => void;
+  onNavigateToCatalogos?: () => void;
   initialPieceData?: {
     altoMm?: number;
     anchoMm?: number;
@@ -68,8 +73,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   insumos,
   personal,
   config,
+  tarifasTamanos = [],
   onAgregarPieza,
   onOpenSTLViewer,
+  onNavigateToCatalogos,
   initialPieceData
 }) => {
   // Estado básico
@@ -80,6 +87,27 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [profundidadMm, setProfundidadMm] = useState(60);
   // Unidad de visualización de medidas ('mm' o 'cm')
   const [unidadMedida, setUnidadMedida] = useState<'mm' | 'cm'>('mm');
+
+  // Tarifario de Valores Básicos por Tamaño
+  const [showTarifarioModal, setShowTarifarioModal] = useState(false);
+  const [precioFijadoTarifa, setPrecioFijadoTarifa] = useState(false);
+  const [tarifaAplicada, setTarifaAplicada] = useState<{ altura_cm: number; precio_sugerido: number } | null>(null);
+  const [precioUnitarioManual, setPrecioUnitarioManual] = useState<number>(0);
+
+  const handleSelectTarifa = (tarifa: TarifaTamano) => {
+    const alturaMm = Math.round(tarifa.altura_cm * 10);
+    setAltoMm(alturaMm);
+    setPrecioUnitarioManual(tarifa.precio_sugerido);
+    setTarifaAplicada({
+      altura_cm: tarifa.altura_cm,
+      precio_sugerido: tarifa.precio_sugerido
+    });
+    setPrecioFijadoTarifa(true);
+    setEsParcial(false);
+    if (!nombreItem || nombreItem === 'Figura Coleccionable') {
+      setNombreItem(tarifa.descripcion || `Figura ${tarifa.altura_cm}cm`);
+    }
+  };
 
   // Tipo de estructura: 'solido' (100% como en WJGEEKS.xlsx) o 'ahuecado'
   const [tipoEstructura, setTipoEstructura] = useState<'solido' | 'ahuecado'>('solido');
@@ -250,7 +278,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       porcentajeRelleno,
       pesoResinaManualG: Number(pesoResinaManualG) || 0,
       datosPendientes: esParcial,
-      notasPendientes
+      notasPendientes,
+      precioUnitarioManual: precioFijadoTarifa ? precioUnitarioManual : undefined,
+      tarifaTamanoAplicada: precioFijadoTarifa && tarifaAplicada ? tarifaAplicada : undefined,
+      precioFijadoTarifa
     };
 
     return calcularPieza3D(input, personal, config);
@@ -280,7 +311,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     imagenUrl,
     personal,
     config,
-    insumos
+    insumos,
+    precioFijadoTarifa,
+    precioUnitarioManual,
+    tarifaAplicada
   ]);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -289,6 +323,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     onAgregarPieza(calculoEnVivo);
     setImagenUrl('');
     setTipoOrigenImagen(null);
+    setPrecioFijadoTarifa(false);
+    setTarifaAplicada(null);
+    setPrecioUnitarioManual(0);
   };
 
   return (
@@ -301,6 +338,17 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </h2>
           <p className="section-subtitle">Ajuste de resina exacta (slicer), pinturas múltiples y herrajes dinámicos</p>
         </div>
+
+        <button
+          type="button"
+          className="btn btn-cyan btn-sm"
+          onClick={() => setShowTarifarioModal(true)}
+          style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 0 16px rgba(56, 189, 248, 0.25)' }}
+          title="Ver escala de precios por tamaño y copiar textos rápidos para WhatsApp"
+        >
+          <Sparkles size={15} />
+          <span>Tarifario Rápido (Valores Básicos)</span>
+        </button>
       </div>
 
       <form onSubmit={handleSubmit}>
@@ -385,7 +433,18 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
             <label className="form-label" style={{ margin: 0 }}>
               Dimensiones de la Pieza (Milímetros) {esParcial && <span style={{ color: '#fde047', fontWeight: 500 }}>(Opcional / Por definir)</span>}
             </label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => setShowTarifarioModal(true)}
+                className="btn btn-secondary btn-sm"
+                style={{ fontSize: '0.75rem', padding: '4px 10px', height: 'auto', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+                title="Elegir una altura estándar del tarifario"
+              >
+                <Sparkles size={13} color="var(--brand-cyan)" />
+                <span>{tarifaAplicada ? `Tarifa ${tarifaAplicada.altura_cm}cm` : 'Tarifas por Tamaño'}</span>
+              </button>
+
               {onOpenSTLViewer && (
                 <button
                   type="button"
@@ -555,6 +614,56 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 }}
               >
                 Convertir cm → mm (×10)
+              </button>
+            </div>
+          )}
+
+          {/* Banner de Precio Fijado por Tarifario */}
+          {precioFijadoTarifa && tarifaAplicada && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(14, 165, 233, 0.06) 100%)',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '10px',
+              padding: '12px 14px',
+              marginTop: '12px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: '12px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  borderRadius: '8px',
+                  padding: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Sparkles size={18} color="var(--brand-cyan)" />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 700, fontSize: '0.88rem', color: '#fff' }}>
+                    🏷️ Precio Fijado por Tarifario: <span style={{ color: 'var(--brand-cyan)' }}>${precioUnitarioManual.toLocaleString('es-CO')} COP</span>
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Aplicado para figura de {tarifaAplicada.altura_cm} cm. El margen se ajusta en base a los costos reales del taller.
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setPrecioFijadoTarifa(false);
+                  setTarifaAplicada(null);
+                }}
+                style={{ fontSize: '0.75rem', padding: '5px 10px' }}
+                title="Volver al cálculo dinámico por costo de resina + horas + margen %"
+              >
+                Volver a Margen Calculado
               </button>
             </div>
           )}
@@ -1116,9 +1225,16 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
 
             <div className="price-hero-box">
               <div>
-                <div className="price-hero-label">Precio Unitario Sugerido</div>
+                <div className="price-hero-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>{calculoEnVivo.precio_fijado_tarifa ? 'Precio Fijado (Tarifario Estándar)' : 'Precio Unitario Sugerido'}</span>
+                  {calculoEnVivo.tarifa_tamano_aplicada && (
+                    <span style={{ fontSize: '0.7rem', background: 'rgba(56, 189, 248, 0.25)', color: 'var(--brand-cyan)', padding: '1px 6px', borderRadius: '4px' }}>
+                      {calculoEnVivo.tarifa_tamano_aplicada.altura_cm} cm
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Total ({cantidad} unid.): ${(calculoEnVivo.precio_total).toLocaleString('es-CO')} COP
+                  Total ({cantidad} unid.): ${(calculoEnVivo.precio_total).toLocaleString('es-CO')} COP • Margen real: {Math.round(calculoEnVivo.margen_ganancia * 100)}%
                 </div>
               </div>
               <div className="price-hero-amount">
@@ -1203,6 +1319,15 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal Tarifario de Valores Básicos */}
+      <TarifarioModal
+        isOpen={showTarifarioModal}
+        onClose={() => setShowTarifarioModal(false)}
+        tarifas={tarifasTamanos}
+        onSelectTarifa={handleSelectTarifa}
+        onNavigateToCatalogos={onNavigateToCatalogos}
+      />
     </div>
   );
 };

@@ -24,7 +24,8 @@ import {
   OrdenTrabajo, 
   CuentaCobro, 
   EstadoOT, 
-  EstadoCotizacion 
+  EstadoCotizacion,
+  TarifaTamano
 } from './types';
 import { StorageService } from './services/storageService';
 
@@ -49,6 +50,7 @@ export const App: React.FC = () => {
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [config, setConfig] = useState<ConfiguracionTaller>(StorageService.getConfig());
+  const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>([]);
 
   // Estado Transaccional
   const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
@@ -65,6 +67,7 @@ export const App: React.FC = () => {
     setClientes(StorageService.getClientes());
     setProveedores(StorageService.getProveedores());
     setConfig(StorageService.getConfig());
+    setTarifasTamanos(StorageService.getTarifasTamanos());
     setCotizaciones(StorageService.getCotizaciones());
     setOrdenes(StorageService.getOrdenes());
     setCuentas(StorageService.getCuentas());
@@ -224,8 +227,10 @@ export const App: React.FC = () => {
               insumos={insumos}
               personal={personal}
               config={config}
+              tarifasTamanos={tarifasTamanos}
               onAgregarPieza={handleAgregarPieza}
               onOpenSTLViewer={() => setActiveTab('stl')}
+              onNavigateToCatalogos={() => setActiveTab('catalogos')}
               initialPieceData={stlAppliedData}
             />
 
@@ -282,6 +287,7 @@ export const App: React.FC = () => {
             clientes={clientes}
             proveedores={proveedores}
             config={config}
+            tarifasTamanos={tarifasTamanos}
             onUpdateResinas={r => { setResinas(r); StorageService.saveResinas(r); }}
             onUpdateInsumos={i => { setInsumos(i); StorageService.saveInsumos(i); }}
             onUpdateMaquinas={m => { setMaquinas(m); StorageService.saveMaquinas(m); }}
@@ -289,6 +295,7 @@ export const App: React.FC = () => {
             onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
             onUpdateProveedores={pr => { setProveedores(pr); StorageService.saveProveedores(pr); }}
             onUpdateConfig={cfg => { setConfig(cfg); StorageService.saveConfig(cfg); }}
+            onUpdateTarifasTamanos={t => { setTarifasTamanos(t); StorageService.saveTarifasTamanos(t); }}
           />
         )}
 

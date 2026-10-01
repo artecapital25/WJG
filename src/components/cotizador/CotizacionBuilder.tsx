@@ -350,6 +350,11 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                       🟡 Pendiente Slicer
                     </span>
                   )}
+                  {item.precio_fijado_tarifa && item.tarifa_tamano_aplicada && (
+                    <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                      🏷️ Tarifa {item.tarifa_tamano_aplicada.altura_cm}cm
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
                   {item.datos_pendientes 

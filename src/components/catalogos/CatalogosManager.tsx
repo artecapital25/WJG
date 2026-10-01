@@ -18,7 +18,8 @@ import {
   Check,
   X,
   Cloud,
-  CheckCircle2
+  CheckCircle2,
+  Sparkles
 } from 'lucide-react';
 import { 
   Resina, 
@@ -27,7 +28,8 @@ import {
   Personal, 
   Cliente, 
   Proveedor,
-  ConfiguracionTaller 
+  ConfiguracionTaller,
+  TarifaTamano 
 } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService } from '../../services/cloudSyncService';
@@ -40,6 +42,7 @@ interface CatalogosManagerProps {
   clientes: Cliente[];
   proveedores: Proveedor[];
   config: ConfiguracionTaller;
+  tarifasTamanos?: TarifaTamano[];
   onUpdateResinas: (r: Resina[]) => void;
   onUpdateInsumos: (i: Insumo[]) => void;
   onUpdateMaquinas: (m: Maquina[]) => void;
@@ -47,9 +50,10 @@ interface CatalogosManagerProps {
   onUpdateClientes: (c: Cliente[]) => void;
   onUpdateProveedores: (pr: Proveedor[]) => void;
   onUpdateConfig: (cfg: ConfiguracionTaller) => void;
+  onUpdateTarifasTamanos?: (t: TarifaTamano[]) => void;
 }
 
-type SubTab = 'resinas' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion';
+type SubTab = 'resinas' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
 
 export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   resinas,
@@ -59,13 +63,15 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   clientes,
   proveedores,
   config,
+  tarifasTamanos = [],
   onUpdateResinas,
   onUpdateInsumos,
   onUpdateMaquinas,
   onUpdatePersonal,
   onUpdateClientes,
   onUpdateProveedores,
-  onUpdateConfig
+  onUpdateConfig,
+  onUpdateTarifasTamanos
 }) => {
   const [subTab, setSubTab] = useState<SubTab>('resinas');
   const [searchQuery, setSearchQuery] = useState('');
@@ -420,6 +426,59 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   // -----------------------------------------------------------------
+  // HANDLERS TARIFARIO DE TAMAÑOS
+  // -----------------------------------------------------------------
+  const handleOpenModalTarifa = (tar?: TarifaTamano) => {
+    if (tar) {
+      setItemEnEdicion({ ...tar, isEdit: true });
+    } else {
+      setItemEnEdicion({
+        id: `tt-${Date.now()}`,
+        altura_cm: 13,
+        precio_sugerido: 125000,
+        descripcion: 'Estatua coleccionable (13 cm)',
+        tiempo_estimado: '(7) Días hábiles',
+        isEdit: false
+      });
+    }
+    setModalType('tarifa');
+  };
+
+  const handleSaveTarifa = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!onUpdateTarifasTamanos) return;
+
+    const tarifaGuardada: TarifaTamano = {
+      id: itemEnEdicion.id,
+      altura_cm: Number(itemEnEdicion.altura_cm) || 5,
+      precio_sugerido: Number(itemEnEdicion.precio_sugerido) || 0,
+      descripcion: itemEnEdicion.descripcion || '',
+      tiempo_estimado: itemEnEdicion.tiempo_estimado || '(3) Días hábiles'
+    };
+
+    let updated: TarifaTamano[];
+    if (itemEnEdicion.isEdit) {
+      updated = tarifasTamanos.map(t => t.id === tarifaGuardada.id ? tarifaGuardada : t);
+    } else {
+      updated = [...tarifasTamanos, tarifaGuardada];
+    }
+
+    updated.sort((a, b) => a.altura_cm - b.altura_cm);
+    onUpdateTarifasTamanos(updated);
+    setModalType(null);
+    setItemEnEdicion(null);
+  };
+
+  const handleDeleteTarifa = (id: string) => {
+    if (confirm('¿Eliminar esta tarifa por tamaño del catálogo?')) {
+      if (onUpdateTarifasTamanos) {
+        const updated = tarifasTamanos.filter(t => t.id !== id);
+        onUpdateTarifasTamanos(updated);
+      }
+    }
+  };
+
+  // -----------------------------------------------------------------
   // GUARDAR CONFIGURACIÓN
   // -----------------------------------------------------------------
   const handleGuardarConfig = (e: React.FormEvent) => {
@@ -505,6 +564,14 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         >
           <CreditCard size={14} />
           <span>Bancos & Taller</span>
+        </button>
+
+        <button 
+          className={`btn btn-sm ${subTab === 'tarifas' ? 'btn-cyan' : 'btn-secondary'}`}
+          onClick={() => setSubTab('tarifas')}
+        >
+          <Sparkles size={14} />
+          <span>Tarifario Tamaños ({tarifasTamanos.length})</span>
         </button>
       </div>
 
@@ -979,6 +1046,95 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         </div>
       )}
 
+      {/* VISTA 8: TARIFARIO DE TAMAÑOS / PRECIOS BÁSICOS */}
+      {subTab === 'tarifas' && (
+        <div className="glass-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Sparkles size={18} color="var(--brand-cyan)" />
+                Tarifario Estándar de Tamaños y Valores Básicos
+              </h3>
+              <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Valores de referencia para miniaturas y figuras en resina UV. Utilizados en el cotizador y para respuestas rápidas de WhatsApp.
+              </p>
+            </div>
+            <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalTarifa()}>
+              <Plus size={14} />
+              <span>Agregar Tamaño / Tarifa</span>
+            </button>
+          </div>
+
+          <div className="table-responsive">
+            <table className="data-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '130px' }}>Altura (Z)</th>
+                  <th style={{ width: '160px' }}>Precio Sugerido</th>
+                  <th>Descripción / Tipo de Pieza</th>
+                  <th style={{ width: '160px' }}>Tiempo de Entrega</th>
+                  <th style={{ textAlign: 'center', width: '90px' }}>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tarifasTamanos.map(tar => (
+                  <tr key={tar.id}>
+                    <td>
+                      <span style={{ 
+                        fontWeight: 800, 
+                        color: 'var(--brand-cyan)', 
+                        background: 'rgba(56, 189, 248, 0.12)', 
+                        padding: '3px 8px', 
+                        borderRadius: '6px' 
+                      }}>
+                        {tar.altura_cm} cm
+                      </span>
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginLeft: '6px' }}>
+                        ({tar.altura_cm * 10} mm)
+                      </span>
+                    </td>
+                    <td>
+                      <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '0.95rem' }}>
+                        ${tar.precio_sugerido.toLocaleString('es-CO')}
+                      </span>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: '4px' }}>COP</span>
+                    </td>
+                    <td>
+                      <div style={{ fontWeight: 500, color: '#e2e8f0' }}>{tar.descripcion || 'Figura coleccionable estándar'}</div>
+                    </td>
+                    <td>
+                      <span style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
+                        {tar.tiempo_estimado || '(3) Días hábiles'}
+                      </span>
+                    </td>
+                    <td style={{ textAlign: 'center' }}>
+                      <div style={{ display: 'flex', justifyContent: 'center', gap: '6px' }}>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          onClick={() => handleOpenModalTarifa(tar)} 
+                          title="Editar tarifa"
+                          style={{ padding: '4px 6px' }}
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          onClick={() => handleDeleteTarifa(tar.id)} 
+                          title="Eliminar tarifa"
+                          style={{ padding: '4px 6px' }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
       {/* MODAL GENERATIVO PARA CREAR / EDITAR CUALQUIER ELEMENTO */}
       {modalType && itemEnEdicion && (
         <div className="modal-overlay" onClick={() => setModalType(null)}>
@@ -1337,6 +1493,74 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 </div>
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                   <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Proveedor</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setModalType(null)}>Cancelar</button>
+                </div>
+              </form>
+            )}
+
+            {/* FORMULARIO TARIFA POR TAMAÑO */}
+            {modalType === 'tarifa' && (
+              <form onSubmit={handleSaveTarifa}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Altura (en centímetros) *</label>
+                    <div className="input-with-unit">
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        min="1"
+                        max="100"
+                        step="0.5"
+                        value={itemEnEdicion.altura_cm}
+                        onChange={e => setItemEnEdicion({ ...itemEnEdicion, altura_cm: parseFloat(e.target.value) || 0 })}
+                        required
+                      />
+                      <span className="input-unit-badge">cm ({Math.round((itemEnEdicion.altura_cm || 0) * 10)} mm)</span>
+                    </div>
+                  </div>
+
+                  <div className="form-group">
+                    <label className="form-label">Precio Sugerido (COP) *</label>
+                    <div className="input-with-unit">
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        min="0"
+                        step="1000"
+                        value={itemEnEdicion.precio_sugerido}
+                        onChange={e => setItemEnEdicion({ ...itemEnEdicion, precio_sugerido: parseFloat(e.target.value) || 0 })}
+                        required
+                      />
+                      <span className="input-unit-badge">COP</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Descripción / Categoría de Pieza *</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={itemEnEdicion.descripcion}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, descripcion: e.target.value })}
+                    placeholder="Ej: Figura coleccionable estándar"
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Tiempo Estimado de Entrega</label>
+                  <input 
+                    type="text" 
+                    className="form-input" 
+                    value={itemEnEdicion.tiempo_estimado}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, tiempo_estimado: e.target.value })}
+                    placeholder="Ej: (3) Días hábiles"
+                  />
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Tarifa</button>
                   <button type="button" className="btn btn-secondary" onClick={() => setModalType(null)}>Cancelar</button>
                 </div>
               </form>

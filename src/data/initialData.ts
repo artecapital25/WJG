@@ -883,3 +883,15 @@ export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "bancolombia": "Ahorros 245-000123-98",
   "titular_cuenta": "WJGEEKS 3D"
 };
+
+export const TARIFAS_TAMANOS_INICIALES = [
+  { id: 'tt-5', altura_cm: 5, precio_sugerido: 45000, descripcion: 'Figura pequeña / Miniatura estándar (5 cm)', tiempo_estimado: '(3) Días hábiles' },
+  { id: 'tt-6', altura_cm: 6, precio_sugerido: 55000, descripcion: 'Figura coleccionable estándar (6 cm)', tiempo_estimado: '(3) Días hábiles' },
+  { id: 'tt-7', altura_cm: 7, precio_sugerido: 65000, descripcion: 'Figura de colección mediana (7 cm)', tiempo_estimado: '(3) Días hábiles' },
+  { id: 'tt-8', altura_cm: 8, precio_sugerido: 75000, descripcion: 'Figura de colección mediana-alta (8 cm)', tiempo_estimado: '(3) Días hábiles' },
+  { id: 'tt-9', altura_cm: 9, precio_sugerido: 85000, descripcion: 'Estatua / Figura detallada (9 cm)', tiempo_estimado: '(5) Días hábiles' },
+  { id: 'tt-10', altura_cm: 10, precio_sugerido: 95000, descripcion: 'Estatua / Figura detallada (10 cm)', tiempo_estimado: '(5) Días hábiles' },
+  { id: 'tt-11', altura_cm: 11, precio_sugerido: 105000, descripcion: 'Estatua gran escala (11 cm)', tiempo_estimado: '(7) Días hábiles' },
+  { id: 'tt-12', altura_cm: 12, precio_sugerido: 115000, descripcion: 'Estatua gran escala (12 cm)', tiempo_estimado: '(7) Días hábiles' }
+];
+

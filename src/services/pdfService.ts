@@ -157,6 +157,9 @@ export function crearDocPDFCotizacion(
       ? '[Medidas y resina por verificar en Slicer]' 
       : `${item.alto_mm}mm (Z: Alto) x ${item.ancho_mm}mm (X: Ancho) x ${item.profundidad_mm}mm (Y: Fondo)`;
     let specText = `${item.nombre_item}\n${descMedidas}\n${item.resina_nombre}`;
+    if (item.precio_fijado_tarifa && item.tarifa_tamano_aplicada) {
+      specText += `\nTarifa Básica Estándar: ${item.tarifa_tamano_aplicada.altura_cm} cm`;
+    }
     if (item.lista_pinturas && item.lista_pinturas.length > 0) {
       specText += `\nAcabado: ${item.lista_pinturas.map(p => `${p.nombre} (${p.cantidad_ml}ml)`).join(', ')}`;
     }

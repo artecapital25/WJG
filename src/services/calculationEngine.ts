@@ -24,6 +24,12 @@ export interface ParametrosPiezaInput {
   pesoResinaManualG?: number;
   datosPendientes?: boolean;
   notasPendientes?: string;
+  precioUnitarioManual?: number;
+  tarifaTamanoAplicada?: {
+    altura_cm: number;
+    precio_sugerido: number;
+  };
+  precioFijadoTarifa?: boolean;
 }
 
 export function calcularPieza3D(
@@ -123,8 +129,18 @@ export function calcularPieza3D(
     (input.costoModeloComprado || 0);
 
   // 9. Precio de Venta (Redondeado a centenas COP exactas con MROUND)
-  const precio_unitario_raw = costo_base_produccion * (1 + input.margenGanancia);
-  const precio_unitario = Math.round(precio_unitario_raw / 100) * 100;
+  let precio_unitario: number;
+  let margen_calculado = input.margenGanancia;
+
+  if (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0) {
+    precio_unitario = Math.round(input.precioUnitarioManual / 100) * 100;
+    if (costo_base_produccion > 0) {
+      margen_calculado = (precio_unitario - costo_base_produccion) / costo_base_produccion;
+    }
+  } else {
+    const precio_unitario_raw = costo_base_produccion * (1 + input.margenGanancia);
+    precio_unitario = Math.round(precio_unitario_raw / 100) * 100;
+  }
   const precio_total = Math.ceil((precio_unitario * input.cantidad) / 100) * 100;
 
   // 10. Tiempo Estimado de Entrega de Taller
@@ -171,9 +187,11 @@ export function calcularPieza3D(
     costo_mano_obra: Math.round(costo_mano_obra),
     costo_modelo_comprado: input.costoModeloComprado || 0,
     costo_base_produccion: Math.round(costo_base_produccion),
-    margen_ganancia: input.margenGanancia,
+    margen_ganancia: margen_calculado,
     precio_unitario,
     precio_total,
+    tarifa_tamano_aplicada: input.tarifaTamanoAplicada,
+    precio_fijado_tarifa: input.precioFijadoTarifa,
     tiempo_entrega,
     descripcion_tecnica,
     imagen_url: input.imagen_url,
