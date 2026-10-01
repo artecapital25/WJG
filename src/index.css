@@ -136,48 +136,90 @@ body {
   letter-spacing: 1px;
 }
 
-/* Bottom Navigation Bar para Celulares */
+/* Bottom Navigation Bar para Celulares y Escritorio */
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   z-index: 60;
-  background: rgba(11, 15, 23, 0.92);
+  background: rgba(11, 15, 23, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
   border-top: 1px solid var(--border-subtle);
   display: flex;
-  justify-content: space-around;
-  padding: 8px 10px calc(8px + env(safe-area-inset-bottom, 8px));
+  justify-content: center;
+  padding: 6px 12px calc(6px + env(safe-area-inset-bottom, 8px));
   box-shadow: 0 -10px 30px rgba(0, 0, 0, 0.5);
+}
+
+.bottom-nav-desktop {
+  display: none;
+}
+
+.bottom-nav-mobile {
+  display: flex;
+  width: 100%;
+  justify-content: space-around;
+  align-items: center;
+  max-width: 500px;
+  margin: 0 auto;
+}
+
+@media (min-width: 769px) {
+  .bottom-nav-desktop {
+    display: flex;
+    width: 100%;
+    max-width: 980px;
+    margin: 0 auto;
+    justify-content: space-around;
+    align-items: center;
+  }
+  .bottom-nav-mobile {
+    display: none;
+  }
 }
 
 .nav-item {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   color: var(--text-muted);
   background: transparent;
   border: none;
   font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: var(--radius-md);
   transition: all 0.2s ease;
-  min-width: 58px;
+  min-width: 56px;
 }
 
 .nav-item.active {
   color: var(--brand-cyan);
-  background: rgba(56, 189, 248, 0.08);
+  background: rgba(56, 189, 248, 0.1);
   transform: translateY(-2px);
 }
 
 .nav-item:active {
   transform: scale(0.92);
+}
+
+/* Botón Hamburguesa Destacado */
+.nav-item-hamburger {
+  color: var(--brand-cyan);
+  background: rgba(56, 189, 248, 0.08);
+  border: 1px solid rgba(56, 189, 248, 0.25);
+  border-radius: var(--radius-md);
+  padding: 5px 12px;
+}
+
+.nav-item-hamburger.open {
+  background: rgba(239, 68, 68, 0.15);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #f87171;
 }
 
 .nav-icon-badge-container {
@@ -199,6 +241,96 @@ body {
   padding: 1px 5px;
   line-height: 1;
   border: 1.5px solid var(--bg-surface);
+}
+
+/* Menú Desplegable Tipo Bottom Sheet para Móviles */
+.mobile-nav-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 990;
+  background: rgba(0, 0, 0, 0.78);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: fadeIn 0.2s ease-out;
+}
+
+.mobile-nav-sheet {
+  width: 100%;
+  max-width: 540px;
+  background: linear-gradient(180deg, #111827 0%, #0b0f17 100%);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-bottom: none;
+  border-radius: 22px 22px 0 0;
+  padding: 12px 16px calc(24px + env(safe-area-inset-bottom, 16px));
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.85);
+  max-height: 85vh;
+  overflow-y: auto;
+  animation: slideUp 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.mobile-nav-grabber {
+  width: 44px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 4px;
+  margin: 0 auto 12px;
+}
+
+.mobile-nav-sheet-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.mobile-nav-sheet-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mobile-nav-sheet-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+  text-align: left;
+  width: 100%;
+  color: var(--text-main);
+}
+
+.mobile-nav-sheet-item:hover,
+.mobile-nav-sheet-item:active {
+  background: rgba(56, 189, 248, 0.08);
+  border-color: rgba(56, 189, 248, 0.35);
+  transform: translateX(2px);
+}
+
+.mobile-nav-sheet-item.active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.16) 0%, rgba(14, 165, 233, 0.08) 100%);
+  border-color: var(--brand-cyan);
+  box-shadow: 0 0 16px rgba(56, 189, 248, 0.15);
+}
+
+.mobile-nav-sheet-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 12px;
 }
 
 /* Área de Contenido Principal */
