@@ -11,7 +11,8 @@ import {
   X, 
   Download, 
   ChevronRight, 
-  Check 
+  Check,
+  Package
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -77,6 +78,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       icon: Box,
       iconBg: 'rgba(168, 85, 247, 0.15)',
       iconColor: '#c084fc'
+    },
+    {
+      id: 'stock',
+      label: 'Productos en Stock',
+      shortLabel: 'Stock',
+      description: 'Inventario de figuras y productos para entrega inmediata',
+      icon: Package,
+      iconBg: 'rgba(16, 185, 129, 0.15)',
+      iconColor: '#34d399'
     },
     {
       id: 'workflow',

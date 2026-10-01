@@ -9,6 +9,7 @@ import { CuentasCobroList } from './components/cuentasCobro/CuentasCobroList';
 import { CatalogosManager } from './components/catalogos/CatalogosManager';
 import { ProjectPlanView } from './components/plan/ProjectPlanView';
 import { STLAnalyzer } from './components/stl/STLAnalyzer';
+import { ProductosStockView } from './components/stock/ProductosStockView';
 
 import { 
   TabType, 
@@ -25,7 +26,8 @@ import {
   CuentaCobro, 
   EstadoOT, 
   EstadoCotizacion,
-  TarifaTamano
+  TarifaTamano,
+  ProductoStock
 } from './types';
 import { StorageService } from './services/storageService';
 
@@ -51,6 +53,7 @@ export const App: React.FC = () => {
   const [proveedores, setProveedores] = useState<Proveedor[]>([]);
   const [config, setConfig] = useState<ConfiguracionTaller>(StorageService.getConfig());
   const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>([]);
+  const [productosStock, setProductosStock] = useState<ProductoStock[]>([]);
 
   // Estado Transaccional
   const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
@@ -68,6 +71,7 @@ export const App: React.FC = () => {
     setProveedores(StorageService.getProveedores());
     setConfig(StorageService.getConfig());
     setTarifasTamanos(StorageService.getTarifasTamanos());
+    setProductosStock(StorageService.getProductosStock());
     setCotizaciones(StorageService.getCotizaciones());
     setOrdenes(StorageService.getOrdenes());
     setCuentas(StorageService.getCuentas());
@@ -206,6 +210,11 @@ export const App: React.FC = () => {
     StorageService.saveClientes(updated);
   };
 
+  const handleUpdateProductosStock = (items: ProductoStock[]) => {
+    setProductosStock(items);
+    StorageService.saveProductosStock(items);
+  };
+
   const pendingOTs = ordenes.filter(o => o.estado !== 'Listo para Entrega').length;
 
   return (
@@ -310,6 +319,17 @@ export const App: React.FC = () => {
               setStlAppliedData(data);
               setActiveTab('cotizador');
             }}
+          />
+        )}
+
+        {activeTab === 'stock' && (
+          <ProductosStockView 
+            productos={productosStock}
+            onUpdateProductos={handleUpdateProductosStock}
+            onAgregarACotizacion={(pieza) => {
+              handleAgregarPieza(pieza);
+            }}
+            onNavigateToCotizador={() => setActiveTab('cotizador')}
           />
         )}
       </main>

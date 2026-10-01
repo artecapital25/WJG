@@ -38,6 +38,16 @@ export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSe
 
         {onSelectTab && (
           <button 
+            className={`btn btn-sm ${activeTab === 'stock' ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => onSelectTab('stock')}
+            title="Ver catálogo de productos y figuras en stock"
+          >
+            <span>📦 Stock</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
             className={`btn btn-sm ${activeTab === 'plan' ? 'btn-primary' : 'btn-secondary'}`}
             onClick={() => onSelectTab('plan')}
             title="Ver Roadmap y Plan de Proyecto"

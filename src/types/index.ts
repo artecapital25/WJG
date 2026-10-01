@@ -1,4 +1,18 @@
-export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl';
+export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock';
+
+export interface ProductoStock {
+  id: string;
+  codigo?: string | number;
+  nombre: string;
+  categoria: string;
+  precio_unitario: number;
+  stock_actual: number;
+  descripcion?: string;
+  dimensiones?: string;
+  material?: string;
+  imagen_url?: string;
+  fecha_actualizacion?: string;
+}
 
 export interface Resina {
   id: string;

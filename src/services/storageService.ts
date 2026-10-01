@@ -9,7 +9,8 @@ import {
   Cotizacion,
   OrdenTrabajo,
   CuentaCobro,
-  TarifaTamano
+  TarifaTamano,
+  ProductoStock
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -18,7 +19,8 @@ import {
   PERSONAL_INICIAL,
   CLIENTES_INICIALES,
   CONFIGURACION_INICIAL,
-  TARIFAS_TAMANOS_INICIALES
+  TARIFAS_TAMANOS_INICIALES,
+  PRODUCTOS_STOCK_INICIALES
 } from '../data/initialData';
 import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
 
@@ -40,7 +42,8 @@ const STORAGE_KEYS = {
   COTIZACIONES: 'wjg_cotizaciones',
   ORDENES: 'wjg_ordenes_trabajo',
   CUENTAS: 'wjg_cuentas_cobro',
-  TARIFAS_TAMANOS: 'wjg_tarifas_tamanos'
+  TARIFAS_TAMANOS: 'wjg_tarifas_tamanos',
+  PRODUCTOS_STOCK: 'wjg_productos_stock'
 };
 
 function loadItem<T>(key: string, fallback: T): T {
@@ -95,6 +98,9 @@ export const StorageService = {
   getTarifasTamanos: (): TarifaTamano[] => loadItem(STORAGE_KEYS.TARIFAS_TAMANOS, TARIFAS_TAMANOS_INICIALES),
   saveTarifasTamanos: (items: TarifaTamano[]) => saveItem(STORAGE_KEYS.TARIFAS_TAMANOS, items),
 
+  getProductosStock: (): ProductoStock[] => loadItem(STORAGE_KEYS.PRODUCTOS_STOCK, PRODUCTOS_STOCK_INICIALES),
+  saveProductosStock: (items: ProductoStock[]) => saveItem(STORAGE_KEYS.PRODUCTOS_STOCK, items),
+
   // Export full backup
   exportBackup: () => {
     const backup = {
@@ -109,7 +115,8 @@ export const StorageService = {
       cotizaciones: StorageService.getCotizaciones(),
       ordenes: StorageService.getOrdenes(),
       cuentas: StorageService.getCuentas(),
-      tarifas_tamanos: StorageService.getTarifasTamanos()
+      tarifas_tamanos: StorageService.getTarifasTamanos(),
+      productos_stock: StorageService.getProductosStock()
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -134,6 +141,7 @@ export const StorageService = {
       if (data.ordenes) StorageService.saveOrdenes(data.ordenes);
       if (data.cuentas) StorageService.saveCuentas(data.cuentas);
       if (data.tarifas_tamanos) StorageService.saveTarifasTamanos(data.tarifas_tamanos);
+      if (data.productos_stock) StorageService.saveProductosStock(data.productos_stock);
       return true;
     } catch (e) {
       console.error('Error importing backup:', e);

@@ -1,5 +1,6 @@
 // Datos maestros extraídos directamente del libro de producción WJGEEKS.xlsx
 // Contiene 31 clientes, 10 tipos de resina, 31 insumos de taller y máquinas oficiales.
+import { ProductoStock } from '../types';
 
 export interface Resina {
   id: string;
@@ -893,5 +894,200 @@ export const TARIFAS_TAMANOS_INICIALES = [
   { id: 'tt-10', altura_cm: 10, precio_sugerido: 95000, descripcion: 'Estatua / Figura detallada (10 cm)', tiempo_estimado: '(5) Días hábiles' },
   { id: 'tt-11', altura_cm: 11, precio_sugerido: 105000, descripcion: 'Estatua gran escala (11 cm)', tiempo_estimado: '(7) Días hábiles' },
   { id: 'tt-12', altura_cm: 12, precio_sugerido: 115000, descripcion: 'Estatua gran escala (12 cm)', tiempo_estimado: '(7) Días hábiles' }
+];
+
+export const PRODUCTOS_STOCK_INICIALES: ProductoStock[] = [
+  {
+    id: 'prod-1',
+    codigo: 26,
+    nombre: 'Figura Tanjiro Chibi',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Figura coleccionable en resina UV de alta definición, pintada y curada',
+    dimensiones: '7 cm de alto',
+    material: 'Resina UV Alta Definición',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-2',
+    codigo: 27,
+    nombre: 'Figura Nezuko Chibi',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Figura coleccionable en resina UV con base temática',
+    dimensiones: '7 cm de alto',
+    material: 'Resina UV Alta Definición',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-3',
+    codigo: 28,
+    nombre: 'Figura Inosuke Chibi',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Figura detallada con máscara de jabalí y espadas duales',
+    dimensiones: '7 cm de alto',
+    material: 'Resina UV Alta Definición',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-4',
+    codigo: 29,
+    nombre: 'Figura Zenitsu Chibi',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Figura en pose característica con efectos de rayo',
+    dimensiones: '7 cm de alto',
+    material: 'Resina UV Alta Definición',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-5',
+    codigo: 30,
+    nombre: 'Figura Rengoku Chibi',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Pilar de la Llama, figura de colección con capa y base',
+    dimensiones: '7 cm de alto',
+    material: 'Resina UV Alta Definición',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-6',
+    codigo: 31,
+    nombre: 'Diorama Inosuke Casa',
+    categoria: 'Figuras & Miniaturas',
+    precio_unitario: 200000,
+    stock_actual: 1,
+    descripcion: 'Escena completa con casa tradicional, base de madera y figura detallada',
+    dimensiones: '15 x 12 x 14 cm',
+    material: 'Resina UV + Pintura Artística',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-7',
+    codigo: 9,
+    nombre: 'Collar León',
+    categoria: 'Joyería & Accesorios',
+    precio_unitario: 30000,
+    stock_actual: 1,
+    descripcion: 'Dije de cabeza de león geométrica en resina con cordón ajustable',
+    dimensiones: '3.5 x 3.0 cm',
+    material: 'Resina UV + Cordón',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-8',
+    codigo: 10,
+    nombre: 'Collar Loro',
+    categoria: 'Joyería & Accesorios',
+    precio_unitario: 30000,
+    stock_actual: 2,
+    descripcion: 'Dije de loro tropical en resina UV con acabado pulido',
+    dimensiones: '4.0 x 2.5 cm',
+    material: 'Resina UV + Cordón',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-9',
+    codigo: 11,
+    nombre: 'Collar Lobo',
+    categoria: 'Joyería & Accesorios',
+    precio_unitario: 30000,
+    stock_actual: 2,
+    descripcion: 'Collar lobo aullando con detalles de pelaje y luna',
+    dimensiones: '3.8 x 3.2 cm',
+    material: 'Resina UV + Cordón',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-10',
+    codigo: 12,
+    nombre: 'Collar Jaguar',
+    categoria: 'Joyería & Accesorios',
+    precio_unitario: 30000,
+    stock_actual: 2,
+    descripcion: 'Dije de felino silvestre con manchas y ojos detallados',
+    dimensiones: '3.5 x 3.0 cm',
+    material: 'Resina UV + Cordón',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-11',
+    codigo: 16,
+    nombre: 'Collar Lechuza',
+    categoria: 'Joyería & Accesorios',
+    precio_unitario: 30000,
+    stock_actual: 2,
+    descripcion: 'Dije de lechuza nocturna con plumas en alto relieve',
+    dimensiones: '3.5 x 2.8 cm',
+    material: 'Resina UV + Cordón',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-12',
+    codigo: 37,
+    nombre: 'Llavero Gengar',
+    categoria: 'Llaveros & Aretes',
+    precio_unitario: 40000,
+    stock_actual: 1,
+    descripcion: 'Llavero de Gengar sonriente con argolla metálica reforzada',
+    dimensiones: '4.5 cm de alto',
+    material: 'Resina UV + Herraje Metálico',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-13',
+    codigo: 36,
+    nombre: 'Llavero Tigre',
+    categoria: 'Llaveros & Aretes',
+    precio_unitario: 23000,
+    stock_actual: 1,
+    descripcion: 'Llavero con relieve de tigre y cadena níquel',
+    dimensiones: '4.0 cm',
+    material: 'Resina UV + Herraje',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-14',
+    codigo: 21,
+    nombre: 'Aretes Gengar',
+    categoria: 'Llaveros & Aretes',
+    precio_unitario: 25000,
+    stock_actual: 1,
+    descripcion: 'Par de aretes miniatura con ganchos antialérgicos',
+    dimensiones: '2.0 cm cada uno',
+    material: 'Resina UV + Gancho Acero',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-15',
+    codigo: 22,
+    nombre: 'Aretes Togepi',
+    categoria: 'Llaveros & Aretes',
+    precio_unitario: 25000,
+    stock_actual: 1,
+    descripcion: 'Par de aretes Togepi con cascarón decorado',
+    dimensiones: '2.0 cm cada uno',
+    material: 'Resina UV + Gancho Acero',
+    imagen_url: ''
+  },
+  {
+    id: 'prod-16',
+    codigo: 35,
+    nombre: 'Placa Empresarial Personalizada (15x8.5 cm)',
+    categoria: 'Personalizados',
+    precio_unitario: 151000,
+    stock_actual: 1,
+    descripcion: 'Placa conmemorativa con figura de oso y toro para escritorio',
+    dimensiones: '15 x 8.5 x 10 cm',
+    material: 'Resina UV + Base Sólida',
+    imagen_url: ''
+  }
 ];
 
