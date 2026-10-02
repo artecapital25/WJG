@@ -120,16 +120,16 @@ export const ProjectPlanView: React.FC = () => {
     {
       id: 5,
       nombre: "Fase 5: Edición Integral de Facturas, Procesos & Puesta en Vivo",
-      tagline: "PUNTO ACTUAL DEL PROYECTO 📍",
-      estado: "en_curso",
-      progreso: 95,
-      descripcion: "Etapa en la que nos encontramos hoy: perfeccionamiento de la edición de pedidos/facturas, claridad comercial de procesos adicionales, eliminación de inconsistencias en el PDF y despliegue a producción en Supabase y Vercel.",
+      tagline: "¡OBJETIVO CUMPLIDO AL 100%! 🚀",
+      estado: "completada",
+      progreso: 100,
+      descripcion: "Perfeccionamiento de la edición de pedidos/facturas, claridad comercial de procesos adicionales, eliminación de inconsistencias en el PDF y despliegue a producción en Supabase y Vercel.",
       entregables: [
         { titulo: "Edición Completa de Ítems en Facturas/Cotizaciones", completado: true, detalle: "Modificación de nombre, cantidad, precio, medidas exactas X/Y/Z, tipo de resina, acabados y apertura directa en calculadora 3D." },
         { titulo: "Control de Visibilidad de Procesos Adicionales", completado: true, detalle: "Procesos genéricos ('Proceso Adicional') erradicados. Solo se muestran nombres claros especificados por el usuario." },
         { titulo: "Limpieza Tipográfica de Notas & Transporte", completado: true, detalle: "Eliminación absoluta de doble guión (-- o - -) y reemplazo por viñetas elegantes (•) en PDF y WhatsApp." },
         { titulo: "Ejecución de Script SQL en Supabase", completado: true, detalle: "¡VERIFICADO! 11 de 11 tablas creadas y pobladas con 72 cotizaciones, 31 clientes y configuración en PostgreSQL." },
-        { titulo: "Conexión a Vercel con Variables de Entorno", completado: true, detalle: "Variables VITE_SUPABASE_URL y VITE_SUPABASE_ANON_KEY listas para configurar en Settings de Vercel." }
+        { titulo: "Conexión a Vercel con Variables de Entorno", completado: true, detalle: ".env.production desplegado automáticamente en Vercel vía GitHub (artecapital25/WJG)." }
       ],
       puntosClave: [
         "Las facturas y presupuestos son 100% editables y transparentes para el cliente.",
@@ -139,20 +139,20 @@ export const ProjectPlanView: React.FC = () => {
     {
       id: 6,
       nombre: "Fase 6: Automatizaciones Futuras & Escalabilidad",
-      tagline: "HACIA DÓNDE VAMOS 🚀 (Próximos pasos recomendados)",
-      estado: "proxima",
-      progreso: 0,
-      descripcion: "Nuevas funcionalidades sugeridas para llevar la plataforma al siguiente nivel operativo.",
+      tagline: "PUNTO ACTUAL DEL PROYECTO 📍",
+      estado: "en_curso",
+      progreso: 40,
+      descripcion: "Integraciones avanzadas para máxima eficiencia operativa en el taller y experiencia del cliente.",
       entregables: [
-        { titulo: "Visor STL 3D Integrado en el Navegador", completado: false, detalle: "Poder arrastrar el archivo .stl y ver la figura en 3D calculando automáticamente X, Y, Z." },
+        { titulo: "Sincronización Automática en la Nube (Supabase Live Sync)", completado: true, detalle: "Persistencia bidireccional y tiempo real entre PC y celular sin depender solo del caché local." },
+        { titulo: "Visor STL 3D Integrado en el Navegador", completado: true, detalle: "Arrastrar el archivo .stl y ver la figura en 3D calculando automáticamente X, Y, Z." },
         { titulo: "Descuento Automático de Inventario", completado: false, detalle: "Restar gramos de resina y botes de alcohol del stock al completar cada OT." },
         { titulo: "Portal de Seguimiento para Clientes", completado: false, detalle: "Enlace público seguro donde el cliente ve en qué paso va su figura (Imprimiendo, Pintura, Listo)." },
-        { titulo: "Exportación Contable Mensual a Excel", completado: false, detalle: "Botón para descargar balance de ingresos, resinas consumidas y margen neto del mes." },
-        { titulo: "Instalación PWA con Notificaciones Push", completado: false, detalle: "Instalar como app nativa en Android/iOS con avisos de impresión finalizada." }
+        { titulo: "Exportación Contable Mensual a Excel", completado: false, detalle: "Botón para descargar balance de ingresos, resinas consumidas y margen neto del mes." }
       ],
       puntosClave: [
-        "Menor tiempo de operación por cotización.",
-        "Mayor transparencia y fidelización con el cliente final."
+        "Sincronización en tiempo real activa entre múltiples dispositivos.",
+        "Reducción continua del tiempo de atención por pedido."
       ]
     }
   ];

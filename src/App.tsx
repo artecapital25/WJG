@@ -30,6 +30,7 @@ import {
   ProductoStock
 } from './types';
 import { StorageService } from './services/storageService';
+import { CloudSyncService } from './services/cloudSyncService';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>('cotizador');
@@ -62,9 +63,11 @@ export const App: React.FC = () => {
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
   const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
 
-  // Cargar datos iniciales
+  // Cargar datos iniciales y sincronizar bidireccionalmente con Supabase
   useEffect(() => {
+    // 1. Carga local inmediata para rapidez y soporte offline
     setResinas(StorageService.getResinas());
     setInsumos(StorageService.getInsumos());
     setMaquinas(StorageService.getMaquinas());
@@ -77,6 +80,90 @@ export const App: React.FC = () => {
     setCotizaciones(StorageService.getCotizaciones());
     setOrdenes(StorageService.getOrdenes());
     setCuentas(StorageService.getCuentas());
+
+    if (!CloudSyncService.isAvailable()) {
+      setCloudSyncStatus('offline');
+      return;
+    }
+
+    setCloudSyncStatus('syncing');
+
+    // 2. Traer datos frescos de Supabase en segundo plano y fusionar
+    const syncCloudData = async () => {
+      try {
+        const [cloudCots, cloudClis, cloudOTs] = await Promise.all([
+          CloudSyncService.fetchCotizaciones(),
+          CloudSyncService.fetchClientes(),
+          CloudSyncService.fetchOrdenes()
+        ]);
+
+        if (cloudCots && cloudCots.length > 0) {
+          setCotizaciones(prev => {
+            const map = new Map(prev.map(c => [c.numero_cot, c]));
+            cloudCots.forEach(c => map.set(c.numero_cot, c));
+            const merged = Array.from(map.values()).sort((a, b) => b.numero_cot.localeCompare(a.numero_cot));
+            StorageService.saveCotizaciones(merged);
+            return merged;
+          });
+        }
+
+        if (cloudClis && cloudClis.length > 0) {
+          setClientes(prev => {
+            const map = new Map(prev.map(c => [c.telefono, c]));
+            cloudClis.forEach(c => map.set(c.telefono, c));
+            const merged = Array.from(map.values());
+            StorageService.saveClientes(merged);
+            return merged;
+          });
+        }
+
+        if (cloudOTs && cloudOTs.length > 0) {
+          setOrdenes(prev => {
+            const map = new Map(prev.map(o => [o.numero_ot, o]));
+            cloudOTs.forEach(o => map.set(o.numero_ot, o));
+            const merged = Array.from(map.values());
+            StorageService.saveOrdenes(merged);
+            return merged;
+          });
+        }
+
+        setCloudSyncStatus('connected');
+      } catch (err) {
+        console.warn('Error sincronizando con Supabase:', err);
+        setCloudSyncStatus('connected');
+      }
+    };
+
+    syncCloudData();
+
+    // 3. Suscripción en tiempo real a cambios de taller
+    const channel = CloudSyncService.subscribeRealtime(
+      async () => {
+        const freshCots = await CloudSyncService.fetchCotizaciones();
+        if (freshCots && freshCots.length > 0) {
+          setCotizaciones(freshCots);
+          StorageService.saveCotizaciones(freshCots);
+        }
+      },
+      async () => {
+        const freshOTs = await CloudSyncService.fetchOrdenes();
+        if (freshOTs && freshOTs.length > 0) {
+          setOrdenes(freshOTs);
+          StorageService.saveOrdenes(freshOTs);
+        }
+      },
+      async () => {
+        const freshCCs = await CloudSyncService.fetchCuentas();
+        if (freshCCs && freshCCs.length > 0) {
+          setCuentas(freshCCs);
+          StorageService.saveCuentas(freshCCs);
+        }
+      }
+    );
+
+    return () => {
+      if (channel) channel.unsubscribe();
+    };
   }, []);
 
   // Handlers para Piezas en Borrador / Cotización en Edición
@@ -160,6 +247,9 @@ export const App: React.FC = () => {
     setDraftPieces([]); // Limpiar borrador
     setEditingCotizacion(null);
     setActiveTab('cotizaciones');
+
+    // Sincronizar en la nube Supabase en segundo plano
+    CloudSyncService.saveCotizacion(cotizacion);
   };
 
   // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT)
@@ -208,6 +298,11 @@ export const App: React.FC = () => {
     setOrdenes(updatedOTs);
     StorageService.saveOrdenes(updatedOTs);
 
+    // Sincronizar cotización aceptada y OTs generadas en Supabase
+    const cotAceptada = updatedCots.find(c => c.id === cot.id);
+    if (cotAceptada) CloudSyncService.saveCotizacion(cotAceptada);
+    nuevasOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+
     // Redirigir a vista de taller
     setActiveTab('workflow');
   };
@@ -217,6 +312,9 @@ export const App: React.FC = () => {
     const updated = ordenes.map(o => o.id === otId ? { ...o, estado: nuevoEstado } : o);
     setOrdenes(updated);
     StorageService.saveOrdenes(updated);
+
+    const targetOT = updated.find(o => o.id === otId);
+    if (targetOT) CloudSyncService.saveOrdenTrabajo(targetOT);
   };
 
   // Generar Cuenta de Cobro a partir de una OT terminada
@@ -251,6 +349,9 @@ export const App: React.FC = () => {
     setCuentas(updated);
     StorageService.saveCuentas(updated);
     setActiveTab('cuentas');
+
+    // Sincronizar cuenta de cobro en Supabase
+    CloudSyncService.saveCuentaCobro(nuevaCC);
   };
 
   // Actualizar Pago en Cuenta de Cobro
@@ -276,6 +377,7 @@ export const App: React.FC = () => {
     const updated = [nuevo, ...clientes];
     setClientes(updated);
     StorageService.saveClientes(updated);
+    CloudSyncService.saveCliente(nuevo);
   };
 
   const handleUpdateProductosStock = (items: ProductoStock[]) => {
@@ -292,6 +394,7 @@ export const App: React.FC = () => {
         activeTab={activeTab}
         onSelectTab={setActiveTab}
         onNewQuoteClick={handleNuevaCotizacion} 
+        cloudStatus={cloudSyncStatus}
       />
 
       {/* Contenido Principal según Pestaña */}

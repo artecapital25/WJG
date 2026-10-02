@@ -6,9 +6,10 @@ interface NavbarProps {
   onNewQuoteClick?: () => void;
   activeTab?: string;
   onSelectTab?: (tab: any) => void;
+  cloudStatus?: 'connected' | 'syncing' | 'offline';
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSelectTab }) => {
+export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSelectTab, cloudStatus = 'connected' }) => {
   return (
     <header className="top-header">
       <div 
@@ -31,6 +32,33 @@ export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSe
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+        {/* Indicador de Nube Supabase */}
+        <div 
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.72rem',
+            fontWeight: 600,
+            padding: '3px 8px',
+            borderRadius: '9999px',
+            background: cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : cloudStatus === 'syncing' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(245, 158, 11, 0.12)',
+            color: cloudStatus === 'connected' ? '#34d399' : cloudStatus === 'syncing' ? '#38bdf8' : '#fbbf24',
+            border: `1px solid ${cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.3)' : cloudStatus === 'syncing' ? 'rgba(56, 189, 248, 0.35)' : 'rgba(245, 158, 11, 0.3)'}`
+          }}
+          title={cloudStatus === 'connected' ? 'Base de datos Supabase conectada en vivo' : cloudStatus === 'syncing' ? 'Sincronizando con Supabase...' : 'Modo local activo'}
+        >
+          <span style={{ 
+            width: '6px', 
+            height: '6px', 
+            borderRadius: '50%', 
+            background: 'currentColor',
+            boxShadow: '0 0 6px currentColor'
+          }} />
+          <span className="desktop-header-btn">
+            {cloudStatus === 'connected' ? 'Supabase Online' : cloudStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
+          </span>
+        </div>
         {/* Atajos secundarios: visibles solo en pantallas medianas/grandes para que en celular el header sea limpio y espacioso */}
         {onSelectTab && (
           <button 
