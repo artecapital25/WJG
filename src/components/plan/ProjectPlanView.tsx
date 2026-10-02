@@ -138,21 +138,22 @@ export const ProjectPlanView: React.FC = () => {
     },
     {
       id: 6,
-      nombre: "Fase 6: Automatizaciones Futuras & Escalabilidad",
-      tagline: "PUNTO ACTUAL DEL PROYECTO 📍",
-      estado: "en_curso",
-      progreso: 40,
-      descripcion: "Integraciones avanzadas para máxima eficiencia operativa en el taller y experiencia del cliente.",
+      nombre: "Fase 6: Automatizaciones Futuras, Balance & PWA",
+      tagline: "¡TODAS LAS FASES COMPLETADAS AL 100%! 🚀",
+      estado: "completada",
+      progreso: 100,
+      descripcion: "Automatización total de taller: descuento de inventario, portal de rastreo para clientes, balance financiero con exportación a Excel y Progressive Web App (PWA) instalable.",
       entregables: [
         { titulo: "Sincronización Automática en la Nube (Supabase Live Sync)", completado: true, detalle: "Persistencia bidireccional y tiempo real entre PC y celular sin depender solo del caché local." },
         { titulo: "Visor STL 3D Integrado en el Navegador", completado: true, detalle: "Arrastrar el archivo .stl y ver la figura en 3D calculando automáticamente X, Y, Z." },
-        { titulo: "Descuento Automático de Inventario", completado: false, detalle: "Restar gramos de resina y botes de alcohol del stock al completar cada OT." },
-        { titulo: "Portal de Seguimiento para Clientes", completado: false, detalle: "Enlace público seguro donde el cliente ve en qué paso va su figura (Imprimiendo, Pintura, Listo)." },
-        { titulo: "Exportación Contable Mensual a Excel", completado: false, detalle: "Botón para descargar balance de ingresos, resinas consumidas y margen neto del mes." }
+        { titulo: "Descuento Automático de Inventario", completado: true, detalle: "Deducción automática de gramos de resina líquida y alcohol isopropílico al avanzar las OTs en el taller." },
+        { titulo: "Portal de Seguimiento para Clientes (Rastreo 3D)", completado: true, detalle: "Enlace público confidencial en 6 etapas de manufactura sin exponer costos ni márgenes internos del taller." },
+        { titulo: "Exportación Contable Mensual a Excel & Métricas", completado: true, detalle: "Módulo de Finanzas con KPIs de facturación, costo de producción, resina consumida y descarga nativa en .xls." },
+        { titulo: "App Móvil PWA Instalable (Offline & Service Worker)", completado: true, detalle: "Web App Progresiva con manifest, service worker de alta velocidad, caché estático e instalación directa en pantalla de inicio." }
       ],
       puntosClave: [
-        "Sincronización en tiempo real activa entre múltiples dispositivos.",
-        "Reducción continua del tiempo de atención por pedido."
+        "Control total de manufactura de punta a punta con inventarios sincronizados.",
+        "Experiencia de compra moderna con portal de rastreo en vivo y app móvil instalable."
       ]
     }
   ];

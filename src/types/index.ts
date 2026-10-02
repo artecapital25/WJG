@@ -1,4 +1,4 @@
-export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock';
+export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas';
 
 export interface ProductoStock {
   id: string;
@@ -211,6 +211,9 @@ export interface OrdenTrabajo {
   detalles_tecnicos: string;
   imagen_url?: string;
   observaciones?: string;
+  peso_estimado_g?: number;
+  resina_id?: string;
+  inventario_descontado?: boolean;
 }
 
 export type EstadoPago = 'Pendiente' | 'Abono Parcial' | 'Pagado Total';

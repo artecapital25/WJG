@@ -1,16 +1,39 @@
 {
-  "short_name": "WJGEEKS",
+  "id": "com.wjgeeks.3d",
+  "short_name": "WJGEEKS 3D",
   "name": "WJGEEKS 3D - Cotizaciones & Taller",
+  "description": "Sistema de cotización inteligente, cálculo de costos de resina 3D y flujo de trabajo para WJGEEKS",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#07090e",
+  "theme_color": "#1b62b1",
+  "categories": ["business", "productivity", "utilities"],
   "icons": [
     {
       "src": "/wjg_logo_vector.svg",
       "type": "image/svg+xml",
-      "sizes": "192x192 512x512"
+      "sizes": "192x192 512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/wjg_logo_transparent.svg",
+      "type": "image/svg+xml",
+      "sizes": "192x192 512x512",
+      "purpose": "any"
     }
   ],
-  "start_url": "/",
-  "background_color": "#0b0f17",
-  "theme_color": "#1b62b1",
-  "display": "standalone",
-  "orientation": "portrait"
+  "shortcuts": [
+    {
+      "name": "Nueva Cotización",
+      "url": "/?tab=cotizador",
+      "description": "Abrir el calculador 3D para una nueva pieza"
+    },
+    {
+      "name": "Órdenes de Trabajo",
+      "url": "/?tab=workflow",
+      "description": "Ver el pipeline de impresión en taller"
+    }
+  ]
 }

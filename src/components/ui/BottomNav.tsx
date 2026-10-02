@@ -12,7 +12,9 @@ import {
   Download, 
   ChevronRight, 
   Check,
-  Package
+  Package,
+  TrendingUp,
+  Compass
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -49,7 +51,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({
     }
   }, [isMenuOpen]);
 
-  // Lista maestra de las 7 secciones del sistema con metadatos para móvil
+  // Lista maestra de las secciones del sistema con metadatos para móvil
   const ALL_TABS: {
     id: TabType;
     label: string;
@@ -115,6 +117,24 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       icon: Receipt,
       iconBg: 'rgba(16, 185, 129, 0.15)',
       iconColor: '#34d399'
+    },
+    {
+      id: 'finanzas',
+      label: 'Balance & Finanzas',
+      shortLabel: 'Finanzas',
+      description: 'Métricas contables, costos, margen y exportación a Excel',
+      icon: TrendingUp,
+      iconBg: 'rgba(34, 197, 94, 0.15)',
+      iconColor: '#4ade80'
+    },
+    {
+      id: 'seguimiento',
+      label: 'Rastreo Cliente',
+      shortLabel: 'Rastreo',
+      description: 'Portal público para clientes sin precios internos',
+      icon: Compass,
+      iconBg: 'rgba(14, 165, 233, 0.15)',
+      iconColor: '#38bdf8'
     },
     {
       id: 'catalogos',

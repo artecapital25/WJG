@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Download, Package, Rocket } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -7,9 +7,18 @@ interface NavbarProps {
   activeTab?: string;
   onSelectTab?: (tab: any) => void;
   cloudStatus?: 'connected' | 'syncing' | 'offline';
+  onInstallPwa?: () => void;
+  isInstallable?: boolean;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSelectTab, cloudStatus = 'connected' }) => {
+export const Navbar: React.FC<NavbarProps> = ({ 
+  onNewQuoteClick, 
+  activeTab, 
+  onSelectTab, 
+  cloudStatus = 'connected',
+  onInstallPwa,
+  isInstallable
+}) => {
   return (
     <header className="top-header">
       <div 
@@ -79,6 +88,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onNewQuoteClick, activeTab, onSe
           >
             <Rocket size={14} />
             <span>Plan WJG</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'finanzas' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            onClick={() => onSelectTab('finanzas')}
+            title="Ver Balance Contable & Exportar Excel"
+          >
+            <TrendingUp size={14} color="#4ade80" />
+            <span>Finanzas</span>
+          </button>
+        )}
+
+        {isInstallable && onInstallPwa && (
+          <button 
+            className="btn btn-sm"
+            onClick={onInstallPwa}
+            style={{ 
+              background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2))',
+              border: '1px solid var(--brand-cyan)',
+              color: '#38bdf8',
+              fontWeight: 600,
+              padding: '6px 10px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}
+            title="Instalar WJGEEKS 3D como App en este equipo"
+          >
+            <Smartphone size={14} />
+            <span>Instalar App</span>
           </button>
         )}
 

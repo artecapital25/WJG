@@ -7,11 +7,14 @@ import {
   Clock, 
   User, 
   MessageCircle, 
-  Sparkles,
-  ChevronRight,
-  Filter,
-  ShoppingCart,
-  ExternalLink
+  Sparkles, 
+  ChevronRight, 
+  Filter, 
+  ShoppingCart, 
+  ExternalLink,
+  Compass,
+  Copy,
+  Check
 } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT, ConfiguracionTaller } from '../../types';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
@@ -39,6 +42,7 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
   onGenerarCuentaCobro
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
+  const [copiedOtId, setCopiedOtId] = useState<string | null>(null);
 
   const getSiguienteEstado = (actual: EstadoOT): EstadoOT | null => {
     const idx = ETAPAS.indexOf(actual);
@@ -48,8 +52,17 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
     return null;
   };
 
+  const handleCopyTrackingLink = (ot: OrdenTrabajo) => {
+    const trackingUrl = `${window.location.origin}/?tab=seguimiento&ot=${ot.numero_ot}`;
+    navigator.clipboard.writeText(trackingUrl).then(() => {
+      setCopiedOtId(ot.id);
+      setTimeout(() => setCopiedOtId(null), 2500);
+    });
+  };
+
   const handleNotificarCliente = (ot: OrdenTrabajo) => {
     const phone = formatWhatsAppPhone(ot.cliente_telefono);
+    const trackingUrl = `${window.location.origin}/?tab=seguimiento&ot=${ot.numero_ot}`;
     const mensaje = 
 `👋 ¡Hola *${ot.cliente_nombre}*! 
 Desde el taller de *WJGEEKS 3D* te informamos sobre el avance de tu orden:
@@ -62,6 +75,9 @@ ${ot.estado === 'Imprimiendo' ? '⏳ La pieza se encuentra en la Anycubic MONO 4
 ${ot.estado === 'Curado' ? '☀️ La pieza pasó a lavado y curado UV para máxima resistencia mecánica.' : ''}
 ${ot.estado === 'Pintura y Armado' ? '🎨 Nuestros artistas están aplicando los acabados y pintura de detalle.' : ''}
 ${ot.estado === 'Listo para Entrega' ? '🎉 ¡Tu pedido ha superado el control de calidad y está listo para despacho!' : ''}
+
+🔍 Sigue el avance de tu pieza en vivo aquí:
+${trackingUrl}
 
 ¡Te mantendremos al tanto! 🚀`;
 
@@ -247,10 +263,19 @@ ${ot.estado === 'Listo para Entrega' ? '🎉 ¡Tu pedido ha superado el control 
                   <button 
                     className="btn btn-whatsapp btn-sm"
                     onClick={() => handleNotificarCliente(ot)}
-                    title="Enviar actualización por WhatsApp al cliente"
+                    title="Enviar actualización y enlace de seguimiento por WhatsApp al cliente"
                   >
                     <MessageCircle size={14} />
                     <span>Avisar</span>
+                  </button>
+
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleCopyTrackingLink(ot)}
+                    title="Copiar enlace de seguimiento en vivo para el cliente"
+                  >
+                    {copiedOtId === ot.id ? <Check size={14} color="#4ade80" /> : <Compass size={14} color="var(--brand-cyan)" />}
+                    <span>{copiedOtId === ot.id ? '¡Copiado!' : 'Rastreo'}</span>
                   </button>
 
                   {ot.estado === 'Listo para Entrega' && onGenerarCuentaCobro && (

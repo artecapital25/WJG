@@ -10,6 +10,8 @@ import { CatalogosManager } from './components/catalogos/CatalogosManager';
 import { ProjectPlanView } from './components/plan/ProjectPlanView';
 import { STLAnalyzer } from './components/stl/STLAnalyzer';
 import { ProductosStockView } from './components/stock/ProductosStockView';
+import { CustomerTrackingView } from './components/tracking/CustomerTrackingView';
+import { FinancialReportView } from './components/reports/FinancialReportView';
 
 import { 
   TabType, 
@@ -33,7 +35,52 @@ import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 
 export const App: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<TabType>('cotizador');
+  const [activeTab, setActiveTab] = useState<TabType>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as TabType;
+      const validTabs: TabType[] = [
+        'cotizador', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
+        'plan', 'stl', 'stock', 'seguimiento', 'finanzas'
+      ];
+      if (tabParam && validTabs.includes(tabParam)) {
+        return tabParam;
+      }
+      if (params.get('ot') || params.get('cot')) {
+        return 'seguimiento';
+      }
+    }
+    return 'cotizador';
+  });
+
+  // Estado PWA (Instalación nativa en navegador / móvil)
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isInstallable, setIsInstallable] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+      setIsInstallable(true);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+    };
+  }, []);
+
+  const handleInstallPwa = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const choice = await deferredPrompt.userChoice;
+      if (choice.outcome === 'accepted') {
+        setIsInstallable(false);
+        setDeferredPrompt(null);
+      }
+    }
+  };
+
   const [stlAppliedData, setStlAppliedData] = useState<{
     altoMm: number;
     anchoMm: number;
@@ -282,6 +329,9 @@ export const App: React.FC = () => {
         tiempo_impresion_min: item.tiempo_impresion_min,
         tiempo_armado_min: item.tiempo_armado_min,
         tiempo_pintura_min: item.tiempo_pintura_min,
+        peso_estimado_g: item.peso_estimado_g,
+        resina_id: item.resina_id,
+        inventario_descontado: false,
         resina_nombre: item.resina_nombre,
         maquina_nombre: item.maquina_nombre,
         maquinas_involucradas: item.maquinas_involucradas,
@@ -307,14 +357,65 @@ export const App: React.FC = () => {
     setActiveTab('workflow');
   };
 
-  // Actualizar Estado de OT
+  // Actualizar Estado de OT con Descuento Automático de Inventario
   const handleUpdateEstadoOT = (otId: string, nuevoEstado: EstadoOT) => {
-    const updated = ordenes.map(o => o.id === otId ? { ...o, estado: nuevoEstado } : o);
+    const targetOT = ordenes.find(o => o.id === otId);
+    if (!targetOT) return;
+
+    let discountApplied = false;
+    const etapasDescuento: EstadoOT[] = ['Curado', 'Pintura y Armado', 'Control de Calidad', 'Listo para Entrega'];
+
+    // Si avanza a una etapa de fabricación avanzada y aún no se ha descontado del inventario
+    if (etapasDescuento.includes(nuevoEstado) && !targetOT.inventario_descontado) {
+      const cant = targetOT.cantidad || 1;
+      const gramosARestar = (targetOT.peso_estimado_g || 40) * cant;
+
+      // 1. Descontar resina líquida del catálogo de resinas
+      const updatedResinas = resinas.map(r => {
+        const match = r.id === targetOT.resina_id || 
+                      r.resumen === targetOT.resina_nombre || 
+                      `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
+        if (match) {
+          const nuevoPeso = Math.max(0, Math.round((r.peso_g - gramosARestar) * 10) / 10);
+          return { ...r, peso_g: nuevoPeso };
+        }
+        return r;
+      });
+      setResinas(updatedResinas);
+      StorageService.saveResinas(updatedResinas);
+
+      // 2. Descontar alcohol isopropílico de insumos (aprox 30ml por pieza impresa)
+      const mlAlcohol = 30 * cant;
+      const updatedInsumos = insumos.map(ins => {
+        const nom = ins.nombre.toLowerCase();
+        if (nom.includes('alcohol') || nom.includes('isoprop')) {
+          const nuevaPres = Math.max(0, ins.presentacion - mlAlcohol);
+          return { ...ins, presentacion: nuevaPres };
+        }
+        return ins;
+      });
+      setInsumos(updatedInsumos);
+      StorageService.saveInsumos(updatedInsumos);
+
+      discountApplied = true;
+    }
+
+    const updated = ordenes.map(o => {
+      if (o.id === otId) {
+        return {
+          ...o,
+          estado: nuevoEstado,
+          inventario_descontado: o.inventario_descontado || discountApplied
+        };
+      }
+      return o;
+    });
+
     setOrdenes(updated);
     StorageService.saveOrdenes(updated);
 
-    const targetOT = updated.find(o => o.id === otId);
-    if (targetOT) CloudSyncService.saveOrdenTrabajo(targetOT);
+    const updatedTargetOT = updated.find(o => o.id === otId);
+    if (updatedTargetOT) CloudSyncService.saveOrdenTrabajo(updatedTargetOT);
   };
 
   // Generar Cuenta de Cobro a partir de una OT terminada
@@ -395,6 +496,8 @@ export const App: React.FC = () => {
         onSelectTab={setActiveTab}
         onNewQuoteClick={handleNuevaCotizacion} 
         cloudStatus={cloudSyncStatus}
+        onInstallPwa={handleInstallPwa}
+        isInstallable={isInstallable}
       />
 
       {/* Contenido Principal según Pestaña */}
@@ -512,6 +615,23 @@ export const App: React.FC = () => {
               handleAgregarPieza(pieza);
             }}
             onNavigateToCotizador={() => setActiveTab('cotizador')}
+          />
+        )}
+
+        {activeTab === 'finanzas' && (
+          <FinancialReportView 
+            cotizaciones={cotizaciones}
+            ordenes={ordenes}
+            cuentas={cuentas}
+            resinas={resinas}
+          />
+        )}
+
+        {activeTab === 'seguimiento' && (
+          <CustomerTrackingView 
+            ordenes={ordenes}
+            cotizaciones={cotizaciones}
+            config={config}
           />
         )}
       </main>
