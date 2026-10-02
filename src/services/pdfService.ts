@@ -179,19 +179,21 @@ export function crearDocPDFCotizacion(
     if (item.lista_accesorios && item.lista_accesorios.length > 0) {
       specText += `\n• Herrajes: ${item.lista_accesorios.map(a => `${a.nombre} (x${a.cantidad})`).join(', ')}`;
     }
-    // Procesos especiales / adicionales especificados con claridad para el cliente
+    // Procesos especiales especificados con claridad para el cliente (nunca 'Proceso Adicional' ni 'Proceso Extra')
     const procesosVisibles = (item.maquinas_involucradas || [])
       .filter(m => 
         Boolean(m.mostrar_en_cliente) && 
         m.proceso && 
-        m.proceso.trim().toLowerCase() !== 'proceso adicional' &&
+        m.proceso.trim() !== '' &&
+        !m.proceso.toLowerCase().includes('proceso adicional') &&
+        !m.proceso.toLowerCase().includes('proceso extra') &&
         m.proceso.trim().toLowerCase() !== 'impresión 3d' &&
         m.proceso.trim().toLowerCase() !== 'lavado y curado uv'
       )
       .map(m => m.proceso.trim());
 
     if (procesosVisibles.length > 0) {
-      specText += `\n• Proceso Extra: ${procesosVisibles.join(' • ')}`;
+      specText += `\n• ${procesosVisibles.join(' • ')}`;
     }
 
     if (hasImages) {
@@ -311,17 +313,18 @@ export function crearDocPDFCotizacion(
 
   doc.setFontSize(8);
   doc.setTextColor(100, 116, 139);
-  doc.text(`- Tiempo estimado de fabricación y entrega: ${cotizacion.tiempo_entrega_estimado}`, 15, finalY + 5.5);
-  doc.text('- La orden entra en cola de impresión tras confirmar el 50% de anticipo.', 15, finalY + 10.5);
-  doc.text('- Cotización válida por 15 días a partir de la fecha de emisión.', 15, finalY + 15.5);
+  doc.text('• Tiempo estimado de fabricación y entrega: ' + cotizacion.tiempo_entrega_estimado, 15, finalY + 5.5);
+  doc.text('• La orden entra en cola de impresión tras confirmar el 50% de anticipo.', 15, finalY + 10.5);
+  doc.text('• Cotización válida por 15 días a partir de la fecha de emisión.', 15, finalY + 15.5);
 
-  // Procesar notas personalizadas limpiando guiones repetidos ("- -") y saltos de línea
+  // Procesar notas personalizadas limpiando guiones repetidos ("--", "- -") y saltos de línea
   const notasRaw = cotizacion.notas?.trim() || 'No incluye transporte fuera del perímetro urbano.';
   const lineasNotas = notasRaw
     .split('\n')
     .map(l => l.trim())
-    .filter(Boolean)
+    .map(l => l.replace(/-{2,}/g, '-').replace(/-\s*-+/g, '-'))
     .map(l => l.replace(/^[-•*–—\s]+/, '').trim())
+    .filter(Boolean)
     .filter(l => {
       const lower = l.toLowerCase();
       if (lower.includes('50%') && (lower.includes('anticipo') || lower.includes('contra entrega'))) {
@@ -332,11 +335,11 @@ export function crearDocPDFCotizacion(
 
   let currentNotaY = finalY + 20.5;
   if (lineasNotas.length === 0) {
-    doc.text('- No incluye transporte fuera del perímetro urbano.', 15, currentNotaY);
+    doc.text('• No incluye transporte fuera del perímetro urbano.', 15, currentNotaY);
   } else {
     lineasNotas.forEach(linea => {
       if (currentNotaY < 255) {
-        doc.text(`- ${linea}`, 15, currentNotaY);
+        doc.text(`• ${linea}`, 15, currentNotaY);
         currentNotaY += 4.5;
       }
     });

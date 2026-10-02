@@ -436,11 +436,17 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     const maquinasExtrasValidas = maquinasAdicionales
       .map(item => {
         const maq = maquinas.find(m => m.id === item.maquinaId);
+        const procesoLimpio = item.proceso.trim();
+        const esVisibleCliente = Boolean(item.mostrarEnCliente) && 
+          procesoLimpio !== '' && 
+          !procesoLimpio.toLowerCase().includes('proceso adicional') &&
+          !procesoLimpio.toLowerCase().includes('proceso extra');
+
         return maq ? { 
           maquina: maq, 
-          proceso: item.proceso.trim() || 'Proceso Adicional', 
+          proceso: procesoLimpio || maq.nombre, 
           tiempo_min: Number(item.tiempoMin) || 0,
-          mostrar_en_cliente: Boolean(item.mostrarEnCliente)
+          mostrar_en_cliente: esVisibleCliente
         } : null;
       })
       .filter((item): item is { maquina: Maquina; proceso: string; tiempo_min: number; mostrar_en_cliente: boolean } => item !== null && item.tiempo_min > 0);
@@ -1473,13 +1479,13 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                           <div style={{ fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             {extra.mostrarEnCliente ? (
                               <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                                {(!extra.proceso || extra.proceso.trim() === 'Proceso Adicional' || extra.proceso.trim() === '') 
-                                  ? '⚠️ Especifica un nombre claro (ej: Grabado Láser) para el cliente' 
-                                  : '✓ Se mostrará en PDF y WhatsApp'}
+                                {(!extra.proceso || extra.proceso.trim() === '' || extra.proceso.trim().toLowerCase().includes('adicional')) 
+                                  ? '⚠️ Especifica un nombre descriptivo (ej: Grabado Láser). No saldrá en la factura si queda vacío o genérico.' 
+                                  : '✓ Se mostrará con este nombre en la factura al cliente'}
                               </span>
                             ) : (
                               <span style={{ color: 'var(--text-muted)' }}>
-                                Oculto al cliente (costo interno de taller)
+                                Oculto al cliente (costo interno de taller, no saldrá en factura ni cotización)
                               </span>
                             )}
                           </div>

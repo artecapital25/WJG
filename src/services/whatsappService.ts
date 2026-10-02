@@ -30,25 +30,29 @@ export function generateCotizacionWhatsAppUrl(
         .filter(m => 
           Boolean(m.mostrar_en_cliente) && 
           m.proceso && 
-          m.proceso.trim().toLowerCase() !== 'proceso adicional' &&
+          m.proceso.trim() !== '' &&
+          !m.proceso.toLowerCase().includes('proceso adicional') &&
+          !m.proceso.toLowerCase().includes('proceso extra') &&
           m.proceso.trim().toLowerCase() !== 'impresión 3d' &&
           m.proceso.trim().toLowerCase() !== 'lavado y curado uv'
         )
         .map(m => m.proceso.trim());
-      const txtProcesos = procesosVisibles.length > 0 ? `\n  ⚙️ _Procesos Extra: ${procesosVisibles.join(' • ')}_` : '';
+      const txtProcesos = procesosVisibles.length > 0 ? `\n  ⚙️ _${procesosVisibles.join(' • ')}_` : '';
 
       return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}`;
     })
     .join('\n');
 
-  const notasFormateadas = cotizacion.notas
-    ? cotizacion.notas
-        .split('\n')
-        .map(l => l.trim())
-        .filter(Boolean)
-        .map(l => `- ${l.replace(/^[-•*–—\s]+/, '')}`)
-        .join('\n')
-    : '- No incluye costo de transporte / envío fuera de la cobertura.\n- Fabricación inicia tras confirmación del 50% de anticipo.';
+  const lineasNotas = (cotizacion.notas || 'No incluye transporte fuera del perímetro urbano.')
+    .split('\n')
+    .map(l => l.trim())
+    .map(l => l.replace(/-{2,}/g, '-').replace(/-\s*-+/g, '-'))
+    .map(l => l.replace(/^[-•*–—\s]+/, '').trim())
+    .filter(Boolean);
+
+  const notasFormateadas = lineasNotas.length > 0
+    ? lineasNotas.map(l => `• ${l}`).join('\n')
+    : '• No incluye transporte fuera del perímetro urbano.\n• Fabricación inicia tras confirmación del 50% de anticipo.';
 
   const mensaje = 
 `👋 ¡Hola *${cotizacion.cliente.nombre}*!

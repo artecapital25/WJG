@@ -106,7 +106,15 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
         setVendedorNombre(cotizacionEnEdicion.vendedor);
       }
       setDescuentoPorcentaje(cotizacionEnEdicion.descuento_porcentaje || 0);
-      setNotas(cotizacionEnEdicion.notas || 'No incluye transporte fuera del perímetro urbano.');
+      const rawNotas = cotizacionEnEdicion.notas || 'No incluye transporte fuera del perímetro urbano.';
+      const cleanNotas = rawNotas
+        .replace(/-{2,}/g, '-')
+        .replace(/-\s*-+/g, '-')
+        .split('\n')
+        .map(l => l.replace(/^[-•*–—\s]+/, '').trim())
+        .filter(Boolean)
+        .join('\n');
+      setNotas(cleanNotas || 'No incluye transporte fuera del perímetro urbano.');
       if (cotizacionEnEdicion.estado) {
         setTipoEstado(cotizacionEnEdicion.estado as any);
       }
@@ -186,12 +194,20 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
 
     const nuevosProcesos: MaquinaInvolucrada[] = [
       ...baseProcesos,
-      ...editMaquinasAdicionales.map(m => ({
-        ...m,
-        proceso: m.proceso.trim() || 'Proceso Adicional',
-        tiempo_min: Number(m.tiempo_min) || 0,
-        mostrar_en_cliente: Boolean(m.mostrar_en_cliente)
-      }))
+      ...editMaquinasAdicionales.map(m => {
+        const procLimpio = m.proceso.trim();
+        const esVisible = Boolean(m.mostrar_en_cliente) && 
+          procLimpio !== '' && 
+          !procLimpio.toLowerCase().includes('proceso adicional') &&
+          !procLimpio.toLowerCase().includes('proceso extra');
+
+        return {
+          ...m,
+          proceso: procLimpio || m.maquina_nombre,
+          tiempo_min: Number(m.tiempo_min) || 0,
+          mostrar_en_cliente: esVisible
+        };
+      })
     ];
 
     const updatedPiece: PiezaCotizada = {
@@ -311,9 +327,18 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
       descuento_porcentaje: descuentoPorcentaje,
       total,
       tiempo_entrega_estimado: items[0]?.tiempo_entrega || '(3) Días hábiles',
-      notas: tipoEstado === 'Parcial' 
-        ? `${notas}\n- NOTA: Cotización preliminar. Medidas y resina sujetas a verificación en software 3D.`
-        : notas
+      notas: (() => {
+        const cleanNotas = notas
+          .replace(/-{2,}/g, '-')
+          .replace(/-\s*-+/g, '-')
+          .split('\n')
+          .map(l => l.replace(/^[-•*–—\s]+/, '').trim())
+          .filter(Boolean)
+          .join('\n');
+        return tipoEstado === 'Parcial'
+          ? `${cleanNotas}\nNOTA: Cotización preliminar. Medidas y resina sujetas a verificación en software 3D.`
+          : cleanNotas;
+      })()
     };
 
     onSaveCotizacion(cotizacionFinal);
@@ -1373,13 +1398,13 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                           <div style={{ fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
                             {mExtra.mostrar_en_cliente ? (
                               <span style={{ color: '#38bdf8', fontWeight: 600 }}>
-                                {(!mExtra.proceso || mExtra.proceso.trim() === 'Proceso Adicional' || mExtra.proceso.trim() === '') 
-                                  ? '⚠️ Especifica un nombre claro (ej: Grabado Láser) para el cliente' 
-                                  : '✓ Se mostrará en PDF y WhatsApp'}
+                                {(!mExtra.proceso || mExtra.proceso.trim() === '' || mExtra.proceso.trim().toLowerCase().includes('adicional')) 
+                                  ? '⚠️ Especifica un nombre descriptivo (ej: Grabado Láser). No saldrá en la factura si queda vacío o genérico.' 
+                                  : '✓ Se mostrará con este nombre en la factura al cliente'}
                               </span>
                             ) : (
                               <span style={{ color: 'var(--text-muted)' }}>
-                                Oculto al cliente (costo interno de taller)
+                                Oculto al cliente (costo interno de taller, no saldrá en factura ni cotización)
                               </span>
                             )}
                           </div>

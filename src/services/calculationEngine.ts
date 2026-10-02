@@ -120,15 +120,21 @@ export function calcularPieza3D(
       if (item.maquina && item.tiempo_min > 0) {
         const costo_maq = item.tiempo_min * (item.maquina.costo_minuto || 0);
         costo_energia_adicionales += costo_maq;
+        const procesoSanitizado = (item.proceso || '').trim();
+        const esVisibleCliente = Boolean(item.mostrar_en_cliente) && 
+          procesoSanitizado !== '' && 
+          !procesoSanitizado.toLowerCase().includes('proceso adicional') &&
+          !procesoSanitizado.toLowerCase().includes('proceso extra');
+
         maquinasAdicionalesList.push({
           maquina_id: item.maquina.id,
           maquina_nombre: item.maquina.nombre,
           tipo: item.maquina.tipo,
-          proceso: item.proceso || 'Proceso Adicional',
+          proceso: procesoSanitizado || item.maquina.nombre,
           tiempo_min: item.tiempo_min,
           costo_minuto: item.maquina.costo_minuto,
           costo_energia: Math.round(costo_maq),
-          mostrar_en_cliente: Boolean(item.mostrar_en_cliente)
+          mostrar_en_cliente: esVisibleCliente
         });
       }
     }
@@ -274,8 +280,19 @@ export function calcularPieza3D(
     ? `Empaque: Con empaque (${lista_empaques.map(e => e.nombre).join(', ')})`
     : tiene_empaque ? 'Empaque: Con empaque' : 'Empaque: Sin empaque especial';
 
-  const descMaquinas = maquinas_involucradas.length > 1
-    ? `\nProcesos: ${maquinas_involucradas.map(m => `${m.proceso} (${m.maquina_nombre})`).join(' • ')}`
+  // Procesos visibles para el cliente (nunca 'Proceso Adicional' ni pasos internos de impresión/curado)
+  const procesosCliente = maquinas_involucradas.filter(m => 
+    Boolean(m.mostrar_en_cliente) && 
+    m.proceso && 
+    m.proceso.trim() !== '' &&
+    !m.proceso.toLowerCase().includes('proceso adicional') &&
+    !m.proceso.toLowerCase().includes('proceso extra') &&
+    m.proceso.trim().toLowerCase() !== 'impresión 3d' &&
+    m.proceso.trim().toLowerCase() !== 'lavado y curado uv'
+  );
+
+  const descMaquinas = procesosCliente.length > 0
+    ? `\nServicios Especiales: ${procesosCliente.map(m => m.proceso.trim()).join(' • ')}`
     : '';
 
   const descripcion_tecnica = `${descMedidas} • ${descResina}\n${descPintura} • ${descEmpaque}${descMaquinas}\nTiempo de entrega: ${tiempo_entrega}${esParcial ? '\n[Cotización preliminar sujeta a corte en software]' : ''}`;
