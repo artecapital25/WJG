@@ -54,6 +54,7 @@ interface ItemMaquinaExtraForm {
   maquinaId: string;
   proceso: string;
   tiempoMin: number;
+  mostrarEnCliente?: boolean;
 }
 
 interface ItemEmpaqueForm {
@@ -88,6 +89,8 @@ interface CotizadorFormProps {
     tipoEstructura?: 'solido' | 'ahuecado';
     porcentajeRelleno?: number;
   } | null;
+  piezaEnEdicion?: PiezaCotizada | null;
+  onCancelarEdicionPieza?: () => void;
 }
 
 export const CotizadorForm: React.FC<CotizadorFormProps> = ({
@@ -100,7 +103,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   onAgregarPieza,
   onOpenSTLViewer,
   onNavigateToCatalogos,
-  initialPieceData
+  initialPieceData,
+  piezaEnEdicion,
+  onCancelarEdicionPieza
 }) => {
   // Estado básico
   const [nombreItem, setNombreItem] = useState('Figura Coleccionable');
@@ -160,6 +165,47 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       setEsParcial(false);
     }
   }, [initialPieceData]);
+
+  // Escuchar si se selecciona una pieza para editar en la calculadora completa
+  React.useEffect(() => {
+    if (piezaEnEdicion) {
+      setNombreItem(piezaEnEdicion.nombre_item);
+      setCantidad(piezaEnEdicion.cantidad);
+      setAltoMm(piezaEnEdicion.alto_mm || 60);
+      setAnchoMm(piezaEnEdicion.ancho_mm || 60);
+      setProfundidadMm(piezaEnEdicion.profundidad_mm || 60);
+      if (piezaEnEdicion.resina_id) setResinaId(piezaEnEdicion.resina_id);
+      if (piezaEnEdicion.maquina_id) setMaquinaId(piezaEnEdicion.maquina_id);
+      if (piezaEnEdicion.modo_calculo_resina) setModoCalculoResina(piezaEnEdicion.modo_calculo_resina);
+      if (piezaEnEdicion.gramos_resina_manual) setPesoResinaManualG(piezaEnEdicion.gramos_resina_manual);
+      if (piezaEnEdicion.tipo_estructura) setTipoEstructura(piezaEnEdicion.tipo_estructura);
+      if (piezaEnEdicion.porcentaje_relleno !== undefined) setPorcentajeRelleno(piezaEnEdicion.porcentaje_relleno);
+      if (piezaEnEdicion.imagen_url) {
+        setImagenUrl(piezaEnEdicion.imagen_url);
+        setTipoOrigenImagen('archivo');
+      }
+      setEsParcial(Boolean(piezaEnEdicion.datos_pendientes));
+      if (piezaEnEdicion.notas_pendientes) setNotasPendientes(piezaEnEdicion.notas_pendientes);
+      setVaPintado(Boolean(piezaEnEdicion.va_pintado));
+      setTiempoPinturaMin(piezaEnEdicion.tiempo_pintura_min || 0);
+      setTiempoArmadoMin(piezaEnEdicion.tiempo_armado_min || 0);
+      setTiempoDesarrolloMin(piezaEnEdicion.tiempo_desarrollo_min || 0);
+
+      // Cargar procesos extras si tiene
+      if (piezaEnEdicion.maquinas_involucradas) {
+        const extras: ItemMaquinaExtraForm[] = piezaEnEdicion.maquinas_involucradas
+          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+          .map((m, idx) => ({
+            tempId: `extra-${Date.now()}-${idx}`,
+            maquinaId: m.maquina_id,
+            proceso: m.proceso,
+            tiempoMin: m.tiempo_min,
+            mostrarEnCliente: Boolean(m.mostrar_en_cliente)
+          }));
+        setMaquinasAdicionales(extras);
+      }
+    }
+  }, [piezaEnEdicion]);
   
   // Modo de Cotización Parcial / Pendiente de Slicer
   const [esParcial, setEsParcial] = useState(false);
@@ -296,8 +342,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       {
         tempId: `maq-extra-${Date.now()}`,
         maquinaId: defaultExtra?.id || '',
-        proceso: 'Proceso Adicional',
-        tiempoMin: 15
+        proceso: '',
+        tiempoMin: 15,
+        mostrarEnCliente: false
       }
     ]);
   };
@@ -306,7 +353,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     setMaquinasAdicionales(prev => prev.filter(m => m.tempId !== tempId));
   };
 
-  const handleUpdateMaquinaAdicional = (tempId: string, field: 'maquinaId' | 'proceso' | 'tiempoMin', val: any) => {
+  const handleUpdateMaquinaAdicional = (tempId: string, field: 'maquinaId' | 'proceso' | 'tiempoMin' | 'mostrarEnCliente', val: any) => {
     setMaquinasAdicionales(prev => prev.map(m => m.tempId === tempId ? { ...m, [field]: val } : m));
   };
 
@@ -389,9 +436,14 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     const maquinasExtrasValidas = maquinasAdicionales
       .map(item => {
         const maq = maquinas.find(m => m.id === item.maquinaId);
-        return maq ? { maquina: maq, proceso: item.proceso, tiempo_min: Number(item.tiempoMin) || 0 } : null;
+        return maq ? { 
+          maquina: maq, 
+          proceso: item.proceso.trim() || 'Proceso Adicional', 
+          tiempo_min: Number(item.tiempoMin) || 0,
+          mostrar_en_cliente: Boolean(item.mostrarEnCliente)
+        } : null;
       })
-      .filter((item): item is { maquina: Maquina; proceso: string; tiempo_min: number } => item !== null && item.tiempo_min > 0);
+      .filter((item): item is { maquina: Maquina; proceso: string; tiempo_min: number; mostrar_en_cliente: boolean } => item !== null && item.tiempo_min > 0);
 
     const enlacesValidos = enlacesCompra
       .filter(l => l.url.trim() || l.titulo.trim())
@@ -491,7 +543,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!calculoEnVivo) return;
-    onAgregarPieza(calculoEnVivo);
+    const piezaFinal: PiezaCotizada = piezaEnEdicion
+      ? { ...calculoEnVivo, id: piezaEnEdicion.id }
+      : calculoEnVivo;
+    onAgregarPieza(piezaFinal);
     setImagenUrl('');
     setTipoOrigenImagen(null);
     setPrecioFijadoTarifa(false);
@@ -511,6 +566,44 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
 
   return (
     <div className="glass-card highlight">
+      {/* Banner de Edición de Ítem si viene de CotizacionBuilder */}
+      {piezaEnEdicion && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.22), rgba(217, 119, 6, 0.12))',
+          border: '1px solid rgba(245, 158, 11, 0.65)',
+          borderRadius: '10px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          gap: '12px',
+          flexWrap: 'wrap'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <span style={{ fontSize: '1.25rem' }}>✏️</span>
+            <div>
+              <div style={{ fontWeight: 800, color: '#f59e0b', fontSize: '0.94rem' }}>
+                Modo Edición en Calculadora: {piezaEnEdicion.nombre_item}
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Modifica medidas, resina o procesos en el calculador. Al presionar <strong>"Guardar Cambios en este Ítem"</strong>, se actualizará en la cotización.
+              </div>
+            </div>
+          </div>
+          {onCancelarEdicionPieza && (
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm" 
+              onClick={onCancelarEdicionPieza}
+              style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}
+            >
+              Cancelar Edición
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="section-header">
         <div>
           <h2 className="section-title">
@@ -1343,6 +1436,54 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                             <Trash2 size={13} />
                           </button>
                         </div>
+
+                        {/* Selector de visibilidad en factura/cliente */}
+                        <div style={{
+                          gridColumn: '1 / -1',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: extra.mostrarEnCliente ? 'rgba(56, 189, 248, 0.08)' : 'rgba(0, 0, 0, 0.25)',
+                          border: extra.mostrarEnCliente ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          marginTop: '4px',
+                          flexWrap: 'wrap',
+                          gap: '6px'
+                        }}>
+                          <label style={{
+                            fontSize: '0.74rem',
+                            color: extra.mostrarEnCliente ? '#38bdf8' : 'var(--text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            margin: 0,
+                            fontWeight: extra.mostrarEnCliente ? 700 : 500
+                          }}>
+                            <input 
+                              type="checkbox"
+                              checked={Boolean(extra.mostrarEnCliente)}
+                              onChange={e => handleUpdateMaquinaAdicional(extra.tempId, 'mostrarEnCliente', e.target.checked)}
+                              style={{ cursor: 'pointer', accentColor: 'var(--brand-cyan)' }}
+                            />
+                            <span>👁️ Mostrar este proceso en la factura / cotización al cliente</span>
+                          </label>
+
+                          <div style={{ fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {extra.mostrarEnCliente ? (
+                              <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                                {(!extra.proceso || extra.proceso.trim() === 'Proceso Adicional' || extra.proceso.trim() === '') 
+                                  ? '⚠️ Especifica un nombre claro (ej: Grabado Láser) para el cliente' 
+                                  : '✓ Se mostrará en PDF y WhatsApp'}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Oculto al cliente (costo interno de taller)
+                              </span>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     );
                   })}
@@ -2151,11 +2292,18 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           </div>
         )}
 
-        {/* Botón de Agregar */}
+        {/* Botón de Agregar / Actualizar */}
         <div style={{ marginTop: '20px' }}>
-          <button type="submit" className="btn btn-primary" style={{ width: '100%' }}>
+          <button 
+            type="submit" 
+            className="btn btn-primary" 
+            style={{ 
+              width: '100%',
+              ...(piezaEnEdicion ? { background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderColor: '#f59e0b', color: '#000', fontWeight: 800 } : {})
+            }}
+          >
             <PlusCircle size={18} />
-            <span>Agregar Pieza a la Cotización</span>
+            <span>{piezaEnEdicion ? 'Guardar Cambios en este Ítem' : 'Agregar Pieza a la Cotización'}</span>
           </button>
         </div>
       </form>

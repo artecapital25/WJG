@@ -119,20 +119,21 @@ export const ProjectPlanView: React.FC = () => {
     },
     {
       id: 5,
-      nombre: "Fase 5: Despliegue en la Nube & Puesta en Vivo",
+      nombre: "Fase 5: Edición Integral de Facturas, Procesos & Puesta en Vivo",
       tagline: "PUNTO ACTUAL DEL PROYECTO 📍",
       estado: "en_curso",
-      progreso: 75,
-      descripcion: "Etapa en la que nos encontramos hoy: activar la base de datos de producción en Supabase y lanzar la URL pública en Vercel.",
+      progreso: 85,
+      descripcion: "Etapa en la que nos encontramos hoy: perfeccionamiento de la edición de pedidos/facturas, claridad comercial de procesos adicionales, eliminación de inconsistencias en el PDF y despliegue a producción en Supabase y Vercel.",
       entregables: [
+        { titulo: "Edición Completa de Ítems en Facturas/Cotizaciones", completado: true, detalle: "Modificación de nombre, cantidad, precio, medidas exactas X/Y/Z, tipo de resina, acabados y apertura directa en calculadora 3D." },
+        { titulo: "Control de Visibilidad de Procesos Adicionales", completado: true, detalle: "Interruptor para decidir si un proceso extra aparece en la factura del cliente (con nombre comercial claro) o queda como costo interno de taller." },
+        { titulo: "Limpieza Tipográfica de Notas & Transporte", completado: true, detalle: "Eliminación del doble guión (- - No incluye transporte) y formateo de condiciones comerciales en PDF y WhatsApp." },
         { titulo: "Ejecución de Script SQL en Supabase", completado: false, detalle: "Copiar supabase_schema.sql en el SQL Editor de Supabase y presionar RUN." },
-        { titulo: "Conexión a Vercel", completado: false, detalle: "Importar artecapital25/WJG en Vercel y colocar las variables de entorno." },
-        { titulo: "Prueba de Sincronización Realtime", completado: true, detalle: "Módulo cloudSyncService.ts programado para escuchar cambios en vivo." },
-        { titulo: "Validación de Acceso Móvil", completado: true, detalle: "Diseño responsivo optimizado para usar en teléfonos de taller." }
+        { titulo: "Conexión a Vercel con Variables de Entorno", completado: false, detalle: "Importar artecapital25/WJG en Vercel y colocar las variables de entorno." }
       ],
       puntosClave: [
-        "Solo resta ejecutar el SQL en el panel de Supabase y presionar Deploy en Vercel.",
-        "Una vez desplegado, el taller podrá cotizar desde cualquier computador o celular."
+        "Las facturas y presupuestos son 100% editables y transparentes para el cliente.",
+        "Solo resta conectar las credenciales en la nube para persistencia multi-dispositivo."
       ]
     },
     {
@@ -271,6 +272,61 @@ export const ProjectPlanView: React.FC = () => {
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                   Importa <code>artecapital25/WJG</code>, ingresa las 2 variables de entorno (URL y Key de Supabase) y dale a <strong>Deploy</strong>.
                 </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Diagnóstico de Puntos Críticos y Puntos en que estábamos fallando */}
+        <div style={{ 
+          marginTop: '16px', 
+          padding: '16px', 
+          background: 'rgba(15, 23, 42, 0.75)', 
+          borderRadius: '10px',
+          border: '1px solid rgba(245, 158, 11, 0.35)'
+        }}>
+          <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#fbbf24', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <AlertTriangle size={16} />
+            <span>DIAGNÓSTICO DEL TALLER: ¿EN QUÉ ESTÁBAMOS FALLANDO Y QUÉ SE RESOLVIÓ HOY?</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '10px' }}>
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #4ade80' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#4ade80', marginBottom: '4px' }}>
+                ✓ Edición Completa de Ítems en Facturas
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                <strong>Antes:</strong> Solo se permitía cambiar nombre y precio; no se podían cambiar medidas, resina ni procesos.<br />
+                <strong>Ahora:</strong> Se pueden editar dimensiones físicas Z/X/Y, tipo de resina, pintura, empaque y maquinaria de cada producto, o cargarlo en la calculadora 3D.
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #4ade80' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#4ade80', marginBottom: '4px' }}>
+                ✓ Claridad y Control en Procesos Adicionales
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                <strong>Antes:</strong> Aparecía "Proceso Adicional" o pasos de taller en el PDF generando dudas al cliente.<br />
+                <strong>Ahora:</strong> Por defecto quedan ocultos al cliente como costo interno. Si se decide mostrarlos, se exige especificar el nombre claro (ej: Grabado Láser).
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #4ade80' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#4ade80', marginBottom: '4px' }}>
+                ✓ Eliminación del Doble Guión en Transporte
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                <strong>Antes:</strong> La nota comercial se imprimía con <code>- - No incluye transporte</code> por duplicación de guiones.<br />
+                <strong>Ahora:</strong> Las notas se limpian automáticamente de viñetas previas y se formatea una sola viñeta limpia.
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(255,255,255,0.03)', padding: '12px', borderRadius: '8px', borderLeft: '3px solid #fbbf24' }}>
+              <div style={{ fontWeight: 700, fontSize: '0.84rem', color: '#fbbf24', marginBottom: '4px' }}>
+                ⏳ Punto Pendiente: Sincronización en la Nube
+              </div>
+              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', lineHeight: 1.4 }}>
+                <strong>Estado:</strong> El código está 100% listo; solo falta ejecutar el script <code>supabase_schema.sql</code> en el panel web de Supabase y enlazar las credenciales en Vercel.
               </div>
             </div>
           </div>

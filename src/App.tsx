@@ -59,6 +59,7 @@ export const App: React.FC = () => {
   const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
   const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(null);
+  const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
   const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
 
@@ -80,11 +81,26 @@ export const App: React.FC = () => {
 
   // Handlers para Piezas en Borrador / Cotización en Edición
   const handleAgregarPieza = (pieza: PiezaCotizada) => {
-    setDraftPieces(prev => [...prev, pieza]);
+    setDraftPieces(prev => {
+      const exists = prev.some(p => p.id === pieza.id);
+      if (exists) {
+        return prev.map(p => p.id === pieza.id ? pieza : p);
+      }
+      return [...prev, pieza];
+    });
+    setPieceToEditInCalculator(null);
+  };
+
+  const handleLoadPieceToCalculator = (pieza: PiezaCotizada) => {
+    setPieceToEditInCalculator(pieza);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleRemoveDraftPiece = (id: string) => {
     setDraftPieces(prev => prev.filter(p => p.id !== id));
+    if (pieceToEditInCalculator?.id === id) {
+      setPieceToEditInCalculator(null);
+    }
   };
 
   const handleUpdateDraftPiece = (updatedPiece: PiezaCotizada) => {
@@ -113,18 +129,21 @@ export const App: React.FC = () => {
   const handleEditarCotizacion = (cot: Cotizacion) => {
     setEditingCotizacion(cot);
     setDraftPieces([...cot.items]);
+    setPieceToEditInCalculator(null);
     setActiveTab('cotizador');
   };
 
   const handleCancelarEdicion = () => {
     setEditingCotizacion(null);
     setDraftPieces([]);
+    setPieceToEditInCalculator(null);
     setActiveTab('cotizaciones');
   };
 
   const handleNuevaCotizacion = () => {
     setEditingCotizacion(null);
     setDraftPieces([]);
+    setPieceToEditInCalculator(null);
     setActiveTab('cotizador');
   };
 
@@ -290,6 +309,8 @@ export const App: React.FC = () => {
               onOpenSTLViewer={() => setActiveTab('stl')}
               onNavigateToCatalogos={() => setActiveTab('catalogos')}
               initialPieceData={stlAppliedData}
+              piezaEnEdicion={pieceToEditInCalculator}
+              onCancelarEdicionPieza={() => setPieceToEditInCalculator(null)}
             />
 
             <CotizacionBuilder 
@@ -298,6 +319,9 @@ export const App: React.FC = () => {
               config={config}
               cotizaciones={cotizaciones}
               cotizacionEnEdicion={editingCotizacion}
+              resinas={resinas}
+              maquinas={maquinas}
+              insumos={insumos}
               onCancelarEdicion={handleCancelarEdicion}
               onRemoveItem={handleRemoveDraftPiece}
               onUpdatePiece={handleUpdateDraftPiece}
@@ -305,6 +329,7 @@ export const App: React.FC = () => {
               onUpdatePieceImage={handleUpdateDraftPieceImage}
               onSaveCotizacion={handleSaveCotizacion}
               onAddCliente={handleAddCliente}
+              onLoadPieceToCalculator={handleLoadPieceToCalculator}
             />
           </div>
         )}

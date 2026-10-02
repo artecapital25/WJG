@@ -95,6 +95,7 @@ export interface MaquinaInvolucrada {
   tiempo_min: number;
   costo_minuto?: number;
   costo_energia?: number;
+  mostrar_en_cliente?: boolean; // Controla si se visualiza en la cotización/factura PDF y WhatsApp para el cliente
 }
 
 export interface EnlaceReferenciaCompra {

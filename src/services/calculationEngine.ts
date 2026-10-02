@@ -16,7 +16,7 @@ export interface ParametrosPiezaInput {
   requiereCompresorPintura?: boolean;
   maquinaPintura?: Maquina;
   tiempoCompresorMin?: number;
-  maquinasAdicionales?: { maquina: Maquina; proceso: string; tiempo_min: number }[];
+  maquinasAdicionales?: { maquina: Maquina; proceso: string; tiempo_min: number; mostrar_en_cliente?: boolean }[];
   enlacesCompra?: EnlaceReferenciaCompra[];
   tiempoDesarrolloMin: number;
   tiempoArmadoMin: number;
@@ -127,7 +127,8 @@ export function calcularPieza3D(
           proceso: item.proceso || 'Proceso Adicional',
           tiempo_min: item.tiempo_min,
           costo_minuto: item.maquina.costo_minuto,
-          costo_energia: Math.round(costo_maq)
+          costo_energia: Math.round(costo_maq),
+          mostrar_en_cliente: Boolean(item.mostrar_en_cliente)
         });
       }
     }

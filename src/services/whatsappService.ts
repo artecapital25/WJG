@@ -25,9 +25,30 @@ export function generateCotizacionWhatsAppUrl(
       const txtEmpaque = item.tiene_empaque 
         ? (item.lista_empaques && item.lista_empaques.length > 0 ? `📦 Empaque: ${item.lista_empaques.map(e => e.nombre).join(', ')}` : '📦 Empaque: Sí')
         : '📦 Empaque: Sin empaque especial';
-      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_`;
+
+      const procesosVisibles = (item.maquinas_involucradas || [])
+        .filter(m => 
+          Boolean(m.mostrar_en_cliente) && 
+          m.proceso && 
+          m.proceso.trim().toLowerCase() !== 'proceso adicional' &&
+          m.proceso.trim().toLowerCase() !== 'impresión 3d' &&
+          m.proceso.trim().toLowerCase() !== 'lavado y curado uv'
+        )
+        .map(m => m.proceso.trim());
+      const txtProcesos = procesosVisibles.length > 0 ? `\n  ⚙️ _Procesos Extra: ${procesosVisibles.join(' • ')}_` : '';
+
+      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}`;
     })
     .join('\n');
+
+  const notasFormateadas = cotizacion.notas
+    ? cotizacion.notas
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(l => `- ${l.replace(/^[-•*–—\s]+/, '')}`)
+        .join('\n')
+    : '- No incluye costo de transporte / envío fuera de la cobertura.\n- Fabricación inicia tras confirmación del 50% de anticipo.';
 
   const mensaje = 
 `👋 ¡Hola *${cotizacion.cliente.nombre}*!
@@ -46,8 +67,8 @@ ${itemsText}
 ${cotizacion.descuento_porcentaje > 0 ? `🏷️ *Descuento:* ${cotizacion.descuento_porcentaje}%\n` : ''}💵 *TOTAL ESTIMADO:* $${cotizacion.total.toLocaleString('es-CO')} COP
 ━━━━━━━━━━━━━━━━━━━━
 ${esParcial ? '\n⚠️ *AVISO:* Cotización preliminar. Los gramos de resina y dimensiones finales se confirmarán al abrir y laminar los modelos 3D en el programa de corte.\n' : ''}
-📝 *Notas:*
-${cotizacion.notas || '- No incluye costo de envío fuera de la cobertura.\n- Fabricación inicia tras confirmación del 50% de anticipo.'}
+📝 *Notas y Condiciones:*
+${notasFormateadas}
 
 📲 *Contacto:* ${config.telefono_contacto} | Instagram: ${config.instagram}
 ¡Quedamos atentos a tus comentarios! ✨🖨️`;

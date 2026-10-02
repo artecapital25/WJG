@@ -14,14 +14,24 @@ import {
   X,
   Edit,
   Save,
-  Minus
+  Minus,
+  Cpu,
+  Layers,
+  Box,
+  AlertTriangle,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
   Cliente, 
   PiezaCotizada, 
   Cotizacion, 
-  ConfiguracionTaller 
+  ConfiguracionTaller,
+  Resina,
+  Maquina,
+  Insumo,
+  MaquinaInvolucrada
 } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
@@ -33,6 +43,9 @@ interface CotizacionBuilderProps {
   config: ConfiguracionTaller;
   cotizaciones?: Cotizacion[];
   cotizacionEnEdicion?: Cotizacion | null;
+  resinas?: Resina[];
+  maquinas?: Maquina[];
+  insumos?: Insumo[];
   onCancelarEdicion?: () => void;
   onRemoveItem: (id: string) => void;
   onUpdatePiece?: (item: PiezaCotizada) => void;
@@ -40,6 +53,7 @@ interface CotizacionBuilderProps {
   onUpdatePieceImage?: (id: string, imagenUrl: string) => void;
   onSaveCotizacion: (cotizacion: Cotizacion) => void;
   onAddCliente: (cliente: Cliente) => void;
+  onLoadPieceToCalculator?: (item: PiezaCotizada) => void;
 }
 
 export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
@@ -48,26 +62,39 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   config,
   cotizaciones = [],
   cotizacionEnEdicion,
+  resinas = [],
+  maquinas = [],
+  insumos = [],
   onCancelarEdicion,
   onRemoveItem,
   onUpdatePiece,
   onUpdatePieceQuantity,
   onUpdatePieceImage,
   onSaveCotizacion,
-  onAddCliente
+  onAddCliente,
+  onLoadPieceToCalculator
 }) => {
   const [clienteId, setClienteId] = useState<string>(clientes[0]?.id || '');
   const [vendedorNombre, setVendedorNombre] = useState('Wendy');
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState(0);
-  const [notas, setNotas] = useState('- No incluye transporte\n- Pago 50% anticipo y 50% contra entrega');
+  const [notas, setNotas] = useState('No incluye transporte fuera del perímetro urbano.');
   const [showNewClientModal, setShowNewClientModal] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
-  // Modal para editar pieza/ítem individual
+  // Modal para editar pieza/ítem individual con todos sus parámetros
   const [piezaEditando, setPiezaEditando] = useState<PiezaCotizada | null>(null);
   const [editNombre, setEditNombre] = useState('');
   const [editCantidad, setEditCantidad] = useState(1);
   const [editPrecioUnitario, setEditPrecioUnitario] = useState(0);
+  const [editAltoMm, setEditAltoMm] = useState(60);
+  const [editAnchoMm, setEditAnchoMm] = useState(60);
+  const [editProfundidadMm, setEditProfundidadMm] = useState(60);
+  const [editResinaId, setEditResinaId] = useState('');
+  const [editVaPintado, setEditVaPintado] = useState(false);
+  const [editTieneEmpaque, setEditTieneEmpaque] = useState(false);
+  const [editDatosPendientes, setEditDatosPendientes] = useState(false);
+  const [editDescripcionTecnica, setEditDescripcionTecnica] = useState('');
+  const [editMaquinasAdicionales, setEditMaquinasAdicionales] = useState<MaquinaInvolucrada[]>([]);
 
   // Precargar datos si viene una cotización en edición
   useEffect(() => {
@@ -79,12 +106,115 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
         setVendedorNombre(cotizacionEnEdicion.vendedor);
       }
       setDescuentoPorcentaje(cotizacionEnEdicion.descuento_porcentaje || 0);
-      setNotas(cotizacionEnEdicion.notas || '');
+      setNotas(cotizacionEnEdicion.notas || 'No incluye transporte fuera del perímetro urbano.');
       if (cotizacionEnEdicion.estado) {
         setTipoEstado(cotizacionEnEdicion.estado as any);
       }
     }
   }, [cotizacionEnEdicion]);
+
+  // Handlers para edición exhaustiva de piezas/ítems
+  const handleOpenEditPiece = (item: PiezaCotizada) => {
+    setPiezaEditando(item);
+    setEditNombre(item.nombre_item);
+    setEditCantidad(item.cantidad);
+    setEditPrecioUnitario(item.precio_unitario);
+    setEditAltoMm(item.alto_mm || 0);
+    setEditAnchoMm(item.ancho_mm || 0);
+    setEditProfundidadMm(item.profundidad_mm || 0);
+    setEditResinaId(item.resina_id || resinas[0]?.id || '');
+    setEditVaPintado(Boolean(item.va_pintado));
+    setEditTieneEmpaque(Boolean(item.tiene_empaque));
+    setEditDatosPendientes(Boolean(item.datos_pendientes));
+    setEditDescripcionTecnica(item.descripcion_tecnica || '');
+
+    const extras = (item.maquinas_involucradas || [])
+      .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+      .map(m => ({ ...m }));
+    setEditMaquinasAdicionales(extras);
+  };
+
+  const handleAddModalExtraProcess = () => {
+    const defaultExtraMaq = maquinas.find(m => m.tipo !== 'Impresora 3D Resina') || maquinas[0];
+    setEditMaquinasAdicionales(prev => [
+      ...prev,
+      {
+        maquina_id: defaultExtraMaq?.id || 'maq-extra',
+        maquina_nombre: defaultExtraMaq?.nombre || 'Máquina de Taller',
+        tipo: defaultExtraMaq?.tipo || 'Extra',
+        proceso: '',
+        tiempo_min: 15,
+        mostrar_en_cliente: false
+      }
+    ]);
+  };
+
+  const handleUpdateModalExtraProcess = (index: number, field: keyof MaquinaInvolucrada, value: any) => {
+    setEditMaquinasAdicionales(prev => prev.map((m, i) => {
+      if (i === index) {
+        if (field === 'maquina_id') {
+          const maq = maquinas.find(item => item.id === value);
+          return {
+            ...m,
+            maquina_id: value,
+            maquina_nombre: maq?.nombre || m.maquina_nombre,
+            tipo: maq?.tipo || m.tipo
+          };
+        }
+        return { ...m, [field]: value };
+      }
+      return m;
+    }));
+  };
+
+  const handleRemoveModalExtraProcess = (index: number) => {
+    setEditMaquinasAdicionales(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveEditPieceSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!piezaEditando || !onUpdatePiece) return;
+
+    const resinaElegida = resinas.find(r => r.id === editResinaId);
+    const nuevaCant = Math.max(1, editCantidad);
+    const nuevoUnit = Math.max(0, editPrecioUnitario);
+    const nuevoTot = Math.ceil((nuevoUnit * nuevaCant) / 100) * 100;
+
+    // Preservar procesos base (Impresión y Curado) y combinar con los procesos adicionales editados
+    const baseProcesos = (piezaEditando.maquinas_involucradas || [])
+      .filter(m => m.proceso === 'Impresión 3D' || m.proceso === 'Lavado y Curado UV');
+
+    const nuevosProcesos: MaquinaInvolucrada[] = [
+      ...baseProcesos,
+      ...editMaquinasAdicionales.map(m => ({
+        ...m,
+        proceso: m.proceso.trim() || 'Proceso Adicional',
+        tiempo_min: Number(m.tiempo_min) || 0,
+        mostrar_en_cliente: Boolean(m.mostrar_en_cliente)
+      }))
+    ];
+
+    const updatedPiece: PiezaCotizada = {
+      ...piezaEditando,
+      nombre_item: editNombre.trim() || piezaEditando.nombre_item,
+      cantidad: nuevaCant,
+      precio_unitario: nuevoUnit,
+      precio_total: nuevoTot,
+      alto_mm: Number(editAltoMm) || 0,
+      ancho_mm: Number(editAnchoMm) || 0,
+      profundidad_mm: Number(editProfundidadMm) || 0,
+      datos_pendientes: editDatosPendientes,
+      resina_id: editResinaId || piezaEditando.resina_id,
+      resina_nombre: resinaElegida ? (resinaElegida.resumen || `${resinaElegida.marca} ${resinaElegida.tipo}`) : piezaEditando.resina_nombre,
+      va_pintado: editVaPintado,
+      tiene_empaque: editTieneEmpaque,
+      descripcion_tecnica: editDescripcionTecnica,
+      maquinas_involucradas: nuevosProcesos
+    };
+
+    onUpdatePiece(updatedPiece);
+    setPiezaEditando(null);
+  };
 
   const handleItemImageUpload = async (itemId: string, file: File) => {
     if (!onUpdatePieceImage) return;
@@ -522,16 +652,12 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                   <button
                     type="button"
                     className="btn btn-secondary btn-sm"
-                    style={{ padding: '5px 8px', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.35)' }}
-                    onClick={() => {
-                      setPiezaEditando(item);
-                      setEditNombre(item.nombre_item);
-                      setEditCantidad(item.cantidad);
-                      setEditPrecioUnitario(item.precio_unitario);
-                    }}
-                    title="Editar nombre, cantidad o precio unitario"
+                    style={{ padding: '5px 8px', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.35)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                    onClick={() => handleOpenEditPiece(item)}
+                    title="Editar cada detalle del ítem (medidas, material, procesos, acabados y precio)"
                   >
                     <Edit size={13} />
+                    <span style={{ fontSize: '0.72rem' }}>Editar</span>
                   </button>
                 )}
 
@@ -850,93 +976,441 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
         </div>
       )}
 
-      {/* Modal para editar ítem de cotización */}
+      {/* Modal para editar ítem de cotización exhaustivo */}
       {piezaEditando && (
         <div className="modal-overlay" onClick={() => setPiezaEditando(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Edit size={16} color="#fbbf24" />
-                <span>Modificar Pieza / Ítem</span>
-              </h3>
+          <div 
+            className="modal-content" 
+            onClick={e => e.stopPropagation()} 
+            style={{ maxWidth: '580px', maxHeight: '92vh', overflowY: 'auto', padding: '22px' }}
+          >
+            {/* Header del Modal */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px', margin: 0, color: '#fff' }}>
+                  <Edit size={18} color="#fbbf24" />
+                  <span>Modificar Ítem del Pedido</span>
+                </h3>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  Edita cada parámetro del producto: dimensiones, material, acabados, procesos y precios.
+                </div>
+              </div>
               <button 
                 type="button" 
                 className="btn btn-secondary btn-sm"
                 onClick={() => setPiezaEditando(null)}
-                style={{ padding: '3px 6px' }}
+                style={{ padding: '4px 8px' }}
               >
-                <X size={14} />
+                <X size={15} />
               </button>
             </div>
 
-            <form onSubmit={(e) => {
-              e.preventDefault();
-              if (!piezaEditando || !onUpdatePiece) return;
-              const nuevaCant = Math.max(1, editCantidad);
-              const nuevoUnit = Math.max(0, editPrecioUnitario);
-              const nuevoTot = Math.ceil((nuevoUnit * nuevaCant) / 100) * 100;
-              onUpdatePiece({
-                ...piezaEditando,
-                nombre_item: editNombre.trim() || piezaEditando.nombre_item,
-                cantidad: nuevaCant,
-                precio_unitario: nuevoUnit,
-                precio_total: nuevoTot
-              });
-              setPiezaEditando(null);
-            }}>
-              <div className="form-group">
-                <label className="form-label">Nombre o Descripción del Ítem</label>
+            {/* Acceso Rápido a la Calculadora 3D Completa si está disponible */}
+            {onLoadPieceToCalculator && (
+              <div style={{
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                marginBottom: '16px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                gap: '8px',
+                flexWrap: 'wrap'
+              }}>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  ¿Deseas recalcular con gramos de Slicer, ahuecado o tarifas?
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-cyan btn-sm"
+                  style={{ fontSize: '0.78rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  onClick={() => {
+                    onLoadPieceToCalculator(piezaEditando);
+                    setPiezaEditando(null);
+                  }}
+                  title="Cargar esta pieza en el calculador 3D superior"
+                >
+                  <Cpu size={14} />
+                  <span>Abrir en Calculadora 3D</span>
+                </button>
+              </div>
+            )}
+
+            <form onSubmit={handleSaveEditPieceSubmit}>
+              {/* 1. Nombre o Título del Ítem */}
+              <div className="form-group" style={{ marginBottom: '12px' }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>Nombre o Título de la Pieza *</label>
                 <input 
                   type="text" 
                   className="form-input" 
                   value={editNombre}
                   onChange={e => setEditNombre(e.target.value)}
-                  placeholder="Ej: Prototipo Carcasa"
+                  placeholder="Ej: Busto Ironman Escala 1:6"
                   required
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              {/* 2. Cantidad y Precio */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
                 <div className="form-group">
-                  <label className="form-label">Cantidad</label>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Cantidad</label>
                   <input 
                     type="number" 
                     min="1"
                     className="form-input" 
                     value={editCantidad}
-                    onChange={e => setEditCantidad(parseInt(e.target.value, 10) || 1)}
+                    onChange={e => setEditCantidad(Math.max(1, parseInt(e.target.value, 10) || 1))}
                     required
                   />
                 </div>
 
                 <div className="form-group">
-                  <label className="form-label">Precio Unitario (COP)</label>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Precio Unitario (COP) *</label>
                   <input 
                     type="number" 
                     min="0"
                     step="500"
                     className="form-input" 
                     value={editPrecioUnitario}
-                    onChange={e => setEditPrecioUnitario(parseFloat(e.target.value) || 0)}
+                    onChange={e => setEditPrecioUnitario(Math.max(0, parseFloat(e.target.value) || 0))}
                     required
                   />
                 </div>
               </div>
 
-              <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', margin: '14px 0', fontSize: '0.85rem' }}>
+              {/* Cálculo en vivo de total */}
+              <div style={{
+                background: 'rgba(0,0,0,0.3)',
+                border: '1px solid var(--border-subtle)',
+                padding: '10px 14px',
+                borderRadius: '8px',
+                marginBottom: '14px',
+                fontSize: '0.84rem'
+              }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
-                  <span>Cálculo:</span>
-                  <span>{editCantidad} x ${editPrecioUnitario.toLocaleString('es-CO')}</span>
+                  <span>Subtotal del producto:</span>
+                  <span>{editCantidad} unid. × ${editPrecioUnitario.toLocaleString('es-CO')}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, marginTop: '4px', fontSize: '1rem', color: 'var(--brand-cyan)' }}>
-                  <span>Nuevo Total Ítem:</span>
+                  <span>Total Ítem:</span>
                   <span>${(Math.ceil((editPrecioUnitario * editCantidad) / 100) * 100).toLocaleString('es-CO')} COP</span>
                 </div>
               </div>
 
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                  Guardar Cambios
+              {/* 3. Dimensiones 3D (Ejes Slicer) */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '14px'
+              }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-cyan)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Box size={14} />
+                  <span>Dimensiones Físicas (Estándar Slicer en mm)</span>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                      Z: Alto (↕️ mm)
+                    </label>
+                    <input 
+                      type="number"
+                      min="0"
+                      className="form-input"
+                      style={{ padding: '6px 8px', fontSize: '0.82rem' }}
+                      value={editAltoMm}
+                      onChange={e => setEditAltoMm(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="Alto Z"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                      X: Ancho (↔️ mm)
+                    </label>
+                    <input 
+                      type="number"
+                      min="0"
+                      className="form-input"
+                      style={{ padding: '6px 8px', fontSize: '0.82rem' }}
+                      value={editAnchoMm}
+                      onChange={e => setEditAnchoMm(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="Ancho X"
+                    />
+                  </div>
+
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                      Y: Fondo (↗️ mm)
+                    </label>
+                    <input 
+                      type="number"
+                      min="0"
+                      className="form-input"
+                      style={{ padding: '6px 8px', fontSize: '0.82rem' }}
+                      value={editProfundidadMm}
+                      onChange={e => setEditProfundidadMm(Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="Fondo Y"
+                    />
+                  </div>
+                </div>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#fde047', marginTop: '10px', cursor: 'pointer', margin: '10px 0 0 0' }}>
+                  <input 
+                    type="checkbox"
+                    checked={editDatosPendientes}
+                    onChange={e => setEditDatosPendientes(e.target.checked)}
+                    style={{ accentColor: '#eab308', cursor: 'pointer' }}
+                  />
+                  <span>🟡 Dejar medidas o resina pendientes por confirmar en Slicer (Cotización Parcial)</span>
+                </label>
+              </div>
+
+              {/* 4. Material / Resina */}
+              {resinas && resinas.length > 0 && (
+                <div className="form-group" style={{ marginBottom: '14px' }}>
+                  <label className="form-label" style={{ fontWeight: 600 }}>Material / Resina</label>
+                  <select 
+                    className="form-select"
+                    value={editResinaId}
+                    onChange={e => setEditResinaId(e.target.value)}
+                  >
+                    {resinas.map(r => (
+                      <option key={r.id} value={r.id}>
+                        {r.resumen || `${r.marca} ${r.tipo} ${r.color}`} — ${r.costo_gramo}/g
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {/* 5. Acabados (Pintura y Empaque) */}
+              <div style={{
+                background: 'rgba(255, 255, 255, 0.02)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '14px',
+                display: 'grid',
+                gridTemplateColumns: '1fr 1fr',
+                gap: '12px'
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={editVaPintado}
+                    onChange={e => setEditVaPintado(e.target.checked)}
+                    style={{ accentColor: 'var(--brand-cyan)', cursor: 'pointer' }}
+                  />
+                  <span>🎨 Pintura y Acabado Artístico</span>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', cursor: 'pointer', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={editTieneEmpaque}
+                    onChange={e => setEditTieneEmpaque(e.target.checked)}
+                    style={{ accentColor: 'var(--brand-cyan)', cursor: 'pointer' }}
+                  />
+                  <span>📦 Empaque de Taller</span>
+                </label>
+              </div>
+
+              {/* 6. Procesos Adicionales de Maquinaria */}
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(168, 85, 247, 0.35)',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '14px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#c084fc', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Layers size={15} />
+                    <span>Procesos & Maquinaria Extra ({editMaquinasAdicionales.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.72rem', padding: '4px 8px', color: '#c084fc', borderColor: 'rgba(168, 85, 247, 0.4)' }}
+                    onClick={handleAddModalExtraProcess}
+                  >
+                    + Agregar Proceso
+                  </button>
+                </div>
+
+                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Configura si este ítem lleva procesos adicionales (ej. grabado láser, base FDM, pulido). Puedes decidir si se muestran en la factura al cliente o si quedan como costo interno.
+                </div>
+
+                {editMaquinasAdicionales.length === 0 ? (
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontStyle: 'italic', padding: '6px 0' }}>
+                    No tiene procesos extras asignados (utiliza el flujo estándar de impresión y curado).
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {editMaquinasAdicionales.map((mExtra, idx) => (
+                      <div 
+                        key={idx}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '8px',
+                          padding: '10px',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr)) auto',
+                          gap: '8px',
+                          alignItems: 'center'
+                        }}
+                      >
+                        {/* Selector de máquina */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                            Máquina
+                          </label>
+                          <select 
+                            className="form-select"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                            value={mExtra.maquina_id}
+                            onChange={e => handleUpdateModalExtraProcess(idx, 'maquina_id', e.target.value)}
+                          >
+                            {maquinas.map(maq => (
+                              <option key={maq.id} value={maq.id}>
+                                {maq.nombre} ({maq.tipo})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Nombre del Proceso */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                            Proceso o Función
+                          </label>
+                          <input 
+                            type="text"
+                            list="sugerencias-procesos-modal"
+                            className="form-input"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                            value={mExtra.proceso}
+                            onChange={e => handleUpdateModalExtraProcess(idx, 'proceso', e.target.value)}
+                            placeholder="Ej: Base FDM / Grabado Láser"
+                          />
+                          <datalist id="sugerencias-procesos-modal">
+                            <option value="Impresión Base Filamento (FDM)" />
+                            <option value="Pulido Eléctrico / Dremel" />
+                            <option value="Corte / Grabado Láser" />
+                            <option value="Secado / Curado Térmico" />
+                            <option value="Desgasificado al Vacío" />
+                          </datalist>
+                        </div>
+
+                        {/* Minutos */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
+                            Minutos
+                          </label>
+                          <input 
+                            type="number"
+                            min="0"
+                            className="form-input"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                            value={mExtra.tiempo_min}
+                            onChange={e => handleUpdateModalExtraProcess(idx, 'tiempo_min', Math.max(0, parseInt(e.target.value, 10) || 0))}
+                          />
+                        </div>
+
+                        {/* Botón eliminar */}
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '6px 8px', color: '#f87171' }}
+                            onClick={() => handleRemoveModalExtraProcess(idx)}
+                            title="Eliminar este proceso"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+
+                        {/* Selector de visibilidad en factura/cliente */}
+                        <div style={{
+                          gridColumn: '1 / -1',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          background: mExtra.mostrar_en_cliente ? 'rgba(56, 189, 248, 0.08)' : 'rgba(0, 0, 0, 0.25)',
+                          border: mExtra.mostrar_en_cliente ? '1px solid rgba(56, 189, 248, 0.3)' : '1px solid rgba(255, 255, 255, 0.05)',
+                          borderRadius: '6px',
+                          padding: '6px 10px',
+                          marginTop: '4px',
+                          flexWrap: 'wrap',
+                          gap: '6px'
+                        }}>
+                          <label style={{
+                            fontSize: '0.74rem',
+                            color: mExtra.mostrar_en_cliente ? '#38bdf8' : 'var(--text-muted)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            cursor: 'pointer',
+                            margin: 0,
+                            fontWeight: mExtra.mostrar_en_cliente ? 700 : 500
+                          }}>
+                            <input 
+                              type="checkbox"
+                              checked={Boolean(mExtra.mostrar_en_cliente)}
+                              onChange={e => handleUpdateModalExtraProcess(idx, 'mostrar_en_cliente', e.target.checked)}
+                              style={{ cursor: 'pointer', accentColor: 'var(--brand-cyan)' }}
+                            />
+                            <span>👁️ Mostrar este proceso en la factura / cotización al cliente</span>
+                          </label>
+
+                          <div style={{ fontSize: '0.68rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {mExtra.mostrar_en_cliente ? (
+                              <span style={{ color: '#38bdf8', fontWeight: 600 }}>
+                                {(!mExtra.proceso || mExtra.proceso.trim() === 'Proceso Adicional' || mExtra.proceso.trim() === '') 
+                                  ? '⚠️ Especifica un nombre claro (ej: Grabado Láser) para el cliente' 
+                                  : '✓ Se mostrará en PDF y WhatsApp'}
+                              </span>
+                            ) : (
+                              <span style={{ color: 'var(--text-muted)' }}>
+                                Oculto al cliente (costo interno de taller)
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* 7. Observaciones Técnicas */}
+              <div className="form-group" style={{ marginBottom: '16px' }}>
+                <label className="form-label" style={{ fontWeight: 600 }}>Descripción / Observaciones Técnicas</label>
+                <textarea 
+                  className="form-textarea"
+                  rows={2}
+                  value={editDescripcionTecnica}
+                  onChange={e => setEditDescripcionTecnica(e.target.value)}
+                  placeholder="Detalles sobre relleno, soportes o acabado especial..."
+                />
+              </div>
+
+              {/* Botones de Acción */}
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px', borderTop: '1px solid var(--border-subtle)', paddingTop: '16px' }}>
+                <button 
+                  type="submit" 
+                  className="btn btn-primary" 
+                  style={{ flex: 1, fontWeight: 700 }}
+                >
+                  <Save size={16} />
+                  <span>Guardar Cambios en este Ítem</span>
                 </button>
                 <button 
                   type="button" 
