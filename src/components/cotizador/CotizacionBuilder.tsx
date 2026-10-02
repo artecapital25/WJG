@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   User, 
   Trash2, 
@@ -11,7 +11,10 @@ import {
   Camera,
   Image as ImageIcon,
   Eye,
-  X
+  X,
+  Edit,
+  Save,
+  Minus
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -29,7 +32,11 @@ interface CotizacionBuilderProps {
   clientes: Cliente[];
   config: ConfiguracionTaller;
   cotizaciones?: Cotizacion[];
+  cotizacionEnEdicion?: Cotizacion | null;
+  onCancelarEdicion?: () => void;
   onRemoveItem: (id: string) => void;
+  onUpdatePiece?: (item: PiezaCotizada) => void;
+  onUpdatePieceQuantity?: (id: string, newCantidad: number) => void;
   onUpdatePieceImage?: (id: string, imagenUrl: string) => void;
   onSaveCotizacion: (cotizacion: Cotizacion) => void;
   onAddCliente: (cliente: Cliente) => void;
@@ -40,7 +47,11 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   clientes,
   config,
   cotizaciones = [],
+  cotizacionEnEdicion,
+  onCancelarEdicion,
   onRemoveItem,
+  onUpdatePiece,
+  onUpdatePieceQuantity,
   onUpdatePieceImage,
   onSaveCotizacion,
   onAddCliente
@@ -51,6 +62,29 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const [notas, setNotas] = useState('- No incluye transporte\n- Pago 50% anticipo y 50% contra entrega');
   const [showNewClientModal, setShowNewClientModal] = useState(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+
+  // Modal para editar pieza/ítem individual
+  const [piezaEditando, setPiezaEditando] = useState<PiezaCotizada | null>(null);
+  const [editNombre, setEditNombre] = useState('');
+  const [editCantidad, setEditCantidad] = useState(1);
+  const [editPrecioUnitario, setEditPrecioUnitario] = useState(0);
+
+  // Precargar datos si viene una cotización en edición
+  useEffect(() => {
+    if (cotizacionEnEdicion) {
+      if (cotizacionEnEdicion.cliente?.id) {
+        setClienteId(cotizacionEnEdicion.cliente.id);
+      }
+      if (cotizacionEnEdicion.vendedor) {
+        setVendedorNombre(cotizacionEnEdicion.vendedor);
+      }
+      setDescuentoPorcentaje(cotizacionEnEdicion.descuento_porcentaje || 0);
+      setNotas(cotizacionEnEdicion.notas || '');
+      if (cotizacionEnEdicion.estado) {
+        setTipoEstado(cotizacionEnEdicion.estado as any);
+      }
+    }
+  }, [cotizacionEnEdicion]);
 
   const handleItemImageUpload = async (itemId: string, file: File) => {
     if (!onUpdatePieceImage) return;
@@ -104,6 +138,11 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
     return `${añoDosDigitos}-${(maxNum + 1).toString().padStart(3, '0')}`;
   }, [cotizaciones]);
 
+  const esEdicion = Boolean(cotizacionEnEdicion);
+  const numeroCotFinal = cotizacionEnEdicion ? cotizacionEnEdicion.numero_cot : numeroCotSugerido;
+  const cotizacionIdFinal = cotizacionEnEdicion ? cotizacionEnEdicion.id : `cot-${Date.now()}`;
+  const cotizacionFechaFinal = cotizacionEnEdicion ? cotizacionEnEdicion.fecha : new Date().toISOString().slice(0, 10);
+
   const handleCrearNuevoCliente = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nuevoNombre || !nuevoTelefono) return;
@@ -129,12 +168,12 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const handleFinalizar = (enviarWhatsApp: boolean = false) => {
     if (!clienteSeleccionado || items.length === 0) return;
 
-    const nuevaCotizacion: Cotizacion = {
-      id: `cot-${Date.now()}`,
-      numero_cot: numeroCotSugerido,
+    const cotizacionFinal: Cotizacion = {
+      id: cotizacionIdFinal,
+      numero_cot: numeroCotFinal,
       cliente: clienteSeleccionado,
       vendedor: vendedorNombre,
-      fecha: new Date().toISOString().slice(0, 10),
+      fecha: cotizacionFechaFinal,
       estado: tipoEstado,
       items: [...items],
       subtotal,
@@ -147,7 +186,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
         : notas
     };
 
-    onSaveCotizacion(nuevaCotizacion);
+    onSaveCotizacion(cotizacionFinal);
 
     // Celebración visual
     confetti({
@@ -157,7 +196,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
     });
 
     if (enviarWhatsApp) {
-      const url = generateCotizacionWhatsAppUrl(nuevaCotizacion, config);
+      const url = generateCotizacionWhatsAppUrl(cotizacionFinal, config);
       openWhatsApp(url);
     }
   };
@@ -165,12 +204,12 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const handleDescargarPDF = () => {
     if (!clienteSeleccionado || items.length === 0) return;
     const cotTemp: Cotizacion = {
-      id: `cot-${Date.now()}`,
-      numero_cot: numeroCotSugerido,
+      id: cotizacionIdFinal,
+      numero_cot: numeroCotFinal,
       cliente: clienteSeleccionado,
       vendedor: vendedorNombre,
-      fecha: new Date().toISOString().slice(0, 10),
-      estado: 'Borrador',
+      fecha: cotizacionFechaFinal,
+      estado: cotizacionEnEdicion ? cotizacionEnEdicion.estado : 'Borrador',
       items,
       subtotal,
       iva_porcentaje: 0,
@@ -184,13 +223,13 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
 
   const handleCompartirPDF = () => {
     if (!clienteSeleccionado || items.length === 0) return;
-    const nuevaCotizacion: Cotizacion = {
-      id: `cot-${Date.now()}`,
-      numero_cot: numeroCotSugerido,
+    const cotizacionFinal: Cotizacion = {
+      id: cotizacionIdFinal,
+      numero_cot: numeroCotFinal,
       cliente: clienteSeleccionado,
       vendedor: vendedorNombre,
-      fecha: new Date().toISOString().slice(0, 10),
-      estado: 'Enviada',
+      fecha: cotizacionFechaFinal,
+      estado: cotizacionEnEdicion ? cotizacionEnEdicion.estado : 'Enviada',
       items: [...items],
       subtotal,
       iva_porcentaje: 0,
@@ -199,21 +238,63 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
       tiempo_entrega_estimado: items[0]?.tiempo_entrega || '(3) Días hábiles',
       notas
     };
-    onSaveCotizacion(nuevaCotizacion);
+    onSaveCotizacion(cotizacionFinal);
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
-    compartirPDFWhatsApp(nuevaCotizacion, config);
+    compartirPDFWhatsApp(cotizacionFinal, config);
   };
 
   return (
     <div className="glass-card">
+      {/* Banner de Modo Edición */}
+      {cotizacionEnEdicion && (
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)',
+          border: '1px solid rgba(245, 158, 11, 0.5)',
+          borderRadius: '12px',
+          padding: '14px 18px',
+          marginBottom: '16px',
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <div style={{ background: '#f59e0b', color: '#000', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 'bold' }}>
+              <Edit size={18} />
+            </div>
+            <div>
+              <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.98rem' }}>
+                Modo Edición Activo: Cotización N° {cotizacionEnEdicion.numero_cot}
+              </div>
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                Cliente actual: <strong style={{ color: 'var(--text-main)' }}>{cotizacionEnEdicion.cliente?.nombre}</strong> • Puedes agregar productos nuevos arriba, modificar cantidades o precios aquí abajo.
+              </div>
+            </div>
+          </div>
+          {onCancelarEdicion && (
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm" 
+              onClick={onCancelarEdicion}
+              style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}
+              title="Descartar cambios y salir del modo edición"
+            >
+              <X size={14} />
+              <span>Cancelar Edición</span>
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="section-header">
         <div>
           <h2 className="section-title">
             <Tag size={20} color="var(--brand-cyan)" />
-            Resumen de la Cotización ({items.length} piezas)
+            {esEdicion ? `Editando Cotización N° ${numeroCotFinal}` : `Resumen de la Cotización (${items.length} piezas)`}
           </h2>
-          <span style={{ fontSize: '0.8rem', color: 'var(--brand-cyan)' }}>
-            N° Sugerido: {numeroCotSugerido}
+          <span style={{ fontSize: '0.8rem', color: esEdicion ? '#fbbf24' : 'var(--brand-cyan)', fontWeight: 600 }}>
+            {esEdicion ? `Modificando registro oficial ${numeroCotFinal}` : `N° Sugerido: ${numeroCotSugerido}`}
           </span>
         </div>
       </div>
@@ -385,6 +466,48 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 </div>
               </div>
 
+              {/* Stepper rápido de Cantidad */}
+              <div style={{ display: 'flex', alignItems: 'center', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', border: '1px solid var(--border-subtle)', padding: '2px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: item.cantidad <= 1 ? 'var(--text-muted)' : 'var(--text-main)',
+                    cursor: item.cantidad <= 1 ? 'not-allowed' : 'pointer',
+                    padding: '3px 7px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  disabled={item.cantidad <= 1}
+                  onClick={() => onUpdatePieceQuantity && onUpdatePieceQuantity(item.id, item.cantidad - 1)}
+                  title="Disminuir cantidad"
+                >
+                  <Minus size={12} />
+                </button>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, minWidth: '22px', textAlign: 'center' }}>
+                  {item.cantidad}
+                </span>
+                <button
+                  type="button"
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'var(--text-main)',
+                    cursor: 'pointer',
+                    padding: '3px 7px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                  onClick={() => onUpdatePieceQuantity && onUpdatePieceQuantity(item.id, item.cantidad + 1)}
+                  title="Aumentar cantidad"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+
               <div style={{ textAlign: 'right' }}>
                 <div style={{ fontWeight: 700, color: 'var(--brand-cyan)', fontSize: '0.95rem' }}>
                   ${item.precio_total.toLocaleString('es-CO')}
@@ -395,6 +518,23 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
               </div>
 
               <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+                {onUpdatePiece && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '5px 8px', color: '#fbbf24', borderColor: 'rgba(245, 158, 11, 0.35)' }}
+                    onClick={() => {
+                      setPiezaEditando(item);
+                      setEditNombre(item.nombre_item);
+                      setEditCantidad(item.cantidad);
+                      setEditPrecioUnitario(item.precio_unitario);
+                    }}
+                    title="Editar nombre, cantidad o precio unitario"
+                  >
+                    <Edit size={13} />
+                  </button>
+                )}
+
                 {onUpdatePieceImage && (
                   <label 
                     className="btn btn-secondary btn-sm" 
@@ -524,6 +664,16 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
             <button 
               type="button" 
+              className="btn btn-primary"
+              style={esEdicion ? { background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)', borderColor: '#f59e0b', color: '#000', fontWeight: 700 } : {}}
+              onClick={() => handleFinalizar(false)}
+            >
+              <Save size={16} />
+              <span>{esEdicion ? `Guardar Cambios N° ${numeroCotFinal}` : 'Guardar Cotización Oficial'}</span>
+            </button>
+
+            <button 
+              type="button" 
               className="btn btn-whatsapp" 
               onClick={() => handleFinalizar(true)}
             >
@@ -548,6 +698,18 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
               <FileDown size={16} />
               <span>Descargar PDF</span>
             </button>
+
+            {esEdicion && onCancelarEdicion && (
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={onCancelarEdicion}
+                style={{ borderColor: 'rgba(239, 68, 68, 0.4)', color: '#f87171' }}
+              >
+                <X size={16} />
+                <span>Cancelar Edición</span>
+              </button>
+            )}
           </div>
         </>
       )}
@@ -684,6 +846,107 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 Cerrar
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para editar ítem de cotización */}
+      {piezaEditando && (
+        <div className="modal-overlay" onClick={() => setPiezaEditando(null)}>
+          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '1.05rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Edit size={16} color="#fbbf24" />
+                <span>Modificar Pieza / Ítem</span>
+              </h3>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm"
+                onClick={() => setPiezaEditando(null)}
+                style={{ padding: '3px 6px' }}
+              >
+                <X size={14} />
+              </button>
+            </div>
+
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              if (!piezaEditando || !onUpdatePiece) return;
+              const nuevaCant = Math.max(1, editCantidad);
+              const nuevoUnit = Math.max(0, editPrecioUnitario);
+              const nuevoTot = Math.ceil((nuevoUnit * nuevaCant) / 100) * 100;
+              onUpdatePiece({
+                ...piezaEditando,
+                nombre_item: editNombre.trim() || piezaEditando.nombre_item,
+                cantidad: nuevaCant,
+                precio_unitario: nuevoUnit,
+                precio_total: nuevoTot
+              });
+              setPiezaEditando(null);
+            }}>
+              <div className="form-group">
+                <label className="form-label">Nombre o Descripción del Ítem</label>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  value={editNombre}
+                  onChange={e => setEditNombre(e.target.value)}
+                  placeholder="Ej: Prototipo Carcasa"
+                  required
+                />
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div className="form-group">
+                  <label className="form-label">Cantidad</label>
+                  <input 
+                    type="number" 
+                    min="1"
+                    className="form-input" 
+                    value={editCantidad}
+                    onChange={e => setEditCantidad(parseInt(e.target.value, 10) || 1)}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Precio Unitario (COP)</label>
+                  <input 
+                    type="number" 
+                    min="0"
+                    step="500"
+                    className="form-input" 
+                    value={editPrecioUnitario}
+                    onChange={e => setEditPrecioUnitario(parseFloat(e.target.value) || 0)}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', margin: '14px 0', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--text-muted)' }}>
+                  <span>Cálculo:</span>
+                  <span>{editCantidad} x ${editPrecioUnitario.toLocaleString('es-CO')}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 800, marginTop: '4px', fontSize: '1rem', color: 'var(--brand-cyan)' }}>
+                  <span>Nuevo Total Ítem:</span>
+                  <span>${(Math.ceil((editPrecioUnitario * editCantidad) / 100) * 100).toLocaleString('es-CO')} COP</span>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
+                  Guardar Cambios
+                </button>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary" 
+                  onClick={() => setPiezaEditando(null)}
+                >
+                  Cancelar
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

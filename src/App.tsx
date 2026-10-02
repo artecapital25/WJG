@@ -58,6 +58,7 @@ export const App: React.FC = () => {
   // Estado Transaccional
   const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
+  const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(null);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
   const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
 
@@ -77,7 +78,7 @@ export const App: React.FC = () => {
     setCuentas(StorageService.getCuentas());
   }, []);
 
-  // Handlers para Piezas en Borrador
+  // Handlers para Piezas en Borrador / Cotización en Edición
   const handleAgregarPieza = (pieza: PiezaCotizada) => {
     setDraftPieces(prev => [...prev, pieza]);
   };
@@ -86,16 +87,59 @@ export const App: React.FC = () => {
     setDraftPieces(prev => prev.filter(p => p.id !== id));
   };
 
+  const handleUpdateDraftPiece = (updatedPiece: PiezaCotizada) => {
+    setDraftPieces(prev => prev.map(p => p.id === updatedPiece.id ? updatedPiece : p));
+  };
+
+  const handleUpdateDraftPieceQuantity = (id: string, newCantidad: number) => {
+    if (newCantidad < 1) return;
+    setDraftPieces(prev => prev.map(p => {
+      if (p.id === id) {
+        const precio_total = Math.ceil((p.precio_unitario * newCantidad) / 100) * 100;
+        return {
+          ...p,
+          cantidad: newCantidad,
+          precio_total
+        };
+      }
+      return p;
+    }));
+  };
+
   const handleUpdateDraftPieceImage = (id: string, imagenUrl: string) => {
     setDraftPieces(prev => prev.map(p => p.id === id ? { ...p, imagen_url: imagenUrl } : p));
   };
 
-  // Guardar Cotización
+  const handleEditarCotizacion = (cot: Cotizacion) => {
+    setEditingCotizacion(cot);
+    setDraftPieces([...cot.items]);
+    setActiveTab('cotizador');
+  };
+
+  const handleCancelarEdicion = () => {
+    setEditingCotizacion(null);
+    setDraftPieces([]);
+    setActiveTab('cotizaciones');
+  };
+
+  const handleNuevaCotizacion = () => {
+    setEditingCotizacion(null);
+    setDraftPieces([]);
+    setActiveTab('cotizador');
+  };
+
+  // Guardar Cotización (nueva o modificada)
   const handleSaveCotizacion = (cotizacion: Cotizacion) => {
-    const updated = [cotizacion, ...cotizaciones];
+    let updated: Cotizacion[];
+    if (editingCotizacion && editingCotizacion.id === cotizacion.id) {
+      updated = cotizaciones.map(c => c.id === cotizacion.id ? cotizacion : c);
+    } else {
+      updated = [cotizacion, ...cotizaciones];
+    }
     setCotizaciones(updated);
     StorageService.saveCotizaciones(updated);
     setDraftPieces([]); // Limpiar borrador
+    setEditingCotizacion(null);
     setActiveTab('cotizaciones');
   };
 
@@ -228,7 +272,7 @@ export const App: React.FC = () => {
       <Navbar 
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onNewQuoteClick={() => setActiveTab('cotizador')} 
+        onNewQuoteClick={handleNuevaCotizacion} 
       />
 
       {/* Contenido Principal según Pestaña */}
@@ -253,7 +297,11 @@ export const App: React.FC = () => {
               clientes={clientes}
               config={config}
               cotizaciones={cotizaciones}
+              cotizacionEnEdicion={editingCotizacion}
+              onCancelarEdicion={handleCancelarEdicion}
               onRemoveItem={handleRemoveDraftPiece}
+              onUpdatePiece={handleUpdateDraftPiece}
+              onUpdatePieceQuantity={handleUpdateDraftPieceQuantity}
               onUpdatePieceImage={handleUpdateDraftPieceImage}
               onSaveCotizacion={handleSaveCotizacion}
               onAddCliente={handleAddCliente}
@@ -279,8 +327,9 @@ export const App: React.FC = () => {
               setCotizaciones(u);
               StorageService.saveCotizaciones(u);
             }}
+            onEditarCotizacion={handleEditarCotizacion}
             onAprobarCotizacion={handleAprobarCotizacion}
-            onNuevaCotizacion={() => setActiveTab('cotizador')}
+            onNuevaCotizacion={handleNuevaCotizacion}
           />
         )}
 

@@ -15,7 +15,8 @@ import {
   User,
   Hash,
   Sparkles,
-  Image as ImageIcon
+  Image as ImageIcon,
+  Edit
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller } from '../../types';
@@ -26,6 +27,7 @@ interface CotizacionesListProps {
   cotizaciones: Cotizacion[];
   config: ConfiguracionTaller;
   onUpdateEstado: (cotId: string, nuevoEstado: EstadoCotizacion) => void;
+  onEditarCotizacion?: (cot: Cotizacion) => void;
   onAprobarCotizacion: (cot: Cotizacion) => void;
   onNuevaCotizacion: () => void;
 }
@@ -36,6 +38,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   cotizaciones,
   config,
   onUpdateEstado,
+  onEditarCotizacion,
   onAprobarCotizacion,
   onNuevaCotizacion
 }) => {
@@ -402,6 +405,18 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   <FileDown size={14} />
                   <span>Descargar PDF</span>
                 </button>
+
+                {onEditarCotizacion && (
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => onEditarCotizacion(cot)}
+                    style={{ borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)' }}
+                    title="Modificar esta cotización (corregir datos, agregar piezas o editar valores)"
+                  >
+                    <Edit size={14} />
+                    <span>Modificar</span>
+                  </button>
+                )}
 
                 {cot.estado !== 'Aceptada' && cot.estado !== 'Facturada' && (
                   <button 
