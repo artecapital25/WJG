@@ -45,21 +45,21 @@ export const App: React.FC = () => {
   } | null>(null);
 
   // Datos Maestros
-  const [resinas, setResinas] = useState<Resina[]>([]);
-  const [insumos, setInsumos] = useState<Insumo[]>([]);
-  const [maquinas, setMaquinas] = useState<Maquina[]>([]);
-  const [personal, setPersonal] = useState<Personal[]>([]);
-  const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [proveedores, setProveedores] = useState<Proveedor[]>([]);
-  const [config, setConfig] = useState<ConfiguracionTaller>(StorageService.getConfig());
-  const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>([]);
-  const [productosStock, setProductosStock] = useState<ProductoStock[]>([]);
+  const [resinas, setResinas] = useState<Resina[]>(() => StorageService.getResinas());
+  const [insumos, setInsumos] = useState<Insumo[]>(() => StorageService.getInsumos());
+  const [maquinas, setMaquinas] = useState<Maquina[]>(() => StorageService.getMaquinas());
+  const [personal, setPersonal] = useState<Personal[]>(() => StorageService.getPersonal());
+  const [clientes, setClientes] = useState<Cliente[]>(() => StorageService.getClientes());
+  const [proveedores, setProveedores] = useState<Proveedor[]>(() => StorageService.getProveedores());
+  const [config, setConfig] = useState<ConfiguracionTaller>(() => StorageService.getConfig());
+  const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>(() => StorageService.getTarifasTamanos());
+  const [productosStock, setProductosStock] = useState<ProductoStock[]>(() => StorageService.getProductosStock());
 
   // Estado Transaccional
   const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
-  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>([]);
-  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>([]);
-  const [cuentas, setCuentas] = useState<CuentaCobro[]>([]);
+  const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
+  const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
+  const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
 
   // Cargar datos iniciales
   useEffect(() => {
@@ -131,6 +131,11 @@ export const App: React.FC = () => {
         tiempo_pintura_min: item.tiempo_pintura_min,
         resina_nombre: item.resina_nombre,
         maquina_nombre: item.maquina_nombre,
+        maquinas_involucradas: item.maquinas_involucradas,
+        enlaces_compra: item.enlaces_compra,
+        va_pintado: item.va_pintado,
+        tiene_empaque: item.tiene_empaque,
+        lista_empaques: item.lista_empaques,
         detalles_tecnicos: item.descripcion_tecnica,
         imagen_url: item.imagen_url
       };

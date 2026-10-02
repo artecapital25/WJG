@@ -156,15 +156,31 @@ export function crearDocPDFCotizacion(
     const descMedidas = item.datos_pendientes 
       ? '[Medidas y resina por verificar en Slicer]' 
       : `${item.alto_mm}mm (Z: Alto) x ${item.ancho_mm}mm (X: Ancho) x ${item.profundidad_mm}mm (Y: Fondo)`;
-    let specText = `${item.nombre_item}\n${descMedidas}\n${item.resina_nombre}`;
+
+    const vaPintado = item.va_pintado !== undefined
+      ? item.va_pintado
+      : (item.tiempo_pintura_min > 0 || Boolean(item.lista_pinturas && item.lista_pinturas.length > 0));
+
+    const tieneEmpaque = item.tiene_empaque !== undefined
+      ? item.tiene_empaque
+      : Boolean(item.lista_empaques && item.lista_empaques.length > 0);
+
+    const txtPintura = vaPintado ? 'Sí (Pintado)' : 'No (Color natural de resina)';
+    const txtEmpaque = tieneEmpaque && item.lista_empaques && item.lista_empaques.length > 0
+      ? `Sí (${item.lista_empaques.map(e => e.nombre).join(', ')})`
+      : tieneEmpaque ? 'Sí' : 'No';
+
+    // Unificado en una sola línea clara para material y dimensiones (evita doble espacio confuso)
+    let specText = `${item.nombre_item}\n• Medidas: ${descMedidas} | Material: ${item.resina_nombre}\n• Pintura: ${txtPintura}  |  Empaque: ${txtEmpaque}`;
+
     if (item.precio_fijado_tarifa && item.tarifa_tamano_aplicada) {
-      specText += `\nTarifa Básica Estándar: ${item.tarifa_tamano_aplicada.altura_cm} cm`;
-    }
-    if (item.lista_pinturas && item.lista_pinturas.length > 0) {
-      specText += `\nAcabado: ${item.lista_pinturas.map(p => `${p.nombre} (${p.cantidad_ml}ml)`).join(', ')}`;
+      specText += `\n• Tarifa: Escala básica ${item.tarifa_tamano_aplicada.altura_cm} cm`;
     }
     if (item.lista_accesorios && item.lista_accesorios.length > 0) {
-      specText += `\nHerrajes: ${item.lista_accesorios.map(a => `${a.nombre} (x${a.cantidad})`).join(', ')}`;
+      specText += `\n• Herrajes: ${item.lista_accesorios.map(a => `${a.nombre} (x${a.cantidad})`).join(', ')}`;
+    }
+    if (item.maquinas_involucradas && item.maquinas_involucradas.length > 1) {
+      specText += `\n• Procesos: ${item.maquinas_involucradas.map(m => m.proceso).join(' • ')}`;
     }
 
     if (hasImages) {

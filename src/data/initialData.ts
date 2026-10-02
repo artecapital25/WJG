@@ -571,6 +571,66 @@ export const INSUMOS_INICIALES: Insumo[] = [
     "costo_unitario": 500.0,
     "enlace_compra": "Set De 30 Pinceles Planos Y Redondos Para Pintura Artística | Cuotas sin interés",
     "descripcion": "SET DE PINCELES PLANOS Y EN PUNTA DE 30 UNIDADES A 15000 EL COMBO COMPLETO"
+  },
+  {
+    "id": "ins-empaque-caja-envio",
+    "codigo": 32,
+    "nombre": "Caja Cartón Microcorrugado (Envío Seguro)",
+    "marca": "Genérico",
+    "categoria": "Empaque",
+    "presentacion": 1.0,
+    "costo_total": 2500.0,
+    "costo_unitario": 2500.0,
+    "enlace_compra": "",
+    "descripcion": "Caja resistente para envíos de figuras 3D"
+  },
+  {
+    "id": "ins-empaque-caja-regalo",
+    "codigo": 33,
+    "nombre": "Caja Regalo Premium con Ventana Acetato",
+    "marca": "WJGeeks",
+    "categoria": "Empaque",
+    "presentacion": 1.0,
+    "costo_total": 4500.0,
+    "costo_unitario": 4500.0,
+    "enlace_compra": "",
+    "descripcion": "Caja de lujo con visualización para coleccionistas"
+  },
+  {
+    "id": "ins-empaque-burbuja",
+    "codigo": 34,
+    "nombre": "Bolsa Protectora de Burbuja + Sellado",
+    "marca": "Genérico",
+    "categoria": "Empaque",
+    "presentacion": 1.0,
+    "costo_total": 800.0,
+    "costo_unitario": 800.0,
+    "enlace_compra": "",
+    "descripcion": "Protección antichoque para piezas frágiles"
+  },
+  {
+    "id": "ins-empaque-tubo",
+    "codigo": 35,
+    "nombre": "Empaque Tubo Protector para Miniaturas",
+    "marca": "Genérico",
+    "categoria": "Empaque",
+    "presentacion": 1.0,
+    "costo_total": 3500.0,
+    "costo_unitario": 3500.0,
+    "enlace_compra": "",
+    "descripcion": "Tubo rígido protector para miniaturas de rol y tabletop"
+  },
+  {
+    "id": "ins-empaque-madera",
+    "codigo": 36,
+    "nombre": "Caja de Madera Troquelada Especial",
+    "marca": "WJGeeks",
+    "categoria": "Empaque",
+    "presentacion": 1.0,
+    "costo_total": 12000.0,
+    "costo_unitario": 12000.0,
+    "enlace_compra": "",
+    "descripcion": "Caja en MDF troquelado con grabado para ediciones limitadas"
   }
 ];
 
@@ -597,6 +657,30 @@ export const MAQUINAS_INICIALES: Maquina[] = [
     "tipo": "Aerógrafo / Pintura",
     "consumo_kwh": 0.36,
     "costo_minuto": 5.004,
+    "estado": "Disponible"
+  },
+  {
+    "id": "maq-4",
+    "nombre": "Anycubic Kobra 2 Neo",
+    "tipo": "Impresora 3D Filamento (FDM)",
+    "consumo_kwh": 0.35,
+    "costo_minuto": 4.865,
+    "estado": "Disponible"
+  },
+  {
+    "id": "maq-5",
+    "nombre": "Dremel 4000 / Pulidora",
+    "tipo": "Herramienta Eléctrica",
+    "consumo_kwh": 0.175,
+    "costo_minuto": 2.432,
+    "estado": "Disponible"
+  },
+  {
+    "id": "maq-6",
+    "nombre": "Anycubic Photon Mono X 6Ks",
+    "tipo": "Impresora 3D Resina",
+    "consumo_kwh": 0.55,
+    "costo_minuto": 7.645,
     "estado": "Disponible"
   }
 ];

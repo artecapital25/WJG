@@ -1323,17 +1323,25 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
                   <div className="form-group">
                     <label className="form-label">Tipo de Equipo</label>
-                    <select 
-                      className="form-select"
+                    <input 
+                      type="text" 
+                      list="tipos-maquina-list"
+                      className="form-input"
                       value={itemEnEdicion.tipo}
                       onChange={e => setItemEnEdicion({ ...itemEnEdicion, tipo: e.target.value })}
-                    >
-                      <option value="Impresora 3D Resina">Impresora 3D Resina</option>
-                      <option value="Impresora 3D Filamento (FDM)">Impresora 3D Filamento</option>
-                      <option value="Estación de Curado">Estación de Curado</option>
-                      <option value="Aerógrafo / Pintura">Aerógrafo / Pintura</option>
-                      <option value="Herramienta Eléctrica">Herramienta Eléctrica</option>
-                    </select>
+                      placeholder="Selecciona o escribe el tipo..."
+                      required
+                    />
+                    <datalist id="tipos-maquina-list">
+                      <option value="Impresora 3D Resina" />
+                      <option value="Impresora 3D Filamento (FDM)" />
+                      <option value="Estación de Curado" />
+                      <option value="Aerógrafo / Pintura" />
+                      <option value="Herramienta Eléctrica" />
+                      <option value="Cortadora / Grabadora Láser" />
+                      <option value="Horno / Cámara Térmica" />
+                      <option value="Pulidora / Desbaste" />
+                    </datalist>
                   </div>
                   <div className="form-group">
                     <label className="form-label">Consumo Eléctrico (kW/h)</label>
@@ -1346,6 +1354,18 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       required
                     />
                   </div>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Estado de la Máquina</label>
+                  <select
+                    className="form-select"
+                    value={itemEnEdicion.estado || 'Disponible'}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, estado: e.target.value })}
+                  >
+                    <option value="Disponible">🟢 Disponible para Producción</option>
+                    <option value="En Uso">🟡 En Uso</option>
+                    <option value="Mantenimiento">🔴 En Mantenimiento</option>
+                  </select>
                 </div>
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                   <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Máquina</button>

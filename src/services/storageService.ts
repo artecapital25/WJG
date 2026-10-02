@@ -65,13 +65,39 @@ function saveItem<T>(key: string, val: T): void {
 }
 
 export const StorageService = {
-  getResinas: (): Resina[] => loadItem(STORAGE_KEYS.RESINAS, RESINAS_INICIALES),
+  getResinas: (): Resina[] => {
+    const list = loadItem<Resina[]>(STORAGE_KEYS.RESINAS, RESINAS_INICIALES);
+    return list.map(r => ({
+      ...r,
+      velocidad_impresion_mm_h: r.velocidad_impresion_mm_h || 20.0
+    }));
+  },
   saveResinas: (items: Resina[]) => saveItem(STORAGE_KEYS.RESINAS, items),
 
-  getInsumos: (): Insumo[] => loadItem(STORAGE_KEYS.INSUMOS, INSUMOS_INICIALES),
+  getInsumos: (): Insumo[] => {
+    const loaded = loadItem<Insumo[]>(STORAGE_KEYS.INSUMOS, INSUMOS_INICIALES);
+    const existingIds = new Set(loaded.map(i => i.id));
+    const missing = INSUMOS_INICIALES.filter(i => !existingIds.has(i.id));
+    if (missing.length > 0) {
+      const merged = [...loaded, ...missing];
+      saveItem(STORAGE_KEYS.INSUMOS, merged);
+      return merged;
+    }
+    return loaded;
+  },
   saveInsumos: (items: Insumo[]) => saveItem(STORAGE_KEYS.INSUMOS, items),
 
-  getMaquinas: (): Maquina[] => loadItem(STORAGE_KEYS.MAQUINAS, MAQUINAS_INICIALES),
+  getMaquinas: (): Maquina[] => {
+    const loaded = loadItem<Maquina[]>(STORAGE_KEYS.MAQUINAS, MAQUINAS_INICIALES);
+    const existingIds = new Set(loaded.map(m => m.id));
+    const missing = MAQUINAS_INICIALES.filter(m => !existingIds.has(m.id));
+    if (missing.length > 0) {
+      const merged = [...loaded, ...missing];
+      saveItem(STORAGE_KEYS.MAQUINAS, merged);
+      return merged;
+    }
+    return loaded;
+  },
   saveMaquinas: (items: Maquina[]) => saveItem(STORAGE_KEYS.MAQUINAS, items),
 
   getPersonal: (): Personal[] => loadItem(STORAGE_KEYS.PERSONAL, PERSONAL_INICIAL),

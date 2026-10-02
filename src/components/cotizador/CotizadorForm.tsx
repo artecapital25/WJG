@@ -18,7 +18,11 @@ import {
   Eye,
   Check,
   X,
-  Sparkles
+  Sparkles,
+  ExternalLink,
+  ShoppingCart,
+  Link2,
+  Package
 } from 'lucide-react';
 import { 
   Resina, 
@@ -43,6 +47,25 @@ interface ItemAccesorioForm {
   tempId: string;
   insumoId: string;
   cantidad: number;
+}
+
+interface ItemMaquinaExtraForm {
+  tempId: string;
+  maquinaId: string;
+  proceso: string;
+  tiempoMin: number;
+}
+
+interface ItemEmpaqueForm {
+  tempId: string;
+  insumoId: string;
+  cantidad: number;
+}
+
+interface ItemEnlaceCompraForm {
+  tempId: string;
+  titulo: string;
+  url: string;
 }
 
 interface CotizadorFormProps {
@@ -147,7 +170,31 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   const [pesoResinaManualG, setPesoResinaManualG] = useState<number>(85);
 
   const [resinaId, setResinaId] = useState(resinas[0]?.id || '');
+  
+  // 1. Impresora 3D Principal
   const [maquinaId, setMaquinaId] = useState(maquinas[0]?.id || '');
+  const [tiempoImpresionModo, setTiempoImpresionModo] = useState<'auto' | 'manual'>('auto');
+  const [tiempoImpresionManualMin, setTiempoImpresionManualMin] = useState<number>(120);
+
+  // 2. Lavado y Curado UV (Wash & Cure)
+  const defaultCuradoMaq = maquinas.find(m => m.tipo.toLowerCase().includes('curad')) || maquinas[1] || maquinas[0];
+  const [requiereCurado, setRequiereCurado] = useState(true);
+  const [curadoId, setCuradoId] = useState(defaultCuradoMaq?.id || '');
+  const [tiempoCuradoMin, setTiempoCuradoMin] = useState<number>(10);
+  const [tiempoCuradoPersonalizado, setTiempoCuradoPersonalizado] = useState(false);
+
+  // 3. Pintura & Aerógrafo (Compresor)
+  const defaultCompresor = maquinas.find(m => m.tipo.toLowerCase().includes('aer') || m.nombre.toLowerCase().includes('compresor')) || maquinas[2] || maquinas[0];
+  const [requiereCompresorPintura, setRequiereCompresorPintura] = useState(false);
+  const [compresorId, setCompresorId] = useState(defaultCompresor?.id || '');
+  const [tiempoCompresorMin, setTiempoCompresorMin] = useState<number>(60);
+  const [tiempoCompresorSincronizado, setTiempoCompresorSincronizado] = useState(true);
+
+  // 4. Máquinas y Procesos Adicionales Dinámicos
+  const [maquinasAdicionales, setMaquinasAdicionales] = useState<ItemMaquinaExtraForm[]>([]);
+
+  // 5. Enlaces de Referencia de Compra (Uso Interno del Taller)
+  const [enlacesCompra, setEnlacesCompra] = useState<ItemEnlaceCompraForm[]>([]);
   
   const [tiempoDesarrolloMin, setTiempoDesarrolloMin] = useState(30);
   const [tiempoArmadoMin, setTiempoArmadoMin] = useState(15);
@@ -161,6 +208,12 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   // Lista dinámica de Herrajes / Insumos adicionales
   const [herrajesSeleccionados, setHerrajesSeleccionados] = useState<ItemAccesorioForm[]>([]);
 
+  // Estado de Acabado de Pintura (Pintado Sí / No)
+  const [vaPintado, setVaPintado] = useState(true);
+
+  // Lista dinámica de Empaques de la Pieza
+  const [empaquesSeleccionados, setEmpaquesSeleccionados] = useState<ItemEmpaqueForm[]>([]);
+
   const [costoModeloComprado, setCostoModeloComprado] = useState(0);
   const [margenGanancia, setMargenGanancia] = useState(0.40); // 40%
   const [imagenUrl, setImagenUrl] = useState<string>('');
@@ -171,7 +224,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   // Selecciones activas
   const resinaActual = resinas.find(r => r.id === resinaId) || resinas[0];
   const maquinaActual = maquinas.find(m => m.id === maquinaId) || maquinas[0];
-  const estacionCurado = maquinas.find(m => m.tipo.toLowerCase().includes('curad')) || maquinas[1];
+  const estacionCurado = maquinas.find(m => m.id === curadoId) || defaultCuradoMaq;
+  const maquinaCompresor = maquinas.find(m => m.id === compresorId) || defaultCompresor;
   const insumoCurado = insumos.find(i => i.nombre.toLowerCase().includes('etanol') || i.nombre.toLowerCase().includes('alcohol'));
 
   // Manejo de imagen optimizada
@@ -206,6 +260,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       ...prev,
       { tempId: `p-${Date.now()}`, insumoId: defaultPintura?.id || '', cantidadMl: 20 }
     ]);
+    setRequiereCompresorPintura(true);
   };
 
   const handleRemovePintura = (tempId: string) => {
@@ -233,9 +288,78 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     setHerrajesSeleccionados(prev => prev.map(h => h.tempId === tempId ? { ...h, [field]: val } : h));
   };
 
+  // Handlers para Máquinas y Procesos Adicionales
+  const handleAddMaquinaAdicional = () => {
+    const defaultExtra = maquinas.find(m => m.id !== maquinaId && m.id !== curadoId) || maquinas[0];
+    setMaquinasAdicionales(prev => [
+      ...prev,
+      {
+        tempId: `maq-extra-${Date.now()}`,
+        maquinaId: defaultExtra?.id || '',
+        proceso: 'Proceso Adicional',
+        tiempoMin: 15
+      }
+    ]);
+  };
+
+  const handleRemoveMaquinaAdicional = (tempId: string) => {
+    setMaquinasAdicionales(prev => prev.filter(m => m.tempId !== tempId));
+  };
+
+  const handleUpdateMaquinaAdicional = (tempId: string, field: 'maquinaId' | 'proceso' | 'tiempoMin', val: any) => {
+    setMaquinasAdicionales(prev => prev.map(m => m.tempId === tempId ? { ...m, [field]: val } : m));
+  };
+
+  // Handlers para Enlaces de Referencia de Compra (Uso Interno)
+  const handleAddEnlaceCompra = () => {
+    setEnlacesCompra(prev => [
+      ...prev,
+      {
+        tempId: `link-${Date.now()}`,
+        titulo: '',
+        url: ''
+      }
+    ]);
+  };
+
+  const handleRemoveEnlaceCompra = (tempId: string) => {
+    setEnlacesCompra(prev => prev.filter(l => l.tempId !== tempId));
+  };
+
+  const handleUpdateEnlaceCompra = (tempId: string, field: 'titulo' | 'url', val: string) => {
+    setEnlacesCompra(prev => prev.map(l => l.tempId === tempId ? { ...l, [field]: val } : l));
+  };
+
+  // Handlers para Empaques de la Pieza
+  const handleAddEmpaque = () => {
+    const defaultEmp = insumos.find(i => i.categoria.toLowerCase().includes('empaque')) || insumos[0];
+    setEmpaquesSeleccionados(prev => [
+      ...prev,
+      { tempId: `emp-${Date.now()}`, insumoId: defaultEmp?.id || '', cantidad: 1 }
+    ]);
+  };
+
+  const handleRemoveEmpaque = (tempId: string) => {
+    setEmpaquesSeleccionados(prev => prev.filter(e => e.tempId !== tempId));
+  };
+
+  const handleUpdateEmpaque = (tempId: string, field: 'insumoId' | 'cantidad', val: any) => {
+    setEmpaquesSeleccionados(prev => prev.map(e => e.tempId === tempId ? { ...e, [field]: val } : e));
+  };
+
   // Listas de insumos por categoría
   const insumosPintura = insumos.filter(i => i.categoria.toLowerCase().includes('pintura'));
-  const insumosOtros = insumos.filter(i => !i.categoria.toLowerCase().includes('pintura') && !i.categoria.toLowerCase().includes('quimic'));
+  const insumosEmpaque = insumos.filter(i => 
+    i.categoria.toLowerCase().includes('empaque') || 
+    i.nombre.toLowerCase().includes('caja') || 
+    i.nombre.toLowerCase().includes('bolsa') || 
+    i.nombre.toLowerCase().includes('tubo')
+  );
+  const insumosOtros = insumos.filter(i => 
+    !i.categoria.toLowerCase().includes('pintura') && 
+    !i.categoria.toLowerCase().includes('quimic') &&
+    !i.categoria.toLowerCase().includes('empaque')
+  );
 
   // Cálculo en Vivo
   const calculoEnVivo = useMemo(() => {
@@ -255,6 +379,27 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       })
       .filter((h): h is { insumo: Insumo; cantidad: number } => h !== null && h.cantidad > 0);
 
+    const empaquesValidos = empaquesSeleccionados
+      .map(e => {
+        const ins = insumos.find(i => i.id === e.insumoId);
+        return ins ? { insumo: ins, cantidad: Number(e.cantidad) || 0 } : null;
+      })
+      .filter((e): e is { insumo: Insumo; cantidad: number } => e !== null && e.cantidad > 0);
+
+    const maquinasExtrasValidas = maquinasAdicionales
+      .map(item => {
+        const maq = maquinas.find(m => m.id === item.maquinaId);
+        return maq ? { maquina: maq, proceso: item.proceso, tiempo_min: Number(item.tiempoMin) || 0 } : null;
+      })
+      .filter((item): item is { maquina: Maquina; proceso: string; tiempo_min: number } => item !== null && item.tiempo_min > 0);
+
+    const enlacesValidos = enlacesCompra
+      .filter(l => l.url.trim() || l.titulo.trim())
+      .map(l => ({
+        titulo: l.titulo.trim() || 'Producto / Insumo',
+        url: l.url.trim()
+      }));
+
     const input: ParametrosPiezaInput = {
       nombre_item: nombreItem,
       cantidad,
@@ -263,13 +408,23 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       profundidad_mm: Number(profundidadMm) || 1,
       resina: resinaActual,
       impresora: maquinaActual,
+      tiempoImpresionManualMin: tiempoImpresionModo === 'manual' ? Number(tiempoImpresionManualMin) : undefined,
+      requiereCurado,
       estacionCurado,
+      tiempoCuradoMin: tiempoCuradoPersonalizado ? Number(tiempoCuradoMin) : undefined,
       insumoCurado,
+      requiereCompresorPintura: vaPintado ? requiereCompresorPintura : false,
+      maquinaPintura: maquinaCompresor,
+      tiempoCompresorMin: tiempoCompresorSincronizado ? Number(tiempoPinturaMin) : Number(tiempoCompresorMin) || 0,
+      maquinasAdicionales: maquinasExtrasValidas,
+      enlacesCompra: enlacesValidos,
       tiempoDesarrolloMin: Number(tiempoDesarrolloMin) || 0,
       tiempoArmadoMin: Number(tiempoArmadoMin) || 0,
-      tiempoPinturaMin: Number(tiempoPinturaMin) || 0,
-      pinturas: pinturasValidas,
+      tiempoPinturaMin: vaPintado ? Number(tiempoPinturaMin) || 0 : 0,
+      pinturas: vaPintado ? pinturasValidas : [],
       accesorios: accesoriosValidos,
+      empaques: empaquesValidos,
+      vaPintadoManual: vaPintado,
       costoModeloComprado: Number(costoModeloComprado) || 0,
       margenGanancia: Number(margenGanancia) || 0.40,
       imagen_url: imagenUrl,
@@ -299,19 +454,35 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     pesoResinaManualG,
     resinaActual,
     maquinaActual,
+    tiempoImpresionModo,
+    tiempoImpresionManualMin,
+    requiereCurado,
+    curadoId,
     estacionCurado,
+    tiempoCuradoMin,
+    tiempoCuradoPersonalizado,
     insumoCurado,
+    requiereCompresorPintura,
+    compresorId,
+    maquinaCompresor,
+    tiempoCompresorMin,
+    tiempoCompresorSincronizado,
+    maquinasAdicionales,
+    enlacesCompra,
     tiempoDesarrolloMin,
     tiempoArmadoMin,
     tiempoPinturaMin,
+    vaPintado,
     pinturasSeleccionadas,
     herrajesSeleccionados,
+    empaquesSeleccionados,
     costoModeloComprado,
     margenGanancia,
     imagenUrl,
     personal,
     config,
     insumos,
+    maquinas,
     precioFijadoTarifa,
     precioUnitarioManual,
     tarifaAplicada
@@ -326,7 +497,17 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     setPrecioFijadoTarifa(false);
     setTarifaAplicada(null);
     setPrecioUnitarioManual(0);
+    setEnlacesCompra([]);
+    setEmpaquesSeleccionados([]);
   };
+
+  if (resinas.length === 0 || maquinas.length === 0) {
+    return (
+      <div className="glass-card highlight" style={{ padding: '30px', textAlign: 'center' }}>
+        <p style={{ color: 'var(--text-muted)' }}>Cargando catálogo del taller...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card highlight">
@@ -786,30 +967,419 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
           )}
         </div>
 
-        {/* Impresora 3D y Tiempos de Fabricación */}
-        <div className="form-group">
-          <label className="form-label">
-            <Wrench size={14} style={{ display: 'inline', marginRight: '4px' }} />
-            Impresora 3D Asignada
-          </label>
-          <select 
-            className="form-select"
-            value={maquinaId}
-            onChange={e => setMaquinaId(e.target.value)}
-          >
-            {maquinas.map(m => (
-              <option key={m.id} value={m.id}>
-                {m.nombre} ({m.tipo}) - Costo: ${m.costo_minuto.toFixed(3)}/min
-              </option>
-            ))}
-          </select>
+        {/* ============================================================== */}
+        {/* PARQUE DE MAQUINARIA & PROCESOS DE TALLER */}
+        {/* ============================================================== */}
+        <div style={{
+          background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.75) 0%, rgba(17, 24, 39, 0.85) 100%)',
+          border: '1px solid rgba(56, 189, 248, 0.25)',
+          borderRadius: '12px',
+          padding: '16px',
+          marginBottom: '16px',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.25)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '28px', height: '28px', borderRadius: '6px', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <Wrench size={16} color="var(--brand-cyan)" />
+                </div>
+                <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                  Procesos y Parque de Maquinaria
+                </h3>
+              </div>
+              <p style={{ margin: '3px 0 0 36px', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Configura los equipos que intervienen en cada etapa del trabajo (impresión, curado, pintura y procesos extras)
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleAddMaquinaAdicional}
+              style={{ fontSize: '0.75rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+              title="Agregar otra máquina o proceso adicional (ej: base FDM, láser, dremel, horno)"
+            >
+              <Plus size={13} color="var(--brand-cyan)" />
+              <span>+ Proceso / Máquina Extra</span>
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            
+            {/* ETAPA 1: IMPRESIÓN 3D PRINCIPAL */}
+            <div style={{
+              background: 'rgba(0, 0, 0, 0.25)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '12px 14px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-cyan)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span>🖨️ Proceso 1: Impresión 3D Principal</span>
+                </span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${tiempoImpresionModo === 'auto' ? 'btn-cyan' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.7rem', padding: '2px 8px', minHeight: 'auto' }}
+                    onClick={() => setTiempoImpresionModo('auto')}
+                  >
+                    ⚡ Auto ({Math.round(calculoEnVivo?.tiempo_impresion_min || 0)} min)
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${tiempoImpresionModo === 'manual' ? 'btn-cyan' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.7rem', padding: '2px 8px', minHeight: 'auto' }}
+                    onClick={() => setTiempoImpresionModo('manual')}
+                  >
+                    ✏️ Manual
+                  </button>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: tiempoImpresionModo === 'manual' ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
+                <div>
+                  <select 
+                    className="form-select"
+                    value={maquinaId}
+                    onChange={e => setMaquinaId(e.target.value)}
+                  >
+                    {maquinas.map(m => (
+                      <option key={m.id} value={m.id}>
+                        {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                {tiempoImpresionModo === 'manual' && (
+                  <div>
+                    <div className="input-with-unit">
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        value={tiempoImpresionManualMin}
+                        onChange={e => setTiempoImpresionManualMin(Math.max(1, parseInt(e.target.value) || 0))}
+                        placeholder="Minutos"
+                      />
+                      <span className="input-unit-badge">min</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+              <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '4px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                <span>
+                  {tiempoImpresionModo === 'auto' 
+                    ? `Calculado según altura Z (${altoMm} mm) y velocidad (${resinaActual?.velocidad_impresion_mm_h || 20} mm/h)` 
+                    : `Tiempo ingresado manualmente: ${Math.floor(tiempoImpresionManualMin / 60)}h ${tiempoImpresionManualMin % 60}m`}
+                </span>
+                <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
+                  Energía Impresora: ${Math.round((calculoEnVivo?.tiempo_impresion_min || 0) * (maquinaActual?.costo_minuto || 6.255)).toLocaleString('es-CO')} COP
+                </span>
+              </div>
+            </div>
+
+            {/* ETAPA 2: LAVADO Y CURADO UV */}
+            <div style={{
+              background: requiereCurado ? 'rgba(0, 0, 0, 0.25)' : 'rgba(0, 0, 0, 0.1)',
+              border: `1px solid ${requiereCurado ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)'}`,
+              borderRadius: '10px',
+              padding: '12px 14px',
+              opacity: requiereCurado ? 1 : 0.65,
+              transition: 'all 0.2s ease'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={requiereCurado}
+                    onChange={e => setRequiereCurado(e.target.checked)}
+                    style={{ accentColor: 'var(--brand-cyan)', width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: requiereCurado ? '#38bdf8' : 'var(--text-muted)' }}>
+                    ☀️ Proceso 2: Lavado Químico & Curado UV (Wash & Cure)
+                  </span>
+                </label>
+
+                {requiereCurado && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.68rem', padding: '2px 7px', minHeight: 'auto' }}
+                    onClick={() => setTiempoCuradoPersonalizado(!tiempoCuradoPersonalizado)}
+                  >
+                    {tiempoCuradoPersonalizado ? '✓ Tiempo Manual' : '⚡ Auto (según peso)'}
+                  </button>
+                )}
+              </div>
+
+              {requiereCurado && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: tiempoCuradoPersonalizado ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
+                    <div>
+                      <select 
+                        className="form-select"
+                        value={curadoId}
+                        onChange={e => setCuradoId(e.target.value)}
+                      >
+                        {maquinas.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {tiempoCuradoPersonalizado && (
+                      <div className="input-with-unit">
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={tiempoCuradoMin}
+                          onChange={e => setTiempoCuradoMin(Math.max(1, parseInt(e.target.value) || 0))}
+                          placeholder="Minutos"
+                        />
+                        <span className="input-unit-badge">min</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '4px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                    <span>
+                      {tiempoCuradoPersonalizado 
+                        ? `${tiempoCuradoMin} minutos de exposición UV`
+                        : `Tiempo auto: ${calculoEnVivo && calculoEnVivo.peso_estimado_g >= 250 ? 15 : calculoEnVivo && calculoEnVivo.peso_estimado_g <= 50 ? 5 : 10} min (según ${calculoEnVivo?.peso_estimado_g || 0}g resina)`}
+                    </span>
+                    <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
+                      Incluye curado eléctrico + lavado con solvente
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ETAPA 3: PINTURA Y ACABADO / AERÓGRAFO */}
+            <div style={{
+              background: requiereCompresorPintura ? 'rgba(0, 0, 0, 0.25)' : 'rgba(0, 0, 0, 0.1)',
+              border: `1px solid ${requiereCompresorPintura ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)'}`,
+              borderRadius: '10px',
+              padding: '12px 14px',
+              opacity: requiereCompresorPintura ? 1 : 0.7,
+              transition: 'all 0.2s ease'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
+                  <input 
+                    type="checkbox"
+                    checked={requiereCompresorPintura}
+                    onChange={e => setRequiereCompresorPintura(e.target.checked)}
+                    style={{ accentColor: 'var(--brand-cyan)', width: '16px', height: '16px', cursor: 'pointer' }}
+                  />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: requiereCompresorPintura ? '#38bdf8' : 'var(--text-muted)' }}>
+                    🎨 Proceso 3: Equipo de Pintura / Compresor de Aerografía
+                  </span>
+                </label>
+
+                {requiereCompresorPintura && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.68rem', padding: '2px 7px', minHeight: 'auto' }}
+                    onClick={() => setTiempoCompresorSincronizado(!tiempoCompresorSincronizado)}
+                  >
+                    {tiempoCompresorSincronizado ? '🔗 Sincronizado con Pintura' : '✏️ Minutos Manuales'}
+                  </button>
+                )}
+              </div>
+
+              {requiereCompresorPintura && (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: !tiempoCompresorSincronizado ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
+                    <div>
+                      <select 
+                        className="form-select"
+                        value={compresorId}
+                        onChange={e => setCompresorId(e.target.value)}
+                      >
+                        {maquinas.map(m => (
+                          <option key={m.id} value={m.id}>
+                            {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {!tiempoCompresorSincronizado && (
+                      <div className="input-with-unit">
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={tiempoCompresorMin}
+                          onChange={e => setTiempoCompresorMin(Math.max(0, parseInt(e.target.value) || 0))}
+                          placeholder="Minutos"
+                        />
+                        <span className="input-unit-badge">min</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '4px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
+                    <span>
+                      {tiempoCompresorSincronizado 
+                        ? `Tiempo sincronizado con mano de obra de pintura: ${tiempoPinturaMin} min` 
+                        : `Tiempo compresor independiente: ${tiempoCompresorMin} min`}
+                    </span>
+                    <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
+                      Energía Compresor: ${Math.round((tiempoCompresorSincronizado ? tiempoPinturaMin : tiempoCompresorMin) * (maquinaCompresor?.costo_minuto || 5.004)).toLocaleString('es-CO')} COP
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* ETAPA 4: MÁQUINAS Y PROCESOS ADICIONALES DINÁMICOS */}
+            {maquinasAdicionales.length > 0 && (
+              <div style={{
+                background: 'rgba(0, 0, 0, 0.3)',
+                border: '1px solid rgba(168, 85, 247, 0.3)',
+                borderRadius: '10px',
+                padding: '12px 14px'
+              }}>
+                <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#c084fc', marginBottom: '8px' }}>
+                  ⚙️ Procesos & Maquinaria Extra ({maquinasAdicionales.length})
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {maquinasAdicionales.map((extra, idx) => {
+                    const extraMaq = maquinas.find(m => m.id === extra.maquinaId) || maquinas[0];
+                    const costoEnergiaExtra = Math.round((extra.tiempoMin || 0) * (extraMaq?.costo_minuto || 0));
+
+                    return (
+                      <div 
+                        key={extra.tempId}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.03)',
+                          border: '1px solid var(--border-subtle)',
+                          borderRadius: '8px',
+                          padding: '10px',
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr)) auto',
+                          gap: '8px',
+                          alignItems: 'center'
+                        }}
+                      >
+                        {/* Selector de máquina */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Máquina #{idx + 1}</label>
+                          <select
+                            className="form-select"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                            value={extra.maquinaId}
+                            onChange={e => handleUpdateMaquinaAdicional(extra.tempId, 'maquinaId', e.target.value)}
+                          >
+                            {maquinas.map(m => (
+                              <option key={m.id} value={m.id}>
+                                {m.nombre} ({m.tipo})
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {/* Nombre del Proceso */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Proceso o Función</label>
+                          <input 
+                            type="text"
+                            list="sugerencias-procesos"
+                            className="form-input"
+                            style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                            value={extra.proceso}
+                            onChange={e => handleUpdateMaquinaAdicional(extra.tempId, 'proceso', e.target.value)}
+                            placeholder="Ej: Base FDM / Pulido / Láser"
+                          />
+                          <datalist id="sugerencias-procesos">
+                            <option value="Impresión Base Filamento (FDM)" />
+                            <option value="Pulido Eléctrico / Dremel" />
+                            <option value="Corte / Grabado Láser" />
+                            <option value="Secado / Curado Térmico" />
+                            <option value="Desgasificado al Vacío" />
+                          </datalist>
+                        </div>
+
+                        {/* Minutos de Uso */}
+                        <div>
+                          <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Minutos</label>
+                          <div className="input-with-unit">
+                            <input 
+                              type="number"
+                              className="form-input"
+                              style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                              value={extra.tiempoMin}
+                              onChange={e => handleUpdateMaquinaAdicional(extra.tempId, 'tiempoMin', Math.max(0, parseInt(e.target.value) || 0))}
+                              placeholder="Min"
+                            />
+                            <span className="input-unit-badge" style={{ fontSize: '0.65rem' }}>m</span>
+                          </div>
+                        </div>
+
+                        {/* Costo en vivo */}
+                        <div style={{ textAlign: 'right', minWidth: '70px' }}>
+                          <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>Energía</span>
+                          <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#c084fc' }}>
+                            ${costoEnergiaExtra.toLocaleString('es-CO')}
+                          </span>
+                        </div>
+
+                        {/* Botón eliminar */}
+                        <div>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '6px 8px', color: '#f87171' }}
+                            onClick={() => handleRemoveMaquinaAdicional(extra.tempId)}
+                            title="Eliminar máquina adicional"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* BANNER INFORMATIVO RESUMEN ENERGÍA */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.2)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              fontSize: '0.75rem',
+              color: 'var(--brand-cyan)',
+              flexWrap: 'wrap',
+              gap: '6px'
+            }}>
+              <span>
+                ⚡ <strong>Energía Eléctrica Consolidada:</strong> ${(calculoEnVivo?.costo_energia || 0).toLocaleString('es-CO')} COP
+              </span>
+              <span style={{ color: 'var(--text-muted)' }}>
+                {calculoEnVivo?.maquinas_involucradas?.length || 1} equipo(s) activo(s): {calculoEnVivo?.maquinas_involucradas?.map(m => m.proceso).join(' • ')}
+              </span>
+            </div>
+
+          </div>
         </div>
 
         {/* Tiempos de Mano de Obra */}
         <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
           <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
             <Clock size={14} color="var(--brand-cyan)" />
-            Tiempos de Fabricación (Minutos)
+            Tiempos de Fabricación y Mano de Obra (Minutos)
           </label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
             <div>
@@ -836,92 +1406,166 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 type="number" 
                 className="form-input" 
                 value={tiempoPinturaMin}
-                onChange={e => setTiempoPinturaMin(Math.max(0, parseInt(e.target.value) || 0))}
+                onChange={e => {
+                  const val = Math.max(0, parseInt(e.target.value) || 0);
+                  setTiempoPinturaMin(val);
+                  if (tiempoCompresorSincronizado) {
+                    setTiempoCompresorMin(val);
+                  }
+                  if (val > 0) {
+                    setRequiereCompresorPintura(true);
+                  }
+                }}
               />
             </div>
           </div>
         </div>
 
-        {/* MÚLTIPLES PINTURAS Y PRIMERS DINÁMICOS */}
-        <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-            <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Palette size={14} color="var(--brand-cyan)" />
-              Pinturas, Primers y Barnices ({pinturasSeleccionadas.length})
-            </label>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-sm"
-              onClick={handleAddPintura}
-            >
-              <Plus size={14} />
-              <span>Agregar Pintura</span>
-            </button>
+        {/* ACABADO DE PINTURA (PINTADO SÍ / NO) & PINTURAS DINÁMICAS */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.2)',
+          padding: '14px',
+          borderRadius: '12px',
+          marginBottom: '16px',
+          border: vaPintado ? '1px solid rgba(168, 85, 247, 0.25)' : '1px solid var(--border-subtle)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <Palette size={16} color={vaPintado ? '#c084fc' : 'var(--text-muted)'} />
+              <span style={{ fontWeight: 700, fontSize: '0.88rem', color: '#fff' }}>
+                Acabado de Pintura de la Pieza
+              </span>
+            </div>
+
+            {/* Toggle Pintado vs Sin Pintar */}
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${vaPintado ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.74rem', padding: '3px 10px', background: vaPintado ? '#9333ea' : undefined }}
+                onClick={() => {
+                  setVaPintado(true);
+                  if (tiempoPinturaMin === 0) setTiempoPinturaMin(60);
+                  if (pinturasSeleccionadas.length === 0) {
+                    const defaultPintura = insumos.find(i => i.categoria.toLowerCase().includes('pintura'));
+                    setPinturasSeleccionadas([{ tempId: `p-${Date.now()}`, insumoId: defaultPintura?.id || '', cantidadMl: 20 }]);
+                  }
+                  setRequiereCompresorPintura(true);
+                }}
+              >
+                🎨 Sí, Pieza Pintada
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${!vaPintado ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ fontSize: '0.74rem', padding: '3px 10px', background: !vaPintado ? '#334155' : undefined }}
+                onClick={() => {
+                  setVaPintado(false);
+                  setTiempoPinturaMin(0);
+                  setPinturasSeleccionadas([]);
+                  setRequiereCompresorPintura(false);
+                }}
+              >
+                ⚪ Sin Pintar (Color Base)
+              </button>
+            </div>
           </div>
 
-          {pinturasSeleccionadas.length === 0 ? (
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin pinturas asignadas a esta pieza.</p>
-          ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {pinturasSeleccionadas.map(p => (
-                <div key={p.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <select 
-                    className="form-select"
-                    value={p.insumoId}
-                    onChange={e => handleUpdatePintura(p.tempId, 'insumoId', e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="">Selecciona pintura / primer...</option>
-                    {insumosPintura.map(ins => (
-                      <option key={ins.id} value={ins.id}>
-                        {ins.nombre} (${ins.costo_unitario}/ml)
-                      </option>
-                    ))}
-                  </select>
-
-                  <div className="input-with-unit" style={{ width: '100px' }}>
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      value={p.cantidadMl}
-                      onChange={e => handleUpdatePintura(p.tempId, 'cantidadMl', parseFloat(e.target.value) || 0)}
-                      placeholder="ml"
-                    />
-                    <span className="input-unit-badge">ml</span>
-                  </div>
-
-                  <button 
-                    type="button"
-                    className="btn btn-danger btn-sm"
-                    onClick={() => handleRemovePintura(p.tempId)}
-                  >
-                    <Trash2 size={14} />
-                  </button>
-                </div>
-              ))}
+          {!vaPintado ? (
+            <div style={{
+              padding: '10px 12px',
+              borderRadius: '8px',
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px dashed rgba(255, 255, 255, 0.1)',
+              fontSize: '0.76rem',
+              color: 'var(--text-muted)'
+            }}>
+              ⚪ <strong>Pieza sin pintura:</strong> Se entregará en el color natural de la resina. En la cotización oficial y en el PDF aparecerá como <em>"Acabado: Sin pintar"</em>.
             </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '8px 0', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                  Pinturas, Primers y Barnices Asignados ({pinturasSeleccionadas.length}):
+                </span>
+                <button 
+                  type="button" 
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleAddPintura}
+                  style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                >
+                  <Plus size={12} />
+                  <span>+ Agregar Pintura</span>
+                </button>
+              </div>
+
+              {pinturasSeleccionadas.length === 0 ? (
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Sin pinturas seleccionadas. Clic en "+ Agregar Pintura" para asignar colores de taller.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {pinturasSeleccionadas.map(p => (
+                    <div key={p.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <select 
+                        className="form-select"
+                        value={p.insumoId}
+                        onChange={e => handleUpdatePintura(p.tempId, 'insumoId', e.target.value)}
+                        style={{ flex: 1 }}
+                      >
+                        <option value="">Selecciona pintura / primer...</option>
+                        {insumosPintura.map(ins => (
+                          <option key={ins.id} value={ins.id}>
+                            {ins.nombre} (${ins.costo_unitario}/ml)
+                          </option>
+                        ))}
+                      </select>
+
+                      <div className="input-with-unit" style={{ width: '100px' }}>
+                        <input 
+                          type="number" 
+                          className="form-input" 
+                          value={p.cantidadMl}
+                          onChange={e => handleUpdatePintura(p.tempId, 'cantidadMl', parseFloat(e.target.value) || 0)}
+                          placeholder="ml"
+                        />
+                        <span className="input-unit-badge">ml</span>
+                      </div>
+
+                      <button 
+                        type="button" 
+                        className="btn btn-danger btn-sm"
+                        onClick={() => handleRemovePintura(p.tempId)}
+                        title="Eliminar pintura"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* MÚLTIPLES HERRAJES, BISUTERÍA Y EMPAQUES DINÁMICOS */}
-        <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+        {/* MÚLTIPLES HERRAJES, BISUTERÍA Y ACCESORIOS DE ENSAMBLE */}
+        <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border-subtle)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
             <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Layers size={14} color="var(--brand-cyan)" />
-              Herrajes, Bisutería & Empaques ({herrajesSeleccionados.length})
+              Herrajes, Bisutería & Ensamble ({herrajesSeleccionados.length})
             </label>
             <button 
               type="button" 
               className="btn btn-secondary btn-sm"
               onClick={handleAddHerraje}
+              style={{ fontSize: '0.74rem', padding: '3px 8px' }}
             >
-              <Plus size={14} />
-              <span>Agregar Herraje / Insumo</span>
+              <Plus size={12} />
+              <span>+ Agregar Herraje</span>
             </button>
           </div>
 
           {herrajesSeleccionados.length === 0 ? (
-            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Sin herrajes ni empaques adicionales.</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Sin herrajes ni accesorios de ensamble adicionales.</p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {herrajesSeleccionados.map(h => (
@@ -932,7 +1576,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                     onChange={e => handleUpdateHerraje(h.tempId, 'insumoId', e.target.value)}
                     style={{ flex: 1 }}
                   >
-                    <option value="">Selecciona herraje / empaque...</option>
+                    <option value="">Selecciona herraje / insumo...</option>
                     {insumosOtros.map(ins => (
                       <option key={ins.id} value={ins.id}>
                         {ins.nombre} (${ins.costo_unitario}/und)
@@ -953,14 +1597,135 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                   </div>
 
                   <button 
-                    type="button"
+                    type="button" 
                     className="btn btn-danger btn-sm"
                     onClick={() => handleRemoveHerraje(h.tempId)}
+                    title="Eliminar herraje"
                   >
-                    <Trash2 size={14} />
+                    <Trash2 size={13} />
                   </button>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* SECCIÓN DEDICADA DE EMPAQUE (DIFERENTES TIPOS DE EMPAQUES) */}
+        <div style={{
+          background: 'rgba(0, 0, 0, 0.2)',
+          padding: '14px',
+          borderRadius: '12px',
+          marginBottom: '16px',
+          border: empaquesSeleccionados.length > 0 ? '1px solid rgba(34, 197, 94, 0.35)' : '1px solid var(--border-subtle)'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{
+                background: 'rgba(34, 197, 94, 0.15)',
+                color: '#4ade80',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.75rem',
+                fontWeight: 600
+              }}>
+                <Package size={14} />
+                <span>Empaque y Presentación ({empaquesSeleccionados.length})</span>
+              </div>
+              <span style={{ fontSize: '0.72rem', color: empaquesSeleccionados.length > 0 ? '#4ade80' : 'var(--text-muted)', fontWeight: 600 }}>
+                {empaquesSeleccionados.length > 0 ? '✓ Con empaque especial' : 'Sin empaque especial'}
+              </span>
+            </div>
+
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm"
+              onClick={handleAddEmpaque}
+              style={{ fontSize: '0.74rem', padding: '3px 8px', display: 'flex', alignItems: 'center', gap: '4px' }}
+            >
+              <Plus size={12} />
+              <span>+ Agregar Empaque</span>
+            </button>
+          </div>
+
+          <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+            Selecciona la caja, bolsa protectora o empaque para esta pieza (caja microcorrugado, regalo con ventana, tubo miniatura, etc.). En la cotización se indicará si incluye empaque.
+          </p>
+
+          {empaquesSeleccionados.length === 0 ? (
+            <div 
+              style={{ 
+                border: '1px dashed rgba(255, 255, 255, 0.12)', 
+                borderRadius: '8px', 
+                padding: '12px', 
+                textAlign: 'center', 
+                color: 'var(--text-subtle)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                background: 'rgba(0, 0, 0, 0.15)'
+              }}
+              onClick={handleAddEmpaque}
+            >
+              <Package size={18} style={{ margin: '0 auto 4px auto', opacity: 0.6 }} />
+              <div>Sin empaque especial asignado (Empaque estándar). Haz clic aquí o en <strong>"+ Agregar Empaque"</strong> para asignar una caja o empaque de presentación.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {empaquesSeleccionados.map(emp => {
+                const insumoEmp = insumos.find(i => i.id === emp.insumoId);
+                const subtotalEmp = (insumoEmp?.costo_unitario || 0) * (emp.cantidad || 1);
+
+                return (
+                  <div key={emp.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select 
+                      className="form-select"
+                      value={emp.insumoId}
+                      onChange={e => handleUpdateEmpaque(emp.tempId, 'insumoId', e.target.value)}
+                      style={{ flex: 1, minWidth: '170px' }}
+                    >
+                      <option value="">Selecciona tipo de empaque...</option>
+                      {insumosEmpaque.map(ins => (
+                        <option key={ins.id} value={ins.id}>
+                          {ins.nombre} (${ins.costo_unitario.toLocaleString('es-CO')}/und)
+                        </option>
+                      ))}
+                      {/* Opciones adicionales de insumos generales si se requiere */}
+                      {insumosOtros.map(ins => (
+                        <option key={ins.id} value={ins.id}>
+                          {ins.nombre} (${ins.costo_unitario.toLocaleString('es-CO')}/und)
+                        </option>
+                      ))}
+                    </select>
+
+                    <div className="input-with-unit" style={{ width: '90px' }}>
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        value={emp.cantidad}
+                        onChange={e => handleUpdateEmpaque(emp.tempId, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
+                        placeholder="Cant"
+                        min="1"
+                      />
+                      <span className="input-unit-badge">und</span>
+                    </div>
+
+                    <div style={{ minWidth: '70px', textAlign: 'right', fontSize: '0.82rem', fontWeight: 700, color: '#4ade80' }}>
+                      ${Math.round(subtotalEmp).toLocaleString('es-CO')}
+                    </div>
+
+                    <button 
+                      type="button" 
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleRemoveEmpaque(emp.tempId)}
+                      title="Eliminar empaque"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -993,6 +1758,139 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
               placeholder="0 COP"
             />
           </div>
+        </div>
+
+        {/* Enlaces de Referencia para Compra de Insumos/Archivos (Estrictamente Interno - NO se muestra al cliente ni en la cotización) */}
+        <div 
+          className="form-group" 
+          style={{ 
+            background: 'rgba(255, 255, 255, 0.02)', 
+            border: '1px solid rgba(245, 158, 11, 0.28)', 
+            borderRadius: '12px', 
+            padding: '14px',
+            marginBottom: '16px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#f59e0b',
+                padding: '4px 8px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.75rem',
+                fontWeight: 600
+              }}>
+                <ShoppingCart size={13} />
+                <span>Links de Referencia / Compra</span>
+              </div>
+              <span style={{
+                fontSize: '0.68rem',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: '#f87171',
+                padding: '2px 7px',
+                borderRadius: '4px',
+                border: '1px solid rgba(239, 68, 68, 0.25)',
+                fontWeight: 600
+              }}>
+                🔒 Uso Interno de Taller (No visible en la cotización)
+              </span>
+            </div>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleAddEnlaceCompra}
+              style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px' }}
+            >
+              <Plus size={13} />
+              <span>+ Agregar Link</span>
+            </button>
+          </div>
+
+          <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+            Registra los enlaces de los productos, archivos STL (Cults3D, CGTrader, Thingiverse, Patreon) o herrajes que debas comprar para esta pieza. Solo el equipo de taller podrá verlos.
+          </p>
+
+          {enlacesCompra.length === 0 ? (
+            <div 
+              style={{ 
+                border: '1px dashed rgba(255, 255, 255, 0.12)', 
+                borderRadius: '8px', 
+                padding: '12px', 
+                textAlign: 'center', 
+                color: 'var(--text-subtle)',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                background: 'rgba(0, 0, 0, 0.15)'
+              }}
+              onClick={handleAddEnlaceCompra}
+            >
+              <Link2 size={18} style={{ margin: '0 auto 4px auto', opacity: 0.6 }} />
+              <div>Sin links de compra registrados. Haz clic aquí o en <strong>"+ Agregar Link"</strong> si necesitas guardar el enlace para comprar el modelo o insumos.</div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              {enlacesCompra.map((enlace, idx) => (
+                <div 
+                  key={enlace.tempId}
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.25)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    display: 'grid',
+                    gridTemplateColumns: 'minmax(130px, 1.2fr) minmax(170px, 2fr) auto auto',
+                    gap: '8px',
+                    alignItems: 'center'
+                  }}
+                >
+                  <input
+                    type="text"
+                    className="form-input"
+                    style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                    placeholder={`Ej: STL Cults3D #${idx + 1} / Tornillo M3`}
+                    value={enlace.titulo}
+                    onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'titulo', e.target.value)}
+                  />
+                  <input
+                    type="url"
+                    className="form-input"
+                    style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                    placeholder="https://cults3d.com/... o url del producto"
+                    value={enlace.url}
+                    onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'url', e.target.value)}
+                  />
+                  {enlace.url ? (
+                    <a
+                      href={enlace.url.startsWith('http') ? enlace.url : `https://${enlace.url}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '6px 8px', color: 'var(--brand-cyan)' }}
+                      title="Abrir enlace en pestaña nueva"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  ) : (
+                    <div style={{ width: '28px' }} />
+                  )}
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ padding: '6px 8px', color: '#f87171' }}
+                    onClick={() => handleRemoveEnlaceCompra(enlace.tempId)}
+                    title="Eliminar link"
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Foto o Render de Referencia de la Pieza */}
@@ -1212,6 +2110,15 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                 <div className="metric-value">
                   {Math.floor(calculoEnVivo.tiempo_impresion_min / 60)}h {calculoEnVivo.tiempo_impresion_min % 60}m
                 </div>
+              </div>
+              <div className="metric-item">
+                <div className="metric-label">Energía Equipos</div>
+                <div className="metric-value" style={{ color: '#38bdf8' }}>
+                  ${calculoEnVivo.costo_energia.toLocaleString('es-CO')}
+                </div>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                  {calculoEnVivo.maquinas_involucradas?.length || 1} equipo(s)
+                </span>
               </div>
               <div className="metric-item">
                 <div className="metric-label">Costo Taller</div>

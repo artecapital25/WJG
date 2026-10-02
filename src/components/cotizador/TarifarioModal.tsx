@@ -114,27 +114,42 @@ ${listText}
         onClick={e => e.stopPropagation()}
         style={{ 
           maxWidth: '750px', 
-          width: '94%', 
-          maxHeight: '90vh', 
+          width: '98%', 
+          maxHeight: 'calc(100vh - 85px)', 
           overflowY: 'auto',
-          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.96) 0%, rgba(15, 23, 42, 0.98) 100%)',
-          border: '1px solid rgba(56, 189, 248, 0.3)',
-          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(56, 189, 248, 0.15)'
+          background: 'linear-gradient(135deg, rgba(17, 24, 39, 0.98) 0%, rgba(15, 23, 42, 0.99) 100%)',
+          border: '1px solid rgba(56, 189, 248, 0.35)',
+          boxShadow: '0 20px 50px rgba(0, 0, 0, 0.7), 0 0 30px rgba(56, 189, 248, 0.15)',
+          padding: '16px'
         }}
       >
-        {/* ENCABEZADO */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '14px', marginBottom: '16px' }}>
+        {/* ENCABEZADO STICKY EN LA PARTE SUPERIOR */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          borderBottom: '1px solid var(--border-subtle)', 
+          paddingBottom: '12px', 
+          marginBottom: '14px',
+          position: 'sticky',
+          top: '-16px',
+          background: 'rgba(17, 24, 39, 0.98)',
+          backdropFilter: 'blur(12px)',
+          zIndex: 30,
+          marginTop: '-4px',
+          paddingTop: '6px'
+        }}>
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-              <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Sparkles size={18} color="var(--brand-cyan)" />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ width: '30px', height: '30px', borderRadius: '8px', background: 'rgba(56, 189, 248, 0.15)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <Sparkles size={16} color="var(--brand-cyan)" />
               </div>
-              <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 700, color: '#fff' }}>
-                Tarifario de Valores Básicos
+              <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 700, color: '#fff' }}>
+                Tarifario Rápido (Valores Básicos)
               </h2>
             </div>
-            <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-              Escala estándar de tamaños y precios por altura para figuras y miniaturas en resina UV.
+            <p style={{ margin: '2px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+              Escala estándar de precios por altura para figuras en resina UV
             </p>
           </div>
 
@@ -142,10 +157,11 @@ ${listText}
             type="button" 
             onClick={onClose}
             className="btn btn-secondary btn-sm"
-            style={{ padding: '6px', minHeight: 'auto', borderRadius: '50%' }}
+            style={{ padding: '6px 10px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '4px' }}
             title="Cerrar modal"
           >
-            <X size={16} />
+            <X size={15} />
+            <span style={{ fontSize: '0.75rem' }}>Cerrar</span>
           </button>
         </div>
 

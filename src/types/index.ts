@@ -87,6 +87,23 @@ export interface ConfiguracionTaller {
   titular_cuenta: string;
 }
 
+export interface MaquinaInvolucrada {
+  maquina_id: string;
+  maquina_nombre: string;
+  tipo: string;
+  proceso: string;
+  tiempo_min: number;
+  costo_minuto?: number;
+  costo_energia?: number;
+}
+
+export interface EnlaceReferenciaCompra {
+  id?: string;
+  titulo: string;
+  url: string;
+  costo_estimado?: number;
+}
+
 export interface PiezaCotizada {
   id: string;
   nombre_item: string;
@@ -123,6 +140,12 @@ export interface PiezaCotizada {
   porcentaje_relleno?: number;
   lista_pinturas?: { nombre: string; cantidad_ml: number; costo: number }[];
   lista_accesorios?: { nombre: string; cantidad: number; costo: number }[];
+  lista_empaques?: { nombre: string; cantidad: number; costo: number }[];
+  tiene_empaque?: boolean;
+  va_pintado?: boolean;
+  costo_empaque?: number;
+  maquinas_involucradas?: MaquinaInvolucrada[];
+  enlaces_compra?: EnlaceReferenciaCompra[];
   datos_pendientes?: boolean;
   notas_pendientes?: string;
   tarifa_tamano_aplicada?: {
@@ -179,6 +202,11 @@ export interface OrdenTrabajo {
   tiempo_pintura_min: number;
   resina_nombre: string;
   maquina_nombre: string;
+  maquinas_involucradas?: MaquinaInvolucrada[];
+  enlaces_compra?: EnlaceReferenciaCompra[];
+  lista_empaques?: { nombre: string; cantidad: number; costo: number }[];
+  tiene_empaque?: boolean;
+  va_pintado?: boolean;
   detalles_tecnicos: string;
   imagen_url?: string;
   observaciones?: string;

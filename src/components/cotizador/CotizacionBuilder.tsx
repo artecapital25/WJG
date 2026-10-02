@@ -355,12 +355,33 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                       🏷️ Tarifa {item.tarifa_tamano_aplicada.altura_cm}cm
                     </span>
                   )}
+                  {item.va_pintado ? (
+                    <span style={{ background: 'rgba(168, 85, 247, 0.18)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                      🎨 Pintado
+                    </span>
+                  ) : (
+                    <span style={{ background: 'rgba(148, 163, 184, 0.12)', color: 'var(--text-muted)', border: '1px solid rgba(148, 163, 184, 0.25)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem' }}>
+                      ⚪ Sin Pintar
+                    </span>
+                  )}
+                  {item.tiene_empaque ? (
+                    <span style={{ background: 'rgba(34, 197, 94, 0.18)', color: '#4ade80', border: '1px solid rgba(34, 197, 94, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                      📦 Con Empaque
+                    </span>
+                  ) : (
+                    <span style={{ background: 'rgba(148, 163, 184, 0.12)', color: 'var(--text-muted)', border: '1px solid rgba(148, 163, 184, 0.25)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem' }}>
+                      📦 Sin Empaque
+                    </span>
+                  )}
                 </div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                   {item.datos_pendientes 
-                    ? `[Medidas y peso pendientes de software] | ${item.resina_nombre}`
-                    : `${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm | ${item.resina_nombre} | ${item.peso_estimado_g}g`
+                    ? `[Medidas y peso pendientes de software] • Material: ${item.resina_nombre}`
+                    : `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Material: ${item.resina_nombre} (${item.peso_estimado_g}g)`
                   }
+                  {item.lista_empaques && item.lista_empaques.length > 0 && (
+                    <span style={{ color: '#4ade80' }}> • Empaque: {item.lista_empaques.map(e => `${e.nombre} (x${e.cantidad})`).join(', ')}</span>
+                  )}
                 </div>
               </div>
 

@@ -20,8 +20,12 @@ export function generateCotizacionWhatsAppUrl(
     .map((item) => {
       const descMedidas = item.datos_pendientes 
         ? `_[Medidas y resina pendientes de confirmar en Slicer]_`
-        : `_${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm en ${item.resina_nombre}_`;
-      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}`;
+        : `_${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Material: ${item.resina_nombre}_`;
+      const txtPintura = item.va_pintado ? '🎨 Pintado: Sí' : '⚪ Pintado: No';
+      const txtEmpaque = item.tiene_empaque 
+        ? (item.lista_empaques && item.lista_empaques.length > 0 ? `📦 Empaque: ${item.lista_empaques.map(e => e.nombre).join(', ')}` : '📦 Empaque: Sí')
+        : '📦 Empaque: Sin empaque especial';
+      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_`;
     })
     .join('\n');
 
