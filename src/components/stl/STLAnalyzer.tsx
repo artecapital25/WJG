@@ -16,9 +16,21 @@ import {
   Camera,
   Download,
   Trash2,
-  Check
+  Check,
+  ShieldCheck,
+  AlertTriangle,
+  Wrench,
+  Eye,
+  EyeOff,
+  HelpCircle
 } from 'lucide-react';
-import { analyzeSTLFile, STLAnalysisResult } from '../../services/stlService';
+import { 
+  analyzeSTLFile, 
+  STLAnalysisResult, 
+  repairMeshGeometry, 
+  exportGeometryToSTL, 
+  MeshHealthReport 
+} from '../../services/stlService';
 import { processAndOptimizeImage, downloadDataUrl } from '../../services/imageService';
 import { Resina } from '../../types';
 
@@ -71,6 +83,18 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
   const [snapshotUrl, setSnapshotUrl] = useState<string | null>(null);
   const [isCapturing, setIsCapturing] = useState<boolean>(false);
 
+  // Salud de Malla y Reparación STL
+  const linesRef = useRef<THREE.LineSegments | null>(null);
+  const [mostrarAristasAbiertas, setMostrarAristasAbiertas] = useState<boolean>(false);
+  const [isRepairing, setIsRepairing] = useState<boolean>(false);
+  const [repairResult, setRepairResult] = useState<{
+    weldedVertices: number;
+    healedHoles: number;
+    initialOpen: number;
+    finalOpen: number;
+  } | null>(null);
+  const [mostrarGuiaReparacion, setMostrarGuiaReparacion] = useState<boolean>(false);
+
   // Color de previsualización
   const [colorModelo, setColorModelo] = useState<string>('#38bdf8'); // Cyan
 
@@ -98,6 +122,8 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
 
     setError(null);
     setLoading(true);
+    setRepairResult(null);
+    setMostrarAristasAbiertas(false);
 
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -106,6 +132,8 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
         const result = analyzeSTLFile(buffer, file.name);
         setAnalysis(result);
         setSnapshotUrl(null);
+        setRepairResult(null);
+        setMostrarAristasAbiertas(result.meshHealth.openEdgesCount > 0);
         setEscalaPorcentaje(100);
         setRotacionX(0);
         setRotacionY(0);
@@ -348,7 +376,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     };
   }, []);
 
-  // Actualizar el modelo cuando cambia la orientación, escala o color
+  // Actualizar el modelo cuando cambia la orientación, escala, color o toggle de aristas abiertas
   useEffect(() => {
     if (!sceneRef.current || !orientacionModel) return;
 
@@ -357,6 +385,13 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
       meshRef.current.geometry.dispose();
       (meshRef.current.material as THREE.Material).dispose();
       meshRef.current = null;
+    }
+
+    if (linesRef.current) {
+      sceneRef.current.remove(linesRef.current);
+      linesRef.current.geometry.dispose();
+      (linesRef.current.material as THREE.Material).dispose();
+      linesRef.current = null;
     }
 
     const material = new THREE.MeshStandardMaterial({
@@ -375,13 +410,88 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
     sceneRef.current.add(mesh);
     meshRef.current = mesh;
 
+    // Si está activada la visualización de aristas/caras abiertas, dibujarlas en rojo fluorescente
+    if (mostrarAristasAbiertas && analysis?.meshHealth?.openEdgePositions && analysis.meshHealth.openEdgePositions.length > 0) {
+      const lineGeom = new THREE.BufferGeometry();
+      const posArray = new Float32Array(analysis.meshHealth.openEdgePositions);
+      lineGeom.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+
+      // Aplicar misma rotación al buffer de aristas
+      const radX = (rotacionX * Math.PI) / 180;
+      const radY = (rotacionY * Math.PI) / 180;
+      const radZ = (rotacionZ * Math.PI) / 180;
+      if (radX !== 0) lineGeom.rotateX(radX);
+      if (radY !== 0) lineGeom.rotateY(radY);
+      if (radZ !== 0) lineGeom.rotateZ(radZ);
+
+      const lineMat = new THREE.LineBasicMaterial({
+        color: 0xff0044, // Rojo Neón Fluorescente
+        linewidth: 2,
+        depthTest: false
+      });
+
+      const lines = new THREE.LineSegments(lineGeom, lineMat);
+      lines.scale.set(factorEscala, factorEscala, factorEscala);
+      lines.position.y = -orientacionModel.minY * factorEscala;
+      lines.renderOrder = 999;
+      sceneRef.current.add(lines);
+      linesRef.current = lines;
+    }
+
     if (controlsRef.current) {
       const currentBox = new THREE.Box3().setFromObject(mesh);
       const center = new THREE.Vector3();
       currentBox.getCenter(center);
       controlsRef.current.target.set(0, center.y, 0);
     }
-  }, [orientacionModel, factorEscala, colorModelo]);
+  }, [orientacionModel, factorEscala, colorModelo, mostrarAristasAbiertas, analysis, rotacionX, rotacionY, rotacionZ]);
+
+  // Handler de Reparación Automática de Malla
+  const handleRepararMalla = () => {
+    if (!analysis) return;
+    setIsRepairing(true);
+
+    // Timeout breve para permitir que el botón muestre estado de carga en la UI
+    setTimeout(() => {
+      try {
+        const initialOpen = analysis.meshHealth.openEdgesCount;
+        const res = repairMeshGeometry(analysis.geometry);
+
+        setAnalysis(prev => {
+          if (!prev) return null;
+          return {
+            ...prev,
+            geometry: res.repairedGeometry,
+            trianglesCount: res.report.totalTriangles,
+            meshHealth: res.report
+          };
+        });
+
+        setRepairResult({
+          weldedVertices: res.weldedVerticesCount,
+          healedHoles: res.healedHolesCount,
+          initialOpen,
+          finalOpen: res.report.openEdgesCount
+        });
+
+        if (res.report.openEdgesCount === 0) {
+          setMostrarAristasAbiertas(false);
+        } else {
+          setMostrarAristasAbiertas(true);
+        }
+      } catch (err: any) {
+        console.error('Error al reparar malla:', err);
+      } finally {
+        setIsRepairing(false);
+      }
+    }, 120);
+  };
+
+  // Handler para Descargar STL Reparado
+  const handleDescargarSTLReparado = () => {
+    if (!analysis) return;
+    exportGeometryToSTL(analysis.geometry, analysis.fileName);
+  };
 
   const handleTomarCaptura = async (): Promise<string | null> => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return null;
@@ -605,6 +715,173 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({ resinas, onApplyToCoti
                 >
                   <Trash2 size={13} />
                 </button>
+              </div>
+            </div>
+          )}
+
+          {/* TARJETA DE SALUD DE MALLA & DETECCIÓN DE CARAS ABIERTAS */}
+          {analysis && (
+            <div style={{
+              marginTop: '12px',
+              padding: '14px',
+              borderRadius: '10px',
+              background: analysis.meshHealth.isWatertight 
+                ? 'rgba(16, 185, 129, 0.08)' 
+                : analysis.meshHealth.status === 'advertencia' 
+                  ? 'rgba(234, 179, 8, 0.08)' 
+                  : 'rgba(239, 68, 68, 0.09)',
+              border: `1px solid ${
+                analysis.meshHealth.isWatertight 
+                  ? 'rgba(16, 185, 129, 0.35)' 
+                  : analysis.meshHealth.status === 'advertencia' 
+                    ? 'rgba(234, 179, 8, 0.35)' 
+                    : 'rgba(239, 68, 68, 0.35)'
+              }`
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {analysis.meshHealth.isWatertight ? (
+                    <ShieldCheck size={18} color="#34d399" />
+                  ) : (
+                    <AlertTriangle size={18} color={analysis.meshHealth.status === 'advertencia' ? '#fbbf24' : '#f87171'} />
+                  )}
+                  <span style={{ fontWeight: 800, fontSize: '0.86rem', color: '#fff' }}>
+                    {analysis.meshHealth.isWatertight 
+                      ? 'Malla Hermética (Watertight / Manifold)' 
+                      : `Atención: ${analysis.meshHealth.openEdgesCount} Aristas/Caras Abiertas`}
+                  </span>
+                </div>
+
+                <span style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  padding: '2px 8px',
+                  borderRadius: '9999px',
+                  background: analysis.meshHealth.isWatertight ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+                  color: analysis.meshHealth.isWatertight ? '#34d399' : '#f87171'
+                }}>
+                  {analysis.meshHealth.isWatertight ? '100% CERRADA' : 'NO HERMÉTICA'}
+                </span>
+              </div>
+
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', margin: '0 0 10px 0', lineHeight: 1.4 }}>
+                {analysis.meshHealth.diagnostico} {analysis.meshHealth.recomendacion}
+              </p>
+
+              {/* Botones de acción: Ver en 3D / Reparar / Descargar */}
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                {analysis.meshHealth.openEdgesCount > 0 && (
+                  <button
+                    type="button"
+                    className={`btn btn-sm ${mostrarAristasAbiertas ? 'btn-danger' : 'btn-secondary'}`}
+                    style={{ fontSize: '0.74rem', padding: '5px 10px' }}
+                    onClick={() => setMostrarAristasAbiertas(!mostrarAristasAbiertas)}
+                    title="Dibuja las aristas con fugas en rojo brillante sobre el modelo 3D"
+                  >
+                    {mostrarAristasAbiertas ? <EyeOff size={13} /> : <Eye size={13} />}
+                    <span>{mostrarAristasAbiertas ? 'Ocultar Líneas Rojas' : 'Ver Caras Abiertas en 3D'}</span>
+                  </button>
+                )}
+
+                {analysis.meshHealth.openEdgesCount > 0 && (
+                  <button
+                    type="button"
+                    className="btn btn-cyan btn-sm"
+                    style={{ fontSize: '0.74rem', padding: '5px 12px', fontWeight: 700 }}
+                    onClick={handleRepararMalla}
+                    disabled={isRepairing}
+                    title="Soldar vértices y sellar orificios simples"
+                  >
+                    <Wrench size={13} />
+                    <span>{isRepairing ? 'Soldando Malla...' : '🛠️ Reparar Malla Automáticamente'}</span>
+                  </button>
+                )}
+
+                {repairResult && (
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.74rem', padding: '5px 10px' }}
+                    onClick={handleDescargarSTLReparado}
+                    title="Descargar archivo STL corregido a tu equipo"
+                  >
+                    <Download size={13} />
+                    <span>📥 Descargar STL Reparado</span>
+                  </button>
+                )}
+              </div>
+
+              {/* Feedback de la reparación */}
+              {repairResult && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '8px 10px',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  borderRadius: '6px',
+                  fontSize: '0.74rem',
+                  color: '#34d399'
+                }}>
+                  ✅ <strong>Resultado:</strong> Se soldaron {repairResult.weldedVertices} vértices y se sellaron {repairResult.healedHoles} orificios. Aristas abiertas reducidas de {repairResult.initialOpen} a {repairResult.finalOpen}.
+                </div>
+              )}
+
+              {/* Botón para abrir guía técnica */}
+              <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+                <button
+                  type="button"
+                  onClick={() => setMostrarGuiaReparacion(!mostrarGuiaReparacion)}
+                  style={{
+                    background: 'transparent',
+                    border: 'none',
+                    color: 'var(--brand-cyan)',
+                    fontSize: '0.72rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    padding: 0
+                  }}
+                >
+                  <HelpCircle size={13} />
+                  <span>{mostrarGuiaReparacion ? 'Ocultar guía técnica' : '¿Por qué ocurren caras abiertas y cuándo usar Photon Workshop / Slicers?'}</span>
+                </button>
+
+                {mostrarGuiaReparacion && (
+                  <div style={{
+                    marginTop: '8px',
+                    padding: '10px',
+                    background: 'rgba(0,0,0,0.35)',
+                    borderRadius: '8px',
+                    fontSize: '0.72rem',
+                    color: 'var(--text-subtle)',
+                    lineHeight: 1.5
+                  }}>
+                    <div style={{ marginBottom: '6px', color: '#e2e8f0', fontWeight: 700 }}>
+                      📌 ¿Qué es una cara o arista abierta?
+                    </div>
+                    <div>
+                      En impresión de resina (SLA/MSLA), la máquina necesita que el modelo sea un <strong>sólido hermético</strong> (como un globo sin fugas). Si faltan caras o hay vértices desoldados, el laminador (slicer) no sabe si el interior está hueco o macizo, provocando bloques sólidos indeseados o capas sin curar en la Anycubic MONO 4.
+                    </div>
+                    <div style={{ margin: '6px 0', color: '#e2e8f0', fontWeight: 700 }}>
+                      ⚙️ ¿Qué podemos corregir directamente aquí?
+                    </div>
+                    <div>
+                      • <strong>Soldar vértices despegados:</strong> Unifica vértices separados por tolerancia CAD o de exportación.<br />
+                      • <strong>Tapar orificios simples:</strong> Sella agujeros perimetrales planos.<br />
+                      • <strong>Invertir normales:</strong> Corrige caras orientadas al revés.<br />
+                      • <strong>Descargar STL reparado:</strong> Genera un nuevo binario listo para imprimir.
+                    </div>
+                    <div style={{ margin: '6px 0', color: '#fbbf24', fontWeight: 700 }}>
+                      🖨️ ¿Cuándo es necesario usar Anycubic Photon Workshop o Blender?
+                    </div>
+                    <div>
+                      • <strong>Auto-intersecciones complejas:</strong> Cuando dos piezas se atraviesan mutuamente sin unión booleana.<br />
+                      • <strong>Geometrías sin grosor (Zero-thickness):</strong> Superficies 2D que no tienen volumen tridimensional.<br />
+                      • <em>En esos casos complejos:</em> Abre el STL en Photon Workshop o Microsoft 3D Builder y aplica la función <strong>"Auto-Repair"</strong> o <strong>"Voxel Remesh"</strong>, que recalcula toda la piel exterior mediante una nube volumétrica.
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
