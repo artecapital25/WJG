@@ -1,5 +1,4 @@
-import React from 'react';
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -115,6 +114,17 @@ export const Navbar: React.FC<NavbarProps> = ({
           >
             <Megaphone size={14} color={activeTab === 'marketing' ? '#000' : '#f472b6'} />
             <span>Marketing</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'herramientas' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
+            onClick={() => onSelectTab('herramientas')}
+            title="Herramientas & IAs 3D: Hunyuan 3D, Tripo, Cults3D y accesos directos"
+          >
+            <Wrench size={14} color={activeTab === 'herramientas' ? '#000' : 'var(--brand-cyan)'} />
+            <span>Apps 3D</span>
           </button>
         )}
 

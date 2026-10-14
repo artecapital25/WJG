@@ -17,7 +17,8 @@ import {
   Compass,
   Camera,
   Users,
-  Megaphone
+  Megaphone,
+  Wrench
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -167,6 +168,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       icon: Compass,
       iconBg: 'rgba(14, 165, 233, 0.15)',
       iconColor: '#38bdf8'
+    },
+    {
+      id: 'herramientas',
+      label: 'Herramientas & IAs 3D',
+      shortLabel: 'Apps 3D',
+      description: 'Hunyuan 3D, Tripo, Cults3D y accesos de taller',
+      icon: Wrench,
+      iconBg: 'rgba(56, 189, 248, 0.15)',
+      iconColor: 'var(--brand-cyan)'
     },
     {
       id: 'catalogos',

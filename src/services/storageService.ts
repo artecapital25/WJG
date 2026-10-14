@@ -13,7 +13,8 @@ import {
   ProductoStock,
   VentaExpress,
   TareaEquipo,
-  SolicitudInsumo
+  SolicitudInsumo,
+  HerramientaLink
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -49,7 +50,8 @@ const STORAGE_KEYS = {
   PRODUCTOS_STOCK: 'wjg_productos_stock',
   VENTAS_EXPRESS: 'wjg_ventas_express',
   TAREAS: 'wjg_tareas_equipo',
-  SOLICITUDES_INSUMOS: 'wjg_solicitudes_insumos'
+  SOLICITUDES_INSUMOS: 'wjg_solicitudes_insumos',
+  HERRAMIENTAS: 'wjg_herramientas_links'
 };
 
 const TAREAS_INICIALES: TareaEquipo[] = [
@@ -95,6 +97,129 @@ const TAREAS_INICIALES: TareaEquipo[] = [
     prioridad: 'alta',
     completada: false,
     fecha_creacion: new Date().toISOString().slice(0, 10)
+  }
+];
+
+export const HERRAMIENTAS_INICIALES: HerramientaLink[] = [
+  {
+    id: 'tool-hunyuan',
+    nombre: '腾讯混元3D (Tencent Hunyuan 3D)',
+    url: 'https://3d.hunyuan.tencent.com/studio/creation/geo',
+    categoria: 'ia_3d',
+    descripcion: 'Generador y modelador 3D con Inteligencia Artificial de Tencent para mallas de alta precisión.',
+    etiqueta: 'IA Oficial',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-tripo',
+    nombre: 'Tripo 3D',
+    url: 'https://www.tripo3d.ai/',
+    categoria: 'ia_3d',
+    descripcion: 'Generación instantánea de modelos 3D y geometrías en segundos desde texto o imagen.',
+    etiqueta: 'Generador IA',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-rodin',
+    nombre: 'Rodin Gen-2 (Deemos)',
+    url: 'https://hyperhuman.deemos.com/rodin',
+    categoria: 'ia_3d',
+    descripcion: 'Escultura digital con IA para personajes, bustos y figuras de colección con hiperdetalle.',
+    etiqueta: 'Escultura IA',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-csm',
+    nombre: 'CSM (Common Sense Machines)',
+    url: 'https://3d.csm.ai/',
+    categoria: 'ia_3d',
+    descripcion: 'Conversión de fotos e imágenes conceptuales 2D a mallas 3D para impresión.',
+    etiqueta: '2D a 3D',
+    esFrecuente: false,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-cults',
+    nombre: 'Cults 3D',
+    url: 'https://cults3d.com/es',
+    categoria: 'stl_repos',
+    descripcion: 'Plataforma líder en archivos STL para impresión 3D, figuras de anime, videojuegos y cine.',
+    etiqueta: 'Catálogo STL',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-cgtrader',
+    nombre: 'CGTrader',
+    url: 'https://www.cgtrader.com/',
+    categoria: 'stl_repos',
+    descripcion: 'Repositorio profesional de modelos 3D y estatuas premium para impresión SLA de alta gama.',
+    etiqueta: 'Estatuas Premium',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-printables',
+    nombre: 'Printables (Prusa)',
+    url: 'https://www.printables.com/',
+    categoria: 'stl_repos',
+    descripcion: 'Comunidad abierta con miles de modelos libres, accesorios y repuestos para taller.',
+    etiqueta: 'Modelos Libres',
+    esFrecuente: false,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-thingiverse',
+    nombre: 'Thingiverse',
+    url: 'https://www.thingiverse.com/',
+    categoria: 'stl_repos',
+    descripcion: 'Biblioteca global de archivos 3D de código abierto para modificaciones y prototipos rápidos.',
+    etiqueta: 'Biblioteca Abierta',
+    esFrecuente: false,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-chitubox',
+    nombre: 'Chitubox Slicer',
+    url: 'https://www.chitubox.com/',
+    categoria: 'slicers',
+    descripcion: 'Software laminador oficial para impresoras de resina LCD/SLA. Calibración de soportes.',
+    etiqueta: 'Laminador SLA',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-lychee',
+    nombre: 'Lychee Slicer',
+    url: 'https://mango3d.io/lychee-slicer-for-sla-3d-printers/',
+    categoria: 'slicers',
+    descripcion: 'Laminador avanzado con auto-soportes dinámicos, ahuecado y detección automática de islas.',
+    etiqueta: 'Slicer Avanzado',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-heroforge',
+    nombre: 'Hero Forge Miniaturas',
+    url: 'https://www.heroforge.com/',
+    categoria: 'pintura',
+    descripcion: 'Creador de personajes y miniaturas para juegos de rol, coleccionismo y pintura a mano.',
+    etiqueta: 'Miniaturas',
+    esFrecuente: false,
+    creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-meta',
+    nombre: 'Meta Commerce Manager',
+    url: 'https://business.facebook.com/commerce',
+    categoria: 'utilidades',
+    descripcion: 'Panel para vincular el catálogo de figuras con Instagram Shopping y WhatsApp Business.',
+    etiqueta: 'Catálogo Redes',
+    esFrecuente: true,
+    creado_el: '2026-10-14'
   }
 ];
 
@@ -196,6 +321,9 @@ export const StorageService = {
   getSolicitudesInsumos: (): SolicitudInsumo[] => loadItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, []),
   saveSolicitudesInsumos: (items: SolicitudInsumo[]) => saveItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, items),
 
+  getHerramientas: (): HerramientaLink[] => loadItem(STORAGE_KEYS.HERRAMIENTAS, HERRAMIENTAS_INICIALES),
+  saveHerramientas: (items: HerramientaLink[]) => saveItem(STORAGE_KEYS.HERRAMIENTAS, items),
+
   // Get structured backup object
   getBackupData: () => {
     return {
@@ -215,7 +343,8 @@ export const StorageService = {
       productos_stock: StorageService.getProductosStock(),
       ventas_express: StorageService.getVentasExpress(),
       tareas: StorageService.getTareas(),
-      solicitudes_insumos: StorageService.getSolicitudesInsumos()
+      solicitudes_insumos: StorageService.getSolicitudesInsumos(),
+      herramientas: StorageService.getHerramientas()
     };
   },
 
@@ -280,6 +409,7 @@ export const StorageService = {
       if (data.ventas_express) StorageService.saveVentasExpress(data.ventas_express);
       if (data.tareas) StorageService.saveTareas(data.tareas);
       if (data.solicitudes_insumos) StorageService.saveSolicitudesInsumos(data.solicitudes_insumos);
+      if (data.herramientas) StorageService.saveHerramientas(data.herramientas);
       return true;
     } catch (e) {
       console.error('Error importing backup:', e);

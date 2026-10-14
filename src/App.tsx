@@ -15,6 +15,7 @@ import { FinancialReportView } from './components/reports/FinancialReportView';
 import { POSExpressView } from './components/pos/POSExpressView';
 import { TeamTasksView } from './components/team/TeamTasksView';
 import { MarketingHubView } from './components/marketing/MarketingHubView';
+import { ToolsHubView } from './components/tools/ToolsHubView';
 import { BackupDriveModal } from './components/backup/BackupDriveModal';
 
 import { 
@@ -48,7 +49,7 @@ export const App: React.FC = () => {
       const tabParam = params.get('tab') as TabType;
       const validTabs: TabType[] = [
         'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
-        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing'
+        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas'
       ];
       if (tabParam && validTabs.includes(tabParam)) {
         return tabParam;
@@ -964,6 +965,10 @@ export const App: React.FC = () => {
             tarifasTamanos={tarifasTamanos}
             config={config}
           />
+        )}
+
+        {activeTab === 'herramientas' && (
+          <ToolsHubView />
         )}
       </main>
 

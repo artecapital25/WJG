@@ -1,7 +1,21 @@
-export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing';
+export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing' | 'herramientas';
 
 export * from './pos';
 export * from './tasks';
+
+export type CategoriaHerramienta = 'ia_3d' | 'stl_repos' | 'slicers' | 'pintura' | 'utilidades';
+
+export interface HerramientaLink {
+  id: string;
+  nombre: string;
+  url: string;
+  categoria: CategoriaHerramienta;
+  descripcion?: string;
+  etiqueta?: string;
+  icono?: string;
+  esFrecuente?: boolean;
+  creado_el?: string;
+}
 
 export interface ProductoStock {
   id: string;
