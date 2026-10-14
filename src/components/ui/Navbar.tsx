@@ -9,6 +9,7 @@ interface NavbarProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
   onInstallPwa?: () => void;
   isInstallable?: boolean;
+  onOpenBackupModal?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -17,7 +18,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   onSelectTab, 
   cloudStatus = 'connected',
   onInstallPwa,
-  isInstallable
+  isInstallable,
+  onOpenBackupModal
 }) => {
   return (
     <header className="top-header">
@@ -129,8 +131,8 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         <button 
           className="btn btn-secondary btn-sm header-desktop-only"
-          onClick={() => StorageService.exportBackup()}
-          title="Descargar copia de seguridad en JSON"
+          onClick={() => onOpenBackupModal ? onOpenBackupModal() : StorageService.exportBackup()}
+          title="Abrir centro de respaldos y Google Drive"
           style={{ padding: '6px 10px' }}
         >
           <Download size={14} />

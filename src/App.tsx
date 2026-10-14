@@ -15,6 +15,7 @@ import { FinancialReportView } from './components/reports/FinancialReportView';
 import { POSExpressView } from './components/pos/POSExpressView';
 import { TeamTasksView } from './components/team/TeamTasksView';
 import { MarketingHubView } from './components/marketing/MarketingHubView';
+import { BackupDriveModal } from './components/backup/BackupDriveModal';
 
 import { 
   TabType, 
@@ -58,6 +59,8 @@ export const App: React.FC = () => {
     }
     return 'cotizador';
   });
+
+  const [showBackupModal, setShowBackupModal] = useState(false);
 
   // Detección de Modo Portal de Cliente Aislado / Público
   const [isClientPortalMode, setIsClientPortalMode] = useState<boolean>(() => {
@@ -786,6 +789,7 @@ export const App: React.FC = () => {
         cloudStatus={cloudSyncStatus}
         onInstallPwa={handleInstallPwa}
         isInstallable={isInstallable}
+        onOpenBackupModal={() => setShowBackupModal(true)}
       />
 
       {/* Contenido Principal según Pestaña */}
@@ -969,6 +973,14 @@ export const App: React.FC = () => {
         setActiveTab={setActiveTab}
         pendingOTsCount={pendingOTs}
         draftItemsCount={draftPieces.length}
+        onOpenBackupModal={() => setShowBackupModal(true)}
+      />
+
+      {/* Modal de Respaldos y Google Drive */}
+      <BackupDriveModal 
+        isOpen={showBackupModal}
+        onClose={() => setShowBackupModal(false)}
+        cloudStatus={cloudSyncStatus}
       />
     </div>
   );

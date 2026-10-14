@@ -27,13 +27,15 @@ interface BottomNavProps {
   setActiveTab: (tab: TabType) => void;
   pendingOTsCount: number;
   draftItemsCount: number;
+  onOpenBackupModal?: () => void;
 }
 
 export const BottomNav: React.FC<BottomNavProps> = ({
   activeTab,
   setActiveTab,
   pendingOTsCount,
-  draftItemsCount
+  draftItemsCount,
+  onOpenBackupModal
 }) => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
@@ -417,14 +419,18 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                 type="button"
                 className="btn btn-secondary btn-sm"
                 onClick={() => {
-                  StorageService.exportBackup();
                   setIsMenuOpen(false);
+                  if (onOpenBackupModal) {
+                    onOpenBackupModal();
+                  } else {
+                    StorageService.exportBackup();
+                  }
                 }}
                 style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                title="Descargar copia de seguridad en JSON"
+                title="Abrir centro de respaldos y Google Drive"
               >
                 <Download size={14} />
-                <span>Descargar Respaldo JSON</span>
+                <span>💾 Respaldos & Google Drive</span>
               </button>
 
               <button

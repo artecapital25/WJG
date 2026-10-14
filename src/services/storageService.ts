@@ -196,10 +196,11 @@ export const StorageService = {
   getSolicitudesInsumos: (): SolicitudInsumo[] => loadItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, []),
   saveSolicitudesInsumos: (items: SolicitudInsumo[]) => saveItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, items),
 
-  // Export full backup
-  exportBackup: () => {
-    const backup = {
-      version: '1.0',
+  // Get structured backup object
+  getBackupData: () => {
+    return {
+      version: '2.0',
+      empresa: 'WJGEEKS 3D PRO',
       timestamp: new Date().toISOString(),
       resinas: StorageService.getResinas(),
       insumos: StorageService.getInsumos(),
@@ -216,6 +217,11 @@ export const StorageService = {
       tareas: StorageService.getTareas(),
       solicitudes_insumos: StorageService.getSolicitudesInsumos()
     };
+  },
+
+  // Export full backup
+  exportBackup: () => {
+    const backup = StorageService.getBackupData();
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -223,6 +229,37 @@ export const StorageService = {
     a.download = `WJGEEKS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
+  },
+
+  // Export to Google Drive (via Web Share API on mobile or direct download + link on PC)
+  exportBackupToDriveOrShare: async (): Promise<{ success: boolean; method: 'share' | 'download'; aborted?: boolean }> => {
+    const backup = StorageService.getBackupData();
+    const jsonStr = JSON.stringify(backup, null, 2);
+    const fileName = `WJGEEKS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+
+    // Si el navegador soporta compartir archivos nativamente (Android / iOS)
+    if (typeof navigator !== 'undefined' && navigator.canShare) {
+      try {
+        const file = new File([jsonStr], fileName, { type: 'application/json' });
+        if (navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: 'Copia de Seguridad WJGEEKS 3D',
+            text: 'Respaldo oficial de base de datos WJGEEKS 3D PRO para guardar en Google Drive.',
+            files: [file]
+          });
+          return { success: true, method: 'share' };
+        }
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          return { success: false, method: 'share', aborted: true };
+        }
+        console.warn('Web Share API falló, procediendo con descarga estándar:', err);
+      }
+    }
+
+    // Descarga estándar como fallback
+    StorageService.exportBackup();
+    return { success: true, method: 'download' };
   },
 
   // Import full backup

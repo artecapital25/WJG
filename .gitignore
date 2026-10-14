@@ -39,3 +39,6 @@ __pycache__/
 # Large data files
 *.xlsx
 
+# Backups con datos sensibles de clientes
+backups/
+*.backup.json
