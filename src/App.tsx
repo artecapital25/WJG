@@ -122,6 +122,8 @@ export const App: React.FC = () => {
         setIsInstallable(false);
         setDeferredPrompt(null);
       }
+    } else {
+      alert("📲 Para instalar WJGEEKS 3D Pro en tu celular:\n\n1. En Chrome / Android: Toca el menú (⋮) y selecciona 'Instalar aplicación' o 'Agregar a pantalla principal'.\n2. En iPhone / Safari: Toca el botón Compartir y elige 'Agregar al inicio'.");
     }
   };
 

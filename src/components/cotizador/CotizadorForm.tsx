@@ -1988,12 +1988,9 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
                     background: 'rgba(0, 0, 0, 0.25)',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: '8px',
-                    padding: '8px 10px',
-                    display: 'grid',
-                    gridTemplateColumns: 'minmax(130px, 1.2fr) minmax(170px, 2fr) auto auto',
-                    gap: '8px',
-                    alignItems: 'center'
+                    padding: '8px 10px'
                   }}
+                  className="enlace-compra-row"
                 >
                   <input
                     type="text"

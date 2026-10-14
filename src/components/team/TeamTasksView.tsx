@@ -216,8 +216,8 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
         </div>
       </div>
 
-      {/* Selector de Pestañas por Integrante */}
-      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '18px', borderBottom: '1px solid var(--border-subtle)' }}>
+      {/* Selector de Pestañas por Integrante en Cuadrícula Ordenada */}
+      <div className="subtabs-grid-mobile" style={{ marginBottom: '18px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
         {INTEGRANTES.filter(i => i !== 'Todos').map(integ => {
           const count = tareas.filter(t => t.asignado_a === integ && !t.completada).length;
           return (

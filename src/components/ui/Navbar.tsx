@@ -41,8 +41,9 @@ export const Navbar: React.FC<NavbarProps> = ({
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-        {/* Indicador de Nube Supabase */}
+        {/* Indicador de Nube Supabase: Visible solo en pantallas medianas/grandes */}
         <div 
+          className="header-desktop-only"
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -64,14 +65,15 @@ export const Navbar: React.FC<NavbarProps> = ({
             background: 'currentColor',
             boxShadow: '0 0 6px currentColor'
           }} />
-          <span className="desktop-header-btn">
+          <span>
             {cloudStatus === 'connected' ? 'Supabase Online' : cloudStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
           </span>
         </div>
-        {/* Atajos secundarios: visibles solo en pantallas medianas/grandes para que en celular el header sea limpio y espacioso */}
+
+        {/* Atajos secundarios: Visibles únicamente en escritorio */}
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'pos' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            className={`btn btn-sm ${activeTab === 'pos' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
             onClick={() => onSelectTab('pos')}
             title="Punto de Venta Express: Registrar venta con foto y alertas"
             style={{ fontWeight: 700 }}
@@ -83,7 +85,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'stock' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            className={`btn btn-sm ${activeTab === 'stock' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
             onClick={() => onSelectTab('stock')}
             title="Ver catálogo de productos y figuras en stock"
           >
@@ -94,7 +96,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'tareas' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            className={`btn btn-sm ${activeTab === 'tareas' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
             onClick={() => onSelectTab('tareas')}
             title="Tareas de equipo (Germán, Wendy, Juan) y S.O.S Insumos"
           >
@@ -105,7 +107,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'marketing' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            className={`btn btn-sm ${activeTab === 'marketing' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
             onClick={() => onSelectTab('marketing')}
             title="Marketing Hub: Catálogo Meta / Instagram y generador de copys"
           >
@@ -116,7 +118,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'finanzas' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            className={`btn btn-sm ${activeTab === 'finanzas' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
             onClick={() => onSelectTab('finanzas')}
             title="Ver Balance Contable & Exportar Excel"
           >
@@ -125,9 +127,20 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        {isInstallable && onInstallPwa && (
+        <button 
+          className="btn btn-secondary btn-sm header-desktop-only"
+          onClick={() => StorageService.exportBackup()}
+          title="Descargar copia de seguridad en JSON"
+          style={{ padding: '6px 10px' }}
+        >
+          <Download size={14} />
+          <span>Respaldo</span>
+        </button>
+
+        {/* 1. Botón Instalar App: En celular SOLO ícono sin texto, en PC con texto */}
+        {onInstallPwa && (
           <button 
-            className="btn btn-sm"
+            className="btn btn-sm header-install-btn"
             onClick={onInstallPwa}
             style={{ 
               background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.2), rgba(168, 85, 247, 0.2))',
@@ -137,33 +150,33 @@ export const Navbar: React.FC<NavbarProps> = ({
               padding: '6px 10px',
               display: 'flex',
               alignItems: 'center',
+              justifyContent: 'center',
               gap: '6px'
             }}
-            title="Instalar WJGEEKS 3D como App en este equipo"
+            title="Instalar WJGEEKS 3D como App"
           >
-            <Smartphone size={14} />
-            <span>Instalar App</span>
+            <Smartphone size={16} />
+            <span className="btn-label-desktop">Instalar App</span>
           </button>
         )}
 
-        <button 
-          className="btn btn-secondary btn-sm"
-          onClick={() => StorageService.exportBackup()}
-          title="Descargar copia de seguridad en JSON"
-          style={{ padding: '6px 10px' }}
-        >
-          <Download size={14} />
-          <span className="desktop-header-btn">Respaldo</span>
-        </button>
-
+        {/* 2. Botón Cotizar: En celular SOLO ícono sin texto, en PC con texto */}
         {onNewQuoteClick && (
           <button 
-            className="btn btn-cyan btn-sm"
+            className="btn btn-cyan btn-sm header-quote-btn"
             onClick={onNewQuoteClick}
-            style={{ fontWeight: 700, padding: '6px 12px' }}
+            style={{ 
+              fontWeight: 700, 
+              padding: '6px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+            title="Nueva Cotización 3D"
           >
-            <Sparkles size={14} />
-            <span>Cotizar</span>
+            <Sparkles size={16} />
+            <span className="btn-label-desktop">Cotizar</span>
           </button>
         )}
       </div>

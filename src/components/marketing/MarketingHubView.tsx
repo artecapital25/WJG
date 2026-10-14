@@ -399,14 +399,11 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
         </div>
       </div>
 
-      {/* Pestañas de Navegación del Módulo */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
+      {/* Pestañas de Navegación del Módulo en Cuadrícula Ordenada */}
+      <div className="subtabs-grid-mobile" style={{
         marginBottom: '20px',
         borderBottom: '1px solid var(--border-subtle)',
-        paddingBottom: '8px',
-        overflowX: 'auto'
+        paddingBottom: '8px'
       }}>
         <button
           onClick={() => setActiveSubTab('copys')}
@@ -483,7 +480,7 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
 
       {/* CONTENIDO 1: GENERADOR DE COPYS REDES */}
       {activeSubTab === 'copys' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        <div className="marketing-layout-grid vertical-stack-mobile">
           {/* Panel Izquierdo: Configuración del Copy */}
           <div style={{
             background: 'var(--bg-card)',
@@ -622,7 +619,7 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '6px' }}>
                   Altura oficial en centímetros:
                 </label>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
+                <div className="mobile-grid-4" style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '6px' }}>
                   {tarifasTamanos.map(t => {
                     const altura = t.altura_cm || t.cm || 5;
                     const precioVal = t.precio_sugerido || t.precio_cop || (altura * 10000);
@@ -798,7 +795,7 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
       {activeSubTab === 'meta-catalog' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Tarjetas de Métricas de Catálogo */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
+          <div className="vertical-stack-mobile" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '16px' }}>
             <div style={{
               background: 'var(--bg-card)',
               border: '1px solid var(--border-subtle)',
@@ -976,7 +973,7 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
 
       {/* CONTENIDO 3: DIFUSIONES Y WHATSAPP MARKETING */}
       {activeSubTab === 'difusiones' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
+        <div className="marketing-layout-grid vertical-stack-mobile">
           {/* Mensaje 1: Novedades del Mes */}
           <div style={{
             background: 'var(--bg-card)',

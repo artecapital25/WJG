@@ -219,7 +219,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
         </div>
 
         {/* Métricas destacadas */}
-        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+        <div className="metrics-header-grid" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <div style={{ 
             background: 'rgba(245, 158, 11, 0.12)', 
             border: '1px solid rgba(245, 158, 11, 0.35)', 
@@ -254,8 +254,8 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
         </div>
       </div>
 
-      {/* Selector de Pestañas Internas */}
-      <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+      {/* Selector de Pestañas Internas en Cuadrícula Ordenada */}
+      <div className="subtabs-grid-mobile" style={{ marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
         <button
           type="button"
           className={`btn ${subTab === 'deudores' ? 'btn-primary' : 'btn-secondary'}`}
@@ -316,7 +316,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
               </p>
             </div>
           ) : (
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '16px' }}>
+            <div className="cards-grid-mobile">
               {deudoresConsolidados.map((deudor, idx) => (
                 <div key={idx} className="glass-card" style={{ margin: 0, padding: '20px', border: '1px solid rgba(245, 158, 11, 0.25)', position: 'relative' }}>
                   {/* Encabezado del Deudor */}

@@ -302,7 +302,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(320px, 460px) 1fr', gap: '24px', alignItems: 'start' }} className="pos-layout-grid">
+      <div className="pos-layout-grid">
         {/* COLUMNA IZQUIERDA: FORMULARIO DE REGISTRO RÁPIDO */}
         <div className="glass-card" style={{ margin: 0, padding: '20px' }}>
           <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -500,8 +500,8 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
               </div>
             </div>
 
-            {/* Precios Rápidos del Tarifario */}
-            <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '14px' }}>
+            {/* Precios Rápidos del Tarifario en Cuadrícula Simétrica */}
+            <div className="mobile-grid-4" style={{ marginBottom: '14px' }}>
               {PRECIOS_RAPIDOS.map(p => (
                 <button
                   key={p}
@@ -514,11 +514,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                     background: total === p ? 'var(--brand-cyan)' : 'rgba(255, 255, 255, 0.05)',
                     color: total === p ? '#000' : 'var(--text-muted)',
                     border: '1px solid var(--border-subtle)',
-                    borderRadius: '6px',
-                    padding: '3px 8px',
-                    fontSize: '0.72rem',
+                    borderRadius: '8px',
+                    padding: '6px 8px',
+                    fontSize: '0.75rem',
                     fontWeight: 700,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    textAlign: 'center'
                   }}
                 >
                   ${(p / 1000)}k (50%)
@@ -576,12 +577,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                   style={{ marginBottom: '8px' }}
                 />
 
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                  <button type="button" onClick={() => setDiasFechaPrometida(0)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>Hoy</button>
-                  <button type="button" onClick={() => setDiasFechaPrometida(1)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>Mañana</button>
-                  <button type="button" onClick={() => setDiasFechaPrometida(3)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>En 3 días</button>
-                  <button type="button" onClick={() => setDiasFechaPrometida(7)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>En 7 días</button>
-                  <button type="button" onClick={() => setDiasFechaPrometida(15)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.7rem', padding: '2px 6px' }}>En 15 días</button>
+                <div className="mobile-grid-3" style={{ gap: '6px' }}>
+                  <button type="button" onClick={() => setDiasFechaPrometida(0)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '5px 4px' }}>Hoy</button>
+                  <button type="button" onClick={() => setDiasFechaPrometida(1)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '5px 4px' }}>Mañana</button>
+                  <button type="button" onClick={() => setDiasFechaPrometida(3)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '5px 4px' }}>En 3 días</button>
+                  <button type="button" onClick={() => setDiasFechaPrometida(7)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '5px 4px' }}>En 7 días</button>
+                  <button type="button" onClick={() => setDiasFechaPrometida(15)} className="btn btn-secondary btn-sm" style={{ fontSize: '0.72rem', padding: '5px 4px' }}>En 15 días</button>
                 </div>
               </div>
             )}
@@ -634,7 +635,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
         <div>
           {/* Barra de Filtros y Búsqueda */}
           <div className="glass-card" style={{ margin: '0 0 16px 0', padding: '14px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div className="pos-filter-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
               <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
                 <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
                 <input 
@@ -647,7 +648,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'flex', gap: '6px' }}>
+              <div className="pos-filters-grid">
                 <button
                   type="button"
                   className={`btn btn-sm ${filtroEstado === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
@@ -758,7 +759,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                             📅 Venta: {venta.fecha_venta} {venta.metodo_pago && `• 💳 ${venta.metodo_pago}`}
                           </div>
 
-                          <div style={{ display: 'flex', gap: '6px' }}>
+                          <div className="btn-group-mobile">
                             {/* Botón Registrar Abono */}
                             {!esPagado && (
                               <button

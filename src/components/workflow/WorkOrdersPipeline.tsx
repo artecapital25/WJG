@@ -299,8 +299,8 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
         </div>
       </div>
 
-      {/* Filtros Rápidos Touch para Celular */}
-      <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '16px' }}>
+      {/* Filtros Rápidos Touch para Celular en Cuadrícula Ordenada */}
+      <div className="etapas-grid-mobile" style={{ marginBottom: '16px' }}>
         <button 
           className={`btn btn-sm ${filtroEstado === 'todos' ? 'btn-cyan' : 'btn-secondary'}`}
           onClick={() => setFiltroEstado('todos')}
@@ -332,7 +332,7 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
           </p>
         </div>
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: '16px' }}>
+        <div className="cards-grid-mobile">
           {ordenesFiltradas.map(ot => {
             const sigEstado = getSiguienteEstado(ot.estado);
 
