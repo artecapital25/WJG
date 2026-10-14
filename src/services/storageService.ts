@@ -304,6 +304,27 @@ export const StorageService = {
   getOrdenes: (): OrdenTrabajo[] => loadItem(STORAGE_KEYS.ORDENES, []),
   saveOrdenes: (items: OrdenTrabajo[]) => saveItem(STORAGE_KEYS.ORDENES, items),
 
+  // Calcula el consecutivo máximo de OT para evitar cualquier colisión o reemplazo
+  getNextOTConsecutive: (items?: OrdenTrabajo[]): number => {
+    const list = items || loadItem<OrdenTrabajo[]>(STORAGE_KEYS.ORDENES, []);
+    let max = 0;
+    list.forEach(o => {
+      if (o && o.numero_ot) {
+        const matches = o.numero_ot.match(/\d+/g);
+        if (matches && matches.length > 0) {
+          const val = parseInt(matches[matches.length - 1], 10);
+          if (!isNaN(val) && val > max) max = val;
+        }
+      }
+    });
+    return max;
+  },
+
+  getNextOTNumber: (items?: OrdenTrabajo[]): string => {
+    const next = StorageService.getNextOTConsecutive(items) + 1;
+    return `OT-${next.toString().padStart(4, '0')}`;
+  },
+
   getCuentas: (): CuentaCobro[] => loadItem(STORAGE_KEYS.CUENTAS, []),
   saveCuentas: (items: CuentaCobro[]) => saveItem(STORAGE_KEYS.CUENTAS, items),
 

@@ -226,7 +226,24 @@ export const App: React.FC = () => {
         if (cloudOTs && cloudOTs.length > 0) {
           setOrdenes(prev => {
             const map = new Map(prev.map(o => [o.numero_ot, o]));
-            cloudOTs.forEach(o => map.set(o.numero_ot, o));
+            cloudOTs.forEach(cloudOT => {
+              const local = map.get(cloudOT.numero_ot);
+              if (local) {
+                map.set(cloudOT.numero_ot, {
+                  ...local,
+                  ...cloudOT,
+                  imagen_url: local.imagen_url || cloudOT.imagen_url,
+                  detalles_tecnicos: local.detalles_tecnicos || cloudOT.detalles_tecnicos,
+                  tiempo_impresion_min: local.tiempo_impresion_min || cloudOT.tiempo_impresion_min,
+                  resina_nombre: local.resina_nombre || cloudOT.resina_nombre,
+                  maquina_nombre: local.maquina_nombre || cloudOT.maquina_nombre,
+                  cotizacion_numero: local.cotizacion_numero || cloudOT.cotizacion_numero,
+                  cliente_telefono: local.cliente_telefono || cloudOT.cliente_telefono
+                });
+              } else {
+                map.set(cloudOT.numero_ot, cloudOT);
+              }
+            });
             const merged = Array.from(map.values());
             StorageService.saveOrdenes(merged);
             return merged;
@@ -264,6 +281,70 @@ export const App: React.FC = () => {
         }
 
         setCloudSyncStatus('connected');
+
+        // 4. Auto-recuperación: Si existen cotizaciones Aceptadas sin OTs en taller, regenerarlas automáticamente
+        try {
+          const currentCots = StorageService.getCotizaciones();
+          const currentOTs = StorageService.getOrdenes();
+          let maxConsecutive = StorageService.getNextOTConsecutive(currentOTs);
+          const recoveredOTs: OrdenTrabajo[] = [];
+
+          currentCots.forEach(cot => {
+            if (cot.estado === 'Aceptada') {
+              (cot.items || []).forEach(item => {
+                const yaExiste = currentOTs.some(o => 
+                  (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) &&
+                  o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
+                );
+
+                if (!yaExiste) {
+                  maxConsecutive++;
+                  const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
+                  const nuevaOT: OrdenTrabajo = {
+                    id: `ot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                    numero_ot: numOT,
+                    cotizacion_id: cot.id,
+                    cotizacion_numero: cot.numero_cot,
+                    cliente_nombre: cot.cliente.nombre,
+                    cliente_telefono: cot.cliente.telefono,
+                    item_nombre: item.nombre_item,
+                    cantidad: item.cantidad || 1,
+                    estado: 'En Cola',
+                    operador_asignado: 'Operador 3D',
+                    fecha_creacion: new Date().toISOString(),
+                    tiempo_impresion_min: item.tiempo_impresion_min || 0,
+                    tiempo_armado_min: item.tiempo_armado_min || 0,
+                    tiempo_pintura_min: item.tiempo_pintura_min || 0,
+                    peso_estimado_g: item.peso_estimado_g || 0,
+                    resina_id: item.resina_id,
+                    inventario_descontado: false,
+                    resina_nombre: item.resina_nombre,
+                    maquina_nombre: item.maquina_nombre,
+                    maquinas_involucradas: item.maquinas_involucradas,
+                    enlaces_compra: item.enlaces_compra,
+                    va_pintado: item.va_pintado,
+                    tiene_empaque: item.tiene_empaque,
+                    lista_empaques: item.lista_empaques,
+                    detalles_tecnicos: item.descripcion_tecnica,
+                    imagen_url: item.imagen_url
+                  };
+                  recoveredOTs.push(nuevaOT);
+                }
+              });
+            }
+          });
+
+          if (recoveredOTs.length > 0) {
+            setOrdenes(prev => {
+              const fullOTs = [...recoveredOTs, ...prev];
+              StorageService.saveOrdenes(fullOTs);
+              recoveredOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+              return fullOTs;
+            });
+          }
+        } catch (healErr) {
+          console.warn('Error en auto-recuperación de órdenes:', healErr);
+        }
       } catch (err) {
         console.warn('Error sincronizando con Supabase:', err);
         setCloudSyncStatus('connected');
@@ -284,8 +365,30 @@ export const App: React.FC = () => {
       async () => {
         const freshOTs = await CloudSyncService.fetchOrdenes();
         if (freshOTs && freshOTs.length > 0) {
-          setOrdenes(freshOTs);
-          StorageService.saveOrdenes(freshOTs);
+          setOrdenes(prev => {
+            const map = new Map(prev.map(o => [o.numero_ot, o]));
+            freshOTs.forEach(cloudOT => {
+              const local = map.get(cloudOT.numero_ot);
+              if (local) {
+                map.set(cloudOT.numero_ot, {
+                  ...local,
+                  ...cloudOT,
+                  imagen_url: local.imagen_url || cloudOT.imagen_url,
+                  detalles_tecnicos: local.detalles_tecnicos || cloudOT.detalles_tecnicos,
+                  tiempo_impresion_min: local.tiempo_impresion_min || cloudOT.tiempo_impresion_min,
+                  resina_nombre: local.resina_nombre || cloudOT.resina_nombre,
+                  maquina_nombre: local.maquina_nombre || cloudOT.maquina_nombre,
+                  cotizacion_numero: local.cotizacion_numero || cloudOT.cotizacion_numero,
+                  cliente_telefono: local.cliente_telefono || cloudOT.cliente_telefono
+                });
+              } else {
+                map.set(cloudOT.numero_ot, cloudOT);
+              }
+            });
+            const merged = Array.from(map.values());
+            StorageService.saveOrdenes(merged);
+            return merged;
+          });
         }
       },
       async () => {
@@ -418,50 +521,70 @@ export const App: React.FC = () => {
     setCotizaciones(updatedCots);
     StorageService.saveCotizaciones(updatedCots);
 
-    // 2. Generar correlativo de OTs para cada pieza (como en codigo2.txt)
-    let ultimoNum = ordenes.length;
-    const nuevasOTs: OrdenTrabajo[] = cot.items.map((item) => {
-      ultimoNum++;
-      const numOT = `OT-${ultimoNum.toString().padStart(4, '0')}`;
+    // 2. Traer órdenes actuales frescas para calcular el consecutivo sin colisiones
+    const currentOrders = StorageService.getOrdenes();
+    let maxConsecutive = StorageService.getNextOTConsecutive(currentOrders);
 
-      return {
-        id: `ot-${Date.now()}-${Math.random().toString(36).substring(2, 5)}`,
-        numero_ot: numOT,
-        cotizacion_id: cot.id,
-        cotizacion_numero: cot.numero_cot,
-        cliente_nombre: cot.cliente.nombre,
-        cliente_telefono: cot.cliente.telefono,
-        item_nombre: item.nombre_item,
-        cantidad: item.cantidad,
-        estado: 'En Cola',
-        operador_asignado: 'Operador 3D',
-        fecha_creacion: new Date().toISOString(),
-        tiempo_impresion_min: item.tiempo_impresion_min,
-        tiempo_armado_min: item.tiempo_armado_min,
-        tiempo_pintura_min: item.tiempo_pintura_min,
-        peso_estimado_g: item.peso_estimado_g,
-        resina_id: item.resina_id,
-        inventario_descontado: false,
-        resina_nombre: item.resina_nombre,
-        maquina_nombre: item.maquina_nombre,
-        maquinas_involucradas: item.maquinas_involucradas,
-        enlaces_compra: item.enlaces_compra,
-        va_pintado: item.va_pintado,
-        tiene_empaque: item.tiene_empaque,
-        lista_empaques: item.lista_empaques,
-        detalles_tecnicos: item.descripcion_tecnica,
-        imagen_url: item.imagen_url
-      };
+    // 3. Generar OTs para piezas que no tengan OT aún en el taller
+    const nuevasOTs: OrdenTrabajo[] = [];
+    const items = cot.items || [];
+
+    items.forEach((item) => {
+      // Verificar si ya existe una OT para esta pieza en esta cotización
+      const yaExiste = currentOrders.some(o => 
+        (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) && 
+        o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
+      );
+
+      if (!yaExiste) {
+        maxConsecutive++;
+        const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
+
+        nuevasOTs.push({
+          id: `ot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+          numero_ot: numOT,
+          cotizacion_id: cot.id,
+          cotizacion_numero: cot.numero_cot,
+          cliente_nombre: cot.cliente.nombre,
+          cliente_telefono: cot.cliente.telefono,
+          item_nombre: item.nombre_item,
+          cantidad: item.cantidad || 1,
+          estado: 'En Cola',
+          operador_asignado: 'Operador 3D',
+          fecha_creacion: new Date().toISOString(),
+          tiempo_impresion_min: item.tiempo_impresion_min || 0,
+          tiempo_armado_min: item.tiempo_armado_min || 0,
+          tiempo_pintura_min: item.tiempo_pintura_min || 0,
+          peso_estimado_g: item.peso_estimado_g || 0,
+          resina_id: item.resina_id,
+          inventario_descontado: false,
+          resina_nombre: item.resina_nombre,
+          maquina_nombre: item.maquina_nombre,
+          maquinas_involucradas: item.maquinas_involucradas,
+          enlaces_compra: item.enlaces_compra,
+          va_pintado: item.va_pintado,
+          tiene_empaque: item.tiene_empaque,
+          lista_empaques: item.lista_empaques,
+          detalles_tecnicos: item.descripcion_tecnica,
+          imagen_url: item.imagen_url
+        });
+      }
     });
 
-    const updatedOTs = [...nuevasOTs, ...ordenes];
-    setOrdenes(updatedOTs);
-    StorageService.saveOrdenes(updatedOTs);
+    let updatedOTs = currentOrders;
+    if (nuevasOTs.length > 0) {
+      updatedOTs = [...nuevasOTs, ...currentOrders];
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+      // Sincronizar en Supabase
+      nuevasOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+    } else {
+      setOrdenes(currentOrders);
+    }
 
-    // Sincronizar cotización aceptada y OTs generadas en Supabase
+    // Sincronizar cotización aceptada en Supabase
     const cotAceptada = updatedCots.find(c => c.id === cot.id);
     if (cotAceptada) CloudSyncService.saveCotizacion(cotAceptada);
-    nuevasOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
 
     // Redirigir a vista de taller
     setActiveTab('workflow');
@@ -850,6 +973,7 @@ export const App: React.FC = () => {
           <CotizacionesList 
             cotizaciones={cotizaciones}
             config={config}
+            ordenes={ordenes}
             onUpdateEstado={(id, st) => {
               const u = cotizaciones.map(c => c.id === id ? { ...c, estado: st } : c);
               setCotizaciones(u);

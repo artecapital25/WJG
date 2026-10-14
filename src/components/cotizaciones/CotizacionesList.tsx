@@ -16,16 +16,19 @@ import {
   Hash,
   Sparkles,
   Image as ImageIcon,
-  Edit
+  Edit,
+  RotateCw,
+  Check
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Cotizacion, EstadoCotizacion, ConfiguracionTaller } from '../../types';
+import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
 
 interface CotizacionesListProps {
   cotizaciones: Cotizacion[];
   config: ConfiguracionTaller;
+  ordenes?: OrdenTrabajo[];
   onUpdateEstado: (cotId: string, nuevoEstado: EstadoCotizacion) => void;
   onEditarCotizacion?: (cot: Cotizacion) => void;
   onAprobarCotizacion: (cot: Cotizacion) => void;
@@ -37,6 +40,7 @@ export type TipoOrden = 'reciente' | 'antigua' | 'cliente_az' | 'cliente_za' | '
 export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   cotizaciones,
   config,
+  ordenes = [],
   onUpdateEstado,
   onEditarCotizacion,
   onAprobarCotizacion,
@@ -418,16 +422,87 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   </button>
                 )}
 
-                {cot.estado !== 'Aceptada' && cot.estado !== 'Facturada' && (
-                  <button 
-                    className="btn btn-primary btn-sm"
-                    style={{ marginLeft: 'auto' }}
-                    onClick={() => handleAceptar(cot)}
-                  >
-                    <CheckCircle2 size={14} />
-                    <span>Aprobar ➔ Taller</span>
-                  </button>
-                )}
+                {/* Botón Inteligente: Aprobar / Reenviar OTs a Taller */}
+                {(() => {
+                  const otsAsociadas = ordenes.filter(o => 
+                    o.cotizacion_id === cot.id || 
+                    o.cotizacion_numero === cot.numero_cot ||
+                    (o.cliente_nombre?.toLowerCase() === cot.cliente?.nombre?.toLowerCase() && 
+                     cot.items.some(it => it.nombre_item?.toLowerCase() === o.item_nombre?.toLowerCase()))
+                  );
+                  const estaAceptada = cot.estado === 'Aceptada' || cot.estado === 'Facturada';
+
+                  if (!estaAceptada) {
+                    return (
+                      <button 
+                        className="btn btn-primary btn-sm"
+                        style={{ marginLeft: 'auto' }}
+                        onClick={() => handleAceptar(cot)}
+                        title="Aprobar esta cotización y generar sus Órdenes de Trabajo en el Taller"
+                      >
+                        <CheckCircle2 size={14} />
+                        <span>Aprobar ➔ Taller</span>
+                      </button>
+                    );
+                  }
+
+                  return (
+                    <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {otsAsociadas.length > 0 ? (
+                        <span 
+                          style={{ 
+                            fontSize: '0.74rem', 
+                            fontWeight: 700, 
+                            color: '#34d399', 
+                            background: 'rgba(34, 197, 94, 0.12)', 
+                            border: '1px solid rgba(34, 197, 94, 0.3)', 
+                            padding: '4px 10px', 
+                            borderRadius: '6px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px'
+                          }}
+                          title={`Órdenes activas en taller: ${otsAsociadas.map(o => o.numero_ot).join(', ')}`}
+                        >
+                          <Check size={12} />
+                          <span>{otsAsociadas.length} OT en Taller ({otsAsociadas.map(o => o.numero_ot).join(', ')})</span>
+                        </span>
+                      ) : (
+                        <span 
+                          style={{ 
+                            fontSize: '0.74rem', 
+                            fontWeight: 700, 
+                            color: '#fbbf24', 
+                            background: 'rgba(245, 158, 11, 0.12)', 
+                            border: '1px solid rgba(245, 158, 11, 0.3)', 
+                            padding: '4px 8px', 
+                            borderRadius: '6px'
+                          }}
+                        >
+                          ⚠️ Sin OT en Taller
+                        </span>
+                      )}
+
+                      <button 
+                        className="btn btn-sm"
+                        style={{ 
+                          background: otsAsociadas.length === 0 ? 'linear-gradient(135deg, #10b981, #0ea5e9)' : 'rgba(56, 189, 248, 0.12)',
+                          borderColor: 'var(--brand-cyan)',
+                          color: '#fff',
+                          fontWeight: 700,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '6px'
+                        }}
+                        onClick={() => handleAceptar(cot)}
+                        title={otsAsociadas.length === 0 ? 'Generar OTs de esta cotización en el Taller' : 'Reenviar o restaurar OTs en el Taller'}
+                      >
+                        <RotateCw size={13} />
+                        <span>{otsAsociadas.length === 0 ? 'Aprobar & Enviar a Taller' : 'Reenviar a Taller'}</span>
+                      </button>
+                    </div>
+                  );
+                })()}
               </div>
             </div>
           ))}

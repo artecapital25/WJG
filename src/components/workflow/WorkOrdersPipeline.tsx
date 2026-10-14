@@ -35,6 +35,7 @@ import {
 } from '../../types';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { StorageService } from '../../services/storageService';
 
 interface WorkOrdersPipelineProps {
   ordenes: OrdenTrabajo[];
@@ -190,13 +191,8 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
       ? tarifaEncontrada.precio_sugerido 
       : (alturaSeleccionada * 10000);
 
-    // Consecutivo nuevo
-    const numerosExistentes = ordenes.map(o => {
-      const match = o.numero_ot.match(/OT-(\d+)/i);
-      return match ? parseInt(match[1], 10) : 0;
-    });
-    const maxNum = Math.max(0, ...numerosExistentes);
-    const siguienteNum = `OT-${String(maxNum + 1).padStart(4, '0')}`;
+    // Consecutivo nuevo garantizado único
+    const siguienteNum = StorageService.getNextOTNumber(ordenes);
 
     const nuevaOT: OrdenTrabajo = {
       id: `ot-${Date.now()}`,
