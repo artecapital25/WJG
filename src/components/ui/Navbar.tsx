@@ -1,4 +1,4 @@
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -142,11 +142,11 @@ export const Navbar: React.FC<NavbarProps> = ({
         <button 
           className="btn btn-secondary btn-sm header-desktop-only"
           onClick={() => onOpenBackupModal ? onOpenBackupModal() : StorageService.exportBackup()}
-          title="Abrir centro de respaldos y Google Drive"
-          style={{ padding: '6px 10px' }}
+          title="Abrir sincronización con Google Sheets, Apps Script y Google Drive"
+          style={{ padding: '6px 10px', display: 'flex', alignItems: 'center', gap: '6px' }}
         >
-          <Download size={14} />
-          <span>Respaldo</span>
+          <FileSpreadsheet size={14} color="#34d399" />
+          <span>Drive & Sheets</span>
         </button>
 
         {/* 1. Botón Instalar App: En celular SOLO ícono sin texto, en PC con texto */}

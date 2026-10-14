@@ -51,7 +51,8 @@ const STORAGE_KEYS = {
   VENTAS_EXPRESS: 'wjg_ventas_express',
   TAREAS: 'wjg_tareas_equipo',
   SOLICITUDES_INSUMOS: 'wjg_solicitudes_insumos',
-  HERRAMIENTAS: 'wjg_herramientas_links'
+  HERRAMIENTAS: 'wjg_herramientas_links',
+  GOOGLE_SHEETS_CONFIG: 'wjg_google_sheets_config'
 };
 
 const TAREAS_INICIALES: TareaEquipo[] = [
@@ -233,9 +234,17 @@ function loadItem<T>(key: string, fallback: T): T {
   }
 }
 
+function triggerAutoSyncIfEnabled(key: string): void {
+  // Notificar cambio de datos de forma desacoplada
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('wjg:data_changed', { detail: { key } }));
+  }
+}
+
 function saveItem<T>(key: string, val: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(val));
+    triggerAutoSyncIfEnabled(key);
   } catch (e) {
     console.error(`Error saving ${key} to storage:`, e);
   }

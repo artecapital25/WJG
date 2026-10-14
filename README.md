@@ -259,11 +259,32 @@ La aplicación cuenta con manifiesto web y service worker:
 
 ---
 
-## 💾 Respaldo, Exportación y Recuperación de Datos
+## 💾 Respaldo, Google Sheets & Sincronización en Google Drive
 
-En la barra superior de navegación dispones del botón **Respaldo**:
-- **Descargar Copia de Seguridad:** Genera un archivo `WJGEEKS_Backup_YYYY-MM-DD.json` con toda la base de datos (ventas POS, clientes, cotizaciones, órdenes de trabajo, insumos, tareas y configuración).
-- **Importación:** Puedes restaurar el archivo JSON en cualquier nuevo computador o navegador para transferir toda la información en 1 segundo.
+El sistema cuenta con un centro de sincronización dual para garantizar que jamás se pierda información y que los datos sean fácilmente consultables y auditables:
+
+### 📊 1. Base de Datos Tabular en Google Drive (Google Sheets & Apps Script)
+Diseñado para que cualquier miembro del equipo (o contabilidad) pueda abrir **Google Drive**, consultar una **Hoja de Cálculo** con formato profesional y validar los números desde su celular o PC:
+- **8 Pestañas Automáticas y Estilizadas:**
+  1. `📊 00_RESUMEN_EJECUTIVO`: KPIs de ingresos, órdenes activas, clientes registrados y totales en tiempo real.
+  2. `💼 01_COTIZACIONES`: Historial completo con valores, descuentos, clientes y modelos.
+  3. `⚙️ 02_ORDENES_TRABAJO`: Pipeline de taller, saldo pendiente, abonos, fechas de entrega y máquinas.
+  4. `⚡ 03_VENTAS_POS`: Ventas rápidas de mostrador, medios de pago y estado de cartera.
+  5. `👥 04_CLIENTES`: Directorio telefónico y datos de contacto de clientes.
+  6. `📦 05_STOCK_PRODUCTOS`: Inventario de figuras con alerta de stock bajo.
+  7. `🧪 06_RESINAS_E_INSUMOS`: Costos por kg/gramo y consumibles del taller.
+  8. `🛠️ 07_APPS_3D_HERRAMIENTAS`: Lanzador de herramientas e Inteligencias Artificiales 3D.
+- **Sincronización con 1 Clic o Automática:** Pulsa el botón `⚡ Sincronizar a Drive` en la aplicación o activa la casilla de *Auto-sincronización* para que cada nueva cotización o venta se envíe al instante.
+- **Instalación de Google Apps Script (2 Minutos):**
+  1. Crea una Hoja de Cálculo en blanco en tu Google Drive.
+  2. Ve a `Extensiones > Apps Script`, pega el código que se encuentra en [scripts/google_apps_script.js](scripts/google_apps_script.js) y guarda.
+  3. Haz clic en `Implementar > Nueva implementación`, tipo `Aplicación web`, Ejecutar como `Yo`, acceso `Cualquiera`.
+  4. Copia la URL resultante (`https://script.google.com/macros/s/.../exec`) y pégala en la ventana de **Drive & Sheets** dentro de WJGEEKS 3D.
+
+### 📁 2. Copia de Seguridad JSON & Compartir
+- **Guardar en Google Drive (Celular):** Mediante la Web Share API, puedes enviar el respaldo directamente a tu app de Google Drive en Android/iOS en 1 toque.
+- **Descargar JSON (PC):** Genera un archivo `WJGEEKS_Backup_YYYY-MM-DD.json` con todos los catálogos e historiales.
+- **Restauración:** Permite cargar un archivo JSON previo para migrar o restaurar todo el taller en cualquier momento.
 
 ---
 

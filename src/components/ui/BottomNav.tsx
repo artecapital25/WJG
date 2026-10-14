@@ -18,7 +18,8 @@ import {
   Camera,
   Users,
   Megaphone,
-  Wrench
+  Wrench,
+  FileSpreadsheet
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -437,10 +438,10 @@ export const BottomNav: React.FC<BottomNavProps> = ({
                   }
                 }}
                 style={{ fontSize: '0.78rem', display: 'flex', alignItems: 'center', gap: '6px' }}
-                title="Abrir centro de respaldos y Google Drive"
+                title="Abrir sincronización de tablas con Google Sheets y Google Drive"
               >
-                <Download size={14} />
-                <span>💾 Respaldos & Google Drive</span>
+                <FileSpreadsheet size={15} color="#34d399" />
+                <span>📊 Google Sheets & Drive</span>
               </button>
 
               <button
