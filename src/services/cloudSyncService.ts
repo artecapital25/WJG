@@ -17,7 +17,11 @@ import {
   Cotizacion, 
   OrdenTrabajo, 
   CuentaCobro,
-  PiezaCotizada
+  PiezaCotizada,
+  VentaExpress,
+  TarifaTamano,
+  TareaEquipo,
+  SolicitudInsumo
 } from '../types';
 
 export const CloudSyncService = {
@@ -508,8 +512,268 @@ export const CloudSyncService = {
     }
   },
 
-  // 9. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
-  subscribeRealtime(onCotizacionChange: () => void, onOTChange: () => void, onCuentaChange: () => void) {
+  // 10. Traer Ventas Express (POS) desde Supabase
+  async fetchVentasExpress(): Promise<VentaExpress[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('ventas_express')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        // Si la tabla aún no existe en Supabase, retorna null sin romper
+        console.warn('Tabla ventas_express pendiente de migración en Supabase:', error.message);
+        return null;
+      }
+
+      if (!data || data.length === 0) return [];
+
+      return data.map((row: any): VentaExpress => ({
+        id: row.id,
+        numero_venta: row.numero_venta,
+        foto_url: row.foto_url || undefined,
+        nombre_producto: row.nombre_producto,
+        cliente_nombre: row.cliente_nombre,
+        cliente_telefono: row.cliente_telefono || '',
+        total: Number(row.total) || 0,
+        abono: Number(row.abono) || 0,
+        saldo_pendiente: Number(row.saldo_pendiente) || 0,
+        estado_pago: row.estado_pago as any,
+        fecha_venta: row.fecha_venta || new Date().toISOString().slice(0, 10),
+        fecha_prometida_pago: row.fecha_prometida_pago || undefined,
+        notas: row.notas || '',
+        metodo_pago: row.metodo_pago || 'Nequi',
+        creado_por: row.creado_por || 'Equipo WJGEEKS'
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchVentasExpress:', e);
+      return null;
+    }
+  },
+
+  // 11. Guardar o Actualizar una Venta Express en Supabase
+  async saveVentaExpress(venta: VentaExpress): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: venta.id,
+        numero_venta: venta.numero_venta,
+        foto_url: venta.foto_url || null,
+        nombre_producto: venta.nombre_producto,
+        cliente_nombre: venta.cliente_nombre,
+        cliente_telefono: venta.cliente_telefono || null,
+        total: venta.total,
+        abono: venta.abono,
+        saldo_pendiente: venta.saldo_pendiente,
+        estado_pago: venta.estado_pago,
+        fecha_venta: venta.fecha_venta,
+        fecha_prometida_pago: venta.fecha_prometida_pago || null,
+        notas: venta.notas || null,
+        metodo_pago: venta.metodo_pago || 'Nequi',
+        creado_por: venta.creado_por || 'Equipo WJGEEKS',
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase!
+        .from('ventas_express')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Error saving venta_express in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveVentaExpress:', e);
+      return false;
+    }
+  },
+
+  // 12. Traer Tarifario de Tamaños en la Nube
+  async fetchTarifasTamanos(): Promise<TarifaTamano[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('tarifas_tamanos')
+        .select('*')
+        .order('altura_cm', { ascending: true });
+
+      if (error) {
+        console.warn('Tabla tarifas_tamanos pendiente en Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data;
+    } catch (e) {
+      console.warn('Exception in fetchTarifasTamanos:', e);
+      return null;
+    }
+  },
+
+  // 13. Traer Tareas de Equipo desde Supabase
+  async fetchTareasEquipo(): Promise<TareaEquipo[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('tareas_equipo')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Tabla tareas_equipo en Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+
+      return data.map((row: any): TareaEquipo => ({
+        id: row.id,
+        titulo: row.titulo,
+        descripcion: row.descripcion || '',
+        asignado_a: row.asignado_a as any,
+        tipo: (row.tipo_tarea || 'puntual') as any,
+        frecuencia: row.frecuencia as any,
+        prioridad: (row.prioridad || 'media') as any,
+        completada: row.estado === 'completada',
+        fecha_limite: row.fecha_limite || undefined,
+        fecha_creacion: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchTareasEquipo:', e);
+      return null;
+    }
+  },
+
+  // 14. Guardar o Actualizar una Tarea de Equipo en Supabase
+  async saveTareaEquipo(tarea: TareaEquipo): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: tarea.id,
+        titulo: tarea.titulo,
+        descripcion: tarea.descripcion || null,
+        asignado_a: tarea.asignado_a,
+        tipo_tarea: tarea.tipo,
+        frecuencia: tarea.frecuencia || null,
+        prioridad: tarea.prioridad,
+        estado: tarea.completada ? 'completada' : 'pendiente',
+        fecha_limite: tarea.fecha_limite || null,
+        creado_por: 'Equipo WJGEEKS',
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase!
+        .from('tareas_equipo')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Error saving tarea_equipo in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveTareaEquipo:', e);
+      return false;
+    }
+  },
+
+  // 15. Eliminar una Tarea de Equipo en Supabase
+  async deleteTareaEquipo(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('tareas_equipo')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.warn('Error deleting tarea_equipo in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in deleteTareaEquipo:', e);
+      return false;
+    }
+  },
+
+  // 16. Traer Solicitudes de Insumos (S.O.S) desde Supabase
+  async fetchSolicitudesInsumos(): Promise<SolicitudInsumo[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('solicitudes_insumos')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Tabla solicitudes_insumos en Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+
+      return data.map((row: any): SolicitudInsumo => ({
+        id: row.id,
+        insumo_nombre: row.insumo_nombre,
+        cantidad: Number(row.cantidad) || 1,
+        unidad: row.unidad || 'und',
+        urgencia: (row.urgencia || 'normal') as any,
+        solicitado_por: row.solicitado_por as any,
+        encargado_compra: 'Wendy',
+        estado: (row.estado || 'pendiente') as any,
+        enlace_compra: row.enlace_compra || undefined,
+        proveedor_sugerido: row.proveedor_sugerido || undefined,
+        notas: row.notas || undefined,
+        fecha_solicitud: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchSolicitudesInsumos:', e);
+      return null;
+    }
+  },
+
+  // 17. Guardar o Actualizar Solicitud de Insumo en Supabase
+  async saveSolicitudInsumo(solicitud: SolicitudInsumo): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: solicitud.id,
+        insumo_nombre: solicitud.insumo_nombre,
+        cantidad: solicitud.cantidad,
+        unidad: solicitud.unidad,
+        urgencia: solicitud.urgencia,
+        solicitado_por: solicitud.solicitado_por,
+        estado: solicitud.estado,
+        enlace_compra: solicitud.enlace_compra || null,
+        proveedor_sugerido: solicitud.proveedor_sugerido || null,
+        notas: solicitud.notas || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase!
+        .from('solicitudes_insumos')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Error saving solicitud_insumo in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveSolicitudInsumo:', e);
+      return false;
+    }
+  },
+
+  // 18. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
+  subscribeRealtime(
+    onCotizacionChange: () => void, 
+    onOTChange: () => void, 
+    onCuentaChange: () => void,
+    onVentaExpressChange?: () => void,
+    onTareaChange?: () => void,
+    onSolicitudChange?: () => void
+  ) {
     if (!this.isAvailable()) return null;
 
     const channel = supabase!.channel('wjgeeks_live_sync')
@@ -521,6 +785,15 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_cobro' }, () => {
         onCuentaChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas_express' }, () => {
+        if (onVentaExpressChange) onVentaExpressChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas_equipo' }, () => {
+        if (onTareaChange) onTareaChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_insumos' }, () => {
+        if (onSolicitudChange) onSolicitudChange();
       })
       .subscribe();
 

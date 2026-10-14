@@ -12,6 +12,9 @@ import { STLAnalyzer } from './components/stl/STLAnalyzer';
 import { ProductosStockView } from './components/stock/ProductosStockView';
 import { CustomerTrackingView } from './components/tracking/CustomerTrackingView';
 import { FinancialReportView } from './components/reports/FinancialReportView';
+import { POSExpressView } from './components/pos/POSExpressView';
+import { TeamTasksView } from './components/team/TeamTasksView';
+import { MarketingHubView } from './components/marketing/MarketingHubView';
 
 import { 
   TabType, 
@@ -29,7 +32,10 @@ import {
   EstadoOT, 
   EstadoCotizacion,
   TarifaTamano,
-  ProductoStock
+  ProductoStock,
+  VentaExpress,
+  TareaEquipo,
+  SolicitudInsumo
 } from './types';
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
@@ -40,8 +46,8 @@ export const App: React.FC = () => {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab') as TabType;
       const validTabs: TabType[] = [
-        'cotizador', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
-        'plan', 'stl', 'stock', 'seguimiento', 'finanzas'
+        'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
+        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing'
       ];
       if (tabParam && validTabs.includes(tabParam)) {
         return tabParam;
@@ -52,6 +58,44 @@ export const App: React.FC = () => {
     }
     return 'cotizador';
   });
+
+  // Detección de Modo Portal de Cliente Aislado / Público
+  const [isClientPortalMode, setIsClientPortalMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const isExplicitPortal = params.get('portal') === 'cliente';
+      const hasTrackingParam = Boolean(params.get('ot') || params.get('cot'));
+      const isExplicitAdmin = params.get('admin') === '1' || sessionStorage.getItem('wjg_admin_unlocked') === 'true';
+
+      if ((isExplicitPortal || hasTrackingParam) && !isExplicitAdmin) {
+        return true;
+      }
+    }
+    return false;
+  });
+
+  const [showAdminPinModal, setShowAdminPinModal] = useState<boolean>(false);
+  const [adminPinInput, setAdminPinInput] = useState<string>('');
+  const [adminPinError, setAdminPinError] = useState<string | null>(null);
+
+  const handleUnlockAdmin = () => {
+    setShowAdminPinModal(true);
+    setAdminPinInput('');
+    setAdminPinError(null);
+  };
+
+  const handleVerifyAdminPin = (e: React.FormEvent) => {
+    e.preventDefault();
+    const cleanPin = adminPinInput.trim().toLowerCase();
+    // Claves válidas: wjg3d o teléfonos corporativos
+    if (cleanPin === 'wjg3d' || cleanPin === '3202796115' || cleanPin === '3217273025') {
+      sessionStorage.setItem('wjg_admin_unlocked', 'true');
+      setIsClientPortalMode(false);
+      setShowAdminPinModal(false);
+    } else {
+      setAdminPinError('PIN incorrecto. Intenta de nuevo.');
+    }
+  };
 
   // Estado PWA (Instalación nativa en navegador / móvil)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
@@ -110,6 +154,9 @@ export const App: React.FC = () => {
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
   const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
+  const [ventasExpress, setVentasExpress] = useState<VentaExpress[]>(() => StorageService.getVentasExpress());
+  const [tareas, setTareas] = useState<TareaEquipo[]>(() => StorageService.getTareas());
+  const [solicitudesInsumos, setSolicitudesInsumos] = useState<SolicitudInsumo[]>(() => StorageService.getSolicitudesInsumos());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
 
   // Cargar datos iniciales y sincronizar bidireccionalmente con Supabase
@@ -127,6 +174,9 @@ export const App: React.FC = () => {
     setCotizaciones(StorageService.getCotizaciones());
     setOrdenes(StorageService.getOrdenes());
     setCuentas(StorageService.getCuentas());
+    setVentasExpress(StorageService.getVentasExpress());
+    setTareas(StorageService.getTareas());
+    setSolicitudesInsumos(StorageService.getSolicitudesInsumos());
 
     if (!CloudSyncService.isAvailable()) {
       setCloudSyncStatus('offline');
@@ -138,10 +188,13 @@ export const App: React.FC = () => {
     // 2. Traer datos frescos de Supabase en segundo plano y fusionar
     const syncCloudData = async () => {
       try {
-        const [cloudCots, cloudClis, cloudOTs] = await Promise.all([
+        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudTareas, cloudSolicitudes] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
-          CloudSyncService.fetchOrdenes()
+          CloudSyncService.fetchOrdenes(),
+          CloudSyncService.fetchVentasExpress(),
+          CloudSyncService.fetchTareasEquipo(),
+          CloudSyncService.fetchSolicitudesInsumos()
         ]);
 
         if (cloudCots && cloudCots.length > 0) {
@@ -170,6 +223,36 @@ export const App: React.FC = () => {
             cloudOTs.forEach(o => map.set(o.numero_ot, o));
             const merged = Array.from(map.values());
             StorageService.saveOrdenes(merged);
+            return merged;
+          });
+        }
+
+        if (cloudVentas && cloudVentas.length > 0) {
+          setVentasExpress(prev => {
+            const map = new Map(prev.map(v => [v.id, v]));
+            cloudVentas.forEach(v => map.set(v.id, v));
+            const merged = Array.from(map.values()).sort((a, b) => b.numero_venta.localeCompare(a.numero_venta));
+            StorageService.saveVentasExpress(merged);
+            return merged;
+          });
+        }
+
+        if (cloudTareas && cloudTareas.length > 0) {
+          setTareas(prev => {
+            const map = new Map(prev.map(t => [t.id, t]));
+            cloudTareas.forEach(t => map.set(t.id, t));
+            const merged = Array.from(map.values());
+            StorageService.saveTareas(merged);
+            return merged;
+          });
+        }
+
+        if (cloudSolicitudes && cloudSolicitudes.length > 0) {
+          setSolicitudesInsumos(prev => {
+            const map = new Map(prev.map(s => [s.id, s]));
+            cloudSolicitudes.forEach(s => map.set(s.id, s));
+            const merged = Array.from(map.values());
+            StorageService.saveSolicitudesInsumos(merged);
             return merged;
           });
         }
@@ -204,6 +287,27 @@ export const App: React.FC = () => {
         if (freshCCs && freshCCs.length > 0) {
           setCuentas(freshCCs);
           StorageService.saveCuentas(freshCCs);
+        }
+      },
+      async () => {
+        const freshVentas = await CloudSyncService.fetchVentasExpress();
+        if (freshVentas && freshVentas.length > 0) {
+          setVentasExpress(freshVentas);
+          StorageService.saveVentasExpress(freshVentas);
+        }
+      },
+      async () => {
+        const freshTareas = await CloudSyncService.fetchTareasEquipo();
+        if (freshTareas && freshTareas.length > 0) {
+          setTareas(freshTareas);
+          StorageService.saveTareas(freshTareas);
+        }
+      },
+      async () => {
+        const freshSols = await CloudSyncService.fetchSolicitudesInsumos();
+        if (freshSols && freshSols.length > 0) {
+          setSolicitudesInsumos(freshSols);
+          StorageService.saveSolicitudesInsumos(freshSols);
         }
       }
     );
@@ -486,7 +590,189 @@ export const App: React.FC = () => {
     StorageService.saveProductosStock(items);
   };
 
+  const handleGuardarVentaExpress = (nuevaVenta: VentaExpress) => {
+    const updated = [nuevaVenta, ...ventasExpress];
+    setVentasExpress(updated);
+    StorageService.saveVentasExpress(updated);
+    CloudSyncService.saveVentaExpress(nuevaVenta);
+  };
+
+  const handleActualizarVentaExpress = (ventaActualizada: VentaExpress) => {
+    const updated = ventasExpress.map(v => v.id === ventaActualizada.id ? ventaActualizada : v);
+    setVentasExpress(updated);
+    StorageService.saveVentasExpress(updated);
+    CloudSyncService.saveVentaExpress(ventaActualizada);
+  };
+
+  // Handlers para Tareas de Equipo
+  const handleGuardarTarea = (nueva: TareaEquipo) => {
+    const updated = [nueva, ...tareas];
+    setTareas(updated);
+    StorageService.saveTareas(updated);
+    CloudSyncService.saveTareaEquipo(nueva);
+  };
+
+  const handleActualizarTarea = (tarea: TareaEquipo) => {
+    const updated = tareas.map(t => t.id === tarea.id ? tarea : t);
+    setTareas(updated);
+    StorageService.saveTareas(updated);
+    CloudSyncService.saveTareaEquipo(tarea);
+  };
+
+  const handleEliminarTarea = (id: string) => {
+    const updated = tareas.filter(t => t.id !== id);
+    setTareas(updated);
+    StorageService.saveTareas(updated);
+    CloudSyncService.deleteTareaEquipo(id);
+  };
+
+  // Handlers para Solicitudes S.O.S de Insumos
+  const handleCrearSolicitudInsumo = (solicitud: SolicitudInsumo) => {
+    const updated = [solicitud, ...solicitudesInsumos];
+    setSolicitudesInsumos(updated);
+    StorageService.saveSolicitudesInsumos(updated);
+    CloudSyncService.saveSolicitudInsumo(solicitud);
+  };
+
+  const handleActualizarSolicitudInsumo = (solicitud: SolicitudInsumo) => {
+    const updated = solicitudesInsumos.map(s => s.id === solicitud.id ? solicitud : s);
+    setSolicitudesInsumos(updated);
+    StorageService.saveSolicitudesInsumos(updated);
+    CloudSyncService.saveSolicitudInsumo(solicitud);
+  };
+
+  // Handler para Crear Orden Rápida desde Tarifario Express
+  const handleCrearOrdenRapida = (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => {
+    const updatedOTs = [nuevaOT, ...ordenes];
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
+    CloudSyncService.saveOrdenTrabajo(nuevaOT);
+
+    if (crearCobroPOS) {
+      const precioEstimado = nuevaOT.altura_cm_tarifario ? (nuevaOT.altura_cm_tarifario * 10000) : (nuevaOT.precio_cobrado || 80000);
+      const nuevaVenta: VentaExpress = {
+        id: `pos-${Date.now()}`,
+        numero_venta: `POS-${(ventasExpress.length + 1).toString().padStart(3, '0')}`,
+        nombre_producto: nuevaOT.item_nombre,
+        cliente_nombre: nuevaOT.cliente_nombre,
+        cliente_telefono: nuevaOT.cliente_telefono,
+        total: precioEstimado,
+        abono: 0,
+        saldo_pendiente: precioEstimado,
+        estado_pago: 'Pendiente',
+        fecha_venta: new Date().toISOString().slice(0, 10),
+        foto_url: nuevaOT.imagen_url || '',
+        notas: `Proyecto Rápido ${nuevaOT.numero_ot}`
+      };
+      handleGuardarVentaExpress(nuevaVenta);
+    }
+  };
+
+  // Handler para Actualizar Trazabilidad STL y detalles de OT
+  const handleActualizarOT = (otActualizada: OrdenTrabajo) => {
+    const updated = ordenes.map(o => o.id === otActualizada.id ? otActualizada : o);
+    setOrdenes(updated);
+    StorageService.saveOrdenes(updated);
+    CloudSyncService.saveOrdenTrabajo(otActualizada);
+  };
+
   const pendingOTs = ordenes.filter(o => o.estado !== 'Listo para Entrega').length;
+
+  // Si estamos en Modo Portal de Cliente Aislado, NO mostrar barra de navegación ni opciones administrativas
+  if (isClientPortalMode) {
+    return (
+      <div className="app-container" style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
+        <main className="main-content" style={{ padding: '24px 16px', maxWidth: '850px', margin: '0 auto' }}>
+          <CustomerTrackingView 
+            ordenes={ordenes}
+            cotizaciones={cotizaciones}
+            config={config}
+            isIsolatedMode={true}
+            onUnlockAdmin={handleUnlockAdmin}
+          />
+        </main>
+
+        {/* Modal de Desbloqueo Admin para el equipo de WJGEEKS */}
+        {showAdminPinModal && (
+          <div 
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 99999,
+              padding: '16px'
+            }}
+            onClick={() => setShowAdminPinModal(false)}
+          >
+            <div 
+              className="glass-card" 
+              style={{ maxWidth: '380px', width: '100%', margin: 0, padding: '24px', border: '1px solid var(--brand-cyan)' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>🔒</span> Acceso Taller WJGEEKS
+                </h3>
+                <button 
+                  type="button" 
+                  onClick={() => setShowAdminPinModal(false)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
+                >
+                  ✕
+                </button>
+              </div>
+
+              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
+                Ingresa el PIN de seguridad del taller para desbloquear el panel administrativo completo en este equipo:
+              </p>
+
+              <form onSubmit={handleVerifyAdminPin}>
+                <input 
+                  type="password"
+                  className="form-input"
+                  placeholder="Ingresa clave o PIN (ej: wjg3d)"
+                  value={adminPinInput}
+                  onChange={e => setAdminPinInput(e.target.value)}
+                  autoFocus
+                  style={{ width: '100%', marginBottom: '10px', fontSize: '1rem', padding: '10px 14px' }}
+                />
+
+                {adminPinError && (
+                  <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginBottom: '12px', fontWeight: 600 }}>
+                    {adminPinError}
+                  </div>
+                )}
+
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
+                  <button 
+                    type="button" 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setShowAdminPinModal(false)}
+                  >
+                    Cancelar
+                  </button>
+                  <button 
+                    type="submit" 
+                    className="btn btn-primary btn-sm"
+                    style={{ fontWeight: 700 }}
+                  >
+                    Desbloquear Taller
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="app-container">
@@ -544,8 +830,12 @@ export const App: React.FC = () => {
           <WorkOrdersPipeline 
             ordenes={ordenes}
             config={config}
+            tarifasTamanos={tarifasTamanos}
+            clientes={clientes}
             onUpdateEstado={handleUpdateEstadoOT}
             onGenerarCuentaCobro={handleGenerarCuentaCobro}
+            onCrearOrdenRapida={handleCrearOrdenRapida}
+            onActualizarOT={handleActualizarOT}
           />
         )}
 
@@ -564,11 +854,24 @@ export const App: React.FC = () => {
           />
         )}
 
+        {activeTab === 'pos' && (
+          <POSExpressView 
+            ventas={ventasExpress}
+            clientes={clientes}
+            config={config}
+            onGuardarVenta={handleGuardarVentaExpress}
+            onActualizarVenta={handleActualizarVentaExpress}
+            onCrearCliente={handleAddCliente}
+          />
+        )}
+
         {activeTab === 'cuentas' && (
           <CuentasCobroList 
             cuentas={cuentas}
+            ventasExpress={ventasExpress}
             config={config}
             onUpdatePago={handleUpdatePago}
+            onUpdateVentaExpress={handleActualizarVentaExpress}
           />
         )}
 
@@ -631,6 +934,28 @@ export const App: React.FC = () => {
           <CustomerTrackingView 
             ordenes={ordenes}
             cotizaciones={cotizaciones}
+            config={config}
+          />
+        )}
+
+        {activeTab === 'tareas' && (
+          <TeamTasksView 
+            tareas={tareas}
+            solicitudesInsumos={solicitudesInsumos}
+            insumosCatalogo={insumos}
+            config={config}
+            onGuardarTarea={handleGuardarTarea}
+            onActualizarTarea={handleActualizarTarea}
+            onEliminarTarea={handleEliminarTarea}
+            onCrearSolicitudInsumo={handleCrearSolicitudInsumo}
+            onActualizarSolicitudInsumo={handleActualizarSolicitudInsumo}
+          />
+        )}
+
+        {activeTab === 'marketing' && (
+          <MarketingHubView 
+            productosStock={productosStock}
+            tarifasTamanos={tarifasTamanos}
             config={config}
           />
         )}

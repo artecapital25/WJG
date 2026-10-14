@@ -1,4 +1,7 @@
-export type TabType = 'cotizador' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas';
+export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing';
+
+export * from './pos';
+export * from './tasks';
 
 export interface ProductoStock {
   id: string;
@@ -162,6 +165,8 @@ export interface TarifaTamano {
   precio_sugerido: number;
   descripcion?: string;
   tiempo_estimado?: string;
+  cm?: number;
+  precio_cop?: number;
 }
 
 export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'Parcial';
@@ -183,6 +188,8 @@ export interface Cotizacion {
 }
 
 export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega';
+
+export type EstadoSTL = 'Modelado Pendiente' | 'Diseñado por Germán' | 'Laminado por Juan' | 'En Impresora' | 'Impreso';
 
 export interface OrdenTrabajo {
   id: string;
@@ -214,6 +221,17 @@ export interface OrdenTrabajo {
   peso_estimado_g?: number;
   resina_id?: string;
   inventario_descontado?: boolean;
+  
+  // Trazabilidad de Modelos 3D y STL (Germán ➔ Juan)
+  stl_url?: string;
+  stl_estado?: EstadoSTL;
+  stl_modelador?: string;
+  stl_operador?: string;
+  stl_version?: string;
+  stl_notas?: string;
+  altura_cm_tarifario?: number;
+  precio_cobrado?: number;
+  es_proyecto_rapido?: boolean;
 }
 
 export type EstadoPago = 'Pendiente' | 'Abono Parcial' | 'Pagado Total';

@@ -10,7 +10,10 @@ import {
   OrdenTrabajo,
   CuentaCobro,
   TarifaTamano,
-  ProductoStock
+  ProductoStock,
+  VentaExpress,
+  TareaEquipo,
+  SolicitudInsumo
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -43,8 +46,57 @@ const STORAGE_KEYS = {
   ORDENES: 'wjg_ordenes_trabajo',
   CUENTAS: 'wjg_cuentas_cobro',
   TARIFAS_TAMANOS: 'wjg_tarifas_tamanos',
-  PRODUCTOS_STOCK: 'wjg_productos_stock'
+  PRODUCTOS_STOCK: 'wjg_productos_stock',
+  VENTAS_EXPRESS: 'wjg_ventas_express',
+  TAREAS: 'wjg_tareas_equipo',
+  SOLICITUDES_INSUMOS: 'wjg_solicitudes_insumos'
 };
+
+const TAREAS_INICIALES: TareaEquipo[] = [
+  {
+    id: 'task-1',
+    titulo: 'Revisión y lubricación de eje Z en Anycubic Photon',
+    descripcion: 'Aplicar grasa de teflón en el husillo para evitar banding en capas de 0.03mm',
+    asignado_a: 'Juan',
+    tipo: 'periodica',
+    frecuencia: 'semanal',
+    prioridad: 'alta',
+    completada: false,
+    fecha_creacion: new Date().toISOString().slice(0, 10)
+  },
+  {
+    id: 'task-2',
+    titulo: 'Filtrado y limpieza de tina de resina UV',
+    descripcion: 'Filtrar resina con embudo de 190 micras para retirar microfragmentos curados en el film FEP',
+    asignado_a: 'Juan',
+    tipo: 'periodica',
+    frecuencia: 'diaria',
+    prioridad: 'media',
+    completada: false,
+    fecha_creacion: new Date().toISOString().slice(0, 10)
+  },
+  {
+    id: 'task-3',
+    titulo: 'Conciliación de abonos Nequi, Daviplata y Bancolombia',
+    descripcion: 'Verificar comprobantes de anticipos y cuentas por cobrar de la semana',
+    asignado_a: 'Wendy',
+    tipo: 'periodica',
+    frecuencia: 'semanal',
+    prioridad: 'alta',
+    completada: false,
+    fecha_creacion: new Date().toISOString().slice(0, 10)
+  },
+  {
+    id: 'task-4',
+    titulo: 'Modelado y optimización de mallas STL con drenaje de 3mm',
+    descripcion: 'Verificar ahuecado y orientación de soportes para figuras personalizadas',
+    asignado_a: 'Germán',
+    tipo: 'puntual',
+    prioridad: 'alta',
+    completada: false,
+    fecha_creacion: new Date().toISOString().slice(0, 10)
+  }
+];
 
 function loadItem<T>(key: string, fallback: T): T {
   try {
@@ -121,11 +173,28 @@ export const StorageService = {
   getCuentas: (): CuentaCobro[] => loadItem(STORAGE_KEYS.CUENTAS, []),
   saveCuentas: (items: CuentaCobro[]) => saveItem(STORAGE_KEYS.CUENTAS, items),
 
-  getTarifasTamanos: (): TarifaTamano[] => loadItem(STORAGE_KEYS.TARIFAS_TAMANOS, TARIFAS_TAMANOS_INICIALES),
+  getTarifasTamanos: (): TarifaTamano[] => {
+    const loaded = loadItem<TarifaTamano[]>(STORAGE_KEYS.TARIFAS_TAMANOS, TARIFAS_TAMANOS_INICIALES);
+    const item5 = loaded.find(t => t.altura_cm === 5);
+    if (item5 && item5.precio_sugerido === 45000) {
+      saveItem(STORAGE_KEYS.TARIFAS_TAMANOS, TARIFAS_TAMANOS_INICIALES);
+      return TARIFAS_TAMANOS_INICIALES;
+    }
+    return loaded;
+  },
   saveTarifasTamanos: (items: TarifaTamano[]) => saveItem(STORAGE_KEYS.TARIFAS_TAMANOS, items),
 
   getProductosStock: (): ProductoStock[] => loadItem(STORAGE_KEYS.PRODUCTOS_STOCK, PRODUCTOS_STOCK_INICIALES),
   saveProductosStock: (items: ProductoStock[]) => saveItem(STORAGE_KEYS.PRODUCTOS_STOCK, items),
+
+  getVentasExpress: (): VentaExpress[] => loadItem(STORAGE_KEYS.VENTAS_EXPRESS, []),
+  saveVentasExpress: (items: VentaExpress[]) => saveItem(STORAGE_KEYS.VENTAS_EXPRESS, items),
+
+  getTareas: (): TareaEquipo[] => loadItem(STORAGE_KEYS.TAREAS, TAREAS_INICIALES),
+  saveTareas: (items: TareaEquipo[]) => saveItem(STORAGE_KEYS.TAREAS, items),
+
+  getSolicitudesInsumos: (): SolicitudInsumo[] => loadItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, []),
+  saveSolicitudesInsumos: (items: SolicitudInsumo[]) => saveItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, items),
 
   // Export full backup
   exportBackup: () => {
@@ -142,7 +211,10 @@ export const StorageService = {
       ordenes: StorageService.getOrdenes(),
       cuentas: StorageService.getCuentas(),
       tarifas_tamanos: StorageService.getTarifasTamanos(),
-      productos_stock: StorageService.getProductosStock()
+      productos_stock: StorageService.getProductosStock(),
+      ventas_express: StorageService.getVentasExpress(),
+      tareas: StorageService.getTareas(),
+      solicitudes_insumos: StorageService.getSolicitudesInsumos()
     };
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -168,6 +240,9 @@ export const StorageService = {
       if (data.cuentas) StorageService.saveCuentas(data.cuentas);
       if (data.tarifas_tamanos) StorageService.saveTarifasTamanos(data.tarifas_tamanos);
       if (data.productos_stock) StorageService.saveProductosStock(data.productos_stock);
+      if (data.ventas_express) StorageService.saveVentasExpress(data.ventas_express);
+      if (data.tareas) StorageService.saveTareas(data.tareas);
+      if (data.solicitudes_insumos) StorageService.saveSolicitudesInsumos(data.solicitudes_insumos);
       return true;
     } catch (e) {
       console.error('Error importing backup:', e);

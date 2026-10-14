@@ -38,16 +38,16 @@ export const TarifarioModal: React.FC<TarifarioModalProps> = ({
   // Ordenar tarifas de menor a mayor altura
   const sortedTarifas = [...tarifas].sort((a, b) => a.altura_cm - b.altura_cm);
 
-  // Estimador lineal dinámico basado en la progresión ($45k base en 5cm + $10k por cm adicional)
+  // Estimador lineal dinámico basado en la progresión ($50k base en 5cm, $10k por cm adicional)
   const calcularPrecioEstimado = (cm: number): number => {
     if (cm <= 0) return 0;
     // Si coincide con alguna tarifa exacta existente, usarla
     const encontrada = sortedTarifas.find(t => t.altura_cm === cm);
     if (encontrada) return encontrada.precio_sugerido;
 
-    // Si no, interpolación/extrapolación: 45000 + (cm - 5) * 10000
-    const precio = 45000 + Math.round((cm - 5) * 10000);
-    return Math.max(25000, precio);
+    // Progresión exacta: cm * 10000 (mínimo 30000)
+    const precio = Math.round(cm * 10000);
+    return Math.max(30000, precio);
   };
 
   const precioEstimadoCustom = calcularPrecioEstimado(customCm);

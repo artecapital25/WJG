@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -71,6 +71,18 @@ export const Navbar: React.FC<NavbarProps> = ({
         {/* Atajos secundarios: visibles solo en pantallas medianas/grandes para que en celular el header sea limpio y espacioso */}
         {onSelectTab && (
           <button 
+            className={`btn btn-sm ${activeTab === 'pos' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            onClick={() => onSelectTab('pos')}
+            title="Punto de Venta Express: Registrar venta con foto y alertas"
+            style={{ fontWeight: 700 }}
+          >
+            <Camera size={14} color={activeTab === 'pos' ? '#000' : 'var(--brand-cyan)'} />
+            <span>POS Express</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
             className={`btn btn-sm ${activeTab === 'stock' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
             onClick={() => onSelectTab('stock')}
             title="Ver catálogo de productos y figuras en stock"
@@ -82,12 +94,23 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {onSelectTab && (
           <button 
-            className={`btn btn-sm ${activeTab === 'plan' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
-            onClick={() => onSelectTab('plan')}
-            title="Ver Roadmap y Plan de Proyecto"
+            className={`btn btn-sm ${activeTab === 'tareas' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            onClick={() => onSelectTab('tareas')}
+            title="Tareas de equipo (Germán, Wendy, Juan) y S.O.S Insumos"
           >
-            <Rocket size={14} />
-            <span>Plan WJG</span>
+            <Users size={14} color={activeTab === 'tareas' ? '#000' : '#c084fc'} />
+            <span>Equipo</span>
+          </button>
+        )}
+
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'marketing' ? 'btn-primary' : 'btn-secondary'} desktop-header-btn`}
+            onClick={() => onSelectTab('marketing')}
+            title="Marketing Hub: Catálogo Meta / Instagram y generador de copys"
+          >
+            <Megaphone size={14} color={activeTab === 'marketing' ? '#000' : '#f472b6'} />
+            <span>Marketing</span>
           </button>
         )}
 

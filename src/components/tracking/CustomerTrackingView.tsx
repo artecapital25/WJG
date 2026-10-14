@@ -21,6 +21,8 @@ interface CustomerTrackingViewProps {
   cotizaciones: Cotizacion[];
   config: ConfiguracionTaller;
   initialQuery?: string;
+  isIsolatedMode?: boolean;
+  onUnlockAdmin?: () => void;
 }
 
 const ETAPAS: { estado: EstadoOT; label: string; icon: any; desc: string; porcentaje: number }[] = [
@@ -72,7 +74,9 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
   ordenes,
   cotizaciones,
   config,
-  initialQuery = ''
+  initialQuery = '',
+  isIsolatedMode = false,
+  onUnlockAdmin
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [copiedLink, setCopiedLink] = useState(false);
@@ -91,7 +95,8 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
   const matchedOT = ordenes.find(o => 
     o.numero_ot.toLowerCase().includes(cleanTerm) ||
     o.cotizacion_numero.toLowerCase().includes(cleanTerm) ||
-    (cleanTerm.length >= 4 && o.cliente_nombre.toLowerCase().includes(cleanTerm))
+    // En modo aislado cliente no se busca por nombre libre para evitar exponer datos de otros clientes
+    (!isIsolatedMode && cleanTerm.length >= 4 && o.cliente_nombre.toLowerCase().includes(cleanTerm))
   );
 
   const matchedCot = cotizaciones.find(c => 
@@ -107,7 +112,7 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
 
   const handleCopyShareLink = () => {
     if (!matchedOT) return;
-    const url = `${window.location.origin}/?tab=seguimiento&ot=${matchedOT.numero_ot}`;
+    const url = `${window.location.origin}/?portal=cliente&ot=${encodeURIComponent(matchedOT.numero_ot)}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -126,14 +131,33 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
       <div style={{ 
         textAlign: 'center', 
         padding: '24px 16px',
-        background: 'linear-gradient(180deg, rgba(27, 98, 177, 0.15) 0%, rgba(11, 15, 23, 0) 100%)',
+        background: 'linear-gradient(180deg, rgba(27, 98, 177, 0.2) 0%, rgba(11, 15, 23, 0) 100%)',
         borderRadius: '16px',
-        marginBottom: '20px'
+        marginBottom: '20px',
+        border: '1px solid rgba(56, 189, 248, 0.2)'
       }}>
+        {isIsolatedMode && (
+          <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '10px', marginBottom: '14px' }}>
+            <img 
+              src="/wjg_logo_vector.svg" 
+              alt="WJGEEKS 3D" 
+              style={{ width: '40px', height: '40px' }} 
+            />
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fff', letterSpacing: '0.5px' }}>
+                WJGEEKS <span style={{ color: 'var(--brand-cyan)' }}>3D</span>
+              </div>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Taller de Impresión 3D & Acabados de Colección
+              </div>
+            </div>
+          </div>
+        )}
+
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '4px 12px', background: 'rgba(56, 189, 248, 0.12)', borderRadius: '20px', border: '1px solid rgba(56, 189, 248, 0.3)', marginBottom: '12px' }}>
           <Sparkles size={14} color="var(--brand-cyan)" />
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--brand-cyan)', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-            Portal de Rastreo en Vivo
+            Portal Seguro de Seguimiento de Piezas
           </span>
         </div>
         <h2 style={{ fontSize: '1.8rem', fontWeight: 800, margin: '0 0 6px 0', fontFamily: 'var(--font-display)' }}>
@@ -327,10 +351,10 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
             Ingresa el código que te compartimos en tu comprobante de cotización (por ejemplo <strong>OT-0001</strong> o <strong>25-001</strong>) para ver el progreso en tiempo real.
           </p>
 
-          {ordenes.length > 0 && (
+          {!isIsolatedMode && ordenes.length > 0 && (
             <div style={{ marginTop: '16px' }}>
               <span style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '8px' }}>
-                Órdenes recientes en taller:
+                Órdenes recientes en taller (Vista Admin):
               </span>
               <div style={{ display: 'flex', gap: '6px', justifyContent: 'center', flexWrap: 'wrap' }}>
                 {ordenes.slice(0, 5).map(o => (
@@ -346,6 +370,43 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
                 ))}
               </div>
             </div>
+          )}
+        </div>
+      )}
+
+      {/* Pie de página seguro para clientes */}
+      {isIsolatedMode && (
+        <div style={{ 
+          marginTop: '36px', 
+          paddingTop: '20px', 
+          borderTop: '1px solid var(--border-subtle)', 
+          textAlign: 'center',
+          color: 'var(--text-muted)',
+          fontSize: '0.75rem'
+        }}>
+          <p style={{ margin: '0 0 8px 0' }}>
+            🔒 <strong>Enlace confidencial:</strong> Este portal muestra exclusivamente el progreso técnico de tu pieza sin exponer datos de otros clientes ni costos internos.
+          </p>
+          <p style={{ margin: '0 0 12px 0' }}>
+            WJGEEKS 3D • Manufactura de Alta Definición UV • Bogotá, Colombia • WhatsApp: +57 320 279 6115
+          </p>
+
+          {onUnlockAdmin && (
+            <button
+              type="button"
+              onClick={onUnlockAdmin}
+              style={{
+                background: 'transparent',
+                border: 'none',
+                color: 'rgba(255, 255, 255, 0.25)',
+                fontSize: '0.7rem',
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
+              title="Acceso restringido para el equipo de WJGEEKS"
+            >
+              🔒 Ingreso Personal de Taller
+            </button>
           )}
         </div>
       )}

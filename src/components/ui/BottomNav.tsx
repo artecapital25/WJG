@@ -14,7 +14,10 @@ import {
   Check,
   Package,
   TrendingUp,
-  Compass
+  Compass,
+  Camera,
+  Users,
+  Megaphone
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -73,6 +76,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       badge: draftItemsCount
     },
     {
+      id: 'pos',
+      label: 'POS Express (Cobro Rápido)',
+      shortLabel: 'POS Express',
+      description: 'Venta rápida con foto, cliente y recordatorio de pago',
+      icon: Camera,
+      iconBg: 'rgba(56, 189, 248, 0.18)',
+      iconColor: 'var(--brand-cyan)'
+    },
+    {
       id: 'stl',
       label: 'Visor STL 3D',
       shortLabel: 'Visor STL',
@@ -126,6 +138,24 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       icon: TrendingUp,
       iconBg: 'rgba(34, 197, 94, 0.15)',
       iconColor: '#4ade80'
+    },
+    {
+      id: 'tareas',
+      label: 'Equipo, Tareas & S.O.S',
+      shortLabel: 'Equipo',
+      description: 'Tareas Germán/Wendy/Juan, rutinas y S.O.S Insumos',
+      icon: Users,
+      iconBg: 'rgba(168, 85, 247, 0.15)',
+      iconColor: '#c084fc'
+    },
+    {
+      id: 'marketing',
+      label: 'Marketing & Meta Hub',
+      shortLabel: 'Marketing',
+      description: 'Catálogo Instagram/WhatsApp y generador de copys',
+      icon: Megaphone,
+      iconBg: 'rgba(236, 72, 153, 0.15)',
+      iconColor: '#f472b6'
     },
     {
       id: 'seguimiento',
