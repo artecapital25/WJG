@@ -185,6 +185,16 @@ export interface TarifaTamano {
 
 export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'Parcial';
 
+export type EstadoPago = 'Pendiente' | 'Abono Parcial' | 'Pagado Total';
+
+export interface DatosPagoRegistro {
+  estado_pago: EstadoPago;
+  abono: number;
+  saldo_pendiente: number;
+  metodo_pago?: string;
+  comprobante_pago?: string;
+}
+
 export interface Cotizacion {
   id: string;
   numero_cot: string; // ej: 25-074
@@ -199,6 +209,13 @@ export interface Cotizacion {
   total: number;
   tiempo_entrega_estimado: string;
   notas: string;
+  
+  // Estado Financiero y Anticipos
+  estado_pago?: EstadoPago;
+  abono?: number;
+  saldo_pendiente?: number;
+  metodo_pago?: string;
+  comprobante_pago?: string;
 }
 
 export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega';
@@ -246,9 +263,14 @@ export interface OrdenTrabajo {
   altura_cm_tarifario?: number;
   precio_cobrado?: number;
   es_proyecto_rapido?: boolean;
-}
 
-export type EstadoPago = 'Pendiente' | 'Abono Parcial' | 'Pagado Total';
+  // Estado Financiero y Pago
+  estado_pago?: EstadoPago;
+  abono?: number;
+  saldo_pendiente?: number;
+  metodo_pago?: string;
+  comprobante_pago?: string;
+}
 
 export interface CuentaCobro {
   id: string;

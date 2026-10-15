@@ -33,6 +33,8 @@ import {
   CuentaCobro, 
   EstadoOT, 
   EstadoCotizacion,
+  EstadoPago,
+  DatosPagoRegistro,
   TarifaTamano,
   ProductoStock,
   VentaExpress,
@@ -510,22 +512,87 @@ export const App: React.FC = () => {
 
     // Sincronizar en la nube Supabase en segundo plano
     CloudSyncService.saveCotizacion(cotizacion);
+
+    // Si la cotización tiene abono o pago registrado, crear o actualizar automáticamente Cuenta de Cobro
+    if (cotizacion.estado_pago && cotizacion.estado_pago !== 'Pendiente') {
+      const ccExistente = cuentas.find(c => 
+        c.cotizacion_id === cotizacion.id || c.cotizacion_numero === cotizacion.numero_cot
+      );
+      if (ccExistente) {
+        const updatedCCs = cuentas.map(c => 
+          c.id === ccExistente.id ? {
+            ...c,
+            total: cotizacion.total,
+            abono: cotizacion.abono || 0,
+            saldo_pendiente: cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - (cotizacion.abono || 0)),
+            estado_pago: cotizacion.estado_pago!,
+            metodo_pago: cotizacion.metodo_pago || c.metodo_pago,
+            comprobante_url: cotizacion.comprobante_pago || c.comprobante_url
+          } : c
+        );
+        setCuentas(updatedCCs);
+        StorageService.saveCuentas(updatedCCs);
+        const ccActualizada = updatedCCs.find(c => c.id === ccExistente.id);
+        if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+      } else {
+        const nuevaCC: CuentaCobro = {
+          id: `cc-${Date.now()}`,
+          numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
+          cotizacion_id: cotizacion.id,
+          cotizacion_numero: cotizacion.numero_cot,
+          cliente: cotizacion.cliente,
+          fecha_emision: cotizacion.fecha || new Date().toISOString().slice(0, 10),
+          items_resumen: cotizacion.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || 'Piezas 3D',
+          total: cotizacion.total,
+          abono: cotizacion.abono || 0,
+          saldo_pendiente: cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - (cotizacion.abono || 0)),
+          estado_pago: cotizacion.estado_pago,
+          metodo_pago: cotizacion.metodo_pago,
+          comprobante_url: cotizacion.comprobante_pago
+        };
+        const updatedCCs = [nuevaCC, ...cuentas];
+        setCuentas(updatedCCs);
+        StorageService.saveCuentas(updatedCCs);
+        CloudSyncService.saveCuentaCobro(nuevaCC);
+      }
+    }
   };
 
-  // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT)
-  const handleAprobarCotizacion = (cot: Cotizacion) => {
-    // 1. Actualizar estado de la cotización
+  // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT) y registra pagos / cuentas de cobro
+  const handleAprobarCotizacion = (
+    cot: Cotizacion, 
+    datosPago?: DatosPagoRegistro,
+    redirigirTaller: boolean = true
+  ) => {
+    // 1. Obtener datos de pago (si no se pasan, tomar los de la cotización o 'Pendiente')
+    const estadoPagoFinal: EstadoPago = datosPago?.estado_pago || cot.estado_pago || 'Pendiente';
+    const abonoFinal: number = datosPago?.abono !== undefined ? datosPago.abono : (cot.abono ?? 0);
+    const saldoFinal: number = datosPago?.saldo_pendiente !== undefined ? datosPago.saldo_pendiente : (cot.saldo_pendiente ?? Math.max(0, cot.total - abonoFinal));
+    const metodoPagoFinal: string | undefined = datosPago?.metodo_pago || cot.metodo_pago;
+    const comprobanteFinal: string | undefined = datosPago?.comprobante_pago || cot.comprobante_pago;
+
+    // 2. Actualizar estado y pagos de la cotización
+    const cotActualizada: Cotizacion = {
+      ...cot,
+      estado: 'Aceptada' as EstadoCotizacion,
+      estado_pago: estadoPagoFinal,
+      abono: abonoFinal,
+      saldo_pendiente: saldoFinal,
+      metodo_pago: metodoPagoFinal,
+      comprobante_pago: comprobanteFinal
+    };
+
     const updatedCots = cotizaciones.map(c => 
-      c.id === cot.id ? { ...c, estado: 'Aceptada' as EstadoCotizacion } : c
+      c.id === cot.id ? cotActualizada : c
     );
     setCotizaciones(updatedCots);
     StorageService.saveCotizaciones(updatedCots);
 
-    // 2. Traer órdenes actuales frescas para calcular el consecutivo sin colisiones
+    // 3. Traer órdenes actuales frescas para calcular el consecutivo sin colisiones
     const currentOrders = StorageService.getOrdenes();
     let maxConsecutive = StorageService.getNextOTConsecutive(currentOrders);
 
-    // 3. Generar OTs para piezas que no tengan OT aún en el taller
+    // 4. Generar OTs para piezas que no tengan OT aún en el taller
     const nuevasOTs: OrdenTrabajo[] = [];
     const items = cot.items || [];
 
@@ -566,28 +633,167 @@ export const App: React.FC = () => {
           tiene_empaque: item.tiene_empaque,
           lista_empaques: item.lista_empaques,
           detalles_tecnicos: item.descripcion_tecnica,
-          imagen_url: item.imagen_url
+          imagen_url: item.imagen_url,
+          precio_cobrado: item.precio_total,
+          estado_pago: estadoPagoFinal,
+          abono: abonoFinal,
+          saldo_pendiente: saldoFinal,
+          metodo_pago: metodoPagoFinal,
+          comprobante_pago: comprobanteFinal
         });
       }
     });
 
-    let updatedOTs = currentOrders;
+    // También actualizar OTs existentes asociadas con los datos de pago actualizados
+    let updatedOTs = currentOrders.map(o => {
+      if (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) {
+        return {
+          ...o,
+          estado_pago: estadoPagoFinal,
+          abono: abonoFinal,
+          saldo_pendiente: saldoFinal,
+          metodo_pago: metodoPagoFinal || o.metodo_pago,
+          comprobante_pago: comprobanteFinal || o.comprobante_pago
+        };
+      }
+      return o;
+    });
+
     if (nuevasOTs.length > 0) {
-      updatedOTs = [...nuevasOTs, ...currentOrders];
-      setOrdenes(updatedOTs);
-      StorageService.saveOrdenes(updatedOTs);
-      // Sincronizar en Supabase
+      updatedOTs = [...nuevasOTs, ...updatedOTs];
       nuevasOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
-    } else {
-      setOrdenes(currentOrders);
     }
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
 
-    // Sincronizar cotización aceptada en Supabase
-    const cotAceptada = updatedCots.find(c => c.id === cot.id);
-    if (cotAceptada) CloudSyncService.saveCotizacion(cotAceptada);
+    // 5. Crear o Actualizar automáticamente la Cuenta de Cobro (CuentaCobro)
+    const ccExistente = cuentas.find(c => 
+      c.cotizacion_id === cot.id || c.cotizacion_numero === cot.numero_cot
+    );
 
-    // Redirigir a vista de taller
-    setActiveTab('workflow');
+    let updatedCuentas = [...cuentas];
+    if (ccExistente) {
+      updatedCuentas = cuentas.map(c => 
+        c.id === ccExistente.id ? {
+          ...c,
+          total: cot.total,
+          abono: abonoFinal,
+          saldo_pendiente: saldoFinal,
+          estado_pago: estadoPagoFinal,
+          metodo_pago: metodoPagoFinal || c.metodo_pago,
+          comprobante_url: comprobanteFinal || c.comprobante_url
+        } : c
+      );
+      const ccActualizada = updatedCuentas.find(c => c.id === ccExistente.id);
+      if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+    } else {
+      const nuevaCC: CuentaCobro = {
+        id: `cc-${Date.now()}`,
+        numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
+        cotizacion_id: cot.id,
+        cotizacion_numero: cot.numero_cot,
+        cliente: cot.cliente,
+        fecha_emision: new Date().toISOString().slice(0, 10),
+        items_resumen: cot.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || 'Piezas 3D',
+        total: cot.total,
+        abono: abonoFinal,
+        saldo_pendiente: saldoFinal,
+        estado_pago: estadoPagoFinal,
+        metodo_pago: metodoPagoFinal,
+        comprobante_url: comprobanteFinal
+      };
+      updatedCuentas = [nuevaCC, ...cuentas];
+      CloudSyncService.saveCuentaCobro(nuevaCC);
+    }
+    setCuentas(updatedCuentas);
+    StorageService.saveCuentas(updatedCuentas);
+
+    // 6. Sincronizar cotización aceptada en Supabase
+    CloudSyncService.saveCotizacion(cotActualizada);
+
+    // 7. Redirigir a vista de taller si corresponde
+    if (redirigirTaller) {
+      setActiveTab('workflow');
+    }
+  };
+
+  // Actualizar solo el pago de una Cotización (sin alterar estado de aprobación ni redirigir)
+  const handleActualizarPagoCotizacion = (cotId: string, datosPago: DatosPagoRegistro) => {
+    const targetCot = cotizaciones.find(c => c.id === cotId);
+    if (!targetCot) return;
+
+    const cotActualizada: Cotizacion = {
+      ...targetCot,
+      estado_pago: datosPago.estado_pago,
+      abono: datosPago.abono,
+      saldo_pendiente: datosPago.saldo_pendiente,
+      metodo_pago: datosPago.metodo_pago,
+      comprobante_pago: datosPago.comprobante_pago
+    };
+
+    const updatedCots = cotizaciones.map(c => c.id === cotId ? cotActualizada : c);
+    setCotizaciones(updatedCots);
+    StorageService.saveCotizaciones(updatedCots);
+    CloudSyncService.saveCotizacion(cotActualizada);
+
+    // Actualizar OTs asociadas
+    const updatedOTs = ordenes.map(o => {
+      if (o.cotizacion_id === targetCot.id || o.cotizacion_numero === targetCot.numero_cot) {
+        return {
+          ...o,
+          estado_pago: datosPago.estado_pago,
+          abono: datosPago.abono,
+          saldo_pendiente: datosPago.saldo_pendiente,
+          metodo_pago: datosPago.metodo_pago || o.metodo_pago,
+          comprobante_pago: datosPago.comprobante_pago || o.comprobante_pago
+        };
+      }
+      return o;
+    });
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
+
+    // Actualizar o crear Cuenta de Cobro
+    const ccExistente = cuentas.find(c => 
+      c.cotizacion_id === targetCot.id || c.cotizacion_numero === targetCot.numero_cot
+    );
+    if (ccExistente) {
+      const updatedCCs = cuentas.map(c => 
+        c.id === ccExistente.id ? {
+          ...c,
+          total: targetCot.total,
+          abono: datosPago.abono,
+          saldo_pendiente: datosPago.saldo_pendiente,
+          estado_pago: datosPago.estado_pago,
+          metodo_pago: datosPago.metodo_pago || c.metodo_pago,
+          comprobante_url: datosPago.comprobante_pago || c.comprobante_url
+        } : c
+      );
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      const ccActualizada = updatedCCs.find(c => c.id === ccExistente.id);
+      if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+    } else {
+      const nuevaCC: CuentaCobro = {
+        id: `cc-${Date.now()}`,
+        numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
+        cotizacion_id: targetCot.id,
+        cotizacion_numero: targetCot.numero_cot,
+        cliente: targetCot.cliente,
+        fecha_emision: new Date().toISOString().slice(0, 10),
+        items_resumen: targetCot.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || 'Piezas 3D',
+        total: targetCot.total,
+        abono: datosPago.abono,
+        saldo_pendiente: datosPago.saldo_pendiente,
+        estado_pago: datosPago.estado_pago,
+        metodo_pago: datosPago.metodo_pago,
+        comprobante_url: datosPago.comprobante_pago
+      };
+      const updatedCCs = [nuevaCC, ...cuentas];
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      CloudSyncService.saveCuentaCobro(nuevaCC);
+    }
   };
 
   // Actualizar Estado de OT con Descuento Automático de Inventario
@@ -797,30 +1003,91 @@ export const App: React.FC = () => {
     }
   };
 
-  // Handler para Actualizar Trazabilidad STL y detalles de OT
+  // Handler para Actualizar Trazabilidad STL, detalles de OT y Pagos
   const handleActualizarOT = (otActualizada: OrdenTrabajo) => {
-    const updated = ordenes.map(o => o.id === otActualizada.id ? otActualizada : o);
+    // 1. Si la OT actualizó estado_pago, replicarlo también en las demás OTs de la misma cotización
+    const updated = ordenes.map(o => {
+      if (o.id === otActualizada.id) return otActualizada;
+      if (otActualizada.estado_pago && 
+          ((otActualizada.cotizacion_id && o.cotizacion_id === otActualizada.cotizacion_id) ||
+           (otActualizada.cotizacion_numero && o.cotizacion_numero === otActualizada.cotizacion_numero))) {
+        return {
+          ...o,
+          estado_pago: otActualizada.estado_pago,
+          abono: otActualizada.abono,
+          saldo_pendiente: otActualizada.saldo_pendiente,
+          metodo_pago: otActualizada.metodo_pago || o.metodo_pago,
+          comprobante_pago: otActualizada.comprobante_pago || o.comprobante_pago
+        };
+      }
+      return o;
+    });
     setOrdenes(updated);
     StorageService.saveOrdenes(updated);
     CloudSyncService.saveOrdenTrabajo(otActualizada);
 
-    // Si la OT tiene enlaces_compra actualizados y está vinculada a una cotización,
-    // sincronizar también los enlaces en la cotización padre correspondiente
-    if (otActualizada.enlaces_compra && (otActualizada.cotizacion_numero || otActualizada.cotizacion_id)) {
+    // 2. Sincronizar en la cotización padre (enlaces_compra y estado_pago)
+    if (otActualizada.cotizacion_numero || otActualizada.cotizacion_id) {
       const updatedCots = cotizaciones.map(c => {
         const matchesCot = (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
                            (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero);
         if (!matchesCot) return c;
-        const updatedItems = c.items.map(it => {
-          if (it.nombre_item?.toLowerCase().trim() === otActualizada.item_nombre?.toLowerCase().trim()) {
-            return { ...it, enlaces_compra: otActualizada.enlaces_compra };
-          }
-          return it;
-        });
-        return { ...c, items: updatedItems };
+
+        let updatedItems = c.items;
+        if (otActualizada.enlaces_compra) {
+          updatedItems = c.items.map(it => {
+            if (it.nombre_item?.toLowerCase().trim() === otActualizada.item_nombre?.toLowerCase().trim()) {
+              return { ...it, enlaces_compra: otActualizada.enlaces_compra };
+            }
+            return it;
+          });
+        }
+
+        return { 
+          ...c, 
+          items: updatedItems,
+          estado_pago: otActualizada.estado_pago || c.estado_pago,
+          abono: otActualizada.abono !== undefined ? otActualizada.abono : c.abono,
+          saldo_pendiente: otActualizada.saldo_pendiente !== undefined ? otActualizada.saldo_pendiente : c.saldo_pendiente,
+          metodo_pago: otActualizada.metodo_pago || c.metodo_pago,
+          comprobante_pago: otActualizada.comprobante_pago || c.comprobante_pago
+        };
       });
       setCotizaciones(updatedCots);
       StorageService.saveCotizaciones(updatedCots);
+
+      const cotAfectada = updatedCots.find(c => 
+        (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
+        (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero)
+      );
+      if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+
+      // 3. Sincronizar también en la Cuenta de Cobro
+      if (otActualizada.estado_pago) {
+        const ccMatch = cuentas.find(cc => 
+          (otActualizada.cotizacion_id && cc.cotizacion_id === otActualizada.cotizacion_id) ||
+          (otActualizada.cotizacion_numero && cc.cotizacion_numero === otActualizada.cotizacion_numero)
+        );
+        if (ccMatch) {
+          const updatedCCs = cuentas.map(cc => {
+            if (cc.id === ccMatch.id) {
+              return {
+                ...cc,
+                abono: otActualizada.abono !== undefined ? otActualizada.abono : cc.abono,
+                saldo_pendiente: otActualizada.saldo_pendiente !== undefined ? otActualizada.saldo_pendiente : cc.saldo_pendiente,
+                estado_pago: otActualizada.estado_pago || cc.estado_pago,
+                metodo_pago: otActualizada.metodo_pago || cc.metodo_pago,
+                comprobante_url: otActualizada.comprobante_pago || cc.comprobante_url
+              };
+            }
+            return cc;
+          });
+          setCuentas(updatedCCs);
+          StorageService.saveCuentas(updatedCCs);
+          const ccActualizada = updatedCCs.find(cc => cc.id === ccMatch.id);
+          if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+        }
+      }
     }
   };
 
@@ -1004,6 +1271,7 @@ export const App: React.FC = () => {
             }}
             onEditarCotizacion={handleEditarCotizacion}
             onAprobarCotizacion={handleAprobarCotizacion}
+            onActualizarPagoCotizacion={handleActualizarPagoCotizacion}
             onNuevaCotizacion={handleNuevaCotizacion}
           />
         )}

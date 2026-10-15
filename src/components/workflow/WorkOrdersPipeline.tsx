@@ -27,7 +27,8 @@ import {
   Globe,
   Link2,
   X,
-  Trash2
+  Trash2,
+  CreditCard
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -38,12 +39,14 @@ import {
   Cliente, 
   EstadoSTL,
   Cotizacion,
-  EnlaceReferenciaCompra
+  EnlaceReferenciaCompra,
+  DatosPagoRegistro
 } from '../../types';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { StorageService } from '../../services/storageService';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
+import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 
 interface WorkOrdersPipelineProps {
   ordenes: OrdenTrabajo[];
@@ -113,6 +116,23 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
   const [otParaEditarLinks, setOtParaEditarLinks] = useState<OrdenTrabajo | null>(null);
   const [modalLinksList, setModalLinksList] = useState<{ id?: string; titulo: string; url: string; costo_estimado?: number }[]>([]);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+
+  // Modal de Gestión de Pago para la OT
+  const [otParaPago, setOtParaPago] = useState<OrdenTrabajo | null>(null);
+
+  const handleConfirmarPagoOT = (datos: DatosPagoRegistro) => {
+    if (!otParaPago || !onActualizarOT) return;
+    const updatedOT: OrdenTrabajo = {
+      ...otParaPago,
+      estado_pago: datos.estado_pago,
+      abono: datos.abono,
+      saldo_pendiente: datos.saldo_pendiente,
+      metodo_pago: datos.metodo_pago,
+      comprobante_pago: datos.comprobante_pago
+    };
+    onActualizarOT(updatedOT);
+    setOtParaPago(null);
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -545,6 +565,64 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                         <ExternalLink size={10} />
                       </button>
                     )}
+
+                    {/* Badge de Estado de Pago en la OT */}
+                    {ot.estado_pago === 'Pagado Total' ? (
+                      <span 
+                        style={{ 
+                          fontSize: '0.68rem', 
+                          background: 'rgba(16, 185, 129, 0.15)', 
+                          color: '#34d399', 
+                          border: '1px solid rgba(16, 185, 129, 0.4)', 
+                          padding: '1px 7px', 
+                          borderRadius: '4px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                        title="100% Pagado"
+                      >
+                        <span>🟢 Pagado</span>
+                      </span>
+                    ) : ot.estado_pago === 'Abono Parcial' ? (
+                      <span 
+                        style={{ 
+                          fontSize: '0.68rem', 
+                          background: 'rgba(245, 158, 11, 0.15)', 
+                          color: '#fbbf24', 
+                          border: '1px solid rgba(245, 158, 11, 0.4)', 
+                          padding: '1px 7px', 
+                          borderRadius: '4px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                        title={`Abonó: $${(ot.abono || 0).toLocaleString('es-CO')} | Resta: $${(ot.saldo_pendiente || 0).toLocaleString('es-CO')}`}
+                      >
+                        <span>🟡 Abono: ${(ot.abono || 0).toLocaleString('es-CO')}</span>
+                        {ot.saldo_pendiente ? <span style={{ color: '#f87171' }}>• Resta: ${ot.saldo_pendiente.toLocaleString('es-CO')}</span> : null}
+                      </span>
+                    ) : (
+                      <span 
+                        style={{ 
+                          fontSize: '0.68rem', 
+                          background: 'rgba(239, 68, 68, 0.12)', 
+                          color: '#f87171', 
+                          border: '1px solid rgba(239, 68, 68, 0.3)', 
+                          padding: '1px 7px', 
+                          borderRadius: '4px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                        title="Pendiente de pago"
+                      >
+                        <span>🔴 Sin Pago</span>
+                      </span>
+                    )}
                   </div>
                   
                   <span className={`status-pill status-${ot.estado.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -856,6 +934,23 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                     <span>{copiedOtId === ot.id ? '¡Copiado!' : 'Rastreo'}</span>
                   </button>
 
+                  {/* Botón Gestión Rápida de Pago en Taller */}
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setOtParaPago(ot)}
+                    style={{ 
+                      borderColor: ot.estado_pago === 'Pagado Total' ? 'rgba(16, 185, 129, 0.4)' : ot.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.45)' : 'rgba(239, 68, 68, 0.35)', 
+                      color: ot.estado_pago === 'Pagado Total' ? '#34d399' : ot.estado_pago === 'Abono Parcial' ? '#fbbf24' : '#f87171',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Registrar o actualizar pago / abono recibido de esta orden"
+                  >
+                    <CreditCard size={13} />
+                    <span>Pago</span>
+                  </button>
+
                   {ot.estado === 'Listo para Entrega' && onGenerarCuentaCobro && (
                     <button 
                       className="btn btn-cyan btn-sm"
@@ -1093,6 +1188,40 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                     <option key={st} value={st}>{st}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* Recordatorio de Pago al Aprobar Diseño */}
+              <div style={{
+                background: otParaSTL.estado_pago === 'Pagado Total' ? 'rgba(16, 185, 129, 0.12)' : otParaSTL.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.12)' : 'rgba(239, 68, 68, 0.12)',
+                border: `1px solid ${otParaSTL.estado_pago === 'Pagado Total' ? 'rgba(16, 185, 129, 0.35)' : otParaSTL.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.3)'}`,
+                borderRadius: '10px',
+                padding: '10px 12px',
+                marginBottom: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>PAGO DEL CLIENTE (APROBACIÓN DISEÑO):</div>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 800, color: otParaSTL.estado_pago === 'Pagado Total' ? '#34d399' : otParaSTL.estado_pago === 'Abono Parcial' ? '#fbbf24' : '#f87171' }}>
+                    {otParaSTL.estado_pago === 'Pagado Total' && '🟢 Pagado Total (100%)'}
+                    {otParaSTL.estado_pago === 'Abono Parcial' && `🟡 Abonó: $${(otParaSTL.abono || 0).toLocaleString('es-CO')} (Debe: $${(otParaSTL.saldo_pendiente || 0).toLocaleString('es-CO')})`}
+                    {(!otParaSTL.estado_pago || otParaSTL.estado_pago === 'Pendiente') && '🔴 Sin Pago / Pendiente'}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  onClick={() => {
+                    const otRef = otParaSTL;
+                    setOtParaSTL(null);
+                    setOtParaPago(otRef);
+                  }}
+                >
+                  <CreditCard size={13} color="var(--brand-cyan)" />
+                  <span>Registrar Pago</span>
+                </button>
               </div>
 
               <div style={{ marginBottom: '14px' }}>
@@ -1339,12 +1468,27 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
               </div>
             )}
 
-            {/* Total Financiero */}
+            {/* Total Financiero y Pagos */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'rgba(56, 189, 248, 0.08)', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.25)', marginBottom: '16px' }}>
               <div>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Valor Total Cotizado:</span>
                 <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--brand-cyan)' }}>
                   ${selectedCotizacionForModal.total?.toLocaleString('es-CO')} COP
+                </div>
+                <div style={{ marginTop: '4px' }}>
+                  {selectedCotizacionForModal.estado_pago === 'Pagado Total' ? (
+                    <span style={{ fontSize: '0.72rem', background: 'rgba(16, 185, 129, 0.15)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.4)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      🟢 100% Pagado
+                    </span>
+                  ) : selectedCotizacionForModal.estado_pago === 'Abono Parcial' ? (
+                    <span style={{ fontSize: '0.72rem', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.4)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      🟡 Abono: ${(selectedCotizacionForModal.abono || 0).toLocaleString('es-CO')} • Saldo: ${(selectedCotizacionForModal.saldo_pendiente ?? Math.max(0, (selectedCotizacionForModal.total || 0) - (selectedCotizacionForModal.abono || 0))).toLocaleString('es-CO')}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: '0.72rem', background: 'rgba(239, 68, 68, 0.12)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '2px 8px', borderRadius: '4px', fontWeight: 700 }}>
+                      🔴 Sin Pago / Pendiente
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1512,6 +1656,33 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL: REGISTRAR O ACTUALIZAR PAGO DE LA ORDEN DE TRABAJO */}
+      {otParaPago && (
+        <ModalRegistrarPago
+          isOpen={true}
+          onClose={() => setOtParaPago(null)}
+          titulo={`Gestión de Pago • ${otParaPago.numero_ot}`}
+          subtitulo={`${otParaPago.item_nombre} • Cliente: ${otParaPago.cliente_nombre}`}
+          referenciaDoc={otParaPago.numero_ot}
+          clienteNombre={otParaPago.cliente_nombre}
+          clienteTelefono={otParaPago.cliente_telefono}
+          montoTotal={
+            otParaPago.precio_cobrado || 
+            (cotizaciones.find(c => c.id === otParaPago.cotizacion_id || c.numero_cot === otParaPago.cotizacion_numero)?.total) || 
+            50000
+          }
+          pagoActual={{
+            estado_pago: otParaPago.estado_pago,
+            abono: otParaPago.abono,
+            saldo_pendiente: otParaPago.saldo_pendiente,
+            metodo_pago: otParaPago.metodo_pago,
+            comprobante_pago: otParaPago.comprobante_pago
+          }}
+          esAprobacionCotizacion={false}
+          onConfirmarPago={handleConfirmarPagoOT}
+        />
       )}
     </div>
   );

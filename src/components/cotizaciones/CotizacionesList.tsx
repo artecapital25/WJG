@@ -20,13 +20,16 @@ import {
   RotateCw,
   Check,
   ShoppingCart,
-  ExternalLink
+  ExternalLink,
+  CreditCard,
+  DollarSign
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo } from '../../types';
+import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
+import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 
 interface CotizacionesListProps {
   cotizaciones: Cotizacion[];
@@ -34,7 +37,8 @@ interface CotizacionesListProps {
   ordenes?: OrdenTrabajo[];
   onUpdateEstado: (cotId: string, nuevoEstado: EstadoCotizacion) => void;
   onEditarCotizacion?: (cot: Cotizacion) => void;
-  onAprobarCotizacion: (cot: Cotizacion) => void;
+  onAprobarCotizacion: (cot: Cotizacion, datosPago?: DatosPagoRegistro, redirigirTaller?: boolean) => void;
+  onActualizarPagoCotizacion?: (cotId: string, datosPago: DatosPagoRegistro) => void;
   onNuevaCotizacion: () => void;
 }
 
@@ -47,13 +51,16 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   onUpdateEstado,
   onEditarCotizacion,
   onAprobarCotizacion,
+  onActualizarPagoCotizacion,
   onNuevaCotizacion
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
+  const [filtroPago, setFiltroPago] = useState<'todos' | 'pendiente' | 'abono' | 'pagado'>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('todos');
   const [criterioOrden, setCriterioOrden] = useState<TipoOrden>('reciente');
   const [previewModalImg, setPreviewModalImg] = useState<{ url: string; title: string } | null>(null);
+  const [cotParaGestionarPago, setCotParaGestionarPago] = useState<{ cot: Cotizacion; esAprobacion: boolean } | null>(null);
 
   // Función auxiliar para parsear y comparar números de cotización como "25-073"
   const parseCotNumber = (num: string): number => {
@@ -91,14 +98,24 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       resultado = resultado.filter(c => c.estado === filtroEstado);
     }
 
-    // 2. Filtro por Cliente
+    // 2. Filtro por Estado de Pago
+    if (filtroPago !== 'todos') {
+      resultado = resultado.filter(c => {
+        if (filtroPago === 'pagado') return c.estado_pago === 'Pagado Total';
+        if (filtroPago === 'abono') return c.estado_pago === 'Abono Parcial';
+        if (filtroPago === 'pendiente') return !c.estado_pago || c.estado_pago === 'Pendiente';
+        return true;
+      });
+    }
+
+    // 3. Filtro por Cliente
     if (clienteSeleccionado !== 'todos') {
       resultado = resultado.filter(c => 
         c.cliente?.nombre?.toLowerCase().trim() === clienteSeleccionado.toLowerCase().trim()
       );
     }
 
-    // 3. Filtro por Búsqueda (Número de cotización, cliente o nombre de ítem/pieza)
+    // 4. Filtro por Búsqueda (Número de cotización, cliente o nombre de ítem/pieza)
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim();
       resultado = resultado.filter(c => {
@@ -109,7 +126,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       });
     }
 
-    // 4. Ordenamiento
+    // 5. Ordenamiento
     resultado.sort((a, b) => {
       switch (criterioOrden) {
         case 'reciente': // Más reciente primero (ej: 25-073 a 25-001)
@@ -130,24 +147,45 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
     });
 
     return resultado;
-  }, [cotizaciones, filtroEstado, clienteSeleccionado, busqueda, criterioOrden]);
+  }, [cotizaciones, filtroEstado, filtroPago, clienteSeleccionado, busqueda, criterioOrden]);
 
-  const hayFiltrosActivos = busqueda.trim() !== '' || clienteSeleccionado !== 'todos' || filtroEstado !== 'todos';
+  const hayFiltrosActivos = busqueda.trim() !== '' || clienteSeleccionado !== 'todos' || filtroEstado !== 'todos' || filtroPago !== 'todos';
 
   const limpiarFiltros = () => {
     setBusqueda('');
     setClienteSeleccionado('todos');
     setFiltroEstado('todos');
+    setFiltroPago('todos');
     setCriterioOrden('reciente');
   };
 
   const handleAceptar = (cot: Cotizacion) => {
-    onAprobarCotizacion(cot);
-    confetti({
-      particleCount: 100,
-      spread: 80,
-      origin: { y: 0.5 }
-    });
+    // Abrir modal de aprobación para registrar pago de inmediato
+    setCotParaGestionarPago({ cot, esAprobacion: true });
+  };
+
+  const handleConfirmarPagoModal = (
+    datos: DatosPagoRegistro,
+    accion: 'aprobar_y_taller' | 'solo_guardar'
+  ) => {
+    if (!cotParaGestionarPago) return;
+    const { cot, esAprobacion } = cotParaGestionarPago;
+
+    if (accion === 'aprobar_y_taller' || esAprobacion) {
+      onAprobarCotizacion(cot, datos, accion === 'aprobar_y_taller');
+      confetti({
+        particleCount: 100,
+        spread: 80,
+        origin: { y: 0.5 }
+      });
+    } else {
+      if (onActualizarPagoCotizacion) {
+        onActualizarPagoCotizacion(cot.id, datos);
+      } else {
+        onAprobarCotizacion(cot, datos, false);
+      }
+    }
+    setCotParaGestionarPago(null);
   };
 
   return (
@@ -242,6 +280,25 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <option value="cliente_za">👤 Cliente (Z ➔ A)</option>
               <option value="monto_desc">💰 Mayor a menor valor ($$$ → $)</option>
               <option value="monto_asc">💵 Menor a mayor valor ($ → $$$)</option>
+            </select>
+          </div>
+
+          {/* Filtro por Estado de Pago */}
+          <div>
+            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+              <CreditCard size={13} color="#10b981" />
+              ESTADO DE PAGO
+            </label>
+            <select
+              className="form-select"
+              style={{ minHeight: '40px', fontSize: '0.88rem' }}
+              value={filtroPago}
+              onChange={(e) => setFiltroPago(e.target.value as any)}
+            >
+              <option value="todos">Todos los pagos</option>
+              <option value="pagado">🟢 Pagado Total</option>
+              <option value="abono">🟡 Con Abono Parcial</option>
+              <option value="pendiente">🔴 Sin Pago / Pendiente</option>
             </select>
           </div>
         </div>
@@ -347,6 +404,65 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   </div>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                     {cot.items.length} pieza(s) cotizada(s)
+                  </div>
+                  {/* Badge de Estado Financiero y Pago */}
+                  <div style={{ marginTop: '5px' }}>
+                    {cot.estado_pago === 'Pagado Total' ? (
+                      <span 
+                        style={{ 
+                          fontSize: '0.72rem', 
+                          background: 'rgba(16, 185, 129, 0.15)', 
+                          color: '#34d399', 
+                          border: '1px solid rgba(16, 185, 129, 0.4)', 
+                          padding: '2px 8px', 
+                          borderRadius: '6px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span>🟢 Pagado Total</span>
+                        {cot.metodo_pago && <span style={{ opacity: 0.8, fontSize: '0.66rem' }}>({cot.metodo_pago})</span>}
+                      </span>
+                    ) : cot.estado_pago === 'Abono Parcial' ? (
+                      <span 
+                        style={{ 
+                          fontSize: '0.72rem', 
+                          background: 'rgba(245, 158, 11, 0.15)', 
+                          color: '#fbbf24', 
+                          border: '1px solid rgba(245, 158, 11, 0.4)', 
+                          padding: '2px 8px', 
+                          borderRadius: '6px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                        title={`Abonó: $${(cot.abono || 0).toLocaleString('es-CO')} | Resta: $${(cot.saldo_pendiente ?? Math.max(0, cot.total - (cot.abono || 0))).toLocaleString('es-CO')}`}
+                      >
+                        <span>🟡 Abono: ${(cot.abono || 0).toLocaleString('es-CO')}</span>
+                        <span style={{ color: '#f87171', fontWeight: 800 }}>• Debe: ${(cot.saldo_pendiente ?? Math.max(0, cot.total - (cot.abono || 0))).toLocaleString('es-CO')}</span>
+                      </span>
+                    ) : (
+                      <span 
+                        style={{ 
+                          fontSize: '0.72rem', 
+                          background: 'rgba(239, 68, 68, 0.12)', 
+                          color: '#f87171', 
+                          border: '1px solid rgba(239, 68, 68, 0.3)', 
+                          padding: '2px 8px', 
+                          borderRadius: '6px', 
+                          fontWeight: 700, 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px'
+                        }}
+                      >
+                        <span>🔴 Sin Pago</span>
+                        <span style={{ opacity: 0.85, fontSize: '0.68rem' }}>($ {cot.total.toLocaleString('es-CO')})</span>
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -460,6 +576,24 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                     <span>Modificar</span>
                   </button>
                 )}
+
+                {/* Botón Gestión Rápida de Pago / Anticipo */}
+                <button 
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setCotParaGestionarPago({ cot, esAprobacion: false })}
+                  style={{ 
+                    borderColor: cot.estado_pago === 'Pagado Total' ? 'rgba(16, 185, 129, 0.4)' : cot.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.45)' : 'rgba(239, 68, 68, 0.35)', 
+                    color: cot.estado_pago === 'Pagado Total' ? '#34d399' : cot.estado_pago === 'Abono Parcial' ? '#fbbf24' : '#f87171', 
+                    background: 'rgba(255, 255, 255, 0.04)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px'
+                  }}
+                  title="Registrar o actualizar estado de pago, anticipo, abono o comprobante de esta cotización"
+                >
+                  <CreditCard size={13} />
+                  <span>Pago / Abono</span>
+                </button>
 
                 {/* Botón Inteligente: Aprobar / Reenviar OTs a Taller */}
                 {(() => {
@@ -613,6 +747,29 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal para Registrar o Modificar Pago de Cotización */}
+      {cotParaGestionarPago && (
+        <ModalRegistrarPago
+          isOpen={true}
+          onClose={() => setCotParaGestionarPago(null)}
+          titulo={cotParaGestionarPago.esAprobacion ? 'Aprobar Cotización y Registrar Pago' : `Gestión de Pago • Cot: ${cotParaGestionarPago.cot.numero_cot}`}
+          subtitulo={`Cliente: ${cotParaGestionarPago.cot.cliente.nombre} • Total: $${cotParaGestionarPago.cot.total.toLocaleString('es-CO')} COP`}
+          referenciaDoc={`Cot: ${cotParaGestionarPago.cot.numero_cot}`}
+          clienteNombre={cotParaGestionarPago.cot.cliente.nombre}
+          clienteTelefono={cotParaGestionarPago.cot.cliente.telefono}
+          montoTotal={cotParaGestionarPago.cot.total}
+          pagoActual={{
+            estado_pago: cotParaGestionarPago.cot.estado_pago,
+            abono: cotParaGestionarPago.cot.abono,
+            saldo_pendiente: cotParaGestionarPago.cot.saldo_pendiente,
+            metodo_pago: cotParaGestionarPago.cot.metodo_pago,
+            comprobante_pago: cotParaGestionarPago.cot.comprobante_pago
+          }}
+          esAprobacionCotizacion={cotParaGestionarPago.esAprobacion}
+          onConfirmarPago={handleConfirmarPagoModal}
+        />
       )}
     </div>
   );
