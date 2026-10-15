@@ -964,6 +964,20 @@ export const App: React.FC = () => {
     CloudSyncService.saveVentaExpress(ventaActualizada);
   };
 
+  const handleEliminarVentaExpress = (ventaId: string) => {
+    const updated = ventasExpress.filter(v => v.id !== ventaId);
+    setVentasExpress(updated);
+    StorageService.saveVentasExpress(updated);
+    CloudSyncService.deleteVentaExpress(ventaId);
+  };
+
+  const handleEliminarCuentaCobro = (cuentaId: string) => {
+    const updated = cuentas.filter(c => c.id !== cuentaId);
+    setCuentas(updated);
+    StorageService.saveCuentas(updated);
+    CloudSyncService.deleteCuentaCobro(cuentaId);
+  };
+
   // Handlers para Tareas de Equipo
   const handleGuardarTarea = (nueva: TareaEquipo) => {
     const updated = [nueva, ...tareas];
@@ -1358,6 +1372,7 @@ export const App: React.FC = () => {
             config={config}
             onGuardarVenta={handleGuardarVentaExpress}
             onActualizarVenta={handleActualizarVentaExpress}
+            onEliminarVenta={handleEliminarVentaExpress}
             onCrearCliente={handleAddCliente}
           />
         )}
@@ -1371,6 +1386,8 @@ export const App: React.FC = () => {
             config={config}
             onUpdatePago={handleUpdatePago}
             onUpdateVentaExpress={handleActualizarVentaExpress}
+            onEliminarVentaExpress={handleEliminarVentaExpress}
+            onEliminarCuentaCobro={handleEliminarCuentaCobro}
             onActualizarOT={handleActualizarOT}
             onCrearCuentaCobro={handleCrearCuentaCobro}
           />

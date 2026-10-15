@@ -612,6 +612,46 @@ export const CloudSyncService = {
     }
   },
 
+  // Eliminar Venta Express en Supabase
+  async deleteVentaExpress(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('ventas_express')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.warn('Error deleting venta_express in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in deleteVentaExpress:', e);
+      return false;
+    }
+  },
+
+  // Eliminar Cuenta de Cobro en Supabase
+  async deleteCuentaCobro(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('cuentas_cobro')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.warn('Error deleting cuenta_cobro in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in deleteCuentaCobro:', e);
+      return false;
+    }
+  },
+
   // 12. Traer Tarifario de Tamaños en la Nube
   async fetchTarifasTamanos(): Promise<TarifaTamano[] | null> {
     if (!this.isAvailable()) return null;

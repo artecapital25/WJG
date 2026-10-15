@@ -17,7 +17,8 @@ import {
   Phone,
   Tag,
   CreditCard,
-  RotateCcw
+  RotateCcw,
+  Edit3
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress } from '../../types/pos';
@@ -30,6 +31,7 @@ import {
   generarWhatsAppRecordatorioCobro 
 } from '../../services/posService';
 import { openWhatsApp } from '../../services/whatsappService';
+import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
 
 interface POSExpressViewProps {
   ventas: VentaExpress[];
@@ -37,6 +39,7 @@ interface POSExpressViewProps {
   config: ConfiguracionTaller;
   onGuardarVenta: (nuevaVenta: VentaExpress) => void;
   onActualizarVenta: (ventaActualizada: VentaExpress) => void;
+  onEliminarVenta?: (ventaId: string) => void;
   onCrearCliente?: (cliente: Cliente) => void;
 }
 
@@ -56,6 +59,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   config,
   onGuardarVenta,
   onActualizarVenta,
+  onEliminarVenta,
   onCrearCliente
 }) => {
   // Form State
@@ -76,7 +80,9 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
 
-  // Modal de Abono Rápido
+  // Modales de Edición, Eliminación y Abono Rápido
+  const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
+  const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [ventaParaAbono, setVentaParaAbono] = useState<VentaExpress | null>(null);
   const [montoNuevoAbono, setMontoNuevoAbono] = useState<number>(0);
 
@@ -760,6 +766,18 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                           </div>
 
                           <div className="btn-group-mobile">
+                            {/* Botón Editar Venta */}
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setVentaParaEditar(venta)}
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                              title="Editar datos de esta venta"
+                            >
+                              <Edit3 size={13} color="var(--brand-cyan)" />
+                              <span>Editar</span>
+                            </button>
+
                             {/* Botón Registrar Abono */}
                             {!esPagado && (
                               <button
@@ -792,6 +810,19 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                               <Send size={13} />
                               <span>{esPagado ? 'Comprobante' : 'Cobrar WhatsApp'}</span>
                             </button>
+
+                            {/* Botón Eliminar Venta */}
+                            {onEliminarVenta && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setVentaParaEliminar(venta)}
+                                style={{ fontSize: '0.75rem', padding: '4px 8px', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                                title="Eliminar venta express"
+                              >
+                                <Trash2 size={13} />
+                              </button>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -901,6 +932,103 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL EDITAR VENTA EXPRESS */}
+      {ventaParaEditar && (
+        <ModalEditarVentaExpress
+          isOpen={!!ventaParaEditar}
+          venta={ventaParaEditar}
+          clientes={clientes}
+          onClose={() => setVentaParaEditar(null)}
+          onGuardarCambios={(v) => {
+            onActualizarVenta(v);
+            setVentaParaEditar(null);
+          }}
+          onEliminarVenta={(id) => {
+            if (onEliminarVenta) {
+              onEliminarVenta(id);
+              setVentaParaEditar(null);
+            }
+          }}
+        />
+      )}
+
+      {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE VENTA EXPRESS */}
+      {ventaParaEliminar && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '16px'
+          }}
+          onClick={() => setVentaParaEliminar(null)}
+        >
+          <div 
+            className="glass-card" 
+            style={{ 
+              maxWidth: '420px', 
+              width: '100%', 
+              margin: 0, 
+              padding: '24px', 
+              textAlign: 'center', 
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              boxShadow: '0 12px 35px rgba(239, 68, 68, 0.25)'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: '50%',
+              width: '54px',
+              height: '54px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px auto'
+            }}>
+              <Trash2 size={26} color="#ef4444" />
+            </div>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px', color: '#fff', fontWeight: 800 }}>
+              ¿Eliminar Venta {ventaParaEliminar.numero_venta}?
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+              Se removerá la figura <strong style={{ color: '#fff' }}>{ventaParaEliminar.nombre_producto}</strong> de <strong style={{ color: '#fff' }}>{ventaParaEliminar.cliente_nombre}</strong> (${ventaParaEliminar.total.toLocaleString('es-CO')} COP).<br/>
+              Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setVentaParaEliminar(null)}
+                style={{ padding: '8px 18px' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-danger" 
+                style={{ fontWeight: 800, padding: '8px 20px' }}
+                onClick={() => {
+                  if (onEliminarVenta) onEliminarVenta(ventaParaEliminar.id);
+                  setVentaParaEliminar(null);
+                }}
+              >
+                Sí, eliminar
+              </button>
+            </div>
           </div>
         </div>
       )}

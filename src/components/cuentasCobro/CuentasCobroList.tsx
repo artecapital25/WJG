@@ -15,7 +15,9 @@ import {
   Phone,
   ArrowRight,
   TrendingUp,
-  Camera
+  Camera,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 import { 
   CuentaCobro, 
@@ -31,6 +33,7 @@ import { generateCuentaCobroWhatsAppUrl, openWhatsApp, formatWhatsAppPhone } fro
 import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../services/posService';
 import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
+import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
 
 interface CuentasCobroListProps {
   cuentas: CuentaCobro[];
@@ -40,6 +43,8 @@ interface CuentasCobroListProps {
   config: ConfiguracionTaller;
   onUpdatePago: (cuentaId: string, nuevoAbono: number) => void;
   onUpdateVentaExpress?: (venta: VentaExpress) => void;
+  onEliminarVentaExpress?: (ventaId: string) => void;
+  onEliminarCuentaCobro?: (cuentaId: string) => void;
   onActualizarOT?: (ot: OrdenTrabajo) => void;
   onCrearCuentaCobro?: (nuevaCC: CuentaCobro) => void;
 }
@@ -52,6 +57,8 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   config,
   onUpdatePago,
   onUpdateVentaExpress,
+  onEliminarVentaExpress,
+  onEliminarCuentaCobro,
   onActualizarOT,
   onCrearCuentaCobro
 }) => {
@@ -63,6 +70,10 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   // Modales
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCobro | null>(null);
   const [abonoInput, setAbonoInput] = useState<number>(0);
+  const [cuentaParaEliminar, setCuentaParaEliminar] = useState<CuentaCobro | null>(null);
+
+  const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
+  const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
 
   const [selectedVenta, setSelectedVenta] = useState<VentaExpress | null>(null);
   const [abonoVentaInput, setAbonoVentaInput] = useState<number>(0);
@@ -523,7 +534,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                         <span style={{ color: '#fff' }}>
                           ⚡ {v.nombre_producto} ({v.numero_venta})
                         </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           <span style={{ fontWeight: 700, color: '#fbbf24' }}>
                             ${v.saldo_pendiente.toLocaleString('es-CO')}
                           </span>
@@ -536,6 +547,26 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                               title="Abonar a esta figura"
                             >
                               + Abono
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setVentaParaEditar(v)}
+                            style={{ padding: '2px 5px', fontSize: '0.68rem', color: 'var(--brand-cyan)' }}
+                            title="Editar esta venta POS"
+                          >
+                            <Edit3 size={11} />
+                          </button>
+                          {onEliminarVentaExpress && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => setVentaParaEliminar(v)}
+                              style={{ padding: '2px 5px', fontSize: '0.68rem', color: '#f87171' }}
+                              title="Eliminar venta POS"
+                            >
+                              <Trash2 size={11} />
                             </button>
                           )}
                         </div>
@@ -669,6 +700,16 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                     </div>
 
                     <div style={{ display: 'flex', gap: '6px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setVentaParaEditar(v)}
+                        title="Editar venta POS"
+                        style={{ padding: '4px 8px' }}
+                      >
+                        <Edit3 size={14} color="var(--brand-cyan)" />
+                      </button>
+
                       {!esPagado && onUpdateVentaExpress && (
                         <button
                           type="button"
@@ -687,6 +728,18 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                       >
                         <Send size={14} />
                       </button>
+
+                      {onEliminarVentaExpress && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setVentaParaEliminar(v)}
+                          title="Eliminar venta POS"
+                          style={{ padding: '4px 8px', color: '#f87171' }}
+                        >
+                          <Trash2 size={14} />
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -765,6 +818,19 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                     >
                       <DollarSign size={14} />
                       <span>Registrar Abono</span>
+                    </button>
+                  )}
+
+                  {onEliminarCuentaCobro && (
+                    <button 
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setCuentaParaEliminar(cuenta)}
+                      style={{ color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', marginLeft: cuenta.saldo_pendiente <= 0 ? 'auto' : undefined }}
+                      title="Eliminar esta cuenta de cobro"
+                    >
+                      <Trash2 size={14} />
+                      <span>Eliminar</span>
                     </button>
                   )}
                 </div>
@@ -909,6 +975,192 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
           esAprobacionCotizacion={false}
           onConfirmarPago={(datos) => handleConfirmarAbonoOT(datos)}
         />
+      )}
+
+      {/* MODAL EDITAR VENTA EXPRESS */}
+      {ventaParaEditar && (
+        <ModalEditarVentaExpress
+          isOpen={!!ventaParaEditar}
+          venta={ventaParaEditar}
+          clientes={clientes}
+          onClose={() => setVentaParaEditar(null)}
+          onGuardarCambios={(v) => {
+            if (onUpdateVentaExpress) onUpdateVentaExpress(v);
+            setVentaParaEditar(null);
+            setNotifCartera(`✅ Venta ${v.numero_venta} (${v.nombre_producto}) actualizada.`);
+            setTimeout(() => setNotifCartera(null), 5000);
+          }}
+          onEliminarVenta={(id) => {
+            if (onEliminarVentaExpress) {
+              onEliminarVentaExpress(id);
+              setVentaParaEditar(null);
+              setNotifCartera(`🗑️ Venta eliminada correctamente.`);
+              setTimeout(() => setNotifCartera(null), 5000);
+            }
+          }}
+        />
+      )}
+
+      {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE VENTA EXPRESS */}
+      {ventaParaEliminar && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '16px'
+          }}
+          onClick={() => setVentaParaEliminar(null)}
+        >
+          <div 
+            className="glass-card" 
+            style={{ 
+              maxWidth: '420px', 
+              width: '100%', 
+              margin: 0, 
+              padding: '24px', 
+              textAlign: 'center', 
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              boxShadow: '0 12px 35px rgba(239, 68, 68, 0.25)'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: '50%',
+              width: '54px',
+              height: '54px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px auto'
+            }}>
+              <Trash2 size={26} color="#ef4444" />
+            </div>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px', color: '#fff', fontWeight: 800 }}>
+              ¿Eliminar Venta {ventaParaEliminar.numero_venta}?
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+              Se removerá la figura <strong style={{ color: '#fff' }}>{ventaParaEliminar.nombre_producto}</strong> de <strong style={{ color: '#fff' }}>{ventaParaEliminar.cliente_nombre}</strong> (${ventaParaEliminar.total.toLocaleString('es-CO')} COP).<br/>
+              Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setVentaParaEliminar(null)}
+                style={{ padding: '8px 18px' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-danger" 
+                style={{ fontWeight: 800, padding: '8px 20px' }}
+                onClick={() => {
+                  if (onEliminarVentaExpress) {
+                    onEliminarVentaExpress(ventaParaEliminar.id);
+                    setNotifCartera(`🗑️ Venta ${ventaParaEliminar.numero_venta} eliminada de cartera.`);
+                    setTimeout(() => setNotifCartera(null), 5000);
+                  }
+                  setVentaParaEliminar(null);
+                }}
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DIÁLOGO CONFIRMAR ELIMINACIÓN DE CUENTA DE COBRO */}
+      {cuentaParaEliminar && (
+        <div 
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.85)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 99999,
+            padding: '16px'
+          }}
+          onClick={() => setCuentaParaEliminar(null)}
+        >
+          <div 
+            className="glass-card" 
+            style={{ 
+              maxWidth: '420px', 
+              width: '100%', 
+              margin: 0, 
+              padding: '24px', 
+              textAlign: 'center', 
+              border: '1px solid rgba(239, 68, 68, 0.4)',
+              boxShadow: '0 12px 35px rgba(239, 68, 68, 0.25)'
+            }} 
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.15)',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              borderRadius: '50%',
+              width: '54px',
+              height: '54px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              margin: '0 auto 14px auto'
+            }}>
+              <Trash2 size={26} color="#ef4444" />
+            </div>
+            <h3 style={{ fontSize: '1.2rem', marginBottom: '8px', color: '#fff', fontWeight: 800 }}>
+              ¿Eliminar Cuenta {cuentaParaEliminar.numero_cc}?
+            </h3>
+            <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '20px', lineHeight: 1.5 }}>
+              Se removerá la cuenta de cobro de <strong style={{ color: '#fff' }}>{cuentaParaEliminar.cliente.nombre}</strong> (${cuentaParaEliminar.total.toLocaleString('es-CO')} COP).<br/>
+              Esta acción no se puede deshacer.
+            </p>
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary" 
+                onClick={() => setCuentaParaEliminar(null)}
+                style={{ padding: '8px 18px' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                type="button" 
+                className="btn btn-danger" 
+                style={{ fontWeight: 800, padding: '8px 20px' }}
+                onClick={() => {
+                  if (onEliminarCuentaCobro) {
+                    onEliminarCuentaCobro(cuentaParaEliminar.id);
+                    setNotifCartera(`🗑️ Cuenta ${cuentaParaEliminar.numero_cc} eliminada.`);
+                    setTimeout(() => setNotifCartera(null), 5000);
+                  }
+                  setCuentaParaEliminar(null);
+                }}
+              >
+                Sí, eliminar
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
