@@ -896,20 +896,45 @@ export const App: React.FC = () => {
 
   // Actualizar Pago en Cuenta de Cobro
   const handleUpdatePago = (cuentaId: string, nuevoAbono: number) => {
+    let updatedCC: CuentaCobro | null = null;
     const updated = cuentas.map(c => {
       if (c.id === cuentaId) {
         const saldo = Math.max(0, c.total - nuevoAbono);
-        return {
+        const item = {
           ...c,
           abono: nuevoAbono,
           saldo_pendiente: saldo,
           estado_pago: saldo === 0 ? ('Pagado Total' as const) : ('Abono Parcial' as const)
         };
+        updatedCC = item;
+        return item;
       }
       return c;
     });
     setCuentas(updated);
     StorageService.saveCuentas(updated);
+    if (updatedCC) {
+      CloudSyncService.saveCuentaCobro(updatedCC);
+    }
+  };
+
+  // Handler para crear una nueva Cuenta de Cobro / Deuda Manual
+  const handleCrearCuentaCobro = (nuevaCC: CuentaCobro) => {
+    const updated = [nuevaCC, ...cuentas];
+    setCuentas(updated);
+    StorageService.saveCuentas(updated);
+    CloudSyncService.saveCuentaCobro(nuevaCC);
+
+    // Si el cliente no existe en el catálogo de clientes, registrarlo automáticamente
+    if (nuevaCC.cliente?.nombre) {
+      const existeCliente = clientes.some(c => 
+        c.nombre.toLowerCase().trim() === nuevaCC.cliente.nombre.toLowerCase().trim() ||
+        (nuevaCC.cliente.telefono && c.telefono && c.telefono === nuevaCC.cliente.telefono)
+      );
+      if (!existeCliente) {
+        handleAddCliente(nuevaCC.cliente);
+      }
+    }
   };
 
   // Agregar nuevo cliente
@@ -1341,9 +1366,13 @@ export const App: React.FC = () => {
           <CuentasCobroList 
             cuentas={cuentas}
             ventasExpress={ventasExpress}
+            ordenes={ordenes}
+            clientes={clientes}
             config={config}
             onUpdatePago={handleUpdatePago}
             onUpdateVentaExpress={handleActualizarVentaExpress}
+            onActualizarOT={handleActualizarOT}
+            onCrearCuentaCobro={handleCrearCuentaCobro}
           />
         )}
 

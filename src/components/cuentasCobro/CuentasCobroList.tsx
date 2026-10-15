@@ -17,28 +17,48 @@ import {
   TrendingUp,
   Camera
 } from 'lucide-react';
-import { CuentaCobro, ConfiguracionTaller, EstadoPago, VentaExpress } from '../../types';
+import { 
+  CuentaCobro, 
+  ConfiguracionTaller, 
+  EstadoPago, 
+  VentaExpress, 
+  OrdenTrabajo, 
+  Cliente, 
+  DatosPagoRegistro 
+} from '../../types';
 import { generarPDFCuentaCobro } from '../../services/pdfService';
 import { generateCuentaCobroWhatsAppUrl, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
 import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../services/posService';
+import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
+import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 
 interface CuentasCobroListProps {
   cuentas: CuentaCobro[];
   ventasExpress?: VentaExpress[];
+  ordenes?: OrdenTrabajo[];
+  clientes?: Cliente[];
   config: ConfiguracionTaller;
   onUpdatePago: (cuentaId: string, nuevoAbono: number) => void;
   onUpdateVentaExpress?: (venta: VentaExpress) => void;
+  onActualizarOT?: (ot: OrdenTrabajo) => void;
+  onCrearCuentaCobro?: (nuevaCC: CuentaCobro) => void;
 }
 
 export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   cuentas,
   ventasExpress = [],
+  ordenes = [],
+  clientes = [],
   config,
   onUpdatePago,
-  onUpdateVentaExpress
+  onUpdateVentaExpress,
+  onActualizarOT,
+  onCrearCuentaCobro
 }) => {
   const [subTab, setSubTab] = useState<'deudores' | 'pos' | 'cuentas'>('deudores');
   const [searchDeudor, setSearchDeudor] = useState<string>('');
+  const [showModalNuevaDeuda, setShowModalNuevaDeuda] = useState(false);
+  const [notifCartera, setNotifCartera] = useState<string | null>(null);
 
   // Modales
   const [selectedCuenta, setSelectedCuenta] = useState<CuentaCobro | null>(null);
@@ -46,6 +66,33 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
 
   const [selectedVenta, setSelectedVenta] = useState<VentaExpress | null>(null);
   const [abonoVentaInput, setAbonoVentaInput] = useState<number>(0);
+
+  // Modal Abono OT directo desde Cartera
+  const [otParaAbono, setOtParaAbono] = useState<OrdenTrabajo | null>(null);
+
+  const handleGuardarDeudaManual = (nuevaCC: CuentaCobro) => {
+    if (onCrearCuentaCobro) {
+      onCrearCuentaCobro(nuevaCC);
+    }
+    setNotifCartera(`✅ Deuda de ${nuevaCC.cliente.nombre} ($${nuevaCC.saldo_pendiente.toLocaleString('es-CO')}) registrada en cartera.`);
+    setTimeout(() => setNotifCartera(null), 5000);
+  };
+
+  const handleConfirmarAbonoOT = (datos: DatosPagoRegistro) => {
+    if (!otParaAbono || !onActualizarOT) return;
+    const updatedOT: OrdenTrabajo = {
+      ...otParaAbono,
+      estado_pago: datos.estado_pago,
+      abono: datos.abono,
+      saldo_pendiente: datos.saldo_pendiente,
+      metodo_pago: datos.metodo_pago,
+      comprobante_pago: datos.comprobante_pago
+    };
+    onActualizarOT(updatedOT);
+    setOtParaAbono(null);
+    setNotifCartera(`✅ Pago/abono actualizado para la orden ${updatedOT.numero_ot}.`);
+    setTimeout(() => setNotifCartera(null), 5000);
+  };
 
   // Manejo de Abono para Cuenta de Cobro Formal
   const handleOpenAbonoModal = (cuenta: CuentaCobro) => {
@@ -86,7 +133,7 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
     setSelectedVenta(null);
   };
 
-  // Base de Deudores Consolidada (Cuentas Formales + Ventas Express)
+  // Base de Deudores Consolidada (Cuentas Formales + Ventas Express + Órdenes de Trabajo)
   const deudoresConsolidados = useMemo(() => {
     const map: Record<string, {
       cliente_nombre: string;
@@ -96,6 +143,7 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
       saldo_pendiente: number;
       cuentas: CuentaCobro[];
       ventas: VentaExpress[];
+      ordenes: OrdenTrabajo[];
       peor_alerta_texto?: string;
       peor_alerta_color?: string;
       peor_alerta_bg?: string;
@@ -113,13 +161,17 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
           total_abonos: 0,
           saldo_pendiente: 0,
           cuentas: [],
-          ventas: []
+          ventas: [],
+          ordenes: []
         };
       }
       map[key].total_deuda += c.total;
       map[key].total_abonos += c.abono;
       map[key].saldo_pendiente += c.saldo_pendiente;
       map[key].cuentas.push(c);
+      if (c.cliente.telefono && !map[key].cliente_telefono) {
+        map[key].cliente_telefono = c.cliente.telefono;
+      }
     });
 
     // 2. Agregar Ventas Express
@@ -137,6 +189,7 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
           saldo_pendiente: 0,
           cuentas: [],
           ventas: [],
+          ordenes: [],
           peor_alerta_texto: alerta.texto,
           peor_alerta_color: alerta.color,
           peor_alerta_bg: alerta.badgeBg
@@ -146,11 +199,59 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
       map[key].total_abonos += v.abono;
       map[key].saldo_pendiente += v.saldo_pendiente;
       map[key].ventas.push(v);
+      if (v.cliente_telefono && !map[key].cliente_telefono) {
+        map[key].cliente_telefono = v.cliente_telefono;
+      }
 
       if (!map[key].peor_alerta_texto || alerta.nivel === 'vencido' || alerta.nivel === 'hoy') {
         map[key].peor_alerta_texto = alerta.texto;
         map[key].peor_alerta_color = alerta.color;
         map[key].peor_alerta_bg = alerta.badgeBg;
+      }
+    });
+
+    // 3. Agregar Órdenes de Trabajo (OT) pendientes de pago
+    ordenes.forEach(o => {
+      // Si la orden ya está pagada al 100%, ignorar
+      if (o.estado_pago === 'Pagado Total') return;
+
+      // Calcular saldo pendiente de la OT
+      const saldoOT = o.saldo_pendiente !== undefined 
+        ? o.saldo_pendiente 
+        : Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
+
+      if (saldoOT <= 0) return;
+
+      // Evitar doble conteo si ya existe una Cuenta de Cobro generada para esta cotización/orden
+      const yaEnCuenta = cuentas.some(c => 
+        (o.cotizacion_id && c.cotizacion_id === o.cotizacion_id) ||
+        (o.cotizacion_numero && c.cotizacion_numero === o.cotizacion_numero) ||
+        c.id === o.id ||
+        c.numero_cc === o.numero_ot
+      );
+      if (yaEnCuenta) return;
+
+      const key = (o.cliente_nombre || 'Cliente OT').trim().toLowerCase();
+      if (!map[key]) {
+        map[key] = {
+          cliente_nombre: o.cliente_nombre || 'Cliente OT',
+          cliente_telefono: o.cliente_telefono || '',
+          total_deuda: 0,
+          total_abonos: 0,
+          saldo_pendiente: 0,
+          cuentas: [],
+          ventas: [],
+          ordenes: []
+        };
+      }
+
+      const totalOT = o.precio_cobrado || ((o.abono || 0) + saldoOT);
+      map[key].total_deuda += totalOT;
+      map[key].total_abonos += (o.abono || 0);
+      map[key].saldo_pendiente += saldoOT;
+      map[key].ordenes.push(o);
+      if (o.cliente_telefono && !map[key].cliente_telefono) {
+        map[key].cliente_telefono = o.cliente_telefono;
       }
     });
 
@@ -160,7 +261,7 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
         d.cliente_telefono.includes(searchDeudor)
       )
       .sort((a, b) => b.saldo_pendiente - a.saldo_pendiente);
-  }, [cuentas, ventasExpress, searchDeudor]);
+  }, [cuentas, ventasExpress, ordenes, searchDeudor]);
 
   // Métricas Totales
   const totalCarteraGlobal = deudoresConsolidados.reduce((sum, d) => sum + d.saldo_pendiente, 0);
@@ -181,6 +282,13 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
       const alerta = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
       conceptos.push(`• Venta ${v.numero_venta} (${v.nombre_producto}): Saldo $${v.saldo_pendiente.toLocaleString('es-CO')} COP ${v.fecha_prometida_pago ? `(Límite: ${v.fecha_prometida_pago})` : ''}`);
     });
+
+    if (deudor.ordenes) {
+      deudor.ordenes.forEach(o => {
+        const saldoOT = o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
+        conceptos.push(`• Orden ${o.numero_ot} (${o.item_nombre}): Saldo $${saldoOT.toLocaleString('es-CO')} COP [${o.estado}]`);
+      });
+    }
 
     const mensaje = 
 `👋 Hola *${deudor.cliente_nombre}*, un saludo desde *WJGEEKS 3D* 🚀
@@ -207,7 +315,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '70px' }}>
       {/* Encabezado */}
-      <div className="section-header">
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '16px' }}>
         <div>
           <h2 className="section-title">
             <Users size={22} color="var(--brand-cyan)" />
@@ -218,41 +326,84 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
           </p>
         </div>
 
-        {/* Métricas destacadas */}
-        <div className="metrics-header-grid" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <div style={{ 
-            background: 'rgba(245, 158, 11, 0.12)', 
-            border: '1px solid rgba(245, 158, 11, 0.35)', 
-            color: '#fbbf24', 
-            padding: '6px 14px', 
-            borderRadius: '9999px',
-            fontSize: '0.85rem',
-            fontWeight: 800,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}>
-            <TrendingUp size={16} />
-            <span>Total en la Calle: ${totalCarteraGlobal.toLocaleString('es-CO')} COP</span>
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {/* Botón para Registrar Deuda Manual */}
+          <button
+            id="btn-abrir-deuda-manual"
+            type="button"
+            className="btn btn-primary"
+            onClick={() => setShowModalNuevaDeuda(true)}
+            style={{
+              fontWeight: 800,
+              fontSize: '0.88rem',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)',
+              padding: '8px 16px'
+            }}
+          >
+            <Plus size={18} />
+            <span>Registrar Deuda Manual</span>
+          </button>
 
-          <div style={{ 
-            background: 'rgba(56, 189, 248, 0.12)', 
-            border: '1px solid rgba(56, 189, 248, 0.35)', 
-            color: 'var(--brand-cyan)', 
-            padding: '6px 14px', 
-            borderRadius: '9999px',
-            fontSize: '0.85rem',
-            fontWeight: 800,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px'
-          }}>
-            <Users size={16} />
-            <span>{totalDeudoresCount} Deudores Activos</span>
+          {/* Métricas destacadas */}
+          <div className="metrics-header-grid" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <div style={{ 
+              background: 'rgba(245, 158, 11, 0.12)', 
+              border: '1px solid rgba(245, 158, 11, 0.35)', 
+              color: '#fbbf24', 
+              padding: '6px 14px', 
+              borderRadius: '9999px',
+              fontSize: '0.85rem',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <TrendingUp size={16} />
+              <span>Total en la Calle: ${totalCarteraGlobal.toLocaleString('es-CO')} COP</span>
+            </div>
+
+            <div style={{ 
+              background: 'rgba(56, 189, 248, 0.12)', 
+              border: '1px solid rgba(56, 189, 248, 0.35)', 
+              color: 'var(--brand-cyan)', 
+              padding: '6px 14px', 
+              borderRadius: '9999px',
+              fontSize: '0.85rem',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px'
+            }}>
+              <Users size={16} />
+              <span>{totalDeudoresCount} Deudores Activos</span>
+            </div>
           </div>
         </div>
       </div>
+
+      {/* Notificación flotante de cartera */}
+      {notifCartera && (
+        <div style={{
+          background: 'rgba(16, 185, 129, 0.15)',
+          border: '1px solid rgba(16, 185, 129, 0.4)',
+          color: '#34d399',
+          padding: '12px 18px',
+          borderRadius: '10px',
+          marginBottom: '20px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          fontWeight: 700,
+          fontSize: '0.9rem',
+          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+        }}>
+          <CheckCircle size={18} />
+          <span>{notifCartera}</span>
+        </div>
+      )}
 
       {/* Selector de Pestañas Internas en Cuadrícula Ordenada */}
       <div className="subtabs-grid-mobile" style={{ marginBottom: '20px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
@@ -412,6 +563,44 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                         </div>
                       </div>
                     ))}
+
+                    {deudor.ordenes && deudor.ordenes.map(o => {
+                      const saldoOT = o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
+                      return (
+                        <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column' }}>
+                            <span style={{ color: '#fff', fontWeight: 600 }}>
+                              🛠️ {o.numero_ot}: {o.item_nombre} {o.cantidad > 1 ? `(x${o.cantidad})` : ''}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--brand-cyan)' }}>
+                              Taller: {o.estado} {o.estado_pago ? `• ${o.estado_pago}` : ''}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 700, color: '#fbbf24' }}>
+                              ${saldoOT.toLocaleString('es-CO')}
+                            </span>
+                            {onActualizarOT && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setOtParaAbono(o)}
+                                style={{ 
+                                  padding: '2px 8px', 
+                                  fontSize: '0.68rem', 
+                                  background: 'rgba(56, 189, 248, 0.15)', 
+                                  border: '1px solid rgba(56, 189, 248, 0.4)', 
+                                  color: 'var(--brand-cyan)' 
+                                }}
+                                title="Registrar abono a esta Orden de Trabajo"
+                              >
+                                + Abono
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
 
                   {/* Acciones Rápidas */}
@@ -686,6 +875,40 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
             </form>
           </div>
         </div>
+      )}
+
+      {/* MODAL REGISTRAR DEUDA MANUAL */}
+      {showModalNuevaDeuda && (
+        <ModalRegistrarDeudaManual
+          isOpen={showModalNuevaDeuda}
+          clientes={clientes}
+          consecutivoSugerido={cuentas.length + 1}
+          onClose={() => setShowModalNuevaDeuda(false)}
+          onGuardarDeuda={handleGuardarDeudaManual}
+        />
+      )}
+
+      {/* MODAL REGISTRAR ABONO A ORDEN DE TRABAJO (OT) */}
+      {otParaAbono && (
+        <ModalRegistrarPago
+          isOpen={!!otParaAbono}
+          onClose={() => setOtParaAbono(null)}
+          titulo={`Registrar Abono • ${otParaAbono.numero_ot}`}
+          subtitulo={otParaAbono.item_nombre}
+          referenciaDoc={otParaAbono.numero_ot}
+          clienteNombre={otParaAbono.cliente_nombre}
+          clienteTelefono={otParaAbono.cliente_telefono}
+          montoTotal={otParaAbono.precio_cobrado || ((otParaAbono.abono || 0) + (otParaAbono.saldo_pendiente || 0))}
+          pagoActual={{
+            estado_pago: otParaAbono.estado_pago,
+            abono: otParaAbono.abono,
+            saldo_pendiente: otParaAbono.saldo_pendiente,
+            metodo_pago: otParaAbono.metodo_pago,
+            comprobante_pago: otParaAbono.comprobante_pago
+          }}
+          esAprobacionCotizacion={false}
+          onConfirmarPago={(datos) => handleConfirmarAbonoOT(datos)}
+        />
       )}
     </div>
   );
