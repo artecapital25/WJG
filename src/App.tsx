@@ -1091,6 +1091,55 @@ export const App: React.FC = () => {
     }
   };
 
+  // Handler para Eliminar o Cancelar una Orden de Trabajo (OT)
+  const handleEliminarOT = (
+    otId: string, 
+    motivo: string, 
+    revertirCotizacion?: boolean, 
+    nuevoEstadoCot?: EstadoCotizacion
+  ) => {
+    const otAEliminar = ordenes.find(o => o.id === otId);
+    if (!otAEliminar) return;
+
+    // 1. Filtrar lista de órdenes de trabajo
+    const updatedOTs = ordenes.filter(o => o.id !== otId);
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
+
+    // 2. Eliminar de la base de datos de Supabase si aplica
+    CloudSyncService.deleteOrdenTrabajo(otAEliminar.id, otAEliminar.numero_ot);
+
+    // 3. Si se solicitó actualizar la cotización vinculada (ej: rechazada por cliente)
+    if (revertirCotizacion && (otAEliminar.cotizacion_id || otAEliminar.cotizacion_numero)) {
+      const estadoDestino = nuevoEstadoCot || 'Rechazada';
+      const updatedCots = cotizaciones.map(c => {
+        const matches = (otAEliminar.cotizacion_id && c.id === otAEliminar.cotizacion_id) ||
+                        (otAEliminar.cotizacion_numero && c.numero_cot === otAEliminar.cotizacion_numero);
+        if (!matches) return c;
+
+        const timestamp = new Date().toISOString().slice(0, 10);
+        const notaCancelacion = `[${timestamp}] OT ${otAEliminar.numero_ot} cancelada (${motivo})`;
+        const notasFinales = c.notas ? `${c.notas}\n${notaCancelacion}` : notaCancelacion;
+
+        return {
+          ...c,
+          estado: estadoDestino,
+          notas: notasFinales
+        };
+      });
+      setCotizaciones(updatedCots);
+      StorageService.saveCotizaciones(updatedCots);
+
+      const cotAfectada = updatedCots.find(c => 
+        (otAEliminar.cotizacion_id && c.id === otAEliminar.cotizacion_id) ||
+        (otAEliminar.cotizacion_numero && c.numero_cot === otAEliminar.cotizacion_numero)
+      );
+      if (cotAfectada) {
+        CloudSyncService.saveCotizacion(cotAfectada);
+      }
+    }
+  };
+
   const pendingOTs = ordenes.filter(o => o.estado !== 'Listo para Entrega').length;
 
   // Si estamos en Modo Portal de Cliente Aislado, NO mostrar barra de navegación ni opciones administrativas
@@ -1253,6 +1302,7 @@ export const App: React.FC = () => {
             onGenerarCuentaCobro={handleGenerarCuentaCobro}
             onCrearOrdenRapida={handleCrearOrdenRapida}
             onActualizarOT={handleActualizarOT}
+            onEliminarOT={handleEliminarOT}
             onNavigateToCotizaciones={(cotId) => {
               setActiveTab('cotizaciones');
             }}

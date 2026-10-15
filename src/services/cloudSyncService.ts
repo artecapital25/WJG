@@ -371,6 +371,28 @@ export const CloudSyncService = {
     }
   },
 
+  // 6.1 Eliminar una Orden de Trabajo (OT) de Supabase
+  async deleteOrdenTrabajo(id: string, numero_ot?: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      let query = supabase!.from('ordenes_trabajo').delete();
+      if (numero_ot) {
+        query = query.or(`id.eq.${id},numero_ot.eq.${numero_ot}`);
+      } else {
+        query = query.eq('id', id);
+      }
+      const { error } = await query;
+      if (error) {
+        console.warn('Error deleting OT from cloud:', error);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception deleting OT from cloud:', e);
+      return false;
+    }
+  },
+
   // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase
   async saveCuentaCobro(cc: CuentaCobro): Promise<boolean> {
     if (!this.isAvailable()) return false;

@@ -39,6 +39,7 @@ import {
   Cliente, 
   EstadoSTL,
   Cotizacion,
+  EstadoCotizacion,
   EnlaceReferenciaCompra,
   DatosPagoRegistro
 } from '../../types';
@@ -47,6 +48,7 @@ import { processAndOptimizeImage } from '../../services/imageService';
 import { StorageService } from '../../services/storageService';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
+import { ModalEliminarOT } from '../common/ModalEliminarOT';
 
 interface WorkOrdersPipelineProps {
   ordenes: OrdenTrabajo[];
@@ -58,6 +60,7 @@ interface WorkOrdersPipelineProps {
   onGenerarCuentaCobro?: (ot: OrdenTrabajo) => void;
   onCrearOrdenRapida?: (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => void;
   onActualizarOT?: (otActualizada: OrdenTrabajo) => void;
+  onEliminarOT?: (otId: string, motivo: string, revertirCotizacion?: boolean, nuevoEstadoCot?: EstadoCotizacion) => void;
   onNavigateToCotizaciones?: (cotNumeroOId?: string) => void;
 }
 
@@ -88,10 +91,12 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
   onGenerarCuentaCobro,
   onCrearOrdenRapida,
   onActualizarOT,
+  onEliminarOT,
   onNavigateToCotizaciones
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [copiedOtId, setCopiedOtId] = useState<string | null>(null);
+  const [notifEliminacion, setNotifEliminacion] = useState<string | null>(null);
 
   // Modal Proyecto Rápido (Tarifario Express)
   const [showModalRapido, setShowModalRapido] = useState(false);
@@ -119,6 +124,24 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
 
   // Modal de Gestión de Pago para la OT
   const [otParaPago, setOtParaPago] = useState<OrdenTrabajo | null>(null);
+
+  // Modal de Eliminación / Cancelación de OT
+  const [otParaEliminar, setOtParaEliminar] = useState<OrdenTrabajo | null>(null);
+
+  const handleConfirmarEliminarOT = (
+    otId: string, 
+    motivo: string, 
+    revertirCotizacion?: boolean, 
+    nuevoEstadoCot?: EstadoCotizacion
+  ) => {
+    if (onEliminarOT) {
+      const otBorrada = ordenes.find(o => o.id === otId);
+      onEliminarOT(otId, motivo, revertirCotizacion, nuevoEstadoCot);
+      setNotifEliminacion(`✅ Orden ${otBorrada?.numero_ot || ''} eliminada correctamente.`);
+      setTimeout(() => setNotifEliminacion(null), 4500);
+    }
+    setOtParaEliminar(null);
+  };
 
   const handleConfirmarPagoOT = (datos: DatosPagoRegistro) => {
     if (!otParaPago || !onActualizarOT) return;
@@ -489,6 +512,26 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
         </div>
       </div>
 
+      {/* Notificación de eliminación */}
+      {notifEliminacion && (
+        <div style={{
+          background: 'rgba(239, 68, 68, 0.15)',
+          border: '1px solid rgba(239, 68, 68, 0.4)',
+          color: '#f87171',
+          padding: '10px 14px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontSize: '0.86rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Trash2 size={16} />
+          <span>{notifEliminacion}</span>
+        </div>
+      )}
+
       {/* Filtros Rápidos Touch para Celular en Cuadrícula Ordenada */}
       <div className="etapas-grid-mobile" style={{ marginBottom: '16px' }}>
         <button 
@@ -625,9 +668,30 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                     )}
                   </div>
                   
-                  <span className={`status-pill status-${ot.estado.toLowerCase().replace(/\s+/g, '-')}`}>
-                    {ot.estado}
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span className={`status-pill status-${ot.estado.toLowerCase().replace(/\s+/g, '-')}`}>
+                      {ot.estado}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setOtParaEliminar(ot)}
+                      style={{
+                        background: 'rgba(239, 68, 68, 0.1)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        color: '#f87171',
+                        borderRadius: '6px',
+                        padding: '3px 6px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.15s ease'
+                      }}
+                      title="Eliminar o cancelar esta Orden de Trabajo"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Pieza & Cliente */}
@@ -949,6 +1013,25 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                   >
                     <CreditCard size={13} />
                     <span>Pago</span>
+                  </button>
+
+                  {/* Botón Cancelar / Eliminar OT */}
+                  <button 
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setOtParaEliminar(ot)}
+                    style={{ 
+                      borderColor: 'rgba(239, 68, 68, 0.35)', 
+                      color: '#f87171',
+                      background: 'rgba(239, 68, 68, 0.06)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    title="Cancelar y eliminar orden si el comprador se arrepintió u otro motivo"
+                  >
+                    <Trash2 size={13} />
+                    <span>Eliminar OT</span>
                   </button>
 
                   {ot.estado === 'Listo para Entrega' && onGenerarCuentaCobro && (
@@ -1684,6 +1767,15 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
           onConfirmarPago={handleConfirmarPagoOT}
         />
       )}
+
+      {/* MODAL: ELIMINAR O CANCELAR ORDEN DE TRABAJO */}
+      <ModalEliminarOT
+        isOpen={Boolean(otParaEliminar)}
+        ot={otParaEliminar}
+        cotizaciones={cotizaciones}
+        onClose={() => setOtParaEliminar(null)}
+        onConfirmarEliminar={handleConfirmarEliminarOT}
+      />
     </div>
   );
 };
