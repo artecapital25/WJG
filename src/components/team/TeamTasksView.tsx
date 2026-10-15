@@ -28,7 +28,14 @@ import {
   Insumo, 
   ConfiguracionTaller 
 } from '../../types';
-import { openWhatsApp } from '../../services/whatsappService';
+import { 
+  openWhatsApp, 
+  EQUIPO_WJG, 
+  LISTA_MIEMBROS_WJG, 
+  generateTareaWhatsAppUrl, 
+  generateSOSInsumoWhatsAppUrl 
+} from '../../services/whatsappService';
+import { ModalEnviarTareaWhatsApp } from './ModalEnviarTareaWhatsApp';
 
 interface TeamTasksViewProps {
   tareas: TareaEquipo[];
@@ -76,6 +83,12 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   const [encargadoCompra, setEncargadoCompra] = useState<IntegranteEquipo>('Wendy');
   const [enlaceCompra, setEnlaceCompra] = useState('');
   const [notasInsumo, setNotasInsumo] = useState('');
+  const [enviarSOSATodos, setEnviarSOSATodos] = useState(true);
+
+  // Estados para WhatsApp de Tareas
+  const [tareaParaWhatsApp, setTareaParaWhatsApp] = useState<TareaEquipo | null>(null);
+  const [notificarATodosAlCrear, setNotificarATodosAlCrear] = useState(false);
+  const [notifBanner, setNotifBanner] = useState<string | null>(null);
 
   // Guardar Tarea / Idea
   const handleCrearTarea = (e: React.FormEvent) => {
@@ -99,6 +112,17 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
     setTituloTarea('');
     setDescripcionTarea('');
     setOrigenWhatsApp(false);
+
+    if (notificarATodosAlCrear) {
+      LISTA_MIEMBROS_WJG.forEach((miembro, index) => {
+        setTimeout(() => {
+          const url = generateTareaWhatsAppUrl(nueva, miembro.telefonoLimpio, miembro.nombre);
+          openWhatsApp(url);
+        }, index * 400);
+      });
+      setNotifBanner(`🚀 Tarea "${nueva.titulo}" guardada y enviada a los 3 (Germán, Juan y Wendy) por WhatsApp.`);
+      setTimeout(() => setNotifBanner(null), 5000);
+    }
   };
 
   // Alternar estado de tarea (completada / pendiente)
@@ -146,22 +170,23 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
     onCrearSolicitudInsumo(nuevaSolicitud);
     setShowModalSOS(false);
 
-    // Preparar mensaje de WhatsApp para el encargado de compras
-    const urgenciaEmoji = urgenciaInsumo === 'taller_detenido' ? '🚨 ¡TALLER DETENIDO!' : urgenciaInsumo === 'urgente' ? '⚠️ URGENTE' : '📦 Normal';
-    const mensaje = 
-`👋 ¡Hola *${encargadoCompra}*!
-Desde el taller de *WJGEEKS 3D* te enviamos una solicitud de insumos / orden de compra:
-
-🛒 *Insumo requerido:* ${nuevaSolicitud.insumo_nombre}
-🔢 *Cantidad:* ${nuevaSolicitud.cantidad} ${nuevaSolicitud.unidad}
-🚦 *Nivel de Urgencia:* ${urgenciaEmoji}
-👤 *Solicitado por:* ${nuevaSolicitud.solicitado_por}
-
-${nuevaSolicitud.enlace_compra ? `🔗 *Enlace de compra sugerido:* ${nuevaSolicitud.enlace_compra}\n` : ''}${nuevaSolicitud.notas ? `📝 *Observación:* ${nuevaSolicitud.notas}\n` : ''}
-Por favor confirmar la compra para mantener la producción al día. ¡Muchas gracias! ✨`;
-
-    // Teléfono de la empresa o de Wendy/Germán
-    openWhatsApp(`https://wa.me/573202796115?text=${encodeURIComponent(mensaje)}`);
+    // Enviar WhatsApp a los 3 integrantes o al encargado designado con los números reales
+    if (enviarSOSATodos || encargadoCompra === 'Todos') {
+      LISTA_MIEMBROS_WJG.forEach((miembro, index) => {
+        setTimeout(() => {
+          const url = generateSOSInsumoWhatsAppUrl(nuevaSolicitud, miembro.telefonoLimpio, miembro.nombre);
+          openWhatsApp(url);
+        }, index * 400);
+      });
+      setNotifBanner(`🚨 Alerta S.O.S enviada por WhatsApp a los 3 (Germán, Juan y Wendy).`);
+      setTimeout(() => setNotifBanner(null), 5000);
+    } else {
+      let tel = EQUIPO_WJG.wendy.telefonoLimpio;
+      if (encargadoCompra === 'Germán') tel = EQUIPO_WJG.german.telefonoLimpio;
+      if (encargadoCompra === 'Juan') tel = EQUIPO_WJG.juan.telefonoLimpio;
+      const url = generateSOSInsumoWhatsAppUrl(nuevaSolicitud, tel, encargadoCompra);
+      openWhatsApp(url);
+    }
 
     // Reset Form S.O.S
     setInsumoNombre('');
@@ -215,6 +240,26 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
           </button>
         </div>
       </div>
+
+      {/* Alerta de Envío Automático por WhatsApp */}
+      {notifBanner && (
+        <div style={{
+          background: 'rgba(34, 197, 94, 0.15)',
+          border: '1px solid rgba(34, 197, 94, 0.4)',
+          color: '#4ade80',
+          padding: '10px 14px',
+          borderRadius: '8px',
+          marginBottom: '16px',
+          fontSize: '0.86rem',
+          fontWeight: 700,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <Send size={16} />
+          <span>{notifBanner}</span>
+        </div>
+      )}
 
       {/* Selector de Pestañas por Integrante en Cuadrícula Ordenada */}
       <div className="subtabs-grid-mobile" style={{ marginBottom: '18px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
@@ -495,7 +540,7 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <input 
                   type="checkbox" 
                   id="chkWhatsapp"
@@ -504,6 +549,25 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
                 />
                 <label htmlFor="chkWhatsapp" style={{ fontSize: '0.78rem', color: 'var(--text-muted)', cursor: 'pointer' }}>
                   💬 Encargo recibido por WhatsApp
+                </label>
+              </div>
+
+              <div style={{ 
+                marginBottom: '16px', 
+                background: 'rgba(34, 197, 94, 0.08)', 
+                border: '1px solid rgba(34, 197, 94, 0.3)', 
+                borderRadius: '8px', 
+                padding: '8px 10px' 
+              }}>
+                <label htmlFor="chkNotificarATodos" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#4ade80', fontWeight: 700 }}>
+                  <input 
+                    type="checkbox" 
+                    id="chkNotificarATodos"
+                    checked={notificarATodosAlCrear}
+                    onChange={e => setNotificarATodosAlCrear(e.target.checked)} 
+                    style={{ accentColor: '#10b981', width: '16px', height: '16px' }}
+                  />
+                  <span>🚀 Enviar a los 3 (Germán, Juan, Wendy) por WhatsApp al guardar</span>
                 </label>
               </div>
 
@@ -613,6 +677,25 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
                             {t.fecha_completada && <span style={{ color: '#34d399' }}>Completado: {t.fecha_completada}</span>}
                           </div>
                         </div>
+
+                        {/* Botón Compartir / Enviar por WhatsApp a los 3 integrantes */}
+                        <button
+                          type="button"
+                          onClick={() => setTareaParaWhatsApp(t)}
+                          className="btn btn-whatsapp btn-sm"
+                          style={{
+                            fontSize: '0.72rem',
+                            padding: '3px 8px',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            flexShrink: 0
+                          }}
+                          title="Enviar tarea por WhatsApp a Germán (3503443140), Juan (3217273025) y Wendy (3204814702)"
+                        >
+                          <Send size={12} />
+                          <span>WhatsApp</span>
+                        </button>
 
                         {/* Botón Eliminar */}
                         <button
@@ -757,14 +840,15 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
                     value={encargadoCompra}
                     onChange={e => setEncargadoCompra(e.target.value as IntegranteEquipo)}
                   >
-                    <option value="Wendy">Wendy (Compras/Admin)</option>
-                    <option value="Germán">Germán (Dirección)</option>
-                    <option value="Juan">Juan (Taller)</option>
+                    <option value="Wendy">Wendy (320 481 4702 - Compras)</option>
+                    <option value="Germán">Germán (350 344 3140 - Dirección)</option>
+                    <option value="Juan">Juan (321 727 3025 - Taller)</option>
+                    <option value="Todos">🚀 Enviar a los 3 (Germán, Juan y Wendy)</option>
                   </select>
                 </div>
               </div>
 
-              <div style={{ marginBottom: '16px' }}>
+              <div style={{ marginBottom: '14px' }}>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                   ENLACE DE COMPRA / PROVEEDOR (OPCIONAL):
                 </label>
@@ -775,6 +859,24 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
                   value={enlaceCompra} 
                   onChange={e => setEnlaceCompra(e.target.value)} 
                 />
+              </div>
+
+              <div style={{ 
+                marginBottom: '16px', 
+                background: 'rgba(239, 68, 68, 0.1)', 
+                border: '1px solid rgba(239, 68, 68, 0.35)', 
+                borderRadius: '8px', 
+                padding: '8px 10px' 
+              }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#f87171', fontWeight: 700 }}>
+                  <input 
+                    type="checkbox" 
+                    checked={enviarSOSATodos}
+                    onChange={e => setEnviarSOSATodos(e.target.checked)} 
+                    style={{ accentColor: '#ef4444', width: '16px', height: '16px' }}
+                  />
+                  <span>🚀 Enviar alerta S.O.S a los 3 números (Germán, Juan y Wendy)</span>
+                </label>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
@@ -790,6 +892,13 @@ Por favor confirmar la compra para mantener la producción al día. ¡Muchas gra
           </div>
         </div>
       )}
+
+      {/* MODAL ENVIAR TAREA POR WHATSAPP A LOS 3 INTEGRANTES */}
+      <ModalEnviarTareaWhatsApp
+        isOpen={Boolean(tareaParaWhatsApp)}
+        tarea={tareaParaWhatsApp}
+        onClose={() => setTareaParaWhatsApp(null)}
+      />
     </div>
   );
 };

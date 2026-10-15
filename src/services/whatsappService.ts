@@ -116,3 +116,90 @@ Por favor envíanos tu comprobante para coordinar el despacho inmediato. ¡Mucha
 export function openWhatsApp(url: string) {
   window.open(url, '_blank', 'noopener,noreferrer');
 }
+
+export interface MiembroEquipoWJG {
+  id: string;
+  nombre: 'Germán' | 'Juan' | 'Wendy';
+  telefono: string;
+  telefonoLimpio: string;
+  rol: string;
+}
+
+export const EQUIPO_WJG: Record<'german' | 'juan' | 'wendy', MiembroEquipoWJG> = {
+  german: {
+    id: 'german',
+    nombre: 'Germán',
+    telefono: '3503443140',
+    telefonoLimpio: '573503443140',
+    rol: 'Dirección & Modelado 3D'
+  },
+  juan: {
+    id: 'juan',
+    nombre: 'Juan',
+    telefono: '3217273025',
+    telefonoLimpio: '573217273025',
+    rol: 'Taller & Impresión 3D'
+  },
+  wendy: {
+    id: 'wendy',
+    nombre: 'Wendy',
+    telefono: '3204814702',
+    telefonoLimpio: '573204814702',
+    rol: 'Administración & Compras'
+  }
+};
+
+export const LISTA_MIEMBROS_WJG: MiembroEquipoWJG[] = [
+  EQUIPO_WJG.german,
+  EQUIPO_WJG.juan,
+  EQUIPO_WJG.wendy
+];
+
+export function generateTareaWhatsAppUrl(
+  tarea: { titulo: string; descripcion?: string; asignado_a: string; prioridad: string; tipo: string; frecuencia?: string; fecha_creacion?: string },
+  telefonoDestino: string,
+  destinatarioNombre?: string
+): string {
+  const prioridadEmoji = tarea.prioridad === 'urgente' ? '🔥 URGENTE' : tarea.prioridad === 'alta' ? '⚠️ ALTA' : '📌 Normal';
+  const tipoTexto = tarea.tipo === 'periodica' ? `🔄 Rutina ${tarea.frecuencia || 'periódica'}` : '🎯 Tarea Puntual';
+
+  const mensaje = 
+`👋 ¡Hola${destinatarioNombre ? ` *${destinatarioNombre}*` : ''}!
+Desde el panel de *WJGEEKS 3D* te compartimos esta tarea de equipo:
+
+📋 *Tarea:* ${tarea.titulo}
+👤 *Asignado a:* ${tarea.asignado_a}
+🚦 *Prioridad:* ${prioridadEmoji}
+🏷️ *Tipo:* ${tipoTexto}
+📅 *Fecha:* ${tarea.fecha_creacion || new Date().toISOString().slice(0, 10)}
+${tarea.descripcion ? `\n📝 *Detalles:* \n${tarea.descripcion}\n` : ''}
+¡Muchas gracias por mantener la producción al 100%! 🚀🖨️`;
+
+  const phoneFormatted = formatWhatsAppPhone(telefonoDestino);
+  return `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(mensaje)}`;
+}
+
+export function generateSOSInsumoWhatsAppUrl(
+  solicitud: { insumo_nombre: string; cantidad: number; unidad: string; urgencia: string; solicitado_por: string; encargado_compra: string; enlace_compra?: string; notas?: string },
+  telefonoDestino: string,
+  destinatarioNombre?: string
+): string {
+  const urgenciaEmoji = solicitud.urgencia === 'taller_detenido' ? '🚨 ¡TALLER DETENIDO!' : solicitud.urgencia === 'urgente' ? '⚠️ URGENTE' : '📦 Normal';
+
+  const mensaje = 
+`👋 ¡Hola${destinatarioNombre ? ` *${destinatarioNombre}*` : ''}!
+Desde el taller de *WJGEEKS 3D* te enviamos una solicitud de insumos / orden de compra:
+
+🛒 *Insumo requerido:* ${solicitud.insumo_nombre}
+🔢 *Cantidad:* ${solicitud.cantidad} ${solicitud.unidad}
+🚦 *Nivel de Urgencia:* ${urgenciaEmoji}
+👤 *Solicitado por:* ${solicitud.solicitado_por}
+💼 *Encargado:* ${solicitud.encargado_compra}
+
+${solicitud.enlace_compra ? `🔗 *Enlace de compra sugerido:* ${solicitud.enlace_compra}\n` : ''}${solicitud.notas ? `📝 *Observación:* ${solicitud.notas}\n` : ''}
+Por favor confirmar la compra para mantener la producción al día. ¡Muchas gracias! ✨🚀`;
+
+  const phoneFormatted = formatWhatsAppPhone(telefonoDestino);
+  return `https://wa.me/${phoneFormatted}?text=${encodeURIComponent(mensaje)}`;
+}
+
