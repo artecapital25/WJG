@@ -18,11 +18,13 @@ import {
   Tag,
   CreditCard,
   RotateCcw,
-  Edit3
+  Edit3,
+  Wrench,
+  CheckCircle2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { VentaExpress, EstadoPagoExpress } from '../../types/pos';
-import { Cliente, ConfiguracionTaller } from '../../types';
+import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
+import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { 
   calcularAlertaCobro, 
@@ -37,10 +39,12 @@ interface POSExpressViewProps {
   ventas: VentaExpress[];
   clientes: Cliente[];
   config: ConfiguracionTaller;
+  ordenes?: OrdenTrabajo[];
   onGuardarVenta: (nuevaVenta: VentaExpress) => void;
   onActualizarVenta: (ventaActualizada: VentaExpress) => void;
   onEliminarVenta?: (ventaId: string) => void;
   onCrearCliente?: (cliente: Cliente) => void;
+  onNavigateTab?: (tab: TabType) => void;
 }
 
 const PRECIOS_RAPIDOS = [50000, 60000, 70000, 80000, 100000, 120000];
@@ -57,10 +61,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   ventas,
   clientes,
   config,
+  ordenes = [],
   onGuardarVenta,
   onActualizarVenta,
   onEliminarVenta,
-  onCrearCliente
+  onCrearCliente,
+  onNavigateTab
 }) => {
   // Form State
   const [fotoUrl, setFotoUrl] = useState<string>('');
@@ -79,6 +85,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [notas, setNotas] = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
+
+  // Validación de Producción (OT) y Estado del Diseño 3D
+  const [requiereOT, setRequiereOT] = useState<boolean>(true);
+  const [estadoDiseno, setEstadoDiseno] = useState<EstadoDisenoPOS>('ya_realizado');
+  const [enlaceDiseno, setEnlaceDiseno] = useState<string>('');
+  const [notasDiseno, setNotasDiseno] = useState<string>('');
 
   // Modales de Edición, Eliminación y Abono Rápido
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
@@ -147,6 +159,11 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       return;
     }
 
+    if (requiereOT && !estadoDiseno) {
+      alert('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de registrar la venta.');
+      return;
+    }
+
     const nuevaVenta: VentaExpress = {
       id: `pos-${Date.now()}`,
       numero_venta: generarConsecutivoPOS(ventas),
@@ -162,7 +179,11 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       fecha_prometida_pago: saldoPendiente > 0 ? fechaPrometida : undefined,
       notas: notas.trim(),
       metodo_pago: metodoPago,
-      creado_por: 'Equipo WJGEEKS'
+      creado_por: 'Equipo WJGEEKS',
+      requiere_ot: requiereOT,
+      estado_diseno: requiereOT ? estadoDiseno : undefined,
+      enlace_diseno: (requiereOT && enlaceDiseno.trim()) ? enlaceDiseno.trim() : undefined,
+      notas_diseno: (requiereOT && notasDiseno.trim()) ? notasDiseno.trim() : undefined
     };
 
     onGuardarVenta(nuevaVenta);
@@ -188,9 +209,13 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     });
 
     // Preguntar si desea enviar comprobante por WhatsApp
+    const detalleOT = nuevaVenta.requiere_ot 
+      ? `\n🛠️ Se programó la Orden de Trabajo (${nuevaVenta.estado_diseno === 'ya_realizado' ? 'Diseño Listo para taller' : 'Requiere Modelado Nuevo por Germán'}).` 
+      : '';
+
     if (nuevaVenta.cliente_telefono && nuevaVenta.cliente_telefono !== '3000000000') {
       const waUrl = generarWhatsAppComprobantePOS(nuevaVenta, config);
-      if (confirm(`¡Venta ${nuevaVenta.numero_venta} registrada! ¿Deseas enviar el comprobante por WhatsApp a ${nuevaVenta.cliente_nombre}?`)) {
+      if (confirm(`¡Venta ${nuevaVenta.numero_venta} registrada exitosamente!${detalleOT}\n\n¿Deseas enviar el comprobante por WhatsApp a ${nuevaVenta.cliente_nombre}?`)) {
         openWhatsApp(waUrl);
       }
     }
@@ -203,6 +228,10 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     setTotal(80000);
     setAbono(40000);
     setNotas('');
+    setRequiereOT(true);
+    setEstadoDiseno('ya_realizado');
+    setEnlaceDiseno('');
+    setNotasDiseno('');
   };
 
   // Guardar abono en modal
@@ -625,6 +654,182 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
               </div>
             </div>
 
+            {/* SECCIÓN DE VALIDACIÓN: PRODUCCIÓN EN TALLER & ESTADO DEL DISEÑO 3D */}
+            <div style={{
+              background: requiereOT ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255, 255, 255, 0.02)',
+              border: `1px solid ${requiereOT ? 'rgba(56, 189, 248, 0.35)' : 'var(--border-subtle)'}`,
+              borderRadius: '12px',
+              padding: '14px',
+              marginBottom: '16px',
+              transition: 'all 0.2s ease'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Wrench size={16} color="var(--brand-cyan)" />
+                  <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff' }}>
+                    PRODUCCIÓN & ORDEN DE TRABAJO (OT)
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setRequiereOT(false)}
+                    style={{
+                      background: !requiereOT ? 'rgba(255, 255, 255, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                      color: !requiereOT ? '#fff' : 'var(--text-muted)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📦 Solo Mostrador
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequiereOT(true)}
+                    style={{
+                      background: requiereOT ? 'var(--brand-cyan)' : 'rgba(255, 255, 255, 0.03)',
+                      color: requiereOT ? '#000' : 'var(--text-muted)',
+                      border: '1px solid var(--brand-cyan)',
+                      borderRadius: '6px',
+                      padding: '4px 10px',
+                      fontSize: '0.74rem',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      boxShadow: requiereOT ? '0 0 10px rgba(56, 189, 248, 0.3)' : 'none'
+                    }}
+                  >
+                    🛠️ Requiere OT
+                  </button>
+                </div>
+              </div>
+
+              {requiereOT ? (
+                <div>
+                  <div style={{ 
+                    fontSize: '0.78rem', 
+                    fontWeight: 800, 
+                    color: 'var(--brand-cyan)', 
+                    marginBottom: '8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>⚠️ VALIDACIÓN DEL DISEÑO 3D (OBLIGATORIO):</span>
+                  </div>
+
+                  {/* Selector de Estado del Diseño */}
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '12px' }}>
+                    {/* Opción A: Diseño Ya Realizado */}
+                    <div 
+                      onClick={() => setEstadoDiseno('ya_realizado')}
+                      style={{
+                        background: estadoDiseno === 'ya_realizado' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 0, 0, 0.25)',
+                        border: `2px solid ${estadoDiseno === 'ya_realizado' ? '#34d399' : 'rgba(255, 255, 255, 0.08)'}`,
+                        borderRadius: '10px',
+                        padding: '10px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: estadoDiseno === 'ya_realizado' ? '0 0 12px rgba(16, 185, 129, 0.25)' : 'none'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                        <CheckCircle2 size={16} color={estadoDiseno === 'ya_realizado' ? '#34d399' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: estadoDiseno === 'ya_realizado' ? '#34d399' : '#fff' }}>
+                          Diseño Ya Realizado
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.3 }}>
+                        El modelo 3D ya existe o está listo. Pasa a taller para impresión directa.
+                      </p>
+                    </div>
+
+                    {/* Opción B: Requiere Diseño Nuevo */}
+                    <div 
+                      onClick={() => setEstadoDiseno('requiere_nuevo')}
+                      style={{
+                        background: estadoDiseno === 'requiere_nuevo' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(0, 0, 0, 0.25)',
+                        border: `2px solid ${estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : 'rgba(255, 255, 255, 0.08)'}`,
+                        borderRadius: '10px',
+                        padding: '10px',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                        boxShadow: estadoDiseno === 'requiere_nuevo' ? '0 0 12px rgba(245, 158, 11, 0.25)' : 'none'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                        <Sparkles size={16} color={estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: '0.82rem', fontWeight: 800, color: estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : '#fff' }}>
+                          Requiere Diseño Nuevo
+                        </span>
+                      </div>
+                      <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', margin: 0, lineHeight: 1.3 }}>
+                        Germán debe modelar o diseñar antes de imprimir (<em>Modelado Pendiente</em>).
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Campos complementarios según la opción seleccionada */}
+                  {estadoDiseno === 'ya_realizado' ? (
+                    <div>
+                      <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                        ENLACE O RUTA DEL ARCHIVO 3D / STL (OPCIONAL):
+                      </label>
+                      <input 
+                        type="url"
+                        className="form-input"
+                        placeholder="https://drive.google.com/... o cults3d.com/..."
+                        value={enlaceDiseno}
+                        onChange={e => setEnlaceDiseno(e.target.value)}
+                        style={{ fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                        DETALLES O REQUERIMIENTOS PARA EL NUEVO DISEÑO:
+                      </label>
+                      <input 
+                        type="text"
+                        className="form-input"
+                        placeholder="Ej: Posición de combate, logo grabado en base, escala 1:12..."
+                        value={notasDiseno}
+                        onChange={e => setNotasDiseno(e.target.value)}
+                        style={{ fontSize: '0.8rem' }}
+                      />
+                    </div>
+                  )}
+
+                  <div style={{ 
+                    marginTop: '8px', 
+                    fontSize: '0.72rem', 
+                    color: estadoDiseno === 'ya_realizado' ? '#34d399' : '#fbbf24',
+                    background: 'rgba(0,0,0,0.2)',
+                    padding: '6px 10px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px'
+                  }}>
+                    <span>ℹ️</span>
+                    <span>
+                      {estadoDiseno === 'ya_realizado' 
+                        ? 'Se creará la OT con estado STL "Diseñado por Germán" lista para taller.'
+                        : 'Se creará la OT con estado STL "Modelado Pendiente" para diseño previo por Germán.'}
+                    </span>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Venta directa de mostrador: se registra el pago sin generar orden de producción en taller.
+                </div>
+              )}
+            </div>
+
             {/* Botón Guardar Venta */}
             <button 
               type="submit" 
@@ -746,6 +951,68 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                               👤 <strong>{venta.cliente_nombre}</strong> • 📱 {venta.cliente_telefono}
                             </div>
+
+                            {/* Badge de OT y Estado del Diseño */}
+                            {venta.requiere_ot ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px', flexWrap: 'wrap' }}>
+                                <span style={{ 
+                                  fontSize: '0.72rem', 
+                                  fontWeight: 800, 
+                                  padding: '2px 8px', 
+                                  borderRadius: '6px',
+                                  background: 'rgba(56, 189, 248, 0.15)',
+                                  color: 'var(--brand-cyan)',
+                                  border: '1px solid rgba(56, 189, 248, 0.35)',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  <Wrench size={11} />
+                                  <span>{venta.ot_numero || 'OT en Taller'}</span>
+                                </span>
+
+                                <span style={{ 
+                                  fontSize: '0.7rem', 
+                                  fontWeight: 800, 
+                                  padding: '2px 8px', 
+                                  borderRadius: '6px',
+                                  background: venta.estado_diseno === 'requiere_nuevo' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                                  color: venta.estado_diseno === 'requiere_nuevo' ? '#fbbf24' : '#34d399',
+                                  border: `1px solid ${venta.estado_diseno === 'requiere_nuevo' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(16, 185, 129, 0.35)'}`,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}>
+                                  {venta.estado_diseno === 'requiere_nuevo' ? '🎨 Req. Diseño Nuevo' : '🟢 Diseño Listo'}
+                                </span>
+
+                                {onNavigateTab && (
+                                  <button
+                                    type="button"
+                                    onClick={() => onNavigateTab('workflow')}
+                                    style={{
+                                      background: 'transparent',
+                                      border: 'none',
+                                      color: 'var(--brand-cyan)',
+                                      fontSize: '0.7rem',
+                                      cursor: 'pointer',
+                                      textDecoration: 'underline',
+                                      fontWeight: 700,
+                                      padding: '0 2px'
+                                    }}
+                                    title="Ir al Pipeline de Taller para ver esta OT"
+                                  >
+                                    Ver en Taller →
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{ marginTop: '4px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                  📦 Mostrador (Sin OT)
+                                </span>
+                              </div>
+                            )}
                           </div>
 
                           {/* Valores */}

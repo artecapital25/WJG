@@ -98,13 +98,17 @@ export function generarWhatsAppComprobantePOS(
 
   const alerta = calcularAlertaCobro(venta.fecha_prometida_pago, venta.saldo_pendiente);
 
+  const bloqueOT = venta.requiere_ot ? `
+🛠️ *Orden de Trabajo:* ${venta.ot_numero || 'En Proceso'}
+🎨 *Estado de Diseño:* ${venta.estado_diseno === 'requiere_nuevo' ? '⏳ Requiere Modelado Nuevo (Germán)' : '🟢 Diseño Listo (Para Producción)'}` : '';
+
   const mensaje = 
 `👋 ¡Hola *${venta.cliente_nombre}*! 🎨📦
 Te compartimos el comprobante de tu compra en *WJGEEKS 3D*:
 
 🏷️ *Recibo N°:* ${venta.numero_venta}
 🛠️ *Figura / Producto:* ${venta.nombre_producto}
-📅 *Fecha:* ${venta.fecha_venta}
+📅 *Fecha:* ${venta.fecha_venta}${bloqueOT}
 
 ━━━━━━━━━━━━━━━━━━━━
 💵 *Total:* $${venta.total.toLocaleString('es-CO')} COP

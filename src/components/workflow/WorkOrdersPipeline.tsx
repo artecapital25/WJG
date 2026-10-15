@@ -479,9 +479,19 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
     setOtParaEditarLinks(null);
   };
 
+  const conSaldoCount = ordenes.filter(o => 
+    o.estado_pago !== 'Pagado Total' && 
+    ((o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0))) > 0)
+  ).length;
+
   const ordenesFiltradas = filtroEstado === 'todos' 
     ? ordenes 
-    : ordenes.filter(o => o.estado === filtroEstado);
+    : filtroEstado === 'con_saldo'
+      ? ordenes.filter(o => 
+          o.estado_pago !== 'Pagado Total' && 
+          ((o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0))) > 0)
+        )
+      : ordenes.filter(o => o.estado === filtroEstado);
 
   // Conteo de proyectos rápidos
   const proyectosRapidosCount = ordenes.filter(o => o.es_proyecto_rapido).length;
@@ -540,6 +550,19 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
         >
           Todas ({ordenes.length})
         </button>
+        <button 
+          className={`btn btn-sm ${filtroEstado === 'con_saldo' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setFiltroEstado('con_saldo')}
+          style={{
+            background: filtroEstado === 'con_saldo' ? 'rgba(239, 68, 68, 0.25)' : 'rgba(239, 68, 68, 0.08)',
+            borderColor: filtroEstado === 'con_saldo' ? '#f87171' : 'rgba(239, 68, 68, 0.35)',
+            color: '#f87171',
+            fontWeight: 800,
+            whiteSpace: 'nowrap'
+          }}
+        >
+          🔴 Con Saldo ({conSaldoCount})
+        </button>
         {ETAPAS.map(etapa => {
           const count = ordenes.filter(o => o.estado === etapa).length;
           return (
@@ -579,7 +602,22 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                 <div className="ot-card-header">
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span className="ot-badge">{ot.numero_ot}</span>
-                    {ot.es_proyecto_rapido ? (
+                    {ot.pos_venta_id || ot.cotizacion_numero?.startsWith('POS-') ? (
+                      <span style={{ 
+                        fontSize: '0.7rem', 
+                        background: 'rgba(56, 189, 248, 0.18)', 
+                        color: 'var(--brand-cyan)', 
+                        border: '1px solid rgba(56, 189, 248, 0.45)', 
+                        padding: '1px 7px', 
+                        borderRadius: '4px', 
+                        fontWeight: 800,
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px'
+                      }}>
+                        <span>🛍️ POS: {ot.cotizacion_numero}</span>
+                      </span>
+                    ) : ot.es_proyecto_rapido ? (
                       <span style={{ fontSize: '0.7rem', background: 'rgba(236, 72, 153, 0.2)', color: '#f472b6', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
                         ⚡ RAPIDO {ot.altura_cm_tarifario ? `${ot.altura_cm_tarifario}cm` : ''}
                       </span>
@@ -918,6 +956,28 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                       Germán ➔ {ot.operador_asignado?.split(' ')[0] || 'Juan'}
                     </span>
                   </div>
+
+                  {(ot.pos_venta_id || ot.cotizacion_numero?.startsWith('POS-')) && (
+                    <div style={{
+                      marginTop: '5px',
+                      fontSize: '0.68rem',
+                      fontWeight: 700,
+                      color: isStlReady ? '#34d399' : '#fbbf24',
+                      background: 'rgba(0,0,0,0.2)',
+                      padding: '3px 6px',
+                      borderRadius: '4px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}>
+                      <span>{isStlReady ? '🟢' : '🎨'}</span>
+                      <span>
+                        {isStlReady 
+                          ? 'Venta POS: Diseño listo para producción' 
+                          : 'Venta POS: Requiere diseño nuevo por Germán'}
+                      </span>
+                    </div>
+                  )}
 
                   {/* Acciones de STL */}
                   <div style={{ display: 'flex', gap: '6px', marginTop: '6px' }}>

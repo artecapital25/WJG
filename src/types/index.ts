@@ -263,6 +263,7 @@ export interface OrdenTrabajo {
   altura_cm_tarifario?: number;
   precio_cobrado?: number;
   es_proyecto_rapido?: boolean;
+  pos_venta_id?: string;
 
   // Estado Financiero y Pago
   estado_pago?: EstadoPago;

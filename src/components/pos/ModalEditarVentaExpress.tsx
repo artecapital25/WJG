@@ -13,9 +13,12 @@ import {
   CheckCircle, 
   Save,
   Phone,
-  Tag
+  Tag,
+  Wrench,
+  Sparkles,
+  CheckCircle2
 } from 'lucide-react';
-import { VentaExpress, EstadoPagoExpress } from '../../types/pos';
+import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
 import { Cliente } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { calcularAlertaCobro } from '../../services/posService';
@@ -51,6 +54,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
   const [fotoUrl, setFotoUrl] = useState(venta.foto_url || '');
   const [isProcessingImg, setIsProcessingImg] = useState(false);
 
+  // Validación y Producción de Diseño 3D (OT)
+  const [requiereOT, setRequiereOT] = useState<boolean>(Boolean(venta.requiere_ot));
+  const [estadoDiseno, setEstadoDiseno] = useState<EstadoDisenoPOS>(venta.estado_diseno || 'ya_realizado');
+  const [enlaceDiseno, setEnlaceDiseno] = useState<string>(venta.enlace_diseno || '');
+  const [notasDiseno, setNotasDiseno] = useState<string>(venta.notas_diseno || '');
+
   // Confirmación de eliminación
   const [mostrarConfirmarEliminar, setMostrarConfirmarEliminar] = useState(false);
 
@@ -69,6 +78,10 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
       setMetodoPago(venta.metodo_pago || 'Nequi');
       setNotas(venta.notas || '');
       setFotoUrl(venta.foto_url || '');
+      setRequiereOT(Boolean(venta.requiere_ot));
+      setEstadoDiseno(venta.estado_diseno || 'ya_realizado');
+      setEnlaceDiseno(venta.enlace_diseno || '');
+      setNotasDiseno(venta.notas_diseno || '');
       setMostrarConfirmarEliminar(false);
     }
   }, [venta]);
@@ -116,6 +129,11 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
       return;
     }
 
+    if (requiereOT && !estadoDiseno) {
+      alert('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de guardar.');
+      return;
+    }
+
     const ventaActualizada: VentaExpress = {
       ...venta,
       nombre_producto: nombreProducto.trim(),
@@ -129,7 +147,11 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
       fecha_prometida_pago: saldoPendiente > 0 ? fechaPrometida : undefined,
       metodo_pago: metodoPago,
       notas: notas.trim(),
-      foto_url: fotoUrl
+      foto_url: fotoUrl,
+      requiere_ot: requiereOT,
+      estado_diseno: requiereOT ? estadoDiseno : undefined,
+      enlace_diseno: (requiereOT && enlaceDiseno.trim()) ? enlaceDiseno.trim() : undefined,
+      notas_diseno: (requiereOT && notasDiseno.trim()) ? notasDiseno.trim() : undefined
     };
 
     onGuardarCambios(ventaActualizada);
@@ -442,6 +464,146 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                   {estadoPagoCalculado}
                 </div>
               </div>
+            </div>
+
+            {/* PRODUCCIÓN & ESTADO DEL DISEÑO 3D (OT) */}
+            <div style={{
+              background: requiereOT ? 'rgba(56, 189, 248, 0.06)' : 'rgba(255, 255, 255, 0.02)',
+              border: `1px solid ${requiereOT ? 'rgba(56, 189, 248, 0.35)' : 'var(--border-subtle)'}`,
+              borderRadius: '10px',
+              padding: '14px',
+              marginBottom: '16px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Wrench size={15} color="var(--brand-cyan)" />
+                  <span style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>
+                    PRODUCCIÓN EN TALLER & ORDEN DE TRABAJO
+                  </span>
+                  {venta.ot_numero && (
+                    <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.2)', color: 'var(--brand-cyan)', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                      {venta.ot_numero}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    type="button"
+                    onClick={() => setRequiereOT(false)}
+                    style={{
+                      background: !requiereOT ? 'rgba(255, 255, 255, 0.15)' : 'transparent',
+                      color: !requiereOT ? '#fff' : 'var(--text-muted)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    📦 Sin OT
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRequiereOT(true)}
+                    style={{
+                      background: requiereOT ? 'var(--brand-cyan)' : 'transparent',
+                      color: requiereOT ? '#000' : 'var(--text-muted)',
+                      border: '1px solid var(--brand-cyan)',
+                      borderRadius: '6px',
+                      padding: '3px 8px',
+                      fontSize: '0.72rem',
+                      fontWeight: 800,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    🛠️ Con OT
+                  </button>
+                </div>
+              </div>
+
+              {requiereOT && (
+                <div>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 800, color: 'var(--brand-cyan)', display: 'block', marginBottom: '6px' }}>
+                    ESTADO DEL MODELO 3D / DISEÑO:
+                  </label>
+
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '10px' }}>
+                    <div
+                      onClick={() => setEstadoDiseno('ya_realizado')}
+                      style={{
+                        background: estadoDiseno === 'ya_realizado' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0, 0, 0, 0.25)',
+                        border: `2px solid ${estadoDiseno === 'ya_realizado' ? '#34d399' : 'rgba(255, 255, 255, 0.08)'}`,
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                        <CheckCircle2 size={14} color={estadoDiseno === 'ya_realizado' ? '#34d399' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: estadoDiseno === 'ya_realizado' ? '#34d399' : '#fff' }}>
+                          Diseño Ya Realizado
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>
+                        Listo para impresión en taller
+                      </span>
+                    </div>
+
+                    <div
+                      onClick={() => setEstadoDiseno('requiere_nuevo')}
+                      style={{
+                        background: estadoDiseno === 'requiere_nuevo' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(0, 0, 0, 0.25)',
+                        border: `2px solid ${estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : 'rgba(255, 255, 255, 0.08)'}`,
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                        <Sparkles size={14} color={estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : 'var(--text-muted)'} />
+                        <span style={{ fontSize: '0.78rem', fontWeight: 800, color: estadoDiseno === 'requiere_nuevo' ? '#fbbf24' : '#fff' }}>
+                          Requiere Diseño Nuevo
+                        </span>
+                      </div>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block' }}>
+                        Germán debe modelarlo antes
+                      </span>
+                    </div>
+                  </div>
+
+                  {estadoDiseno === 'ya_realizado' ? (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
+                        ENLACE O RUTA DEL ARCHIVO STL (OPCIONAL):
+                      </label>
+                      <input
+                        type="url"
+                        className="input-field"
+                        placeholder="https://drive.google.com/... o cults3d.com/..."
+                        value={enlaceDiseno}
+                        onChange={e => setEnlaceDiseno(e.target.value)}
+                        style={{ fontSize: '0.78rem' }}
+                      />
+                    </div>
+                  ) : (
+                    <div>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
+                        NOTAS / REQUERIMIENTOS DEL DISEÑO:
+                      </label>
+                      <input
+                        type="text"
+                        className="input-field"
+                        placeholder="Detalles para modelar..."
+                        value={notasDiseno}
+                        onChange={e => setNotasDiseno(e.target.value)}
+                        style={{ fontSize: '0.78rem' }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* FECHAS, MÉTODO Y NOTAS */}

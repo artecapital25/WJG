@@ -1,5 +1,7 @@
 export type EstadoPagoExpress = 'Pagado Total' | 'Abono Parcial' | 'Pendiente';
 
+export type EstadoDisenoPOS = 'ya_realizado' | 'requiere_nuevo';
+
 export interface VentaExpress {
   id: string;
   numero_venta: string; // ej: POS-001
@@ -17,6 +19,14 @@ export interface VentaExpress {
   metodo_pago?: string; // Nequi, Daviplata, Efectivo, Bancolombia
   creado_por?: string; // Germán, Wendy, Juan
   notificado_whatsapp?: boolean;
+
+  // Validación de Diseño y Orden de Trabajo (OT)
+  requiere_ot?: boolean;
+  estado_diseno?: EstadoDisenoPOS;
+  ot_id?: string;
+  ot_numero?: string;
+  enlace_diseno?: string;
+  notas_diseno?: string;
 }
 
 export type NivelAlertaPago = 'vencido' | 'hoy' | 'proximo' | 'al_dia' | 'pagado';

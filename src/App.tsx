@@ -293,7 +293,10 @@ export const App: React.FC = () => {
 
           currentCots.forEach(cot => {
             if (cot.estado === 'Aceptada') {
-              (cot.items || []).forEach(item => {
+              const numItems = cot.items?.length || 1;
+              let abonoRestante = cot.abono || 0;
+
+              (cot.items || []).forEach((item, idx) => {
                 const yaExiste = currentOTs.some(o => 
                   (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) &&
                   o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
@@ -302,6 +305,21 @@ export const App: React.FC = () => {
                 if (!yaExiste) {
                   maxConsecutive++;
                   const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
+                  const itemPrecio = item.precio_total || (numItems === 1 ? cot.total : 0);
+                  let itemAbono = 0;
+                  if (numItems <= 1) {
+                    itemAbono = cot.abono || 0;
+                  } else if (cot.total > 0) {
+                    if (idx === numItems - 1) {
+                      itemAbono = Math.max(0, abonoRestante);
+                    } else {
+                      itemAbono = Math.min(itemPrecio, Math.round((cot.abono || 0) * (itemPrecio / cot.total)));
+                      abonoRestante = Math.max(0, abonoRestante - itemAbono);
+                    }
+                  }
+                  const itemSaldo = Math.max(0, itemPrecio - itemAbono);
+                  const itemEstadoPago: EstadoPago = cot.estado_pago || (itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente'));
+
                   const nuevaOT: OrdenTrabajo = {
                     id: `ot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
                     numero_ot: numOT,
@@ -328,13 +346,54 @@ export const App: React.FC = () => {
                     tiene_empaque: item.tiene_empaque,
                     lista_empaques: item.lista_empaques,
                     detalles_tecnicos: item.descripcion_tecnica,
-                    imagen_url: item.imagen_url
+                    imagen_url: item.imagen_url,
+                    precio_cobrado: itemPrecio,
+                    estado_pago: itemEstadoPago,
+                    abono: itemAbono,
+                    saldo_pendiente: itemSaldo,
+                    metodo_pago: cot.metodo_pago,
+                    comprobante_pago: cot.comprobante_pago
                   };
                   recoveredOTs.push(nuevaOT);
                 }
               });
             }
           });
+
+          // 4.1 Auto-sanar OTs existentes que tengan cotización pero carezcan de saldo o precio cobrado
+          let ordenesSanadas = false;
+          const sanitizedOTs = currentOTs.map(o => {
+            if ((o.cotizacion_id || o.cotizacion_numero) && (o.precio_cobrado === undefined || o.saldo_pendiente === undefined || o.estado_pago === undefined)) {
+              const cotPadre = currentCots.find(c => 
+                (o.cotizacion_id && c.id === o.cotizacion_id) || 
+                (o.cotizacion_numero && c.numero_cot === o.cotizacion_numero)
+              );
+              if (cotPadre) {
+                const item = cotPadre.items?.find(it => it.nombre_item?.trim().toLowerCase() === o.item_nombre?.trim().toLowerCase());
+                const itemPrecio = item?.precio_total || (cotPadre.items?.length === 1 ? cotPadre.total : (o.precio_cobrado || 0));
+                const prop = cotPadre.total > 0 ? (itemPrecio / cotPadre.total) : 1;
+                const itemAbono = o.abono !== undefined ? o.abono : Math.round((cotPadre.abono || 0) * prop);
+                const itemSaldo = o.saldo_pendiente !== undefined ? o.saldo_pendiente : Math.max(0, itemPrecio - itemAbono);
+                const itemEstado = o.estado_pago || cotPadre.estado_pago || (itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente'));
+                ordenesSanadas = true;
+                return {
+                  ...o,
+                  precio_cobrado: itemPrecio,
+                  abono: itemAbono,
+                  saldo_pendiente: itemSaldo,
+                  estado_pago: itemEstado,
+                  metodo_pago: o.metodo_pago || cotPadre.metodo_pago,
+                  comprobante_pago: o.comprobante_pago || cotPadre.comprobante_pago
+                };
+              }
+            }
+            return o;
+          });
+
+          if (ordenesSanadas) {
+            StorageService.saveOrdenes(sanitizedOTs);
+            setOrdenes(sanitizedOTs);
+          }
 
           if (recoveredOTs.length > 0) {
             setOrdenes(prev => {
@@ -595,13 +654,32 @@ export const App: React.FC = () => {
     // 4. Generar OTs para piezas que no tengan OT aún en el taller
     const nuevasOTs: OrdenTrabajo[] = [];
     const items = cot.items || [];
+    const totalItems = items.length;
+    let abonoRestante = abonoFinal;
 
-    items.forEach((item) => {
+    items.forEach((item, index) => {
       // Verificar si ya existe una OT para esta pieza en esta cotización
       const yaExiste = currentOrders.some(o => 
         (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) && 
         o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
       );
+
+      const itemPrecio = item.precio_total || (totalItems === 1 ? cot.total : 0);
+      let itemAbono = 0;
+      if (totalItems <= 1) {
+        itemAbono = abonoFinal;
+      } else if (cot.total > 0) {
+        if (index === totalItems - 1) {
+          itemAbono = Math.max(0, abonoRestante);
+        } else {
+          itemAbono = Math.min(itemPrecio, Math.round(abonoFinal * (itemPrecio / cot.total)));
+          abonoRestante = Math.max(0, abonoRestante - itemAbono);
+        }
+      }
+      const itemSaldo = Math.max(0, itemPrecio - itemAbono);
+      const itemEstadoPago: EstadoPago = itemSaldo === 0 
+        ? 'Pagado Total' 
+        : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
 
       if (!yaExiste) {
         maxConsecutive++;
@@ -634,10 +712,10 @@ export const App: React.FC = () => {
           lista_empaques: item.lista_empaques,
           detalles_tecnicos: item.descripcion_tecnica,
           imagen_url: item.imagen_url,
-          precio_cobrado: item.precio_total,
-          estado_pago: estadoPagoFinal,
-          abono: abonoFinal,
-          saldo_pendiente: saldoFinal,
+          precio_cobrado: itemPrecio,
+          estado_pago: itemEstadoPago,
+          abono: itemAbono,
+          saldo_pendiente: itemSaldo,
           metodo_pago: metodoPagoFinal,
           comprobante_pago: comprobanteFinal
         });
@@ -645,13 +723,27 @@ export const App: React.FC = () => {
     });
 
     // También actualizar OTs existentes asociadas con los datos de pago actualizados
+    const existingMatching = currentOrders.filter(o => o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot);
+    const numExisting = existingMatching.length;
+
     let updatedOTs = currentOrders.map(o => {
       if (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) {
+        const itemPrecio = o.precio_cobrado || (numExisting === 1 ? cot.total : 0);
+        let itemAbono = 0;
+        if (numExisting <= 1) {
+          itemAbono = abonoFinal;
+        } else if (cot.total > 0) {
+          itemAbono = Math.min(itemPrecio, Math.round(abonoFinal * (itemPrecio / cot.total)));
+        }
+        const itemSaldo = Math.max(0, itemPrecio - itemAbono);
+        const itemEstadoPago: EstadoPago = itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
+
         return {
           ...o,
-          estado_pago: estadoPagoFinal,
-          abono: abonoFinal,
-          saldo_pendiente: saldoFinal,
+          precio_cobrado: itemPrecio,
+          estado_pago: itemEstadoPago,
+          abono: itemAbono,
+          saldo_pendiente: itemSaldo,
           metodo_pago: metodoPagoFinal || o.metodo_pago,
           comprobante_pago: comprobanteFinal || o.comprobante_pago
         };
@@ -739,11 +831,18 @@ export const App: React.FC = () => {
     // Actualizar OTs asociadas
     const updatedOTs = ordenes.map(o => {
       if (o.cotizacion_id === targetCot.id || o.cotizacion_numero === targetCot.numero_cot) {
+        const itemPrecio = o.precio_cobrado || targetCot.total;
+        const prop = targetCot.total > 0 ? (itemPrecio / targetCot.total) : 1;
+        const itemAbono = Math.round(datosPago.abono * prop);
+        const itemSaldo = Math.max(0, itemPrecio - itemAbono);
+        const itemEstado: EstadoPago = itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
+
         return {
           ...o,
-          estado_pago: datosPago.estado_pago,
-          abono: datosPago.abono,
-          saldo_pendiente: datosPago.saldo_pendiente,
+          precio_cobrado: itemPrecio,
+          estado_pago: itemEstado,
+          abono: itemAbono,
+          saldo_pendiente: itemSaldo,
           metodo_pago: datosPago.metodo_pago || o.metodo_pago,
           comprobante_pago: datosPago.comprobante_pago || o.comprobante_pago
         };
@@ -951,17 +1050,157 @@ export const App: React.FC = () => {
   };
 
   const handleGuardarVentaExpress = (nuevaVenta: VentaExpress) => {
-    const updated = [nuevaVenta, ...ventasExpress];
+    let ventaFinal: VentaExpress = { ...nuevaVenta };
+
+    // Si la venta requiere Orden de Trabajo (OT) y taller, generamos la OT con su trazabilidad de diseño
+    if (ventaFinal.requiere_ot) {
+      const currentOrders = StorageService.getOrdenes();
+      const numOT = StorageService.getNextOTNumber(currentOrders);
+      const otId = `ot-pos-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+      ventaFinal.ot_numero = numOT;
+      ventaFinal.ot_id = otId;
+
+      const nuevaOT: OrdenTrabajo = {
+        id: otId,
+        numero_ot: numOT,
+        cotizacion_id: ventaFinal.id,
+        cotizacion_numero: ventaFinal.numero_venta,
+        pos_venta_id: ventaFinal.id,
+        cliente_nombre: ventaFinal.cliente_nombre,
+        cliente_telefono: ventaFinal.cliente_telefono,
+        item_nombre: ventaFinal.nombre_producto,
+        cantidad: 1,
+        estado: 'En Cola',
+        operador_asignado: 'Juan (Taller)',
+        fecha_creacion: new Date().toISOString(),
+        tiempo_impresion_min: 120,
+        tiempo_armado_min: 15,
+        tiempo_pintura_min: 30,
+        resina_nombre: 'Anycubic Standard Grey',
+        maquina_nombre: 'Anycubic MONO 4',
+        va_pintado: true,
+        tiene_empaque: true,
+        detalles_tecnicos: `Venta POS Express ${ventaFinal.numero_venta}${ventaFinal.notas ? ` | Notas: ${ventaFinal.notas}` : ''}${ventaFinal.notas_diseno ? ` | Req. Diseño: ${ventaFinal.notas_diseno}` : ''}`,
+        imagen_url: ventaFinal.foto_url || undefined,
+        precio_cobrado: ventaFinal.total,
+        es_proyecto_rapido: true,
+        stl_estado: ventaFinal.estado_diseno === 'requiere_nuevo' ? 'Modelado Pendiente' : 'Diseñado por Germán',
+        stl_modelador: 'Germán',
+        stl_operador: 'Juan',
+        stl_url: ventaFinal.enlace_diseno || undefined,
+        stl_notas: ventaFinal.notas_diseno || undefined,
+        estado_pago: (ventaFinal.estado_pago as EstadoPago) || 'Pendiente',
+        abono: ventaFinal.abono,
+        saldo_pendiente: ventaFinal.saldo_pendiente,
+        metodo_pago: ventaFinal.metodo_pago
+      };
+
+      const updatedOTs = [nuevaOT, ...ordenes];
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+      CloudSyncService.saveOrdenTrabajo(nuevaOT);
+    }
+
+    const updated = [ventaFinal, ...ventasExpress];
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
-    CloudSyncService.saveVentaExpress(nuevaVenta);
+    CloudSyncService.saveVentaExpress(ventaFinal);
   };
 
   const handleActualizarVentaExpress = (ventaActualizada: VentaExpress) => {
-    const updated = ventasExpress.map(v => v.id === ventaActualizada.id ? ventaActualizada : v);
+    let ventaFinal: VentaExpress = { ...ventaActualizada };
+
+    // Si antes no tenía OT y ahora se activa "requiere_ot", generarla
+    if (ventaFinal.requiere_ot && !ventaFinal.ot_id && !ventaFinal.ot_numero) {
+      const currentOrders = StorageService.getOrdenes();
+      const numOT = StorageService.getNextOTNumber(currentOrders);
+      const otId = `ot-pos-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
+
+      ventaFinal.ot_numero = numOT;
+      ventaFinal.ot_id = otId;
+
+      const nuevaOT: OrdenTrabajo = {
+        id: otId,
+        numero_ot: numOT,
+        cotizacion_id: ventaFinal.id,
+        cotizacion_numero: ventaFinal.numero_venta,
+        pos_venta_id: ventaFinal.id,
+        cliente_nombre: ventaFinal.cliente_nombre,
+        cliente_telefono: ventaFinal.cliente_telefono,
+        item_nombre: ventaFinal.nombre_producto,
+        cantidad: 1,
+        estado: 'En Cola',
+        operador_asignado: 'Juan (Taller)',
+        fecha_creacion: new Date().toISOString(),
+        tiempo_impresion_min: 120,
+        tiempo_armado_min: 15,
+        tiempo_pintura_min: 30,
+        resina_nombre: 'Anycubic Standard Grey',
+        maquina_nombre: 'Anycubic MONO 4',
+        va_pintado: true,
+        tiene_empaque: true,
+        detalles_tecnicos: `Venta POS Express ${ventaFinal.numero_venta}${ventaFinal.notas ? ` | Notas: ${ventaFinal.notas}` : ''}${ventaFinal.notas_diseno ? ` | Req. Diseño: ${ventaFinal.notas_diseno}` : ''}`,
+        imagen_url: ventaFinal.foto_url || undefined,
+        precio_cobrado: ventaFinal.total,
+        es_proyecto_rapido: true,
+        stl_estado: ventaFinal.estado_diseno === 'requiere_nuevo' ? 'Modelado Pendiente' : 'Diseñado por Germán',
+        stl_modelador: 'Germán',
+        stl_operador: 'Juan',
+        stl_url: ventaFinal.enlace_diseno || undefined,
+        stl_notas: ventaFinal.notas_diseno || undefined,
+        estado_pago: (ventaFinal.estado_pago as EstadoPago) || 'Pendiente',
+        abono: ventaFinal.abono,
+        saldo_pendiente: ventaFinal.saldo_pendiente,
+        metodo_pago: ventaFinal.metodo_pago
+      };
+
+      const updatedOTs = [nuevaOT, ...ordenes];
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+      CloudSyncService.saveOrdenTrabajo(nuevaOT);
+    } else if (ventaFinal.ot_id || ventaFinal.ot_numero) {
+      // Sincronizar la OT asociada con los datos actualizados de pago y diseño
+      let otModificada: OrdenTrabajo | null = null;
+      const updatedOTs = ordenes.map(o => {
+        if (
+          (ventaFinal.ot_id && o.id === ventaFinal.ot_id) ||
+          (ventaFinal.ot_numero && o.numero_ot === ventaFinal.ot_numero) ||
+          (o.pos_venta_id && o.pos_venta_id === ventaFinal.id) ||
+          (o.cotizacion_numero && o.cotizacion_numero === ventaFinal.numero_venta)
+        ) {
+          const modif: OrdenTrabajo = {
+            ...o,
+            cliente_nombre: ventaFinal.cliente_nombre,
+            cliente_telefono: ventaFinal.cliente_telefono,
+            item_nombre: ventaFinal.nombre_producto,
+            precio_cobrado: ventaFinal.total,
+            estado_pago: (ventaFinal.estado_pago as EstadoPago) || o.estado_pago,
+            abono: ventaFinal.abono,
+            saldo_pendiente: ventaFinal.saldo_pendiente,
+            metodo_pago: ventaFinal.metodo_pago || o.metodo_pago,
+            imagen_url: ventaFinal.foto_url || o.imagen_url,
+            stl_estado: ventaFinal.estado_diseno === 'requiere_nuevo' ? 'Modelado Pendiente' : 'Diseñado por Germán',
+            stl_url: ventaFinal.enlace_diseno || o.stl_url,
+            stl_notas: ventaFinal.notas_diseno || o.stl_notas
+          };
+          otModificada = modif;
+          return modif;
+        }
+        return o;
+      });
+
+      if (otModificada) {
+        setOrdenes(updatedOTs);
+        StorageService.saveOrdenes(updatedOTs);
+        CloudSyncService.saveOrdenTrabajo(otModificada);
+      }
+    }
+
+    const updated = ventasExpress.map(v => v.id === ventaFinal.id ? ventaFinal : v);
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
-    CloudSyncService.saveVentaExpress(ventaActualizada);
+    CloudSyncService.saveVentaExpress(ventaFinal);
   };
 
   const handleEliminarVentaExpress = (ventaId: string) => {
@@ -1370,10 +1609,12 @@ export const App: React.FC = () => {
             ventas={ventasExpress}
             clientes={clientes}
             config={config}
+            ordenes={ordenes}
             onGuardarVenta={handleGuardarVentaExpress}
             onActualizarVenta={handleActualizarVentaExpress}
             onEliminarVenta={handleEliminarVentaExpress}
             onCrearCliente={handleAddCliente}
+            onNavigateTab={setActiveTab}
           />
         )}
 
@@ -1390,6 +1631,7 @@ export const App: React.FC = () => {
             onEliminarCuentaCobro={handleEliminarCuentaCobro}
             onActualizarOT={handleActualizarOT}
             onCrearCuentaCobro={handleCrearCuentaCobro}
+            onNavigateTab={setActiveTab}
           />
         )}
 

@@ -566,7 +566,13 @@ export const CloudSyncService = {
         fecha_prometida_pago: row.fecha_prometida_pago || undefined,
         notas: row.notas || '',
         metodo_pago: row.metodo_pago || 'Nequi',
-        creado_por: row.creado_por || 'Equipo WJGEEKS'
+        creado_por: row.creado_por || 'Equipo WJGEEKS',
+        requiere_ot: Boolean(row.requiere_ot),
+        estado_diseno: row.estado_diseno || undefined,
+        ot_id: row.ot_id || undefined,
+        ot_numero: row.ot_numero || undefined,
+        enlace_diseno: row.enlace_diseno || undefined,
+        notas_diseno: row.notas_diseno || undefined
       }));
     } catch (e) {
       console.warn('Exception in fetchVentasExpress:', e);
@@ -594,6 +600,12 @@ export const CloudSyncService = {
         notas: venta.notas || null,
         metodo_pago: venta.metodo_pago || 'Nequi',
         creado_por: venta.creado_por || 'Equipo WJGEEKS',
+        requiere_ot: Boolean(venta.requiere_ot),
+        estado_diseno: venta.estado_diseno || null,
+        ot_id: venta.ot_id || null,
+        ot_numero: venta.ot_numero || null,
+        enlace_diseno: venta.enlace_diseno || null,
+        notas_diseno: venta.notas_diseno || null,
         updated_at: new Date().toISOString()
       };
 

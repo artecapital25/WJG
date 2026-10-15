@@ -17,7 +17,8 @@ import {
   TrendingUp,
   Camera,
   Edit3,
-  Trash2
+  Trash2,
+  Wrench
 } from 'lucide-react';
 import { 
   CuentaCobro, 
@@ -35,6 +36,36 @@ import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
 
+// Helper para generar mensaje de cobro por WhatsApp de una Orden de Trabajo
+const generarWhatsAppCobroOT = (ot: OrdenTrabajo, config: ConfiguracionTaller): string => {
+  const phone = formatWhatsAppPhone(ot.cliente_telefono || '');
+  const saldoOT = ot.saldo_pendiente ?? Math.max(0, (ot.precio_cobrado || 0) - (ot.abono || 0));
+  const totalOT = ot.precio_cobrado || ((ot.abono || 0) + saldoOT);
+  
+  const mensaje = 
+`👋 Hola *${ot.cliente_nombre || 'Cliente'}*, un saludo desde *WJGEEKS 3D* 🚀
+
+Te escribimos referente a tu orden de trabajo:
+🛠️ *Orden:* *${ot.numero_ot}*
+🧩 *Pieza / Proyecto:* *${ot.item_nombre}* ${ot.cantidad > 1 ? `(x${ot.cantidad})` : ''}
+📍 *Estado en Taller:* ${ot.estado}
+
+━━━━━━━━━━━━━━━━━━━━
+💰 *Precio Total:* $${totalOT.toLocaleString('es-CO')} COP
+💵 *Abono registrado:* $${(ot.abono || 0).toLocaleString('es-CO')} COP
+🔴 *SALDO PENDIENTE:* *$${saldoOT.toLocaleString('es-CO')} COP*
+━━━━━━━━━━━━━━━━━━━━
+
+📲 *Medios de Pago Disponibles:*
+• *Nequi:* ${config.nequi}
+• *Daviplata:* ${config.daviplata}
+• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+
+Por favor envíanos el soporte una vez realices tu abono para actualizar tu orden en taller. ¡Muchas gracias por tu confianza! ✨🎨`;
+
+  return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
+};
+
 interface CuentasCobroListProps {
   cuentas: CuentaCobro[];
   ventasExpress?: VentaExpress[];
@@ -47,6 +78,7 @@ interface CuentasCobroListProps {
   onEliminarCuentaCobro?: (cuentaId: string) => void;
   onActualizarOT?: (ot: OrdenTrabajo) => void;
   onCrearCuentaCobro?: (nuevaCC: CuentaCobro) => void;
+  onNavigateTab?: (tab: any) => void;
 }
 
 export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
@@ -60,9 +92,10 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   onEliminarVentaExpress,
   onEliminarCuentaCobro,
   onActualizarOT,
-  onCrearCuentaCobro
+  onCrearCuentaCobro,
+  onNavigateTab
 }) => {
-  const [subTab, setSubTab] = useState<'deudores' | 'pos' | 'cuentas'>('deudores');
+  const [subTab, setSubTab] = useState<'deudores' | 'ordenes' | 'pos' | 'cuentas'>('deudores');
   const [searchDeudor, setSearchDeudor] = useState<string>('');
   const [showModalNuevaDeuda, setShowModalNuevaDeuda] = useState(false);
   const [notifCartera, setNotifCartera] = useState<string | null>(null);
@@ -233,15 +266,6 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
 
       if (saldoOT <= 0) return;
 
-      // Evitar doble conteo si ya existe una Cuenta de Cobro generada para esta cotización/orden
-      const yaEnCuenta = cuentas.some(c => 
-        (o.cotizacion_id && c.cotizacion_id === o.cotizacion_id) ||
-        (o.cotizacion_numero && c.cotizacion_numero === o.cotizacion_numero) ||
-        c.id === o.id ||
-        c.numero_cc === o.numero_ot
-      );
-      if (yaEnCuenta) return;
-
       const key = (o.cliente_nombre || 'Cliente OT').trim().toLowerCase();
       if (!map[key]) {
         map[key] = {
@@ -256,23 +280,71 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
         };
       }
 
-      const totalOT = o.precio_cobrado || ((o.abono || 0) + saldoOT);
-      map[key].total_deuda += totalOT;
-      map[key].total_abonos += (o.abono || 0);
-      map[key].saldo_pendiente += saldoOT;
-      map[key].ordenes.push(o);
+      // Evitar doble conteo del saldo si ya existe una Cuenta de Cobro generada para esta cotización/orden
+      const yaEnCuenta = cuentas.some(c => 
+        (o.cotizacion_id && c.cotizacion_id === o.cotizacion_id) ||
+        (o.cotizacion_numero && c.cotizacion_numero === o.cotizacion_numero) ||
+        c.id === o.id ||
+        c.numero_cc === o.numero_ot
+      );
+      if (!yaEnCuenta) {
+        const totalOT = o.precio_cobrado || ((o.abono || 0) + saldoOT);
+        map[key].total_deuda += totalOT;
+        map[key].total_abonos += (o.abono || 0);
+        map[key].saldo_pendiente += saldoOT;
+      }
+
+      // SIEMPRE agregamos la OT a las órdenes pendientes del deudor para que sea visible y gestionable
+      if (!map[key].ordenes.some(existing => existing.id === o.id)) {
+        map[key].ordenes.push(o);
+      }
+
       if (o.cliente_telefono && !map[key].cliente_telefono) {
         map[key].cliente_telefono = o.cliente_telefono;
       }
     });
 
     return Object.values(map)
-      .filter(d => 
-        d.cliente_nombre.toLowerCase().includes(searchDeudor.toLowerCase()) ||
-        d.cliente_telefono.includes(searchDeudor)
-      )
+      .filter(d => {
+        if (!searchDeudor.trim()) return true;
+        const q = searchDeudor.toLowerCase();
+        return (
+          d.cliente_nombre.toLowerCase().includes(q) ||
+          d.cliente_telefono.includes(q) ||
+          d.ordenes?.some(o => 
+            o.numero_ot.toLowerCase().includes(q) || 
+            o.item_nombre?.toLowerCase().includes(q) ||
+            (o.cotizacion_numero && o.cotizacion_numero.toLowerCase().includes(q))
+          ) ||
+          d.cuentas?.some(c => 
+            c.numero_cc.toLowerCase().includes(q) || 
+            c.items_resumen?.toLowerCase().includes(q) ||
+            (c.cotizacion_numero && c.cotizacion_numero.toLowerCase().includes(q))
+          ) ||
+          d.ventas?.some(v => 
+            v.numero_venta.toLowerCase().includes(q) || 
+            v.nombre_producto?.toLowerCase().includes(q) ||
+            (v.ot_numero && v.ot_numero.toLowerCase().includes(q))
+          )
+        );
+      })
       .sort((a, b) => b.saldo_pendiente - a.saldo_pendiente);
   }, [cuentas, ventasExpress, ordenes, searchDeudor]);
+
+  // Lista de Órdenes de Trabajo con saldo pendiente
+  const ordenesPendientes = useMemo(() => {
+    return ordenes.filter(o => {
+      if (o.estado_pago === 'Pagado Total') return false;
+      const saldo = o.saldo_pendiente !== undefined 
+        ? o.saldo_pendiente 
+        : Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
+      return saldo > 0;
+    }).sort((a, b) => {
+      const saldoA = a.saldo_pendiente ?? Math.max(0, (a.precio_cobrado || 0) - (a.abono || 0));
+      const saldoB = b.saldo_pendiente ?? Math.max(0, (b.precio_cobrado || 0) - (b.abono || 0));
+      return saldoB - saldoA;
+    });
+  }, [ordenes]);
 
   // Métricas Totales
   const totalCarteraGlobal = deudoresConsolidados.reduce((sum, d) => sum + d.saldo_pendiente, 0);
@@ -426,6 +498,16 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
         >
           <Users size={16} />
           <span>👥 Base de Deudores ({totalDeudoresCount})</span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn ${subTab === 'ordenes' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setSubTab('ordenes')}
+          style={{ fontWeight: 700, display: 'flex', alignItems: 'center', gap: '8px' }}
+        >
+          <Wrench size={16} />
+          <span>🛠️ Órdenes de Trabajo ({ordenesPendientes.length} pendientes)</span>
         </button>
 
         <button
@@ -653,6 +735,161 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
         </div>
       )}
 
+      {/* PESTAÑA: ÓRDENES DE TRABAJO (OT) PENDIENTES DE PAGO */}
+      {subTab === 'ordenes' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+          {/* Métricas y resumen de OTs pendientes */}
+          <div className="glass-card" style={{ margin: 0, padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: '1rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wrench size={18} color="var(--brand-cyan)" />
+                <span>Órdenes de Trabajo con Saldo Pendiente</span>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0' }}>
+                Órdenes de fabricación generadas desde cotizaciones aprobadas, pedidos de taller o ventas express pendientes de pago.
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <div style={{ 
+                background: 'rgba(239, 68, 68, 0.12)', 
+                border: '1px solid rgba(239, 68, 68, 0.35)', 
+                color: '#f87171', 
+                padding: '6px 14px', 
+                borderRadius: '8px', 
+                fontSize: '0.88rem', 
+                fontWeight: 800 
+              }}>
+                Total en OTs: ${ordenesPendientes.reduce((sum, o) => sum + (o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0))), 0).toLocaleString('es-CO')} COP
+              </div>
+            </div>
+          </div>
+
+          {ordenesPendientes.length === 0 ? (
+            <div className="glass-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
+              <CheckCircle size={36} color="#34d399" style={{ marginBottom: '10px', opacity: 0.8 }} />
+              <h4 style={{ color: '#fff', fontSize: '1.1rem', margin: '0 0 6px 0' }}>
+                ¡Excelente! No hay órdenes de trabajo pendientes de pago
+              </h4>
+              <p style={{ fontSize: '0.82rem' }}>
+                Todas las órdenes de trabajo tienen su pago cancelado al 100%.
+              </p>
+            </div>
+          ) : (
+            ordenesPendientes.map(ot => {
+              const saldoOT = ot.saldo_pendiente ?? Math.max(0, (ot.precio_cobrado || 0) - (ot.abono || 0));
+              const totalOT = ot.precio_cobrado || ((ot.abono || 0) + saldoOT);
+
+              return (
+                <div key={ot.id} className="glass-card" style={{ margin: 0, padding: '18px', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
+                    <div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.15rem', color: 'var(--brand-cyan)' }}>
+                          {ot.numero_ot}
+                        </span>
+                        <span className={`status-pill status-${(ot.estado || 'encola').toLowerCase().replace(/\s+/g, '')}`}>
+                          {ot.estado}
+                        </span>
+                        <span style={{ 
+                          fontSize: '0.72rem', 
+                          fontWeight: 800, 
+                          padding: '2px 8px', 
+                          borderRadius: '6px', 
+                          background: ot.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.18)' : 'rgba(239, 68, 68, 0.18)', 
+                          color: ot.estado_pago === 'Abono Parcial' ? '#fbbf24' : '#f87171',
+                          border: `1px solid ${ot.estado_pago === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(239, 68, 68, 0.35)'}`
+                        }}>
+                          {ot.estado_pago || 'Pendiente'}
+                        </span>
+                        {ot.cotizacion_numero && (
+                          <span style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+                            • Cot: {ot.cotizacion_numero}
+                          </span>
+                        )}
+                        {ot.pos_venta_id && (
+                          <span style={{ fontSize: '0.7rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.12)', color: 'var(--brand-cyan)', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                            ⚡ POS
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff', marginTop: '6px' }}>
+                        🧩 {ot.item_nombre} {ot.cantidad > 1 ? `(x${ot.cantidad})` : ''}
+                      </div>
+
+                      <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginTop: '2px', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span>👤 {ot.cliente_nombre}</span>
+                        {ot.cliente_telefono && (
+                          <>
+                            <span>•</span>
+                            <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <Phone size={12} />
+                              {ot.cliente_telefono}
+                            </span>
+                          </>
+                        )}
+                        {ot.operador_asignado && (
+                          <>
+                            <span>•</span>
+                            <span>Op: {ot.operador_asignado}</span>
+                          </>
+                        )}
+                      </div>
+                    </div>
+
+                    <div style={{ textAlign: 'right' }}>
+                      <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: '1.25rem', color: '#f87171' }}>
+                        Pendiente: ${saldoOT.toLocaleString('es-CO')}
+                      </div>
+                      <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                        Total: ${totalOT.toLocaleString('es-CO')} | Abono: ${(ot.abono || 0).toLocaleString('es-CO')}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Acciones Rápidas */}
+                  <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
+                    <button 
+                      type="button"
+                      className="btn btn-whatsapp btn-sm"
+                      onClick={() => openWhatsApp(generarWhatsAppCobroOT(ot, config))}
+                      style={{ fontWeight: 700 }}
+                    >
+                      <Send size={14} />
+                      <span>Cobrar por WhatsApp</span>
+                    </button>
+
+                    {onActualizarOT && (
+                      <button 
+                        type="button"
+                        className="btn btn-primary btn-sm"
+                        style={{ marginLeft: 'auto', fontWeight: 800 }}
+                        onClick={() => setOtParaAbono(ot)}
+                      >
+                        <DollarSign size={14} />
+                        <span>Registrar Abono</span>
+                      </button>
+                    )}
+
+                    {onNavigateTab && (
+                      <button 
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => onNavigateTab('workflow')}
+                        title="Ver esta orden en el taller de producción"
+                      >
+                        <Wrench size={14} />
+                        <span>Ver en Taller</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+
       {/* PESTAÑA 2: VENTAS EXPRESS (POS) */}
       {subTab === 'pos' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -674,8 +911,18 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                       <img src={v.foto_url} alt={v.nombre_producto} style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
                     )}
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                         <span style={{ fontWeight: 800, color: 'var(--brand-cyan)' }}>{v.numero_venta}</span>
+                        {v.ot_numero && (
+                          <span style={{ fontSize: '0.7rem', fontWeight: 800, padding: '1px 6px', borderRadius: '4px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                            🛠️ {v.ot_numero}
+                          </span>
+                        )}
+                        {v.estado_diseno && (
+                          <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '1px 6px', borderRadius: '4px', background: v.estado_diseno === 'requiere_nuevo' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(16, 185, 129, 0.15)', color: v.estado_diseno === 'requiere_nuevo' ? '#fbbf24' : '#34d399' }}>
+                            {v.estado_diseno === 'requiere_nuevo' ? '🎨 Req. Diseño' : '🟢 Diseño Listo'}
+                          </span>
+                        )}
                         <span style={{ fontSize: '0.72rem', fontWeight: 800, padding: '2px 8px', borderRadius: '6px', background: alerta.badgeBg, color: alerta.color }}>
                           {alerta.texto}
                         </span>

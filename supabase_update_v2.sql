@@ -25,6 +25,17 @@ CREATE TABLE IF NOT EXISTS ventas_express (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Columnas añadidas para validación de diseño y generación de OT desde POS
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS requiere_ot BOOLEAN DEFAULT false;
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS estado_diseno VARCHAR(30);
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS ot_numero VARCHAR(30);
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS ot_id TEXT;
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS enlace_diseno TEXT;
+ALTER TABLE ventas_express ADD COLUMN IF NOT EXISTS notas_diseno TEXT;
+
+-- Trazabilidad en órdenes de trabajo vinculadas a POS
+ALTER TABLE ordenes_trabajo ADD COLUMN IF NOT EXISTS pos_venta_id TEXT;
+
 ALTER TABLE ventas_express ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Permitir anon y auth en ventas_express" ON ventas_express;
 CREATE POLICY "Permitir anon y auth en ventas_express" ON ventas_express FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
