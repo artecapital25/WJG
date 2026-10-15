@@ -22,7 +22,12 @@ import {
   Layers,
   FileCode,
   Share2,
-  DollarSign
+  DollarSign,
+  FileText,
+  Globe,
+  Link2,
+  X,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -31,21 +36,26 @@ import {
   ConfiguracionTaller, 
   TarifaTamano, 
   Cliente, 
-  EstadoSTL 
+  EstadoSTL,
+  Cotizacion,
+  EnlaceReferenciaCompra
 } from '../../types';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { StorageService } from '../../services/storageService';
+import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 
 interface WorkOrdersPipelineProps {
   ordenes: OrdenTrabajo[];
   config: ConfiguracionTaller;
+  cotizaciones?: Cotizacion[];
   tarifasTamanos?: TarifaTamano[];
   clientes?: Cliente[];
   onUpdateEstado: (otId: string, nuevoEstado: EstadoOT) => void;
   onGenerarCuentaCobro?: (ot: OrdenTrabajo) => void;
   onCrearOrdenRapida?: (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => void;
   onActualizarOT?: (otActualizada: OrdenTrabajo) => void;
+  onNavigateToCotizaciones?: (cotNumeroOId?: string) => void;
 }
 
 const ETAPAS: EstadoOT[] = [
@@ -68,12 +78,14 @@ const ESTADOS_STL: EstadoSTL[] = [
 export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
   ordenes,
   config,
+  cotizaciones = [],
   tarifasTamanos = [],
   clientes = [],
   onUpdateEstado,
   onGenerarCuentaCobro,
   onCrearOrdenRapida,
-  onActualizarOT
+  onActualizarOT,
+  onNavigateToCotizaciones
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [copiedOtId, setCopiedOtId] = useState<string | null>(null);
@@ -93,6 +105,14 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = ({
   const [inputStlUrl, setInputStlUrl] = useState('');
   const [inputStlVersion, setInputStlVersion] = useState('v1.0');
   const [inputStlEstado, setInputStlEstado] = useState<EstadoSTL>('Diseñado por Germán');
+
+  // Modal Detalle de Cotización Vinculada (Enlace OT ➔ Cotización)
+  const [selectedCotizacionForModal, setSelectedCotizacionForModal] = useState<Cotizacion | null>(null);
+
+  // Modal de Gestión de Enlaces Web / Compra del Modelo 3D para la OT
+  const [otParaEditarLinks, setOtParaEditarLinks] = useState<OrdenTrabajo | null>(null);
+  const [modalLinksList, setModalLinksList] = useState<{ id?: string; titulo: string; url: string; costo_estimado?: number }[]>([]);
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -262,6 +282,160 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
     setOtParaSTL(null);
   };
 
+  // Helper para resolver los enlaces de compra de un modelo 3D (con fallback a cotización)
+  const getLinksDeOT = (ot: OrdenTrabajo): EnlaceReferenciaCompra[] => {
+    if (ot.enlaces_compra && ot.enlaces_compra.length > 0) {
+      return ot.enlaces_compra;
+    }
+    if (ot.cotizacion_numero || ot.cotizacion_id) {
+      const parentCot = cotizaciones.find(c => 
+        (ot.cotizacion_id && c.id === ot.cotizacion_id) || 
+        (ot.cotizacion_numero && c.numero_cot === ot.cotizacion_numero)
+      );
+      if (parentCot && parentCot.items) {
+        const matchingItem = parentCot.items.find(it => 
+          it.nombre_item?.toLowerCase().trim() === ot.item_nombre?.toLowerCase().trim()
+        );
+        if (matchingItem?.enlaces_compra && matchingItem.enlaces_compra.length > 0) {
+          return matchingItem.enlaces_compra;
+        }
+      }
+    }
+    return [];
+  };
+
+  // Copiar URL de enlace de modelo 3D
+  const handleCopyLink = (url: string, id: string) => {
+    navigator.clipboard.writeText(formatExternalUrl(url)).then(() => {
+      setCopiedLinkId(id);
+      setTimeout(() => setCopiedLinkId(null), 2500);
+    });
+  };
+
+  // Abrir Modal de Detalle de Cotización Vinculada
+  const handleOpenCotizacionModal = (ot: OrdenTrabajo) => {
+    const parentCot = cotizaciones.find(c => 
+      (ot.cotizacion_id && c.id === ot.cotizacion_id) || 
+      (ot.cotizacion_numero && c.numero_cot === ot.cotizacion_numero)
+    );
+    if (parentCot) {
+      setSelectedCotizacionForModal(parentCot);
+    } else {
+      // Sintético para dar visibilidad si no está en memoria
+      setSelectedCotizacionForModal({
+        id: ot.cotizacion_id || 'cot-ot',
+        numero_cot: ot.cotizacion_numero || 'Sin número',
+        cliente: {
+          id: 'cli',
+          codigo: 0,
+          nombre: ot.cliente_nombre,
+          telefono: ot.cliente_telefono,
+          nit_cc: '',
+          correo: ''
+        },
+        vendedor: 'Taller',
+        fecha: ot.fecha_creacion?.slice(0, 10) || '',
+        estado: 'Aceptada',
+        items: [{
+          id: 'it-1',
+          nombre_item: ot.item_nombre,
+          cantidad: ot.cantidad,
+          alto_mm: 0,
+          ancho_mm: 0,
+          profundidad_mm: 0,
+          volumen_cm3: 0,
+          peso_estimado_g: ot.peso_estimado_g || 0,
+          resina_id: ot.resina_id || '',
+          resina_nombre: ot.resina_nombre,
+          maquina_id: 'maq-1',
+          maquina_nombre: ot.maquina_nombre,
+          tiempo_impresion_min: ot.tiempo_impresion_min || 0,
+          tiempo_desarrollo_min: 0,
+          tiempo_armado_min: ot.tiempo_armado_min || 0,
+          tiempo_pintura_min: ot.tiempo_pintura_min || 0,
+          costo_energia: 0,
+          costo_resina: 0,
+          costo_curado: 0,
+          costo_insumos: 0,
+          costo_mano_obra: 0,
+          costo_modelo_comprado: 0,
+          costo_base_produccion: 0,
+          margen_ganancia: 0.4,
+          precio_unitario: ot.precio_cobrado || 0,
+          precio_total: (ot.precio_cobrado || 0) * (ot.cantidad || 1),
+          tiempo_entrega: '',
+          descripcion_tecnica: ot.detalles_tecnicos || '',
+          enlaces_compra: ot.enlaces_compra,
+          imagen_url: ot.imagen_url,
+          va_pintado: ot.va_pintado,
+          tiene_empaque: ot.tiene_empaque
+        }],
+        subtotal: (ot.precio_cobrado || 0) * (ot.cantidad || 1),
+        iva_porcentaje: 0,
+        descuento_porcentaje: 0,
+        total: (ot.precio_cobrado || 0) * (ot.cantidad || 1),
+        tiempo_entrega_estimado: 'N/A',
+        notas: ot.observaciones || ot.detalles_tecnicos || ''
+      });
+    }
+  };
+
+  // Abrir Modal de Gestión de Enlaces para la OT
+  const handleOpenLinksModal = (ot: OrdenTrabajo) => {
+    setOtParaEditarLinks(ot);
+    const existing = getLinksDeOT(ot);
+    setModalLinksList(existing.length > 0 ? existing.map(e => ({ ...e })) : [
+      { id: `link-${Date.now()}`, titulo: '', url: '', costo_estimado: 0 }
+    ]);
+  };
+
+  const handleAddModalLink = () => {
+    setModalLinksList(prev => [
+      ...prev,
+      { id: `link-${Date.now()}`, titulo: '', url: '', costo_estimado: 0 }
+    ]);
+  };
+
+  const handleUpdateModalLink = (index: number, field: string, value: any) => {
+    setModalLinksList(prev => prev.map((l, i) => {
+      if (i !== index) return l;
+      const updated = { ...l, [field]: value };
+      if (field === 'url' && value && (!updated.titulo || updated.titulo.trim() === '')) {
+        const plat = detect3DPlatform(value);
+        if (plat.name !== 'Web 3D') {
+          updated.titulo = `${plat.name} - ${otParaEditarLinks?.item_nombre || 'Modelo'}`;
+        }
+      }
+      return updated;
+    }));
+  };
+
+  const handleRemoveModalLink = (index: number) => {
+    setModalLinksList(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleSaveLinksModal = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!otParaEditarLinks || !onActualizarOT) return;
+
+    const cleanLinks = modalLinksList
+      .filter(l => l.url.trim() || l.titulo.trim())
+      .map(l => ({
+        id: l.id || `enl-${Date.now()}`,
+        titulo: l.titulo.trim() || detect3DPlatform(l.url).name,
+        url: formatExternalUrl(l.url),
+        costo_estimado: Number(l.costo_estimado) || undefined
+      }));
+
+    const updatedOT: OrdenTrabajo = {
+      ...otParaEditarLinks,
+      enlaces_compra: cleanLinks
+    };
+
+    onActualizarOT(updatedOT);
+    setOtParaEditarLinks(null);
+  };
+
   const ordenesFiltradas = filtroEstado === 'todos' 
     ? ordenes 
     : ordenes.filter(o => o.estado === filtroEstado);
@@ -340,16 +514,36 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
               <div key={ot.id} className="ot-card">
                 {/* Header de la tarjeta */}
                 <div className="ot-card-header">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                     <span className="ot-badge">{ot.numero_ot}</span>
                     {ot.es_proyecto_rapido ? (
                       <span style={{ fontSize: '0.7rem', background: 'rgba(236, 72, 153, 0.2)', color: '#f472b6', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
                         ⚡ RAPIDO {ot.altura_cm_tarifario ? `${ot.altura_cm_tarifario}cm` : ''}
                       </span>
                     ) : (
-                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                        Cot: {ot.cotizacion_numero}
-                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenCotizacionModal(ot)}
+                        style={{
+                          background: 'rgba(56, 189, 248, 0.12)',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                          borderRadius: '6px',
+                          padding: '2px 8px',
+                          color: 'var(--brand-cyan)',
+                          fontSize: '0.75rem',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          transition: 'all 0.15s ease'
+                        }}
+                        title="Ver detalle completo de la cotización original (piezas, valores, notas, links)"
+                      >
+                        <FileText size={11} />
+                        <span>Cot: {ot.cotizacion_numero || 'Ver'}</span>
+                        <ExternalLink size={10} />
+                      </button>
                     )}
                   </div>
                   
@@ -385,6 +579,153 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                     )}
                   </div>
                 </div>
+
+                {/* BLOQUE DE MODELO 3D EN INTERNET / COMPRA WEB */}
+                {(() => {
+                  const links = getLinksDeOT(ot);
+                  return (
+                    <div style={{
+                      background: links.length > 0 ? 'rgba(236, 72, 153, 0.06)' : 'rgba(255, 255, 255, 0.02)',
+                      border: links.length > 0 ? '1px solid rgba(236, 72, 153, 0.35)' : '1px dashed rgba(255, 255, 255, 0.12)',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      margin: '10px 0'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: links.length > 0 ? '6px' : '4px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <ShoppingCart size={13} color={links.length > 0 ? '#f472b6' : 'var(--text-muted)'} />
+                          <span style={{ fontSize: '0.74rem', fontWeight: 800, color: links.length > 0 ? '#f472b6' : 'var(--text-muted)' }}>
+                            MODELO 3D WEB / ENLACE DE COMPRA
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleOpenLinksModal(ot)}
+                          style={{
+                            background: 'transparent',
+                            border: 'none',
+                            color: 'var(--brand-cyan)',
+                            fontSize: '0.7rem',
+                            cursor: 'pointer',
+                            textDecoration: 'underline',
+                            fontWeight: 700
+                          }}
+                        >
+                          {links.length > 0 ? 'Editar Links' : '+ Vincular Web'}
+                        </button>
+                      </div>
+
+                      {links.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                          {links.map((enl, idx) => {
+                            const plat = detect3DPlatform(enl.url);
+                            const linkId = `${ot.id}-link-${idx}`;
+                            const isCopied = copiedLinkId === linkId;
+
+                            return (
+                              <div 
+                                key={idx}
+                                style={{
+                                  background: 'rgba(0, 0, 0, 0.3)',
+                                  border: `1px solid ${plat.borderColor}`,
+                                  borderRadius: '6px',
+                                  padding: '6px 8px',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  gap: '8px',
+                                  flexWrap: 'wrap'
+                                }}
+                              >
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                  <span style={{
+                                    fontSize: '0.68rem',
+                                    fontWeight: 800,
+                                    color: plat.color,
+                                    background: plat.bg,
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    flexShrink: 0
+                                  }}>
+                                    {plat.icon} {plat.name}
+                                  </span>
+
+                                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {enl.titulo || plat.name}
+                                  </span>
+
+                                  {enl.costo_estimado && enl.costo_estimado > 0 && (
+                                    <span style={{ fontSize: '0.68rem', color: '#4ade80', fontWeight: 700, flexShrink: 0 }}>
+                                      ${enl.costo_estimado.toLocaleString('es-CO')}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                                  <a
+                                    href={formatExternalUrl(enl.url)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="btn btn-sm"
+                                    style={{
+                                      background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                                      color: '#fff',
+                                      fontSize: '0.68rem',
+                                      fontWeight: 800,
+                                      padding: '3px 8px',
+                                      textDecoration: 'none',
+                                      borderRadius: '5px',
+                                      display: 'inline-flex',
+                                      alignItems: 'center',
+                                      gap: '4px',
+                                      boxShadow: '0 2px 6px rgba(236, 72, 153, 0.3)'
+                                    }}
+                                    title={`Abrir página web de compra/descarga de ${plat.name}`}
+                                  >
+                                    <span>🛒 Abrir en {plat.name}</span>
+                                    <ExternalLink size={10} />
+                                  </a>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => handleCopyLink(enl.url, linkId)}
+                                    className="btn btn-secondary btn-sm"
+                                    style={{ fontSize: '0.68rem', padding: '3px 6px' }}
+                                    title="Copiar enlace al portapapeles"
+                                  >
+                                    {isCopied ? <Check size={11} color="#4ade80" /> : <Copy size={11} />}
+                                    <span>{isCopied ? '¡Copiado!' : 'Copiar'}</span>
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                          <span>⚠️ Sin enlace web de modelo guardado</span>
+                          <button
+                            type="button"
+                            onClick={() => handleOpenLinksModal(ot)}
+                            style={{
+                              background: 'rgba(56, 189, 248, 0.1)',
+                              border: '1px solid rgba(56, 189, 248, 0.25)',
+                              color: 'var(--brand-cyan)',
+                              borderRadius: '4px',
+                              padding: '2px 6px',
+                              fontSize: '0.7rem',
+                              cursor: 'pointer',
+                              fontWeight: 600
+                            }}
+                          >
+                            + Pegar Link
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
 
                 {/* BLOQUE DE TRAZABILIDAD STL (Germán ➔ Juan) */}
                 <div style={{ 
@@ -787,6 +1128,386 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
                 <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 800 }}>
                   Guardar Trazabilidad
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: DETALLE COMPLETO DE COTIZACIÓN VINCULADA */}
+      {selectedCotizacionForModal && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '16px'
+          }}
+          onClick={() => setSelectedCotizacionForModal(null)}
+        >
+          <div 
+            className="glass-card" 
+            style={{ maxWidth: '640px', width: '100%', maxHeight: '90vh', overflowY: 'auto', margin: 0, padding: '24px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Encabezado */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <FileText size={20} color="var(--brand-cyan)" />
+                    Cotización #{selectedCotizacionForModal.numero_cot}
+                  </h3>
+                  <span className={`status-pill status-${(selectedCotizacionForModal.estado || 'borrador').toLowerCase()}`}>
+                    {selectedCotizacionForModal.estado}
+                  </span>
+                </div>
+                <p style={{ margin: '4px 0 0 0', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Fecha: {selectedCotizacionForModal.fecha} • Asesor: {selectedCotizacionForModal.vendedor}
+                </p>
+              </div>
+
+              <button 
+                type="button" 
+                onClick={() => setSelectedCotizacionForModal(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.3rem', cursor: 'pointer', padding: '4px' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Datos del Cliente */}
+            <div style={{ 
+              background: 'rgba(255, 255, 255, 0.03)', 
+              borderRadius: '8px', 
+              padding: '12px 14px', 
+              marginBottom: '16px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '10px'
+            }}>
+              <div>
+                <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Cliente
+                </div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#fff' }}>
+                  {selectedCotizacionForModal.cliente?.nombre || 'Cliente General'}
+                </div>
+                {selectedCotizacionForModal.cliente?.telefono && (
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    📱 {selectedCotizacionForModal.cliente.telefono}
+                  </div>
+                )}
+              </div>
+
+              {selectedCotizacionForModal.cliente?.telefono && (
+                <button
+                  type="button"
+                  className="btn btn-whatsapp btn-sm"
+                  onClick={() => openWhatsApp(`https://wa.me/${formatWhatsAppPhone(selectedCotizacionForModal.cliente.telefono)}`)}
+                  style={{ fontSize: '0.75rem', padding: '5px 10px' }}
+                >
+                  <MessageCircle size={14} />
+                  <span>WhatsApp</span>
+                </button>
+              )}
+            </div>
+
+            {/* Lista de Ítems / Piezas de la Cotización */}
+            <div style={{ marginBottom: '16px' }}>
+              <div style={{ fontSize: '0.85rem', fontWeight: 800, color: 'var(--text-main)', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Box size={15} color="var(--brand-cyan)" />
+                <span>Piezas Cotizadas ({selectedCotizacionForModal.items?.length || 0})</span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                {selectedCotizacionForModal.items?.map((item, idx) => (
+                  <div 
+                    key={item.id || idx}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.35)',
+                      border: '1px solid var(--border-subtle)',
+                      borderRadius: '8px',
+                      padding: '12px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                        {item.imagen_url ? (
+                          <img 
+                            src={item.imagen_url} 
+                            alt={item.nombre_item} 
+                            style={{ width: '45px', height: '45px', borderRadius: '6px', objectFit: 'cover', border: '1px solid var(--border-subtle)' }}
+                          />
+                        ) : (
+                          <div style={{ width: '45px', height: '45px', borderRadius: '6px', background: 'rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <Box size={20} color="var(--text-muted)" />
+                          </div>
+                        )}
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#fff' }}>
+                            {item.nombre_item} <span style={{ color: 'var(--brand-cyan)' }}>(x{item.cantidad})</span>
+                          </div>
+                          <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                            {item.alto_mm > 0 ? `${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm` : 'Medidas de software'} • {item.resina_nombre}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: '0.9rem', fontWeight: 800, color: '#4ade80' }}>
+                          ${item.precio_total?.toLocaleString('es-CO')} COP
+                        </div>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                          (${item.precio_unitario?.toLocaleString('es-CO')} c/u)
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Especificaciones */}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '8px' }}>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: item.va_pintado ? 'rgba(168, 85, 247, 0.15)' : 'rgba(255,255,255,0.05)', color: item.va_pintado ? '#c084fc' : 'var(--text-muted)' }}>
+                        {item.va_pintado ? '🎨 Pintado' : '⚪ Sin Pintar'}
+                      </span>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '4px', background: item.tiene_empaque ? 'rgba(34, 197, 94, 0.15)' : 'rgba(255,255,255,0.05)', color: item.tiene_empaque ? '#4ade80' : 'var(--text-muted)' }}>
+                        {item.tiene_empaque ? '📦 Con Empaque' : '📦 Sin Empaque'}
+                      </span>
+                    </div>
+
+                    {/* Enlaces de Compra / Modelo 3D de esta pieza */}
+                    {item.enlaces_compra && item.enlaces_compra.length > 0 && (
+                      <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px dashed rgba(255,255,255,0.08)' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#f472b6', marginBottom: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <ShoppingCart size={12} />
+                          <span>Enlaces de Compra / Descarga Modelo 3D:</span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                          {item.enlaces_compra.map((enl, elIdx) => {
+                            const plat = detect3DPlatform(enl.url);
+                            return (
+                              <div key={elIdx} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(0,0,0,0.25)', padding: '5px 8px', borderRadius: '6px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1 }}>
+                                  <span style={{ fontSize: '0.68rem', fontWeight: 800, color: plat.color, background: plat.bg, padding: '1px 5px', borderRadius: '3px' }}>
+                                    {plat.icon} {plat.name}
+                                  </span>
+                                  <span style={{ fontSize: '0.73rem', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {enl.titulo || plat.name}
+                                  </span>
+                                </div>
+                                <a
+                                  href={formatExternalUrl(enl.url)}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="btn btn-sm"
+                                  style={{
+                                    background: 'linear-gradient(135deg, #ec4899, #db2777)',
+                                    color: '#fff',
+                                    fontSize: '0.68rem',
+                                    padding: '2px 8px',
+                                    textDecoration: 'none',
+                                    borderRadius: '4px',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    fontWeight: 700
+                                  }}
+                                >
+                                  <span>Abrir</span>
+                                  <ExternalLink size={10} />
+                                </a>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* Notas y Condiciones */}
+            {selectedCotizacionForModal.notas && (
+              <div style={{ background: 'rgba(255, 255, 255, 0.02)', border: '1px solid var(--border-subtle)', borderRadius: '8px', padding: '10px 12px', marginBottom: '16px' }}>
+                <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 700, textTransform: 'uppercase', marginBottom: '4px' }}>
+                  Notas / Observaciones de la Cotización:
+                </div>
+                <div style={{ fontSize: '0.78rem', color: 'var(--text-main)', whiteSpace: 'pre-line' }}>
+                  {selectedCotizacionForModal.notas}
+                </div>
+              </div>
+            )}
+
+            {/* Total Financiero */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', background: 'rgba(56, 189, 248, 0.08)', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.25)', marginBottom: '16px' }}>
+              <div>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>Valor Total Cotizado:</span>
+                <div style={{ fontSize: '1.25rem', fontWeight: 900, color: 'var(--brand-cyan)' }}>
+                  ${selectedCotizacionForModal.total?.toLocaleString('es-CO')} COP
+                </div>
+              </div>
+
+              {selectedCotizacionForModal.tiempo_entrega_estimado && (
+                <div style={{ textAlign: 'right' }}>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Entrega prometida:</span>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                    ⏱️ {selectedCotizacionForModal.tiempo_entrega_estimado}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Botones de Pie de Modal */}
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              {onNavigateToCotizaciones && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    const cotId = selectedCotizacionForModal.id;
+                    setSelectedCotizacionForModal(null);
+                    onNavigateToCotizaciones(cotId);
+                  }}
+                  style={{ display: 'flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <ExternalLink size={13} />
+                  <span>Ver en Pestaña Cotizaciones</span>
+                </button>
+              )}
+              <button 
+                type="button" 
+                className="btn btn-primary btn-sm" 
+                onClick={() => setSelectedCotizacionForModal(null)}
+                style={{ fontWeight: 700 }}
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: GESTIÓN DE ENLACES DE MODELO 3D PARA LA ORDEN DE TRABAJO */}
+      {otParaEditarLinks && (
+        <div 
+          style={{
+            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '16px'
+          }}
+          onClick={() => setOtParaEditarLinks(null)}
+        >
+          <div 
+            className="glass-card" 
+            style={{ maxWidth: '520px', width: '100%', maxHeight: '90vh', overflowY: 'auto', margin: 0, padding: '24px' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <ShoppingCart size={18} color="#f472b6" />
+                Enlaces Web del Modelo • {otParaEditarLinks.numero_ot}
+              </h3>
+              <button 
+                type="button" 
+                onClick={() => setOtParaEditarLinks(null)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
+              Figura: <strong style={{ color: '#fff' }}>{otParaEditarLinks.item_nombre}</strong><br />
+              Guarda el enlace de Cults3D, CGTrader o Thingiverse para que cualquier operador del taller pueda acceder a comprar o descargar los archivos directamente.
+            </div>
+
+            <form onSubmit={handleSaveLinksModal}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '16px' }}>
+                {modalLinksList.map((link, idx) => {
+                  const plat = detect3DPlatform(link.url);
+                  return (
+                    <div 
+                      key={idx}
+                      style={{
+                        background: 'rgba(0,0,0,0.3)',
+                        border: `1px solid ${link.url ? plat.borderColor : 'var(--border-subtle)'}`,
+                        borderRadius: '8px',
+                        padding: '10px 12px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                        <span style={{ fontSize: '0.72rem', fontWeight: 800, color: plat.color, background: plat.bg, padding: '2px 6px', borderRadius: '4px' }}>
+                          {plat.icon} {plat.name} #{idx + 1}
+                        </span>
+
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          style={{ padding: '2px 6px', color: '#f87171', fontSize: '0.7rem' }}
+                          onClick={() => handleRemoveModalLink(idx)}
+                          title="Eliminar link"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                        <input 
+                          type="text" 
+                          className="form-input" 
+                          placeholder="Nombre o descripción (ej: Cults3D - Armadura Thanos)"
+                          value={link.titulo}
+                          onChange={e => handleUpdateModalLink(idx, 'titulo', e.target.value)}
+                          style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                        />
+
+                        <input 
+                          type="url" 
+                          className="form-input" 
+                          placeholder="https://cults3d.com/... o enlace de descarga"
+                          value={link.url}
+                          onChange={e => handleUpdateModalLink(idx, 'url', e.target.value)}
+                          style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                          required
+                        />
+
+                        <div className="input-with-unit" style={{ width: '100%' }}>
+                          <input 
+                            type="number" 
+                            className="form-input" 
+                            placeholder="Costo Estimado de Compra ($ COP)"
+                            value={link.costo_estimado || ''}
+                            onChange={e => handleUpdateModalLink(idx, 'costo_estimado', parseFloat(e.target.value) || 0)}
+                            style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                          />
+                          <span className="input-unit-badge">COP</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '14px', borderTop: '1px solid var(--border-subtle)', paddingTop: '14px' }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={handleAddModalLink}
+                  style={{ display: 'flex', alignItems: 'center', gap: '5px' }}
+                >
+                  <Plus size={13} />
+                  <span>+ Agregar Otro Enlace</span>
+                </button>
+
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => setOtParaEditarLinks(null)}>
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 800 }}>
+                    Guardar Enlaces
+                  </button>
+                </div>
               </div>
             </form>
           </div>

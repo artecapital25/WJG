@@ -803,6 +803,25 @@ export const App: React.FC = () => {
     setOrdenes(updated);
     StorageService.saveOrdenes(updated);
     CloudSyncService.saveOrdenTrabajo(otActualizada);
+
+    // Si la OT tiene enlaces_compra actualizados y está vinculada a una cotización,
+    // sincronizar también los enlaces en la cotización padre correspondiente
+    if (otActualizada.enlaces_compra && (otActualizada.cotizacion_numero || otActualizada.cotizacion_id)) {
+      const updatedCots = cotizaciones.map(c => {
+        const matchesCot = (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
+                           (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero);
+        if (!matchesCot) return c;
+        const updatedItems = c.items.map(it => {
+          if (it.nombre_item?.toLowerCase().trim() === otActualizada.item_nombre?.toLowerCase().trim()) {
+            return { ...it, enlaces_compra: otActualizada.enlaces_compra };
+          }
+          return it;
+        });
+        return { ...c, items: updatedItems };
+      });
+      setCotizaciones(updatedCots);
+      StorageService.saveCotizaciones(updatedCots);
+    }
   };
 
   const pendingOTs = ordenes.filter(o => o.estado !== 'Listo para Entrega').length;
@@ -960,12 +979,16 @@ export const App: React.FC = () => {
           <WorkOrdersPipeline 
             ordenes={ordenes}
             config={config}
+            cotizaciones={cotizaciones}
             tarifasTamanos={tarifasTamanos}
             clientes={clientes}
             onUpdateEstado={handleUpdateEstadoOT}
             onGenerarCuentaCobro={handleGenerarCuentaCobro}
             onCrearOrdenRapida={handleCrearOrdenRapida}
             onActualizarOT={handleActualizarOT}
+            onNavigateToCotizaciones={(cotId) => {
+              setActiveTab('cotizaciones');
+            }}
           />
         )}
 

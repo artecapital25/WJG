@@ -20,7 +20,10 @@ import {
   Box,
   AlertTriangle,
   Sparkles,
-  CheckCircle2
+  CheckCircle2,
+  ShoppingCart,
+  ExternalLink,
+  Link2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -31,11 +34,13 @@ import {
   Resina,
   Maquina,
   Insumo,
-  MaquinaInvolucrada
+  MaquinaInvolucrada,
+  EnlaceReferenciaCompra
 } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 
 interface CotizacionBuilderProps {
   items: PiezaCotizada[];
@@ -95,6 +100,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const [editDatosPendientes, setEditDatosPendientes] = useState(false);
   const [editDescripcionTecnica, setEditDescripcionTecnica] = useState('');
   const [editMaquinasAdicionales, setEditMaquinasAdicionales] = useState<MaquinaInvolucrada[]>([]);
+  const [editEnlacesCompra, setEditEnlacesCompra] = useState<EnlaceReferenciaCompra[]>([]);
 
   // Precargar datos si viene una cotización en edición
   useEffect(() => {
@@ -135,6 +141,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
     setEditTieneEmpaque(Boolean(item.tiene_empaque));
     setEditDatosPendientes(Boolean(item.datos_pendientes));
     setEditDescripcionTecnica(item.descripcion_tecnica || '');
+    setEditEnlacesCompra(item.enlaces_compra ? item.enlaces_compra.map(e => ({ ...e })) : []);
 
     const extras = (item.maquinas_involucradas || [])
       .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
@@ -177,6 +184,31 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
 
   const handleRemoveModalExtraProcess = (index: number) => {
     setEditMaquinasAdicionales(prev => prev.filter((_, i) => i !== index));
+  };
+
+  const handleAddModalEnlaceCompra = () => {
+    setEditEnlacesCompra(prev => [
+      ...prev,
+      { id: `enl-${Date.now()}`, titulo: '', url: '', costo_estimado: 0 }
+    ]);
+  };
+
+  const handleUpdateModalEnlaceCompra = (index: number, field: string, value: any) => {
+    setEditEnlacesCompra(prev => prev.map((enl, i) => {
+      if (i !== index) return enl;
+      const updated = { ...enl, [field]: value };
+      if (field === 'url' && value && (!updated.titulo || updated.titulo.trim() === '')) {
+        const plat = detect3DPlatform(value);
+        if (plat.name !== 'Web 3D') {
+          updated.titulo = `${plat.name} - ${editNombre || 'Modelo 3D'}`;
+        }
+      }
+      return updated;
+    }));
+  };
+
+  const handleRemoveModalEnlaceCompra = (index: number) => {
+    setEditEnlacesCompra(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleSaveEditPieceSubmit = (e: React.FormEvent) => {
@@ -225,7 +257,14 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
       va_pintado: editVaPintado,
       tiene_empaque: editTieneEmpaque,
       descripcion_tecnica: editDescripcionTecnica,
-      maquinas_involucradas: nuevosProcesos
+      maquinas_involucradas: nuevosProcesos,
+      enlaces_compra: editEnlacesCompra
+        .filter(e => e.url.trim() || e.titulo.trim())
+        .map(e => ({
+          ...e,
+          titulo: e.titulo.trim() || detect3DPlatform(e.url).name,
+          url: formatExternalUrl(e.url)
+        }))
     };
 
     onUpdatePiece(updatedPiece);
@@ -609,6 +648,23 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                       📦 Sin Empaque
                     </span>
                   )}
+
+                  {item.enlaces_compra && item.enlaces_compra.length > 0 && (
+                    <span style={{ 
+                      background: 'rgba(236, 72, 153, 0.18)', 
+                      color: '#f472b6', 
+                      border: '1px solid rgba(236, 72, 153, 0.35)', 
+                      padding: '1px 6px', 
+                      borderRadius: '4px', 
+                      fontSize: '0.68rem', 
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '3px'
+                    }}>
+                      🛒 {item.enlaces_compra.length} Modelo(s) Web
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                   {item.datos_pendientes 
@@ -619,6 +675,41 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                     <span style={{ color: '#4ade80' }}> • Empaque: {item.lista_empaques.map(e => `${e.nombre} (x${e.cantidad})`).join(', ')}</span>
                   )}
                 </div>
+
+                {/* Enlaces Web de Compra Directos */}
+                {item.enlaces_compra && item.enlaces_compra.length > 0 && (
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginTop: '5px' }}>
+                    {item.enlaces_compra.map((enl, elIdx) => {
+                      const plat = detect3DPlatform(enl.url);
+                      return (
+                        <a
+                          key={elIdx}
+                          href={formatExternalUrl(enl.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            fontSize: '0.7rem',
+                            color: plat.color,
+                            background: plat.bg,
+                            border: `1px solid ${plat.borderColor}`,
+                            borderRadius: '4px',
+                            padding: '2px 8px',
+                            textDecoration: 'none',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontWeight: 600
+                          }}
+                          title={`Abrir ${enl.url}`}
+                        >
+                          <span>{plat.icon}</span>
+                          <span>{enl.titulo || plat.name} ↗</span>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Stepper rápido de Cantidad */}
@@ -1415,7 +1506,116 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                 )}
               </div>
 
-              {/* 7. Observaciones Técnicas */}
+              {/* 7. Enlaces de Modelo 3D / Compra Web (Cults3D, CGTrader, Thingiverse, etc.) */}
+              <div style={{
+                background: 'rgba(236, 72, 153, 0.05)',
+                border: '1px solid rgba(236, 72, 153, 0.3)',
+                borderRadius: '10px',
+                padding: '12px',
+                marginBottom: '14px'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#f472b6', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <ShoppingCart size={15} />
+                    <span>🌐 Enlaces de Compra / Modelo 3D ({editEnlacesCompra.length})</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    style={{ fontSize: '0.72rem', padding: '4px 8px', color: '#f472b6', borderColor: 'rgba(236, 72, 153, 0.4)' }}
+                    onClick={handleAddModalEnlaceCompra}
+                  >
+                    + Agregar Link
+                  </button>
+                </div>
+
+                <div style={{ fontSize: '0.73rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Guarda la URL de Cults3D, CGTrader, Thingiverse o Patreon para que el taller no tenga que buscarlo otra vez en internet.
+                </div>
+
+                {editEnlacesCompra.length === 0 ? (
+                  <div 
+                    style={{ 
+                      fontSize: '0.75rem', 
+                      color: 'var(--text-subtle)', 
+                      padding: '10px', 
+                      textAlign: 'center',
+                      border: '1px dashed rgba(236, 72, 153, 0.25)',
+                      borderRadius: '8px',
+                      cursor: 'pointer'
+                    }}
+                    onClick={handleAddModalEnlaceCompra}
+                  >
+                    Sin enlaces registrados. Clic aquí para agregar enlace web de compra o descarga.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {editEnlacesCompra.map((enl, idx) => {
+                      const plat = detect3DPlatform(enl.url);
+                      return (
+                        <div 
+                          key={idx}
+                          style={{
+                            background: 'rgba(0, 0, 0, 0.3)',
+                            border: `1px solid ${enl.url ? plat.borderColor : 'var(--border-subtle)'}`,
+                            borderRadius: '8px',
+                            padding: '8px 10px',
+                            display: 'grid',
+                            gridTemplateColumns: 'minmax(110px, 1fr) minmax(140px, 1.6fr) auto auto',
+                            gap: '6px',
+                            alignItems: 'center'
+                          }}
+                        >
+                          <input 
+                            type="text"
+                            className="form-input"
+                            style={{ padding: '5px 8px', fontSize: '0.75rem' }}
+                            placeholder="Nombre / Plataforma"
+                            value={enl.titulo}
+                            onChange={e => handleUpdateModalEnlaceCompra(idx, 'titulo', e.target.value)}
+                          />
+
+                          <input 
+                            type="url"
+                            className="form-input"
+                            style={{ padding: '5px 8px', fontSize: '0.75rem' }}
+                            placeholder="https://cults3d.com/..."
+                            value={enl.url}
+                            onChange={e => handleUpdateModalEnlaceCompra(idx, 'url', e.target.value)}
+                          />
+
+                          {enl.url ? (
+                            <a
+                              href={formatExternalUrl(enl.url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '5px 8px', color: plat.color }}
+                              title="Abrir enlace"
+                            >
+                              <ExternalLink size={12} />
+                            </a>
+                          ) : (
+                            <div style={{ width: '26px' }} />
+                          )}
+
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '5px 8px', color: '#f87171' }}
+                            onClick={() => handleRemoveModalEnlaceCompra(idx)}
+                            title="Eliminar enlace"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* 8. Observaciones Técnicas */}
               <div className="form-group" style={{ marginBottom: '16px' }}>
                 <label className="form-label" style={{ fontWeight: 600 }}>Descripción / Observaciones Técnicas</label>
                 <textarea 

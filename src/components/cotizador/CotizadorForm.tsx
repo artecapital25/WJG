@@ -22,7 +22,9 @@ import {
   ExternalLink,
   ShoppingCart,
   Link2,
-  Package
+  Package,
+  Search,
+  Globe
 } from 'lucide-react';
 import { 
   Resina, 
@@ -36,6 +38,7 @@ import {
 import { calcularPieza3D, ParametrosPiezaInput } from '../../services/calculationEngine';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { TarifarioModal } from './TarifarioModal';
+import { detect3DPlatform, formatExternalUrl, getQuickSearchUrls } from '../../services/platformUtils';
 
 interface ItemPinturaForm {
   tempId: string;
@@ -67,6 +70,7 @@ interface ItemEnlaceCompraForm {
   tempId: string;
   titulo: string;
   url: string;
+  costoEstimado?: number;
 }
 
 interface CotizadorFormProps {
@@ -189,7 +193,24 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
       setVaPintado(Boolean(piezaEnEdicion.va_pintado));
       setTiempoPinturaMin(piezaEnEdicion.tiempo_pintura_min || 0);
       setTiempoArmadoMin(piezaEnEdicion.tiempo_armado_min || 0);
-      setTiempoDesarrolloMin(piezaEnEdicion.tiempo_desarrollo_min || 0);
+      if (piezaEnEdicion.costo_modelo_comprado !== undefined) {
+        setCostoModeloComprado(piezaEnEdicion.costo_modelo_comprado);
+      }
+      if (piezaEnEdicion.margen_ganancia !== undefined) {
+        setMargenGanancia(piezaEnEdicion.margen_ganancia);
+      }
+
+      // Cargar enlaces de compra / modelos web si tiene
+      if (piezaEnEdicion.enlaces_compra && piezaEnEdicion.enlaces_compra.length > 0) {
+        setEnlacesCompra(piezaEnEdicion.enlaces_compra.map((enl, idx) => ({
+          tempId: enl.id || `enl-${Date.now()}-${idx}`,
+          titulo: enl.titulo || 'Modelo 3D',
+          url: enl.url || '',
+          costoEstimado: enl.costo_estimado || 0
+        })));
+      } else {
+        setEnlacesCompra([]);
+      }
 
       // Cargar procesos extras si tiene
       if (piezaEnEdicion.maquinas_involucradas) {
@@ -358,13 +379,14 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   };
 
   // Handlers para Enlaces de Referencia de Compra (Uso Interno)
-  const handleAddEnlaceCompra = () => {
+  const handleAddEnlaceCompra = (plataformaDefault?: string) => {
     setEnlacesCompra(prev => [
       ...prev,
       {
         tempId: `link-${Date.now()}`,
-        titulo: '',
-        url: ''
+        titulo: plataformaDefault ? `${plataformaDefault} - ${nombreItem || 'Modelo 3D'}` : '',
+        url: '',
+        costoEstimado: 0
       }
     ]);
   };
@@ -373,8 +395,18 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     setEnlacesCompra(prev => prev.filter(l => l.tempId !== tempId));
   };
 
-  const handleUpdateEnlaceCompra = (tempId: string, field: 'titulo' | 'url', val: string) => {
-    setEnlacesCompra(prev => prev.map(l => l.tempId === tempId ? { ...l, [field]: val } : l));
+  const handleUpdateEnlaceCompra = (tempId: string, field: 'titulo' | 'url' | 'costoEstimado', val: any) => {
+    setEnlacesCompra(prev => prev.map(l => {
+      if (l.tempId !== tempId) return l;
+      const updated = { ...l, [field]: val };
+      if (field === 'url' && val && (!updated.titulo || updated.titulo.trim() === '')) {
+        const plat = detect3DPlatform(val);
+        if (plat.name !== 'Web 3D') {
+          updated.titulo = `${plat.name} - ${nombreItem || 'Modelo 3D'}`;
+        }
+      }
+      return updated;
+    }));
   };
 
   // Handlers para Empaques de la Pieza
@@ -454,8 +486,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
     const enlacesValidos = enlacesCompra
       .filter(l => l.url.trim() || l.titulo.trim())
       .map(l => ({
-        titulo: l.titulo.trim() || 'Producto / Insumo',
-        url: l.url.trim()
+        id: l.tempId,
+        titulo: l.titulo.trim() || detect3DPlatform(l.url).name,
+        url: formatExternalUrl(l.url),
+        costo_estimado: Number(l.costoEstimado) || undefined
       }));
 
     const input: ParametrosPiezaInput = {
@@ -1911,128 +1945,222 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
         <div 
           className="form-group" 
           style={{ 
-            background: 'rgba(255, 255, 255, 0.02)', 
-            border: '1px solid rgba(245, 158, 11, 0.28)', 
+            background: 'linear-gradient(135deg, rgba(236, 72, 153, 0.05), rgba(56, 189, 248, 0.05))', 
+            border: '1px solid rgba(236, 72, 153, 0.35)', 
             borderRadius: '12px', 
-            padding: '14px',
+            padding: '16px',
             marginBottom: '16px'
           }}
         >
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <div style={{
-                background: 'rgba(245, 158, 11, 0.15)',
-                color: '#f59e0b',
-                padding: '4px 8px',
+                background: 'rgba(236, 72, 153, 0.18)',
+                color: '#f472b6',
+                padding: '4px 10px',
                 borderRadius: '6px',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.75rem',
-                fontWeight: 600
+                gap: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 700
               }}>
-                <ShoppingCart size={13} />
-                <span>Links de Referencia / Compra</span>
+                <ShoppingCart size={14} />
+                <span>🌐 Modelo 3D en Internet / Compra Web</span>
               </div>
               <span style={{
-                fontSize: '0.68rem',
-                background: 'rgba(239, 68, 68, 0.12)',
-                color: '#f87171',
-                padding: '2px 7px',
+                fontSize: '0.7rem',
+                background: 'rgba(245, 158, 11, 0.15)',
+                color: '#fbbf24',
+                padding: '2px 8px',
                 borderRadius: '4px',
-                border: '1px solid rgba(239, 68, 68, 0.25)',
-                fontWeight: 600
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                fontWeight: 700
               }}>
-                🔒 Uso Interno de Taller (No visible en la cotización)
+                🔒 Pasa directo a la Orden de Trabajo de Taller
               </span>
             </div>
 
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleAddEnlaceCompra}
-              style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 10px' }}
-            >
-              <Plus size={13} />
-              <span>+ Agregar Link</span>
-            </button>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleAddEnlaceCompra()}
+                style={{ fontSize: '0.76rem', display: 'flex', alignItems: 'center', gap: '5px', padding: '5px 12px' }}
+              >
+                <Plus size={13} />
+                <span>+ Agregar Link</span>
+              </button>
+            </div>
           </div>
 
-          <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
-            Registra los enlaces de los productos, archivos STL (Cults3D, CGTrader, Thingiverse, Patreon) o herrajes que debas comprar para esta pieza. Solo el equipo de taller podrá verlos.
+          <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', margin: '0 0 10px 0' }}>
+            Guarda aquí el enlace de <strong>Cults3D, CGTrader, Thingiverse, MakerWorld, Patreon</strong> donde encontraste el modelo. Al aprobar la cotización, el operador en taller podrá abrirlo y comprarlo con un solo clic sin tener que buscarlo en internet otra vez.
           </p>
+
+          {/* Chips de Búsqueda Rápida de Modelo por Nombre */}
+          <div style={{ 
+            background: 'rgba(0, 0, 0, 0.3)', 
+            borderRadius: '8px', 
+            padding: '8px 10px', 
+            marginBottom: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            flexWrap: 'wrap'
+          }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+              <Search size={12} color="var(--brand-cyan)" />
+              Buscar <em>"{nombreItem || 'figura'}"</em> en:
+            </span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+              {getQuickSearchUrls(nombreItem).map(p => (
+                <a
+                  key={p.name}
+                  href={p.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    fontSize: '0.7rem',
+                    color: p.color,
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: `1px solid ${p.color}40`,
+                    borderRadius: '5px',
+                    padding: '3px 8px',
+                    textDecoration: 'none',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    fontWeight: 600,
+                    transition: 'all 0.15s ease'
+                  }}
+                  title={`Abrir búsqueda directa en ${p.name}`}
+                >
+                  <span>{p.icon}</span>
+                  <span>{p.name} ↗</span>
+                </a>
+              ))}
+            </div>
+          </div>
 
           {enlacesCompra.length === 0 ? (
             <div 
               style={{ 
-                border: '1px dashed rgba(255, 255, 255, 0.12)', 
+                border: '1px dashed rgba(236, 72, 153, 0.35)', 
                 borderRadius: '8px', 
-                padding: '12px', 
+                padding: '14px', 
                 textAlign: 'center', 
                 color: 'var(--text-subtle)',
-                fontSize: '0.75rem',
+                fontSize: '0.78rem',
                 cursor: 'pointer',
-                background: 'rgba(0, 0, 0, 0.15)'
+                background: 'rgba(0, 0, 0, 0.2)'
               }}
-              onClick={handleAddEnlaceCompra}
+              onClick={() => handleAddEnlaceCompra()}
             >
-              <Link2 size={18} style={{ margin: '0 auto 4px auto', opacity: 0.6 }} />
-              <div>Sin links de compra registrados. Haz clic aquí o en <strong>"+ Agregar Link"</strong> si necesitas guardar el enlace para comprar el modelo o insumos.</div>
+              <Link2 size={20} color="#f472b6" style={{ margin: '0 auto 6px auto', opacity: 0.8 }} />
+              <div>Sin enlaces de compra registrados. Haz clic aquí o en <strong>"+ Agregar Link"</strong> para pegar la URL del modelo 3D.</div>
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {enlacesCompra.map((enlace, idx) => (
-                <div 
-                  key={enlace.tempId}
-                  style={{
-                    background: 'rgba(0, 0, 0, 0.25)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: '8px',
-                    padding: '8px 10px'
-                  }}
-                  className="enlace-compra-row"
-                >
-                  <input
-                    type="text"
-                    className="form-input"
-                    style={{ fontSize: '0.78rem', padding: '6px 8px' }}
-                    placeholder={`Ej: STL Cults3D #${idx + 1} / Tornillo M3`}
-                    value={enlace.titulo}
-                    onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'titulo', e.target.value)}
-                  />
-                  <input
-                    type="url"
-                    className="form-input"
-                    style={{ fontSize: '0.78rem', padding: '6px 8px' }}
-                    placeholder="https://cults3d.com/... o url del producto"
-                    value={enlace.url}
-                    onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'url', e.target.value)}
-                  />
-                  {enlace.url ? (
-                    <a
-                      href={enlace.url.startsWith('http') ? enlace.url : `https://${enlace.url}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '6px 8px', color: 'var(--brand-cyan)' }}
-                      title="Abrir enlace en pestaña nueva"
-                    >
-                      <ExternalLink size={13} />
-                    </a>
-                  ) : (
-                    <div style={{ width: '28px' }} />
-                  )}
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    style={{ padding: '6px 8px', color: '#f87171' }}
-                    onClick={() => handleRemoveEnlaceCompra(enlace.tempId)}
-                    title="Eliminar link"
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {enlacesCompra.map((enlace, idx) => {
+                const plat = detect3DPlatform(enlace.url);
+                return (
+                  <div 
+                    key={enlace.tempId}
+                    style={{
+                      background: 'rgba(0, 0, 0, 0.35)',
+                      border: `1px solid ${enlace.url ? plat.borderColor : 'var(--border-subtle)'}`,
+                      borderRadius: '8px',
+                      padding: '10px 12px'
+                    }}
                   >
-                    <Trash2 size={13} />
-                  </button>
-                </div>
-              ))}
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                      <span style={{ 
+                        fontSize: '0.72rem', 
+                        fontWeight: 800, 
+                        color: plat.color,
+                        background: plat.bg,
+                        padding: '2px 8px',
+                        borderRadius: '4px',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px'
+                      }}>
+                        <span>{plat.icon}</span>
+                        <span>{plat.name}</span>
+                        <span style={{ opacity: 0.6 }}>#{idx + 1}</span>
+                      </span>
+
+                      {enlace.url && (
+                        <a
+                          href={formatExternalUrl(enlace.url)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          style={{
+                            fontSize: '0.72rem',
+                            color: plat.color,
+                            fontWeight: 700,
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            textDecoration: 'none'
+                          }}
+                        >
+                          <span>Abrir página ↗</span>
+                        </a>
+                      )}
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr)) 120px auto', gap: '8px', alignItems: 'center' }}>
+                      <input
+                        type="text"
+                        className="form-input"
+                        style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                        placeholder={`Ej: ${plat.name} - ${nombreItem || 'Modelo'}`}
+                        value={enlace.titulo}
+                        onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'titulo', e.target.value)}
+                      />
+
+                      <input
+                        type="url"
+                        className="form-input"
+                        style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                        placeholder="https://cults3d.com/... o url del modelo"
+                        value={enlace.url}
+                        onChange={e => handleUpdateEnlaceCompra(enlace.tempId, 'url', e.target.value)}
+                      />
+
+                      <div className="input-with-unit" style={{ width: '100%' }}>
+                        <input
+                          type="number"
+                          className="form-input"
+                          style={{ fontSize: '0.78rem', padding: '6px 8px' }}
+                          placeholder="Costo STL ($)"
+                          value={enlace.costoEstimado || ''}
+                          onChange={e => {
+                            const val = parseFloat(e.target.value) || 0;
+                            handleUpdateEnlaceCompra(enlace.tempId, 'costoEstimado', val);
+                            if (val > 0 && costoModeloComprado === 0) {
+                              setCostoModeloComprado(val);
+                            }
+                          }}
+                        />
+                        <span className="input-unit-badge">COP</span>
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '6px 10px', color: '#f87171' }}
+                        onClick={() => handleRemoveEnlaceCompra(enlace.tempId)}
+                        title="Eliminar link"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

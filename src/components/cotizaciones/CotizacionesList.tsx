@@ -18,12 +18,15 @@ import {
   Image as ImageIcon,
   Edit,
   RotateCw,
-  Check
+  Check,
+  ShoppingCart,
+  ExternalLink
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo } from '../../types';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
+import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 
 interface CotizacionesListProps {
   cotizaciones: Cotizacion[];
@@ -349,34 +352,70 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               </div>
 
               {/* Resumen de piezas */}
-              <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 {cot.items.map((it) => (
-                  <div key={it.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '3px 0' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      {it.imagen_url && (
-                        <img 
-                          src={it.imagen_url} 
-                          alt={it.nombre_item} 
-                          style={{
-                            width: '28px',
-                            height: '28px',
-                            borderRadius: '5px',
-                            objectFit: 'cover',
-                            border: '1px solid var(--border-subtle)',
-                            background: '#090d15',
-                            cursor: 'pointer',
-                            flexShrink: 0
-                          }}
-                          onClick={() => setPreviewModalImg({ url: it.imagen_url!, title: it.nombre_item })}
-                          title="Clic para ver foto en grande"
-                        />
-                      )}
-                      <span>
-                        • <strong style={{ color: 'var(--text-main)' }}>{it.nombre_item}</strong> (x{it.cantidad})
-                        {it.alto_mm > 0 && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.75rem' }}>[{it.alto_mm}x{it.ancho_mm}x{it.profundidad_mm}mm]</span>}
-                      </span>
+                  <div key={it.id} style={{ padding: '3px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        {it.imagen_url && (
+                          <img 
+                            src={it.imagen_url} 
+                            alt={it.nombre_item} 
+                            style={{
+                              width: '28px',
+                              height: '28px',
+                              borderRadius: '5px',
+                              objectFit: 'cover',
+                              border: '1px solid var(--border-subtle)',
+                              background: '#090d15',
+                              cursor: 'pointer',
+                              flexShrink: 0
+                            }}
+                            onClick={() => setPreviewModalImg({ url: it.imagen_url!, title: it.nombre_item })}
+                            title="Clic para ver foto en grande"
+                          />
+                        )}
+                        <span>
+                          • <strong style={{ color: 'var(--text-main)' }}>{it.nombre_item}</strong> (x{it.cantidad})
+                          {it.alto_mm > 0 && <span style={{ opacity: 0.7, marginLeft: '6px', fontSize: '0.75rem' }}>[{it.alto_mm}x{it.ancho_mm}x{it.profundidad_mm}mm]</span>}
+                        </span>
+                      </div>
+                      <span style={{ fontWeight: 600 }}>${it.precio_total.toLocaleString('es-CO')}</span>
                     </div>
-                    <span style={{ fontWeight: 600 }}>${it.precio_total.toLocaleString('es-CO')}</span>
+
+                    {/* Enlaces de Compra / Modelo 3D Web */}
+                    {it.enlaces_compra && it.enlaces_compra.length > 0 && (
+                      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginLeft: it.imagen_url ? '36px' : '14px', marginTop: '4px' }}>
+                        {it.enlaces_compra.map((enl, elIdx) => {
+                          const plat = detect3DPlatform(enl.url);
+                          return (
+                            <a
+                              key={elIdx}
+                              href={formatExternalUrl(enl.url)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              style={{
+                                fontSize: '0.7rem',
+                                color: plat.color,
+                                background: plat.bg,
+                                border: `1px solid ${plat.borderColor}`,
+                                borderRadius: '4px',
+                                padding: '2px 7px',
+                                textDecoration: 'none',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 700
+                              }}
+                              title={`Abrir ${enl.url}`}
+                            >
+                              <span>{plat.icon}</span>
+                              <span>{enl.titulo || plat.name} ↗</span>
+                            </a>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
