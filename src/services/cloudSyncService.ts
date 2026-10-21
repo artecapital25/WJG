@@ -646,8 +646,12 @@ export const CloudSyncService = {
         return { success: true, data: rpcData };
       }
       if (rpcErr && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
-        console.warn('RPC POS falló con error de negocio:', rpcErr.message);
-        return { success: false, error: rpcErr.message };
+        const isDbSchemaError = rpcErr.message.includes('type uuid') || rpcErr.message.includes('column') || rpcErr.message.includes('syntax') || rpcErr.message.includes('is of type');
+        if (!isDbSchemaError) {
+          console.warn('RPC POS falló con error de negocio:', rpcErr.message);
+          return { success: false, error: rpcErr.message };
+        }
+        console.warn('RPC POS avisó discrepancia de tipo en base de datos, ejecutando fallback directo:', rpcErr.message);
       }
     } catch (e: any) {
       console.warn('RPC POS no disponible o en migración, usando fallback directo:', e?.message || e);

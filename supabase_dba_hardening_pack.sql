@@ -388,12 +388,11 @@ BEGIN
     END IF;
 
     -- 4. Generar Orden de Trabajo si se requiere
+    -- NOTA: Omitimos id explícito para que Postgres asigne el UUID por defecto sin error de tipo
     IF p_requiere_ot THEN
-        v_ot_id := 'ot-' || gen_random_uuid()::TEXT;
         v_ot_numero := generar_siguiente_numero_ot();
 
         INSERT INTO public.ordenes_trabajo (
-            id,
             numero_ot,
             cliente_nombre,
             item_nombre,
@@ -404,7 +403,6 @@ BEGIN
             observaciones,
             created_at
         ) VALUES (
-            v_ot_id,
             v_ot_numero,
             p_cliente_nombre,
             p_nombre_producto,
@@ -414,65 +412,127 @@ BEGIN
             p_id,
             'Venta POS Express ' || v_num_venta || COALESCE(' | ' || p_notas_diseno, ''),
             NOW()
-        );
+        )
+        RETURNING id::TEXT INTO v_ot_id;
     END IF;
 
-    -- 5. Insertar la Venta Express
-    INSERT INTO public.ventas_express (
-        id,
-        numero_venta,
-        foto_url,
-        nombre_producto,
-        cliente_nombre,
-        cliente_telefono,
-        total,
-        abono,
-        saldo_pendiente,
-        estado_pago,
-        fecha_venta,
-        fecha_prometida_pago,
-        notas,
-        metodo_pago,
-        creado_por,
-        requiere_ot,
-        estado_diseno,
-        ot_id,
-        ot_numero,
-        enlace_diseno,
-        notas_diseno,
-        producto_stock_id,
-        descontar_stock,
-        cantidad_vendida,
-        created_at,
-        updated_at
-    ) VALUES (
-        p_id,
-        v_num_venta,
-        p_foto_url,
-        p_nombre_producto,
-        p_cliente_nombre,
-        p_cliente_telefono,
-        p_total,
-        p_abono,
-        v_saldo,
-        v_estado_pago,
-        CURRENT_DATE,
-        p_fecha_prometida_pago,
-        p_notas,
-        p_metodo_pago,
-        p_creado_por,
-        p_requiere_ot,
-        p_estado_diseno,
-        v_ot_id,
-        v_ot_numero,
-        p_enlace_diseno,
-        p_notas_diseno,
-        p_producto_stock_id,
-        p_descontar_stock,
-        COALESCE(p_cantidad_vendida, 1),
-        NOW(),
-        NOW()
-    );
+    -- 5. Insertar la Venta Express con manejo seguro de tipo UUID / TEXT
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_schema = 'public' AND table_name = 'ventas_express' AND column_name = 'id' AND data_type = 'uuid'
+    ) THEN
+        INSERT INTO public.ventas_express (
+            id,
+            numero_venta,
+            foto_url,
+            nombre_producto,
+            cliente_nombre,
+            cliente_telefono,
+            total,
+            abono,
+            saldo_pendiente,
+            estado_pago,
+            fecha_venta,
+            fecha_prometida_pago,
+            notas,
+            metodo_pago,
+            creado_por,
+            requiere_ot,
+            estado_diseno,
+            ot_id,
+            ot_numero,
+            enlace_diseno,
+            notas_diseno,
+            producto_stock_id,
+            descontar_stock,
+            cantidad_vendida,
+            created_at,
+            updated_at
+        ) VALUES (
+            CASE WHEN p_id ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' THEN p_id::UUID ELSE gen_random_uuid() END,
+            v_num_venta,
+            p_foto_url,
+            p_nombre_producto,
+            p_cliente_nombre,
+            p_cliente_telefono,
+            p_total,
+            p_abono,
+            v_saldo,
+            v_estado_pago,
+            CURRENT_DATE,
+            p_fecha_prometida_pago,
+            p_notas,
+            p_metodo_pago,
+            p_creado_por,
+            p_requiere_ot,
+            p_estado_diseno,
+            v_ot_id,
+            v_ot_numero,
+            p_enlace_diseno,
+            p_notas_diseno,
+            p_producto_stock_id,
+            p_descontar_stock,
+            COALESCE(p_cantidad_vendida, 1),
+            NOW(),
+            NOW()
+        );
+    ELSE
+        INSERT INTO public.ventas_express (
+            id,
+            numero_venta,
+            foto_url,
+            nombre_producto,
+            cliente_nombre,
+            cliente_telefono,
+            total,
+            abono,
+            saldo_pendiente,
+            estado_pago,
+            fecha_venta,
+            fecha_prometida_pago,
+            notas,
+            metodo_pago,
+            creado_por,
+            requiere_ot,
+            estado_diseno,
+            ot_id,
+            ot_numero,
+            enlace_diseno,
+            notas_diseno,
+            producto_stock_id,
+            descontar_stock,
+            cantidad_vendida,
+            created_at,
+            updated_at
+        ) VALUES (
+            p_id,
+            v_num_venta,
+            p_foto_url,
+            p_nombre_producto,
+            p_cliente_nombre,
+            p_cliente_telefono,
+            p_total,
+            p_abono,
+            v_saldo,
+            v_estado_pago,
+            CURRENT_DATE,
+            p_fecha_prometida_pago,
+            p_notas,
+            p_metodo_pago,
+            p_creado_por,
+            p_requiere_ot,
+            p_estado_diseno,
+            v_ot_id,
+            v_ot_numero,
+            p_enlace_diseno,
+            p_notas_diseno,
+            p_producto_stock_id,
+            p_descontar_stock,
+            COALESCE(p_cantidad_vendida, 1),
+            NOW(),
+            NOW()
+        );
+    END IF;
 
     RETURN jsonb_build_object(
         'success', true,
