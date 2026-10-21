@@ -1,5 +1,5 @@
 // Service Worker Oficial de WJGEEKS 3D (PWA)
-const CACHE_NAME = 'wjgeeks-3d-v1.1';
+const CACHE_NAME = 'wjgeeks-3d-v1.2';
 const STATIC_ASSETS = [
   '/',
   '/index.html',
@@ -36,6 +36,11 @@ self.addEventListener('activate', (event) => {
 
 // Intercepción de peticiones (Fetch)
 self.addEventListener('fetch', (event) => {
+  // Ignorar esquemas no soportados por Cache API (chrome-extension://, moz-extension://, data:, etc.)
+  if (!event.request.url.startsWith('http://') && !event.request.url.startsWith('https://')) {
+    return;
+  }
+
   const url = new URL(event.request.url);
 
   // Evitar interceptar llamadas a Supabase en caché estático (deben ser siempre en vivo)
@@ -48,11 +53,11 @@ self.addEventListener('fetch', (event) => {
     caches.match(event.request).then((cachedResponse) => {
       const fetchPromise = fetch(event.request)
         .then((networkResponse) => {
-          if (networkResponse && networkResponse.status === 200) {
+          if (networkResponse && networkResponse.status === 200 && (networkResponse.type === 'basic' || networkResponse.type === 'cors')) {
             const responseToCache = networkResponse.clone();
             caches.open(CACHE_NAME).then((cache) => {
-              cache.put(event.request, responseToCache);
-            });
+              cache.put(event.request, responseToCache).catch(() => {});
+            }).catch(() => {});
           }
           return networkResponse;
         })
