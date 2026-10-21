@@ -4,7 +4,7 @@
     "module": "ESNext",
     "moduleResolution": "node",
     "allowJs": true,
-    "lib": ["ESNext"],
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
     "noEmit": true
   },

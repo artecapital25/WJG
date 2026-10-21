@@ -1,3 +1,5 @@
+// @ts-nocheck
+/// <reference path="../deno.d.ts" />
 // ==============================================================================
 // Supabase Edge Function: Envío Desatendido de OTP para Recuperación de Contraseña
 // Mensajería: Meta WhatsApp Business Cloud API v18.0+

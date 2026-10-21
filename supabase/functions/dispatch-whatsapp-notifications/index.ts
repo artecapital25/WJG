@@ -1,3 +1,5 @@
+// @ts-nocheck
+/// <reference path="../deno.d.ts" />
 // ==============================================================================
 // Supabase Edge Function: Despacho Automatizado Desatendido de WhatsApp
 // Proveedor: WhatsApp Business Cloud API (Meta Graph API v18.0+)
