@@ -27,6 +27,7 @@ import {
   PRODUCTOS_STOCK_INICIALES
 } from '../data/initialData';
 import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
+import { isSupabaseConfigured } from './supabaseClient';
 
 const PROVEEDORES_INICIALES: Proveedor[] = [
   { id: 'prov-1', nombre: 'Anycubic Oficial Colombia', contacto: 'Soporte Ventas', telefono: '3150001122', rubro: 'Resinas y Maquinaria 3D', enlace_web: 'https://anycubic.com' },
@@ -289,7 +290,7 @@ export const StorageService = {
   getPersonal: (): Personal[] => loadItem(STORAGE_KEYS.PERSONAL, PERSONAL_INICIAL),
   savePersonal: (items: Personal[]) => saveItem(STORAGE_KEYS.PERSONAL, items),
 
-  getClientes: (): Cliente[] => loadItem(STORAGE_KEYS.CLIENTES, CLIENTES_INICIALES),
+  getClientes: (): Cliente[] => loadItem(STORAGE_KEYS.CLIENTES, isSupabaseConfigured ? [] : CLIENTES_INICIALES),
   saveClientes: (items: Cliente[]) => saveItem(STORAGE_KEYS.CLIENTES, items),
 
   getProveedores: (): Proveedor[] => loadItem(STORAGE_KEYS.PROVEEDORES, PROVEEDORES_INICIALES),
@@ -298,7 +299,7 @@ export const StorageService = {
   getConfig: (): ConfiguracionTaller => loadItem(STORAGE_KEYS.CONFIG, CONFIGURACION_INICIAL),
   saveConfig: (config: ConfiguracionTaller) => saveItem(STORAGE_KEYS.CONFIG, config),
 
-  getCotizaciones: (): Cotizacion[] => loadItem(STORAGE_KEYS.COTIZACIONES, COTIZACIONES_INICIALES),
+  getCotizaciones: (): Cotizacion[] => loadItem(STORAGE_KEYS.COTIZACIONES, isSupabaseConfigured ? [] : COTIZACIONES_INICIALES),
   saveCotizaciones: (items: Cotizacion[]) => saveItem(STORAGE_KEYS.COTIZACIONES, items),
 
   getOrdenes: (): OrdenTrabajo[] => loadItem(STORAGE_KEYS.ORDENES, []),
@@ -339,13 +340,13 @@ export const StorageService = {
   },
   saveTarifasTamanos: (items: TarifaTamano[]) => saveItem(STORAGE_KEYS.TARIFAS_TAMANOS, items),
 
-  getProductosStock: (): ProductoStock[] => loadItem(STORAGE_KEYS.PRODUCTOS_STOCK, PRODUCTOS_STOCK_INICIALES),
+  getProductosStock: (): ProductoStock[] => loadItem(STORAGE_KEYS.PRODUCTOS_STOCK, isSupabaseConfigured ? [] : PRODUCTOS_STOCK_INICIALES),
   saveProductosStock: (items: ProductoStock[]) => saveItem(STORAGE_KEYS.PRODUCTOS_STOCK, items),
 
   getVentasExpress: (): VentaExpress[] => loadItem(STORAGE_KEYS.VENTAS_EXPRESS, []),
   saveVentasExpress: (items: VentaExpress[]) => saveItem(STORAGE_KEYS.VENTAS_EXPRESS, items),
 
-  getTareas: (): TareaEquipo[] => loadItem(STORAGE_KEYS.TAREAS, TAREAS_INICIALES),
+  getTareas: (): TareaEquipo[] => loadItem(STORAGE_KEYS.TAREAS, isSupabaseConfigured ? [] : TAREAS_INICIALES),
   saveTareas: (items: TareaEquipo[]) => saveItem(STORAGE_KEYS.TAREAS, items),
 
   getSolicitudesInsumos: (): SolicitudInsumo[] => loadItem(STORAGE_KEYS.SOLICITUDES_INSUMOS, []),

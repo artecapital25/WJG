@@ -13,7 +13,7 @@ dist
 dist-ssr
 *.local
 
-# Environment variables
+# Environment variables and credential vaults (NUNCA SUBIR AL REPOSITORIO)
 .env
 .env.*
 !.env.example
@@ -22,6 +22,10 @@ dist-ssr
 .env.production
 .env.production.local
 .env.local
+.env*.local
+*.vault.local*
+*.secrets.local*
+credentials.*.local*
 
 # Editor directories and files
 .vscode/*

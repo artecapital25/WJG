@@ -376,11 +376,16 @@ export const CloudSyncService = {
   async deleteOrdenTrabajo(id: string, numero_ot?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const isUuid = Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
       let query = supabase!.from('ordenes_trabajo').delete();
-      if (numero_ot) {
+      if (numero_ot && isUuid) {
         query = query.or(`id.eq.${id},numero_ot.eq.${numero_ot}`);
-      } else {
+      } else if (numero_ot) {
+        query = query.eq('numero_ot', numero_ot);
+      } else if (isUuid) {
         query = query.eq('id', id);
+      } else {
+        return false;
       }
       const { error } = await query;
       if (error) {
@@ -700,14 +705,22 @@ export const CloudSyncService = {
   },
 
   // Eliminar Cuenta de Cobro en Supabase
-  async deleteCuentaCobro(id: string): Promise<boolean> {
+  async deleteCuentaCobro(id: string, numero_cc?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const { error } = await supabase!
-        .from('cuentas_cobro')
-        .delete()
-        .eq('id', id);
+      const isUuid = Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+      let query = supabase!.from('cuentas_cobro').delete();
+      if (numero_cc && isUuid) {
+        query = query.or(`id.eq.${id},numero_cc.eq.${numero_cc}`);
+      } else if (numero_cc) {
+        query = query.eq('numero_cc', numero_cc);
+      } else if (isUuid) {
+        query = query.eq('id', id);
+      } else {
+        return false;
+      }
 
+      const { error } = await query;
       if (error) {
         console.warn('Error deleting cuenta_cobro in Supabase:', error.message);
         return false;

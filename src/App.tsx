@@ -5,6 +5,7 @@ import { CotizadorForm } from './components/cotizador/CotizadorForm';
 import { CotizacionBuilder } from './components/cotizador/CotizacionBuilder';
 import { TabLoadingSkeleton } from './components/ui/TabLoadingSkeleton';
 import { StaffLoginModal } from './components/auth/StaffLoginModal';
+import { StaffAuthGuard } from './components/auth/StaffAuthGuard';
 import { toast } from './components/ui/ToastProvider';
 
 const WorkOrdersPipeline = React.lazy(() => import('./components/workflow/WorkOrdersPipeline').then(m => ({ default: m.WorkOrdersPipeline })));
@@ -210,219 +211,55 @@ export const App: React.FC = () => {
 
     setCloudSyncStatus('syncing');
 
-    // 2. Traer datos frescos de Supabase en segundo plano y fusionar
+    // 2. Traer datos frescos de Supabase en segundo plano como Fuente Única de la Verdad (Single Source of Truth)
     const syncCloudData = async () => {
       try {
-        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudTareas, cloudSolicitudes] = await Promise.all([
+        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
           CloudSyncService.fetchOrdenes(),
           CloudSyncService.fetchVentasExpress(),
+          CloudSyncService.fetchCuentas(),
           CloudSyncService.fetchTareasEquipo(),
           CloudSyncService.fetchSolicitudesInsumos()
         ]);
 
-        if (cloudCots && cloudCots.length > 0) {
-          setCotizaciones(prev => {
-            const map = new Map(prev.map(c => [c.numero_cot, c]));
-            cloudCots.forEach(c => map.set(c.numero_cot, c));
-            const merged = Array.from(map.values()).sort((a, b) => b.numero_cot.localeCompare(a.numero_cot));
-            StorageService.saveCotizaciones(merged);
-            return merged;
-          });
+        if (cloudCots !== null) {
+          setCotizaciones(cloudCots);
+          StorageService.saveCotizaciones(cloudCots);
         }
 
-        if (cloudClis && cloudClis.length > 0) {
-          setClientes(prev => {
-            const map = new Map(prev.map(c => [c.telefono, c]));
-            cloudClis.forEach(c => map.set(c.telefono, c));
-            const merged = Array.from(map.values());
-            StorageService.saveClientes(merged);
-            return merged;
-          });
+        if (cloudClis !== null) {
+          setClientes(cloudClis);
+          StorageService.saveClientes(cloudClis);
         }
 
-        if (cloudOTs && cloudOTs.length > 0) {
-          setOrdenes(prev => {
-            const map = new Map(prev.map(o => [o.numero_ot, o]));
-            cloudOTs.forEach(cloudOT => {
-              const local = map.get(cloudOT.numero_ot);
-              if (local) {
-                map.set(cloudOT.numero_ot, {
-                  ...local,
-                  ...cloudOT,
-                  imagen_url: local.imagen_url || cloudOT.imagen_url,
-                  detalles_tecnicos: local.detalles_tecnicos || cloudOT.detalles_tecnicos,
-                  tiempo_impresion_min: local.tiempo_impresion_min || cloudOT.tiempo_impresion_min,
-                  resina_nombre: local.resina_nombre || cloudOT.resina_nombre,
-                  maquina_nombre: local.maquina_nombre || cloudOT.maquina_nombre,
-                  cotizacion_numero: local.cotizacion_numero || cloudOT.cotizacion_numero,
-                  cliente_telefono: local.cliente_telefono || cloudOT.cliente_telefono
-                });
-              } else {
-                map.set(cloudOT.numero_ot, cloudOT);
-              }
-            });
-            const merged = Array.from(map.values());
-            StorageService.saveOrdenes(merged);
-            return merged;
-          });
+        if (cloudOTs !== null) {
+          setOrdenes(cloudOTs);
+          StorageService.saveOrdenes(cloudOTs);
         }
 
-        if (cloudVentas && cloudVentas.length > 0) {
-          setVentasExpress(prev => {
-            const map = new Map(prev.map(v => [v.id, v]));
-            cloudVentas.forEach(v => map.set(v.id, v));
-            const merged = Array.from(map.values()).sort((a, b) => b.numero_venta.localeCompare(a.numero_venta));
-            StorageService.saveVentasExpress(merged);
-            return merged;
-          });
+        if (cloudVentas !== null) {
+          setVentasExpress(cloudVentas);
+          StorageService.saveVentasExpress(cloudVentas);
         }
 
-        if (cloudTareas && cloudTareas.length > 0) {
-          setTareas(prev => {
-            const map = new Map(prev.map(t => [t.id, t]));
-            cloudTareas.forEach(t => map.set(t.id, t));
-            const merged = Array.from(map.values());
-            StorageService.saveTareas(merged);
-            return merged;
-          });
+        if (cloudCCs !== null) {
+          setCuentas(cloudCCs);
+          StorageService.saveCuentas(cloudCCs);
         }
 
-        if (cloudSolicitudes && cloudSolicitudes.length > 0) {
-          setSolicitudesInsumos(prev => {
-            const map = new Map(prev.map(s => [s.id, s]));
-            cloudSolicitudes.forEach(s => map.set(s.id, s));
-            const merged = Array.from(map.values());
-            StorageService.saveSolicitudesInsumos(merged);
-            return merged;
-          });
+        if (cloudTareas !== null) {
+          setTareas(cloudTareas);
+          StorageService.saveTareas(cloudTareas);
+        }
+
+        if (cloudSolicitudes !== null) {
+          setSolicitudesInsumos(cloudSolicitudes);
+          StorageService.saveSolicitudesInsumos(cloudSolicitudes);
         }
 
         setCloudSyncStatus('connected');
-
-        // 4. Auto-recuperación: Si existen cotizaciones Aceptadas sin OTs en taller, regenerarlas automáticamente
-        try {
-          const currentCots = StorageService.getCotizaciones();
-          const currentOTs = StorageService.getOrdenes();
-          let maxConsecutive = StorageService.getNextOTConsecutive(currentOTs);
-          const recoveredOTs: OrdenTrabajo[] = [];
-
-          currentCots.forEach(cot => {
-            if (cot.estado === 'Aceptada') {
-              const numItems = cot.items?.length || 1;
-              let abonoRestante = cot.abono || 0;
-
-              (cot.items || []).forEach((item, idx) => {
-                const yaExiste = currentOTs.some(o => 
-                  (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) &&
-                  o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
-                );
-
-                if (!yaExiste) {
-                  maxConsecutive++;
-                  const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
-                  const itemPrecio = item.precio_total || (numItems === 1 ? cot.total : 0);
-                  let itemAbono = 0;
-                  if (numItems <= 1) {
-                    itemAbono = cot.abono || 0;
-                  } else if (cot.total > 0) {
-                    if (idx === numItems - 1) {
-                      itemAbono = Math.max(0, abonoRestante);
-                    } else {
-                      itemAbono = Math.min(itemPrecio, Math.round((cot.abono || 0) * (itemPrecio / cot.total)));
-                      abonoRestante = Math.max(0, abonoRestante - itemAbono);
-                    }
-                  }
-                  const itemSaldo = Math.max(0, itemPrecio - itemAbono);
-                  const itemEstadoPago: EstadoPago = cot.estado_pago || (itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente'));
-
-                  const nuevaOT: OrdenTrabajo = {
-                    id: `ot-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-                    numero_ot: numOT,
-                    cotizacion_id: cot.id,
-                    cotizacion_numero: cot.numero_cot,
-                    cliente_nombre: cot.cliente.nombre,
-                    cliente_telefono: cot.cliente.telefono,
-                    item_nombre: item.nombre_item,
-                    cantidad: item.cantidad || 1,
-                    estado: 'En Cola',
-                    operador_asignado: 'Operador 3D',
-                    fecha_creacion: new Date().toISOString(),
-                    tiempo_impresion_min: item.tiempo_impresion_min || 0,
-                    tiempo_armado_min: item.tiempo_armado_min || 0,
-                    tiempo_pintura_min: item.tiempo_pintura_min || 0,
-                    peso_estimado_g: item.peso_estimado_g || 0,
-                    resina_id: item.resina_id,
-                    inventario_descontado: false,
-                    resina_nombre: item.resina_nombre,
-                    maquina_nombre: item.maquina_nombre,
-                    maquinas_involucradas: item.maquinas_involucradas,
-                    enlaces_compra: item.enlaces_compra,
-                    va_pintado: item.va_pintado,
-                    tiene_empaque: item.tiene_empaque,
-                    lista_empaques: item.lista_empaques,
-                    detalles_tecnicos: item.descripcion_tecnica,
-                    imagen_url: item.imagen_url,
-                    precio_cobrado: itemPrecio,
-                    estado_pago: itemEstadoPago,
-                    abono: itemAbono,
-                    saldo_pendiente: itemSaldo,
-                    metodo_pago: cot.metodo_pago,
-                    comprobante_pago: cot.comprobante_pago
-                  };
-                  recoveredOTs.push(nuevaOT);
-                }
-              });
-            }
-          });
-
-          // 4.1 Auto-sanar OTs existentes que tengan cotización pero carezcan de saldo o precio cobrado
-          let ordenesSanadas = false;
-          const sanitizedOTs = currentOTs.map(o => {
-            if ((o.cotizacion_id || o.cotizacion_numero) && (o.precio_cobrado === undefined || o.saldo_pendiente === undefined || o.estado_pago === undefined)) {
-              const cotPadre = currentCots.find(c => 
-                (o.cotizacion_id && c.id === o.cotizacion_id) || 
-                (o.cotizacion_numero && c.numero_cot === o.cotizacion_numero)
-              );
-              if (cotPadre) {
-                const item = cotPadre.items?.find(it => it.nombre_item?.trim().toLowerCase() === o.item_nombre?.trim().toLowerCase());
-                const itemPrecio = item?.precio_total || (cotPadre.items?.length === 1 ? cotPadre.total : (o.precio_cobrado || 0));
-                const prop = cotPadre.total > 0 ? (itemPrecio / cotPadre.total) : 1;
-                const itemAbono = o.abono !== undefined ? o.abono : Math.round((cotPadre.abono || 0) * prop);
-                const itemSaldo = o.saldo_pendiente !== undefined ? o.saldo_pendiente : Math.max(0, itemPrecio - itemAbono);
-                const itemEstado = o.estado_pago || cotPadre.estado_pago || (itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente'));
-                ordenesSanadas = true;
-                return {
-                  ...o,
-                  precio_cobrado: itemPrecio,
-                  abono: itemAbono,
-                  saldo_pendiente: itemSaldo,
-                  estado_pago: itemEstado,
-                  metodo_pago: o.metodo_pago || cotPadre.metodo_pago,
-                  comprobante_pago: o.comprobante_pago || cotPadre.comprobante_pago
-                };
-              }
-            }
-            return o;
-          });
-
-          if (ordenesSanadas) {
-            StorageService.saveOrdenes(sanitizedOTs);
-            setOrdenes(sanitizedOTs);
-          }
-
-          if (recoveredOTs.length > 0) {
-            setOrdenes(prev => {
-              const fullOTs = [...recoveredOTs, ...prev];
-              StorageService.saveOrdenes(fullOTs);
-              recoveredOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
-              return fullOTs;
-            });
-          }
-        } catch (healErr) {
-          console.warn('Error en auto-recuperación de órdenes:', healErr);
-        }
       } catch (err) {
         console.warn('Error sincronizando con Supabase:', err);
         setCloudSyncStatus('connected');
@@ -431,68 +268,46 @@ export const App: React.FC = () => {
 
     syncCloudData();
 
-    // 3. Suscripción en tiempo real a cambios de taller
+    // 3. Suscripción reactiva en tiempo real a cambios de taller entre todos los dispositivos
     const channel = CloudSyncService.subscribeRealtime(
       async () => {
         const freshCots = await CloudSyncService.fetchCotizaciones();
-        if (freshCots && freshCots.length > 0) {
+        if (freshCots !== null) {
           setCotizaciones(freshCots);
           StorageService.saveCotizaciones(freshCots);
         }
       },
       async () => {
         const freshOTs = await CloudSyncService.fetchOrdenes();
-        if (freshOTs && freshOTs.length > 0) {
-          setOrdenes(prev => {
-            const map = new Map(prev.map(o => [o.numero_ot, o]));
-            freshOTs.forEach(cloudOT => {
-              const local = map.get(cloudOT.numero_ot);
-              if (local) {
-                map.set(cloudOT.numero_ot, {
-                  ...local,
-                  ...cloudOT,
-                  imagen_url: local.imagen_url || cloudOT.imagen_url,
-                  detalles_tecnicos: local.detalles_tecnicos || cloudOT.detalles_tecnicos,
-                  tiempo_impresion_min: local.tiempo_impresion_min || cloudOT.tiempo_impresion_min,
-                  resina_nombre: local.resina_nombre || cloudOT.resina_nombre,
-                  maquina_nombre: local.maquina_nombre || cloudOT.maquina_nombre,
-                  cotizacion_numero: local.cotizacion_numero || cloudOT.cotizacion_numero,
-                  cliente_telefono: local.cliente_telefono || cloudOT.cliente_telefono
-                });
-              } else {
-                map.set(cloudOT.numero_ot, cloudOT);
-              }
-            });
-            const merged = Array.from(map.values());
-            StorageService.saveOrdenes(merged);
-            return merged;
-          });
+        if (freshOTs !== null) {
+          setOrdenes(freshOTs);
+          StorageService.saveOrdenes(freshOTs);
         }
       },
       async () => {
         const freshCCs = await CloudSyncService.fetchCuentas();
-        if (freshCCs && freshCCs.length > 0) {
+        if (freshCCs !== null) {
           setCuentas(freshCCs);
           StorageService.saveCuentas(freshCCs);
         }
       },
       async () => {
         const freshVentas = await CloudSyncService.fetchVentasExpress();
-        if (freshVentas && freshVentas.length > 0) {
+        if (freshVentas !== null) {
           setVentasExpress(freshVentas);
           StorageService.saveVentasExpress(freshVentas);
         }
       },
       async () => {
         const freshTareas = await CloudSyncService.fetchTareasEquipo();
-        if (freshTareas && freshTareas.length > 0) {
+        if (freshTareas !== null) {
           setTareas(freshTareas);
           StorageService.saveTareas(freshTareas);
         }
       },
       async () => {
         const freshSols = await CloudSyncService.fetchSolicitudesInsumos();
-        if (freshSols && freshSols.length > 0) {
+        if (freshSols !== null) {
           setSolicitudesInsumos(freshSols);
           StorageService.saveSolicitudesInsumos(freshSols);
         }
@@ -1368,10 +1183,11 @@ export const App: React.FC = () => {
   };
 
   const handleEliminarCuentaCobro = (cuentaId: string) => {
+    const cuentaAEliminar = cuentas.find(c => c.id === cuentaId);
     const updated = cuentas.filter(c => c.id !== cuentaId);
     setCuentas(updated);
     StorageService.saveCuentas(updated);
-    CloudSyncService.deleteCuentaCobro(cuentaId);
+    CloudSyncService.deleteCuentaCobro(cuentaId, cuentaAEliminar?.numero_cc);
   };
 
   // Handlers para Tareas de Equipo
@@ -1590,6 +1406,15 @@ export const App: React.FC = () => {
           />
         </main>
       </div>
+    );
+  }
+
+  // Guardián Global de Autenticación (Auth Guard): Bloqueo estricto de rutas para usuarios anónimos
+  if (!isStaffAuthenticated) {
+    return (
+      <StaffAuthGuard 
+        onLoginSuccess={handleStaffLoginSuccess}
+      />
     );
   }
 
