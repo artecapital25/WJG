@@ -21,7 +21,8 @@ import {
   Edit3,
   Wrench,
   CheckCircle2,
-  Boxes
+  Boxes,
+  Copy
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
@@ -88,7 +89,16 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     d.setDate(d.getDate() + 5);
     return d.toISOString().slice(0, 10);
   });
-  const [metodoPago, setMetodoPago] = useState<string>('Nequi');
+  const [metodoPago, setMetodoPago] = useState<string>('Bre-B');
+  const [copiadoLlavePOS, setCopiadoLlavePOS] = useState<boolean>(false);
+
+  const handleCopiarLlaveBreB = () => {
+    navigator.clipboard.writeText('0090778625');
+    setCopiadoLlavePOS(true);
+    toast.success('Llave Bre-B (0090778625) copiada al portapapeles');
+    setTimeout(() => setCopiadoLlavePOS(false), 2500);
+  };
+
   const [notas, setNotas] = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
@@ -735,16 +745,40 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                   MÉTODO DE PAGO:
                 </label>
-                <select 
-                  className="form-select"
-                  value={metodoPago}
-                  onChange={e => setMetodoPago(e.target.value)}
-                >
-                  <option value="Nequi">Nequi</option>
-                  <option value="Daviplata">Daviplata</option>
-                  <option value="Bancolombia">Bancolombia</option>
-                  <option value="Efectivo">Efectivo</option>
-                </select>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <select 
+                    className="form-select"
+                    value={metodoPago}
+                    onChange={e => setMetodoPago(e.target.value)}
+                    style={{ flex: 1 }}
+                  >
+                    <option value="Bre-B">Bre-B (Llave: 0090778625)</option>
+                    <option value="Nequi">Nequi</option>
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia Bancaria</option>
+                    <option value="Tarjeta">Tarjeta / Datáfono</option>
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleCopiarLlaveBreB}
+                    title="Copiar llave Bre-B (0090778625)"
+                    className="btn btn-secondary btn-sm"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      background: copiadoLlavePOS ? 'rgba(16, 185, 129, 0.2)' : 'rgba(6, 182, 212, 0.15)',
+                      borderColor: copiadoLlavePOS ? '#10b981' : '#06b6d4',
+                      color: copiadoLlavePOS ? '#34d399' : '#38bdf8',
+                      fontSize: '0.74rem',
+                      fontWeight: 700,
+                      whiteSpace: 'nowrap'
+                    }}
+                  >
+                    {copiadoLlavePOS ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+                    {copiadoLlavePOS ? '¡Copiada!' : 'Copiar llave Bre-B'}
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -1287,6 +1321,37 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                     La Mitad
                   </button>
                 )}
+              </div>
+
+              {/* Llave Bre-B en Modal de Abono */}
+              <div style={{
+                marginBottom: '16px',
+                padding: '8px 12px',
+                borderRadius: '8px',
+                background: 'rgba(6, 182, 212, 0.1)',
+                border: '1px solid rgba(6, 182, 212, 0.3)',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                  Llave <strong style={{ color: '#06b6d4' }}>Bre-B</strong>: <span style={{ color: '#38bdf8', fontWeight: 800 }}>0090778625</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopiarLlaveBreB}
+                  className="btn btn-sm"
+                  style={{
+                    background: copiadoLlavePOS ? 'rgba(16, 185, 129, 0.25)' : 'rgba(6, 182, 212, 0.2)',
+                    border: `1px solid ${copiadoLlavePOS ? '#10b981' : '#06b6d4'}`,
+                    color: copiadoLlavePOS ? '#34d399' : '#38bdf8',
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    padding: '3px 8px'
+                  }}
+                >
+                  {copiadoLlavePOS ? '¡Copiada!' : 'Copiar'}
+                </button>
               </div>
 
               <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>

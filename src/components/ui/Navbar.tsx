@@ -1,4 +1,4 @@
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet, ShieldCheck, Calendar } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet, ShieldCheck, Calendar, Sun } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -6,6 +6,8 @@ interface NavbarProps {
   activeTab?: string;
   onSelectTab?: (tab: any) => void;
   cloudStatus?: 'connected' | 'syncing' | 'offline';
+  whatsappStatus?: 'operativo' | 'alerta_critica' | 'desconocido';
+  onOpenDailyBriefing?: () => void;
   onInstallPwa?: () => void;
   isInstallable?: boolean;
   onOpenBackupModal?: () => void;
@@ -19,6 +21,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   activeTab, 
   onSelectTab, 
   cloudStatus = 'connected',
+  whatsappStatus = 'operativo',
+  onOpenDailyBriefing,
   onInstallPwa,
   isInstallable,
   onOpenBackupModal,
@@ -76,6 +80,50 @@ export const Navbar: React.FC<NavbarProps> = ({
             {cloudStatus === 'connected' ? 'Supabase Online' : cloudStatus === 'syncing' ? 'Sincronizando...' : 'Local'}
           </span>
         </div>
+
+        {/* Indicador de Salud de WhatsApp (+57 320 2796115) */}
+        <div 
+          className="header-desktop-only"
+          onClick={onOpenDailyBriefing}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            padding: '3px 8px',
+            borderRadius: '9999px',
+            cursor: onOpenDailyBriefing ? 'pointer' : 'default',
+            background: whatsappStatus === 'alerta_critica' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)',
+            color: whatsappStatus === 'alerta_critica' ? '#f87171' : '#34d399',
+            border: `1px solid ${whatsappStatus === 'alerta_critica' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.3)'}`
+          }}
+          title={whatsappStatus === 'alerta_critica' ? 'ALERTA: Fallos o retrasos en cola de WhatsApp. Clic para auditar.' : 'WhatsApp Engine 100% Operativo (+57 320 2796115). Clic para ver Daily Briefing.'}
+        >
+          <span style={{ 
+            width: '6px', 
+            height: '6px', 
+            borderRadius: '50%', 
+            background: 'currentColor',
+            boxShadow: whatsappStatus === 'alerta_critica' ? '0 0 8px #ef4444' : '0 0 6px currentColor'
+          }} />
+          <span>
+            {whatsappStatus === 'alerta_critica' ? 'WhatsApp Alerta' : 'WhatsApp OK'}
+          </span>
+        </div>
+
+        {/* Botón Acceso Rápido Daily Briefing 7:00 AM */}
+        {onOpenDailyBriefing && (
+          <button 
+            className="btn btn-sm btn-secondary header-desktop-only"
+            onClick={onOpenDailyBriefing}
+            title="Abrir Daily Briefing y Monitor de WhatsApp (7:00 AM)"
+            style={{ fontWeight: 700, borderColor: 'rgba(245, 158, 11, 0.4)' }}
+          >
+            <Sun size={14} color="#f59e0b" />
+            <span>Daily 7AM</span>
+          </button>
+        )}
 
         {/* Atajos secundarios: Visibles únicamente en escritorio */}
         {onSelectTab && (

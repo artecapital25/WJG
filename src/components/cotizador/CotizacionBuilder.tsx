@@ -319,7 +319,8 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
     return cotizacionEnEdicion?.abono || 0;
   });
   const [metodoPagoInicial, setMetodoPagoInicial] = useState<string>(() => {
-    return cotizacionEnEdicion?.metodo_pago || 'Nequi';
+    const mp = cotizacionEnEdicion?.metodo_pago;
+    return (mp && mp !== 'Daviplata' && mp !== 'Bancolombia') ? mp : 'Bre-B';
   });
   const [comprobantePagoInicial, setComprobantePagoInicial] = useState<string>(() => {
     return cotizacionEnEdicion?.comprobante_pago || '';
@@ -329,7 +330,8 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
     if (cotizacionEnEdicion) {
       setEstadoPagoInicial(cotizacionEnEdicion.estado_pago || 'Pendiente');
       setAbonoInicial(cotizacionEnEdicion.abono || 0);
-      setMetodoPagoInicial(cotizacionEnEdicion.metodo_pago || 'Nequi');
+      const mp = cotizacionEnEdicion.metodo_pago;
+      setMetodoPagoInicial((mp && mp !== 'Daviplata' && mp !== 'Bancolombia') ? mp : 'Bre-B');
       setComprobantePagoInicial(cotizacionEnEdicion.comprobante_pago || '');
     }
   }, [cotizacionEnEdicion]);
@@ -1037,7 +1039,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
                   Medio de Pago:
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '8px' }}>
-                  {['Nequi', 'Bancolombia', 'Daviplata', 'Efectivo', 'Transferencia'].map((mp) => (
+                  {['Bre-B', 'Nequi', 'Efectivo', 'Transferencia', 'Tarjeta'].map((mp) => (
                     <button
                       key={mp}
                       type="button"

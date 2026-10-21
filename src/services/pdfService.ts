@@ -539,9 +539,8 @@ export function crearDocPDFCuentaCobro(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
-  doc.text(`- Nequi: ${config.nequi}`, 20, finalY + 15);
-  doc.text(`- Daviplata: ${config.daviplata}`, 20, finalY + 21);
-  doc.text(`- Bancolombia: ${config.bancolombia} (${config.titular_cuenta})`, 20, finalY + 27);
+  doc.text(`- Bre-B (Llave única): ${config.bre_b || '0090778625'}`, 20, finalY + 15);
+  doc.text(`- Nequi: ${config.nequi} (${config.titular_cuenta})`, 20, finalY + 21);
 
   // Footer
   doc.setFillColor(241, 245, 249);

@@ -9,7 +9,8 @@ import {
   Smartphone, 
   FileText, 
   Sparkles,
-  ArrowRight
+  ArrowRight,
+  Copy
 } from 'lucide-react';
 import { EstadoPago, DatosPagoRegistro } from '../../types';
 
@@ -64,12 +65,23 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   });
 
   const [metodoPago, setMetodoPago] = useState<string>(() => {
-    return pagoActual?.metodo_pago || 'Nequi';
+    if (pagoActual?.metodo_pago && pagoActual.metodo_pago !== 'Daviplata' && pagoActual.metodo_pago !== 'Bancolombia') {
+      return pagoActual.metodo_pago;
+    }
+    return 'Bre-B';
   });
 
   const [comprobante, setComprobante] = useState<string>(() => {
     return pagoActual?.comprobante_pago || '';
   });
+
+  const [copiadoLlave, setCopiadoLlave] = useState<boolean>(false);
+
+  const handleCopiarLlaveBreB = () => {
+    navigator.clipboard.writeText('0090778625');
+    setCopiadoLlave(true);
+    setTimeout(() => setCopiadoLlave(false), 2500);
+  };
 
   // Reaccionar cuando cambian las props de entrada
   useEffect(() => {
@@ -92,8 +104,12 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
         setTipoPago(esAprobacionCotizacion ? 'Abono Parcial' : 'Pendiente');
         setMontoAbono(esAprobacionCotizacion ? Math.round(montoTotal * 0.5) : 0);
       }
-      setMetodoPago(pagoActual?.metodo_pago || 'Nequi');
+      const initialMetodo = (pagoActual?.metodo_pago && pagoActual.metodo_pago !== 'Daviplata' && pagoActual.metodo_pago !== 'Bancolombia')
+        ? pagoActual.metodo_pago
+        : 'Bre-B';
+      setMetodoPago(initialMetodo);
       setComprobante(pagoActual?.comprobante_pago || '');
+      setCopiadoLlave(false);
     }
   }, [isOpen, pagoActual, montoTotal, esAprobacionCotizacion]);
 
@@ -141,12 +157,11 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   };
 
   const metodosDisponibles = [
-    { id: 'Nequi', color: '#c026d3', bg: 'rgba(192, 38, 211, 0.15)' },
-    { id: 'Bancolombia', color: '#fbbf24', bg: 'rgba(251, 191, 36, 0.15)' },
-    { id: 'Daviplata', color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)' },
-    { id: 'Efectivo', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
-    { id: 'Transferencia', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
-    { id: 'Tarjeta / Datáfono', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' }
+    { id: 'Bre-B', label: 'Bre-B (Llave Única)', color: '#06b6d4', bg: 'rgba(6, 182, 212, 0.18)' },
+    { id: 'Nequi', label: 'Nequi', color: '#c026d3', bg: 'rgba(192, 38, 211, 0.15)' },
+    { id: 'Efectivo', label: 'Efectivo', color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)' },
+    { id: 'Transferencia', label: 'Transferencia', color: '#38bdf8', bg: 'rgba(56, 189, 248, 0.15)' },
+    { id: 'Tarjeta / Datáfono', label: 'Tarjeta / Datáfono', color: '#a855f7', bg: 'rgba(168, 85, 247, 0.15)' }
   ];
 
   return (
@@ -510,6 +525,64 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
                   </button>
                 );
               })}
+            </div>
+
+            {/* Tarjeta Informativa Bre-B con botón de Copiar Llave */}
+            <div style={{
+              marginTop: '10px',
+              padding: '10px 14px',
+              borderRadius: '10px',
+              background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(14, 165, 233, 0.05) 100%)',
+              border: '1px solid rgba(6, 182, 212, 0.35)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '12px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div style={{
+                  background: '#06b6d4',
+                  color: '#000',
+                  fontWeight: 900,
+                  fontSize: '0.72rem',
+                  padding: '3px 7px',
+                  borderRadius: '6px',
+                  letterSpacing: '0.5px'
+                }}>
+                  BRE-B
+                </div>
+                <div>
+                  <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                    Llave de transferencia / Identificador único:
+                  </div>
+                  <div style={{ fontSize: '1rem', fontWeight: 800, color: '#38bdf8', letterSpacing: '0.8px' }}>
+                    0090778625
+                  </div>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleCopiarLlaveBreB}
+                className="btn btn-sm"
+                style={{
+                  background: copiadoLlave ? 'rgba(16, 185, 129, 0.25)' : 'rgba(6, 182, 212, 0.2)',
+                  border: `1px solid ${copiadoLlave ? '#10b981' : '#06b6d4'}`,
+                  color: copiadoLlave ? '#34d399' : '#38bdf8',
+                  fontWeight: 700,
+                  fontSize: '0.76rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease'
+                }}
+              >
+                {copiadoLlave ? <CheckCircle2 size={13} /> : <Copy size={13} />}
+                {copiadoLlave ? '¡Copiada!' : 'Copiar llave'}
+              </button>
             </div>
 
             {/* Comprobante / Referencia opcional */}

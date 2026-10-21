@@ -57,9 +57,8 @@ Te escribimos referente a tu orden de trabajo:
 ━━━━━━━━━━━━━━━━━━━━
 
 📲 *Medios de Pago Disponibles:*
-• *Nequi:* ${config.nequi}
-• *Daviplata:* ${config.daviplata}
-• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+• *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
+• *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos el soporte una vez realices tu abono para actualizar tu orden en taller. ¡Muchas gracias por tu confianza! ✨🎨`;
 
@@ -386,9 +385,8 @@ ${conceptos.join('\n')}
 ━━━━━━━━━━━━━━━━━━━━
 
 📲 *Medios de Pago Disponibles:*
-• *Nequi:* ${config.nequi}
-• *Daviplata:* ${config.daviplata}
-• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+• *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
+• *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracias por tu apoyo a nuestro arte! ✨🎨`;
 

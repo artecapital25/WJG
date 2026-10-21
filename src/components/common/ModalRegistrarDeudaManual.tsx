@@ -32,9 +32,8 @@ const CONCEPTOS_COMUNES = [
 ];
 
 const METODOS_PAGO = [
+  'Bre-B',
   'Nequi',
-  'Bancolombia',
-  'Daviplata',
   'Efectivo',
   'Transferencia',
   'Tarjeta'
@@ -57,7 +56,7 @@ export const ModalRegistrarDeudaManual: React.FC<ModalRegistrarDeudaManualProps>
   
   const [montoTotal, setMontoTotal] = useState<number>(50000);
   const [abonoInicial, setAbonoInicial] = useState<number>(0);
-  const [metodoPago, setMetodoPago] = useState<string>('Nequi');
+  const [metodoPago, setMetodoPago] = useState<string>('Bre-B');
   const [comprobante, setComprobante] = useState<string>('');
   
   const [fechaEmision, setFechaEmision] = useState<string>(new Date().toISOString().slice(0, 10));

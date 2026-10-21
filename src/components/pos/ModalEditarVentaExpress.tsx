@@ -632,9 +632,8 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                     onChange={e => setMetodoPago(e.target.value)}
                     style={{ fontSize: '0.85rem' }}
                   >
+                    <option value="Bre-B">Bre-B (Llave: 0090778625)</option>
                     <option value="Nequi">Nequi</option>
-                    <option value="Daviplata">Daviplata</option>
-                    <option value="Bancolombia">Bancolombia</option>
                     <option value="Efectivo">Efectivo</option>
                     <option value="Transferencia">Transferencia</option>
                     <option value="Tarjeta">Tarjeta</option>

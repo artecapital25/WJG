@@ -100,8 +100,9 @@ export interface ConfiguracionTaller {
   telefono_contacto2: string;
   instagram: string;
   nequi: string;
-  daviplata: string;
-  bancolombia: string;
+  bre_b?: string; // Bre-B Llave Única: 0090778625
+  daviplata?: string; // Deprecado
+  bancolombia?: string; // Deprecado
   titular_cuenta: string;
 }
 
@@ -292,3 +293,77 @@ export interface CuentaCobro {
   metodo_pago?: string;
   comprobante_url?: string;
 }
+
+export interface PaymentRecord {
+  id: string;
+  monto: number;
+  metodo_pago: string;
+  referencia_pago?: string;
+  comprobante_url?: string;
+  nota?: string;
+  cliente_id?: string;
+  cotizacion_id?: string;
+  orden_trabajo_id?: string;
+  pos_venta_id?: string;
+  cuenta_cobro_id?: string;
+  origen_modulo: 'pos' | 'cotizacion' | 'taller' | 'cuenta_cobro';
+  registrado_por?: string;
+  fecha_pago?: string;
+  created_at?: string;
+}
+
+export interface WhatsAppHealthStatus {
+  status: 'operativo' | 'alerta_critica' | 'desconocido';
+  linea_oficial: string;
+  linea_oficial_clean?: string;
+  motor_activo: boolean;
+  total_ultimas_24h: number;
+  enviados_24h: number;
+  fallidos_24h: number;
+  pendientes_cola: number;
+  estancados_mas_15m: number;
+  tasa_fallo_pct: number;
+  mensajes_programados_hoy: number;
+  alerta_mensaje: string;
+  evaluado_at?: string;
+}
+
+export interface WhatsAppPingResult {
+  valido: boolean;
+  proveedor: string;
+  linea_oficial: string;
+  verified_name?: string;
+  quality_rating?: string;
+  modo: string;
+  mensaje: string;
+  error?: string;
+}
+
+export interface DailyBriefingData {
+  success: boolean;
+  fecha_reporte: string;
+  fecha_texto: string;
+  whatsapp_health?: WhatsAppHealthStatus;
+  finanzas_cobranzas?: {
+    total_cobros_hoy: number;
+    total_cartera_mora: number;
+    clientes_cobro_hoy: any[];
+    clientes_mora: any[];
+    llave_bre_b: string;
+  };
+  taller_operaciones?: {
+    conteo_ots_entrega_hoy: number;
+    ots_entrega_hoy: any[];
+    ots_en_proceso_taller: number;
+    ots_control_calidad: number;
+    ots_listas_entrega: number;
+  };
+  insumos_logistica?: {
+    conteo_insumos_urgentes: number;
+    insumos_criticos: any[];
+  };
+  acciones_recomendadas?: string[];
+  mensaje_whatsapp: string;
+}
+
+

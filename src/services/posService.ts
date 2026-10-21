@@ -117,9 +117,8 @@ ${esPagado ? '🎉 *ESTADO:* ¡PAGADO TOTAL!' : `⏳ *SALDO PENDIENTE:* $${venta
 ━━━━━━━━━━━━━━━━━━━━
 ${!esPagado && venta.fecha_prometida_pago ? `\n📌 *Fecha límite acordada:* ${venta.fecha_prometida_pago} (${alerta.texto})\n` : ''}
 ${!esPagado ? `💳 *Medios de Pago Oficiales:*
-• *Nequi:* ${config.nequi}
-• *Daviplata:* ${config.daviplata}
-• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+• *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
+• *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos tu soporte una vez realizado el pago. ¡Gracias por apoyar nuestro taller! ✨🚀` : '¡Muchísimas gracias por tu compra! Esperamos que disfrutes tu figura. ✨'}`;
 
@@ -140,9 +139,8 @@ Te escribimos desde el taller de *WJGEEKS 3D* con respecto a tu figura *${venta.
 Te recordamos cordialmente que tienes un saldo pendiente por valor de *$${venta.saldo_pendiente.toLocaleString('es-CO')} COP* ${venta.fecha_prometida_pago ? `(Fecha acordada: ${venta.fecha_prometida_pago} — ${alerta.texto})` : ''}.
 
 📲 *Puedes realizar tu pago a través de:*
-• *Nequi:* ${config.nequi}
-• *Daviplata:* ${config.daviplata}
-• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+• *Bre-B (Llave de transferencia):* ${config.bre_b || '0090778625'}
+• *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Agradecemos nos compartas el comprobante para mantener tu cuenta al día. ¡Cualquier duda quedamos muy atentos! ✨`;
 

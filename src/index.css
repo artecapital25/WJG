@@ -1020,3 +1020,36 @@ body {
     width: 100% !important;
   }
 }
+
+/* =========================================================
+   ANIMACIONES Y ERGONOMÍA TÁCTIL PARA CALENDARIO MÓVIL
+   ========================================================= */
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.mobile-bottom-sheet-panel {
+  animation: slideUp 0.28s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.mobile-bottom-sheet-overlay {
+  animation: fadeIn 0.2s ease-out forwards;
+}
+
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+

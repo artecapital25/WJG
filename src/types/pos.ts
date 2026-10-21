@@ -16,7 +16,7 @@ export interface VentaExpress {
   fecha_venta: string; // YYYY-MM-DD
   fecha_prometida_pago?: string; // YYYY-MM-DD
   notas?: string;
-  metodo_pago?: string; // Nequi, Daviplata, Efectivo, Bancolombia
+  metodo_pago?: string; // Bre-B, Nequi, Efectivo, Transferencia
   creado_por?: string; // Germán, Wendy, Juan
   notificado_whatsapp?: boolean;
 

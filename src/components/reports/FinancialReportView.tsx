@@ -10,7 +10,8 @@ import {
   CheckCircle, 
   Clock,
   ArrowUpRight,
-  Filter
+  Filter,
+  Sun
 } from 'lucide-react';
 import { Cotizacion, OrdenTrabajo, CuentaCobro, Resina, Insumo } from '../../types';
 
@@ -19,13 +20,17 @@ interface FinancialReportViewProps {
   ordenes: OrdenTrabajo[];
   cuentas: CuentaCobro[];
   resinas: Resina[];
+  onOpenDailyBriefing?: () => void;
+  whatsappStatus?: 'operativo' | 'alerta_critica' | 'desconocido';
 }
 
 export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
   cotizaciones,
   ordenes,
   cuentas,
-  resinas
+  resinas,
+  onOpenDailyBriefing,
+  whatsappStatus = 'operativo'
 }) => {
   // Filtro de Mes/Año
   const currentYearMonth = new Date().toISOString().slice(0, 7); // '2025-02' o '2026-10'
@@ -200,6 +205,80 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
           <FileSpreadsheet size={16} />
           <span>Exportar a Excel (.xls)</span>
         </button>
+      </div>
+
+      {/* Widget Ejecutivo: Monitor de WhatsApp y Daily Briefing 7:00 AM */}
+      <div style={{
+        background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(8, 13, 22, 0.95) 100%)',
+        borderRadius: '16px',
+        border: whatsappStatus === 'alerta_critica' ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid rgba(0, 240, 255, 0.25)',
+        padding: '18px 22px',
+        marginBottom: '20px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: '16px',
+        boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+          <div style={{
+            width: '46px',
+            height: '46px',
+            borderRadius: '12px',
+            background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(0, 240, 255, 0.2))',
+            border: '1px solid rgba(0, 240, 255, 0.3)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: '#f59e0b'
+          }}>
+            <Sun size={24} />
+          </div>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+              <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#fff' }}>
+                Monitor de Salud WhatsApp & Daily Briefing (7:00 AM)
+              </h3>
+              <span style={{
+                fontSize: '0.72rem',
+                fontWeight: 800,
+                padding: '3px 10px',
+                borderRadius: '9999px',
+                background: whatsappStatus === 'alerta_critica' ? 'rgba(239, 68, 68, 0.2)' : 'rgba(16, 185, 129, 0.15)',
+                color: whatsappStatus === 'alerta_critica' ? '#f87171' : '#34d399',
+                border: `1px solid ${whatsappStatus === 'alerta_critica' ? 'rgba(239, 68, 68, 0.4)' : 'rgba(16, 185, 129, 0.4)'}`
+              }}>
+                {whatsappStatus === 'alerta_critica' ? '🚨 ALERTA DE ENVÍOS' : '✅ WHATSAPP OPERATIVO'}
+              </span>
+            </div>
+            <p style={{ margin: '4px 0 0', fontSize: '0.8rem', color: '#94a3b8' }}>
+              Línea Oficial: <strong style={{ color: '#38bdf8' }}>+57 320 2796115</strong> | Resumen automatizado de cobranzas, entregas OTs, insumos y prioridades.
+            </p>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+          {onOpenDailyBriefing && (
+            <button
+              className="btn btn-primary"
+              onClick={onOpenDailyBriefing}
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                fontSize: '0.85rem',
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                boxShadow: '0 0 15px rgba(14, 165, 233, 0.3)'
+              }}
+            >
+              <Sun size={16} />
+              <span>Ver / Despachar Daily Briefing</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Barra de Filtros */}

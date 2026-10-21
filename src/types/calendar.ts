@@ -15,9 +15,12 @@ export interface CalendarEvent {
   descripcion?: string;
   fecha_inicio: string; // ISO string o YYYY-MM-DD
   fecha_fin?: string;
+  hora?: string;
   todo_el_dia?: boolean;
   tipo_evento: TipoEventoCalendario;
   color: string;
+  monto?: number;
+  cliente_nombre?: string;
   responsable: string; // 'Germán' | 'Wendy' | 'Juan' | 'Todos'
   responsable_avatar_url?: string;
   es_recurrente?: boolean;

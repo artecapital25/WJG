@@ -104,9 +104,8 @@ Te enviamos la cuenta de cobro correspondiente a tu pedido en *WJGEEKS 3D* 🎨�
 ━━━━━━━━━━━━━━━━━━━━
 
 📲 *Medios de Pago Oficiales:*
-• *Nequi:* ${config.nequi}
-• *Daviplata:* ${config.daviplata}
-• *Bancolombia:* ${config.bancolombia} (${config.titular_cuenta})
+• *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
+• *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos tu comprobante para coordinar el despacho inmediato. ¡Muchas gracias por tu compra! ✨🚀`;
 

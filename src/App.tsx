@@ -24,7 +24,9 @@ const ToolsHubView = React.lazy(() => import('./components/tools/ToolsHubView').
 const BackupDriveModal = React.lazy(() => import('./components/backup/BackupDriveModal').then(m => ({ default: m.BackupDriveModal })));
 const CalendarOperationalView = React.lazy(() => import('./components/calendar/CalendarOperationalView').then(m => ({ default: m.CalendarOperationalView })));
 const UsuariosManagerView = React.lazy(() => import('./components/admin/UsuariosManagerView').then(m => ({ default: m.UsuariosManagerView })));
+const DailyBriefingModal = React.lazy(() => import('./components/admin/DailyBriefingModal').then(m => ({ default: m.DailyBriefingModal })));
 import { AuthSecurityService } from './services/authSecurityService';
+import { WhatsAppNotificationService } from './services/whatsappNotificationService';
 
 import { 
   TabType, 
@@ -72,6 +74,29 @@ export const App: React.FC = () => {
   });
 
   const [showBackupModal, setShowBackupModal] = useState(false);
+  const [showDailyBriefingModal, setShowDailyBriefingModal] = useState(false);
+  const [whatsappHealthStatus, setWhatsappHealthStatus] = useState<'operativo' | 'alerta_critica' | 'desconocido'>('operativo');
+
+  // Monitor periódico de salud de WhatsApp (+57 320 2796115)
+  useEffect(() => {
+    let isMounted = true;
+    const checkWA = async () => {
+      try {
+        const res = await WhatsAppNotificationService.obtenerSaludWhatsApp();
+        if (isMounted && res?.status) {
+          setWhatsappHealthStatus(res.status);
+        }
+      } catch {
+        if (isMounted) setWhatsappHealthStatus('operativo');
+      }
+    };
+    checkWA();
+    const intervalId = setInterval(checkWA, 5 * 60 * 1000); // Cada 5 minutos
+    return () => {
+      isMounted = false;
+      clearInterval(intervalId);
+    };
+  }, []);
 
   // Detección de Modo Portal de Cliente Aislado / Público
   const [isClientPortalMode, setIsClientPortalMode] = useState<boolean>(() => {
@@ -312,6 +337,19 @@ export const App: React.FC = () => {
           setSolicitudesInsumos(freshSols);
           StorageService.saveSolicitudesInsumos(freshSols);
         }
+      },
+      async () => {
+        // Sincronización Transaccional Global al recibir mutaciones en la tabla payments
+        const [cots, ots, ccs, vts] = await Promise.all([
+          CloudSyncService.fetchCotizaciones(),
+          CloudSyncService.fetchOrdenes(),
+          CloudSyncService.fetchCuentas(),
+          CloudSyncService.fetchVentasExpress()
+        ]);
+        if (cots) { setCotizaciones(cots); StorageService.saveCotizaciones(cots); }
+        if (ots) { setOrdenes(ots); StorageService.saveOrdenes(ots); }
+        if (ccs) { setCuentas(ccs); StorageService.saveCuentas(ccs); }
+        if (vts) { setVentasExpress(vts); StorageService.saveVentasExpress(vts); }
       }
     );
 
@@ -907,7 +945,7 @@ export const App: React.FC = () => {
     CloudSyncService.saveCuentaCobro(nuevaCC);
   };
 
-  // Actualizar Pago en Cuenta de Cobro
+  // Actualizar Pago en Cuenta de Cobro y sincronizar multi-módulo
   const handleUpdatePago = (cuentaId: string, nuevoAbono: number) => {
     let updatedCC: CuentaCobro | null = null;
     const updated = cuentas.map(c => {
@@ -926,8 +964,66 @@ export const App: React.FC = () => {
     });
     setCuentas(updated);
     StorageService.saveCuentas(updated);
-    if (updatedCC) {
-      CloudSyncService.saveCuentaCobro(updatedCC);
+    const targetCC = updated.find(c => c.id === cuentaId);
+    if (targetCC) {
+      CloudSyncService.saveCuentaCobro(targetCC);
+
+      // Sincronizar Cotización vinculada
+      if (targetCC.cotizacion_id || targetCC.cotizacion_numero) {
+        const updatedCots = cotizaciones.map(cot => {
+          if ((targetCC.cotizacion_id && cot.id === targetCC.cotizacion_id) ||
+              (targetCC.cotizacion_numero && cot.numero_cot === targetCC.cotizacion_numero)) {
+            return {
+              ...cot,
+              abono: targetCC.abono,
+              saldo_pendiente: targetCC.saldo_pendiente,
+              estado_pago: targetCC.estado_pago,
+              metodo_pago: targetCC.metodo_pago || cot.metodo_pago
+            };
+          }
+          return cot;
+        });
+        setCotizaciones(updatedCots);
+        StorageService.saveCotizaciones(updatedCots);
+        const cotAfectada = updatedCots.find(c => 
+          (targetCC.cotizacion_id && c.id === targetCC.cotizacion_id) ||
+          (targetCC.cotizacion_numero && c.numero_cot === targetCC.cotizacion_numero)
+        );
+        if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+
+        // Sincronizar OTs vinculadas
+        const updatedOTs = ordenes.map(o => {
+          if ((targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
+              (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero)) {
+            return {
+              ...o,
+              abono: targetCC.abono,
+              saldo_pendiente: targetCC.saldo_pendiente,
+              estado_pago: targetCC.estado_pago,
+              metodo_pago: targetCC.metodo_pago || o.metodo_pago
+            };
+          }
+          return o;
+        });
+        setOrdenes(updatedOTs);
+        StorageService.saveOrdenes(updatedOTs);
+        updatedOTs.filter(o => 
+          (targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
+          (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero)
+        ).forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+      }
+
+      // Asentar en Ledger Central de Payments
+      CloudSyncService.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: nuevoAbono,
+        metodo_pago: targetCC.metodo_pago || 'Bre-B',
+        comprobante_url: targetCC.comprobante_url,
+        cotizacion_id: targetCC.cotizacion_id,
+        cuenta_cobro_id: targetCC.id,
+        origen_modulo: 'cuenta_cobro',
+        nota: `Abono/Pago registrado en Cuenta de Cobro ${targetCC.numero_cc}`
+      });
     }
   };
 
@@ -1142,6 +1238,18 @@ export const App: React.FC = () => {
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
 
+    // Asentar en Ledger Central (payments) si se registró un abono en POS
+    if (ventaFinal.abono && ventaFinal.abono > 0) {
+      CloudSyncService.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: ventaFinal.abono,
+        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
+        pos_venta_id: ventaFinal.id,
+        origen_modulo: 'pos',
+        nota: `Abono/Pago registrado en POS Express ${ventaFinal.numero_venta}`
+      });
+    }
+
     CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
       if (res && !res.success && res.error) {
         toast.warning(`Cambios guardados localmente. Sincronización pendiente: ${res.error}`);
@@ -1341,6 +1449,49 @@ export const App: React.FC = () => {
         }
       }
     }
+
+    // 4. Sincronizar en la Venta Express de POS vinculada (si la OT proviene de POS)
+    if (otActualizada.pos_venta_id || otActualizada.numero_ot) {
+      const ventaMatch = ventasExpress.find(v => 
+        (otActualizada.pos_venta_id && v.id === otActualizada.pos_venta_id) ||
+        (v.ot_id && v.ot_id === otActualizada.id) ||
+        (v.ot_numero && v.ot_numero === otActualizada.numero_ot)
+      );
+
+      if (ventaMatch && otActualizada.estado_pago) {
+        const updatedVentas = ventasExpress.map(v => {
+          if (v.id === ventaMatch.id) {
+            return {
+              ...v,
+              abono: otActualizada.abono !== undefined ? otActualizada.abono : v.abono,
+              saldo_pendiente: otActualizada.saldo_pendiente !== undefined ? otActualizada.saldo_pendiente : v.saldo_pendiente,
+              estado_pago: (otActualizada.estado_pago as any) || v.estado_pago,
+              metodo_pago: otActualizada.metodo_pago || v.metodo_pago
+            };
+          }
+          return v;
+        });
+        setVentasExpress(updatedVentas);
+        StorageService.saveVentasExpress(updatedVentas);
+        const vActualizada = updatedVentas.find(v => v.id === ventaMatch.id);
+        if (vActualizada) CloudSyncService.saveVentaExpress(vActualizada);
+      }
+    }
+
+    // 5. Asentar en Ledger Central (payments) si se registró un abono
+    if (otActualizada.abono && otActualizada.abono > 0) {
+      CloudSyncService.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: otActualizada.abono,
+        metodo_pago: otActualizada.metodo_pago || 'Bre-B',
+        comprobante_url: otActualizada.comprobante_pago,
+        cotizacion_id: otActualizada.cotizacion_id,
+        orden_trabajo_id: otActualizada.id,
+        pos_venta_id: otActualizada.pos_venta_id,
+        origen_modulo: 'taller',
+        nota: `Abono registrado desde Taller OT ${otActualizada.numero_ot}`
+      });
+    }
   };
 
   // Handler para Eliminar o Cancelar una Orden de Trabajo (OT)
@@ -1427,6 +1578,8 @@ export const App: React.FC = () => {
         onSelectTab={setActiveTab}
         onNewQuoteClick={handleNuevaCotizacion} 
         cloudStatus={cloudSyncStatus}
+        whatsappStatus={whatsappHealthStatus}
+        onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
         onInstallPwa={handleInstallPwa}
         isInstallable={isInstallable}
         onOpenBackupModal={() => setShowBackupModal(true)}
@@ -1603,6 +1756,8 @@ export const App: React.FC = () => {
             ordenes={ordenes}
             cuentas={cuentas}
             resinas={resinas}
+            whatsappStatus={whatsappHealthStatus}
+            onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
           />
         )}
 
@@ -1688,6 +1843,17 @@ export const App: React.FC = () => {
         isAuthenticated={isStaffAuthenticated}
         currentUser={staffUser}
       />
+
+      {/* Modal de Daily Briefing y Monitor de WhatsApp */}
+      <React.Suspense fallback={null}>
+        <DailyBriefingModal 
+          isOpen={showDailyBriefingModal}
+          onClose={() => setShowDailyBriefingModal(false)}
+          onSuccessDispatch={() => {
+            toast.success('Daily Briefing despachado por WhatsApp a Germán y Wendy');
+          }}
+        />
+      </React.Suspense>
     </div>
   );
 };

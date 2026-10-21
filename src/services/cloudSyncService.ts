@@ -22,7 +22,8 @@ import {
   TarifaTamano,
   TareaEquipo,
   SolicitudInsumo,
-  ProductoStock
+  ProductoStock,
+  PaymentRecord
 } from '../types';
 
 export const CloudSyncService = {
@@ -120,7 +121,13 @@ export const CloudSyncService = {
           descuento_porcentaje: Number(row.descuento_porcentaje) || 0,
           total: Number(row.total) || 0,
           tiempo_entrega_estimado: row.tiempo_entrega_estimado || '(3) Días hábiles',
-          notas: row.notas || 'No incluye transporte fuera del perímetro urbano.'
+          notas: row.notas || 'No incluye transporte fuera del perímetro urbano.',
+          // Sincronización Financiera Unificada
+          abono: row.abono !== undefined ? Number(row.abono) : 0,
+          saldo_pendiente: row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Number(row.total || 0),
+          estado_pago: row.estado_pago || (row.abono > 0 ? (row.abono >= row.total ? 'Pagado Total' : 'Abono Parcial') : 'Pendiente'),
+          metodo_pago: row.metodo_pago || 'Bre-B',
+          comprobante_pago: row.comprobante_pago || undefined
         };
       });
     } catch (e) {
@@ -184,7 +191,14 @@ export const CloudSyncService = {
         maquina_nombre: 'Anycubic MONO 4',
         va_pintado: false,
         tiene_empaque: false,
-        detalles_tecnicos: row.observaciones || ''
+        detalles_tecnicos: row.observaciones || '',
+        pos_venta_id: row.pos_venta_id || undefined,
+        precio_cobrado: row.precio_cobrado !== undefined ? Number(row.precio_cobrado) : undefined,
+        abono: row.abono !== undefined ? Number(row.abono) : 0,
+        saldo_pendiente: row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : 0,
+        estado_pago: row.estado_pago || 'Pendiente',
+        metodo_pago: row.metodo_pago || 'Bre-B',
+        comprobante_pago: row.comprobante_pago || undefined
       }));
     } catch (e) {
       console.warn('Exception in fetchOrdenes:', e);
@@ -293,7 +307,12 @@ export const CloudSyncService = {
           descuento_porcentaje: cot.descuento_porcentaje || 0,
           total: cot.total,
           tiempo_entrega_estimado: cot.tiempo_entrega_estimado,
-          notas: cot.notas
+          notas: cot.notas,
+          abono: cot.abono ?? 0,
+          saldo_pendiente: cot.saldo_pendiente ?? cot.total,
+          estado_pago: cot.estado_pago || 'Pendiente',
+          metodo_pago: cot.metodo_pago || 'Bre-B',
+          comprobante_pago: cot.comprobante_pago || null
         }, { onConflict: 'numero_cot' })
         .select('id')
         .single();
@@ -354,11 +373,20 @@ export const CloudSyncService = {
         .upsert({
           numero_ot: ot.numero_ot,
           cliente_nombre: ot.cliente_nombre,
+          cliente_telefono: ot.cliente_telefono || null,
           item_nombre: ot.item_nombre,
           cantidad: ot.cantidad,
           estado: ot.estado,
           operador_asignado: ot.operador_asignado || 'Operador 3D',
-          observaciones: ot.detalles_tecnicos || null
+          observaciones: ot.detalles_tecnicos || null,
+          cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null,
+          pos_venta_id: ot.pos_venta_id || null,
+          precio_cobrado: ot.precio_cobrado || null,
+          abono: ot.abono ?? 0,
+          saldo_pendiente: ot.saldo_pendiente ?? 0,
+          estado_pago: ot.estado_pago || 'Pendiente',
+          metodo_pago: ot.metodo_pago || 'Bre-B',
+          comprobante_pago: ot.comprobante_pago || null
         }, { onConflict: 'numero_ot' });
 
       if (error) {
@@ -1018,6 +1046,59 @@ export const CloudSyncService = {
     }
   },
 
+  // 21.1 Guardar transacción centralizada en Ledger (payments)
+  async savePayment(payment: PaymentRecord): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const isCotUuid = Boolean(payment.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cotizacion_id));
+      const isCliUuid = Boolean(payment.cliente_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cliente_id));
+      const isCcUuid = Boolean(payment.cuenta_cobro_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cuenta_cobro_id));
+
+      const { error } = await supabase!
+        .from('payments')
+        .insert({
+          id: payment.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.id) ? payment.id : undefined,
+          monto: Number(payment.monto) || 0,
+          metodo_pago: payment.metodo_pago || 'Bre-B',
+          referencia_pago: payment.referencia_pago || null,
+          comprobante_url: payment.comprobante_url || null,
+          nota: payment.nota || null,
+          cliente_id: isCliUuid ? payment.cliente_id : null,
+          cotizacion_id: isCotUuid ? payment.cotizacion_id : null,
+          pos_venta_id: payment.pos_venta_id || null,
+          cuenta_cobro_id: isCcUuid ? payment.cuenta_cobro_id : null,
+          origen_modulo: payment.origen_modulo || 'pos',
+          registrado_por: payment.registrado_por || 'Equipo WJGEEKS'
+        });
+
+      if (error) {
+        console.warn('Error saving payment in Supabase ledger:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e: any) {
+      console.warn('Exception saving payment in ledger:', e?.message || e);
+      return false;
+    }
+  },
+
+  // 21.2 Consultar historial de pagos centralizados
+  async fetchPayments(filtro?: { cotizacion_id?: string; pos_venta_id?: string; cliente_id?: string }): Promise<PaymentRecord[]> {
+    if (!this.isAvailable()) return [];
+    try {
+      let query = supabase!.from('payments').select('*').order('created_at', { ascending: false });
+      if (filtro?.cotizacion_id) query = query.eq('cotizacion_id', filtro.cotizacion_id);
+      if (filtro?.pos_venta_id) query = query.eq('pos_venta_id', filtro.pos_venta_id);
+      if (filtro?.cliente_id) query = query.eq('cliente_id', filtro.cliente_id);
+      const { data, error } = await query;
+      if (error) throw error;
+      return data || [];
+    } catch (e) {
+      console.warn('Exception in fetchPayments:', e);
+      return [];
+    }
+  },
+
   // 22. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
   subscribeRealtime(
     onCotizacionChange: () => void, 
@@ -1025,7 +1106,8 @@ export const CloudSyncService = {
     onCuentaChange: () => void,
     onVentaExpressChange?: () => void,
     onTareaChange?: () => void,
-    onSolicitudChange?: () => void
+    onSolicitudChange?: () => void,
+    onPaymentChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
 
@@ -1047,6 +1129,14 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_insumos' }, () => {
         if (onSolicitudChange) onSolicitudChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+        // Al mutar cualquier pago en el ledger central, invalidar todas las vistas financieras
+        onCotizacionChange();
+        onOTChange();
+        onCuentaChange();
+        if (onVentaExpressChange) onVentaExpressChange();
+        if (onPaymentChange) onPaymentChange();
       })
       .subscribe();
 

@@ -85,8 +85,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   const [tarifaKwh, setTarifaKwh] = useState(config.tarifa_kwh);
   const [margenMerma, setMargenMerma] = useState(config.margen_merma_resina);
   const [nequi, setNequi] = useState(config.nequi);
-  const [daviplata, setDaviplata] = useState(config.daviplata);
-  const [bancolombia, setBancolombia] = useState(config.bancolombia);
+  const [breB, setBreB] = useState(config.bre_b || '0090778625');
   const [instagram, setInstagram] = useState(config.instagram);
 
   const [cloudStatus, setCloudStatus] = useState<string | null>(null);
@@ -511,8 +510,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       tarifa_kwh: Number(tarifaKwh),
       margen_merma_resina: Number(margenMerma),
       nequi,
-      daviplata,
-      bancolombia,
+      bre_b: breB,
       instagram
     };
     onUpdateConfig(updated);
@@ -976,24 +974,21 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 />
               </div>
 
-              <div className="form-group">
-                <label className="form-label">Número Daviplata</label>
+              <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <label className="form-label" style={{ color: '#06b6d4', fontWeight: 800 }}>
+                  🔑 Llave Bre-B Oficial (Identificador Único Interoperable)
+                </label>
                 <input 
                   type="text" 
                   className="form-input" 
-                  value={daviplata}
-                  onChange={e => setDaviplata(e.target.value)}
+                  value={breB}
+                  onChange={e => setBreB(e.target.value)}
+                  placeholder="0090778625"
+                  style={{ borderColor: 'rgba(6, 182, 212, 0.4)', fontWeight: 700 }}
                 />
-              </div>
-
-              <div className="form-group">
-                <label className="form-label">Cuenta Bancolombia</label>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  value={bancolombia}
-                  onChange={e => setBancolombia(e.target.value)}
-                />
+                <span style={{ fontSize: '0.72rem', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
+                  Sistema nacional de pagos inmediatos interoperable. Reemplaza transferencias tradicionales.
+                </span>
               </div>
 
               <div className="form-group">

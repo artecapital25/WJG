@@ -61,6 +61,7 @@ export interface ConfiguracionTaller {
   telefono_contacto2: string;
   instagram: string;
   nequi: string;
+  bre_b?: string;
   daviplata: string;
   bancolombia: string;
   titular_cuenta: string;
@@ -960,10 +961,11 @@ export const CLIENTES_INICIALES: Cliente[] = [
 export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "tarifa_kwh": 834.0,
   "margen_merma_resina": 1.4,
-  "telefono_contacto": "3217273025",
-  "telefono_contacto2": "3202796115",
+  "telefono_contacto": "3202796115",
+  "telefono_contacto2": "3217273025",
   "instagram": "@WJGEEKS3D",
-  "nequi": "3217273025",
+  "nequi": "3202796115",
+  "bre_b": "0090778625",
   "daviplata": "3217273025",
   "bancolombia": "Ahorros 245-000123-98",
   "titular_cuenta": "WJGEEKS 3D"

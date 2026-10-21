@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Calendar as CalendarIcon, 
   ChevronLeft, 
@@ -22,7 +22,9 @@ import {
   Layers,
   ChevronDown,
   CalendarDays,
-  ListTodo
+  ListTodo,
+  SlidersHorizontal,
+  Sun
 } from 'lucide-react';
 import { 
   CalendarEvent, 
@@ -39,6 +41,10 @@ import {
 } from '../../types';
 import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
 import { toast } from '../ui/ToastProvider';
+import { useDateNavigation } from './useDateNavigation';
+import { MobileWeekStrip } from './MobileWeekStrip';
+import { MobileEventCard } from './MobileEventCard';
+import { MobileBottomSheet } from './MobileBottomSheet';
 
 interface CalendarOperationalViewProps {
   ordenes: OrdenTrabajo[];
@@ -82,8 +88,38 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
   onActualizarTarea,
   onNavigateTab
 }) => {
-  const [currentDate, setCurrentDate] = useState<Date>(new Date());
-  const [vista, setVista] = useState<'mes' | 'semana' | 'dia' | 'agenda'>('mes');
+  // Hook de navegación de fechas y adaptabilidad táctil
+  const {
+    currentDate,
+    selectedDateStr,
+    isMobile,
+    weekDays,
+    monthDays,
+    monthYearLabel,
+    selectedDayLabel,
+    hoyStr,
+    selectDate,
+    nextWeek,
+    prevWeek,
+    nextMonth,
+    prevMonth,
+    goToToday,
+    touchHandlers
+  } = useDateNavigation();
+
+  // En móvil, la vista predeterminada es 'agenda' (Strip semanal compacto + lista vertical)
+  // En escritorio, la vista predeterminada es 'mes'
+  const [vista, setVista] = useState<'mes' | 'semana' | 'dia' | 'agenda'>(() => {
+    return isMobile ? 'agenda' : 'mes';
+  });
+
+  // Ajustar vista automáticamente si cambia el tamaño de pantalla inicialmente
+  useEffect(() => {
+    if (isMobile && vista === 'mes') {
+      setVista('agenda');
+    }
+  }, [isMobile]);
+
   const [filtros, setFiltros] = useState<FiltrosCalendario>({
     responsable: 'todos',
     tipoEvento: 'todos',
@@ -91,19 +127,24 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
     busqueda: ''
   });
 
-  // Modal para editar / reprogramar fecha
+  const [mostrarFiltrosMobile, setMostrarFiltrosMobile] = useState<boolean>(false);
+
+  // Modal para reprogramar fecha
   const [eventoSeleccionado, setEventoSeleccionado] = useState<CalendarEvent | null>(null);
   const [nuevaFechaInput, setNuevaFechaInput] = useState<string>('');
 
-  // Panel Lateral (Drawer) de Drill-Down por Día específico
-  const [diaDrawer, setDiaDrawer] = useState<string | null>(null);
+  // Bottom Sheet nativo móvil para drill-down rápido del día
+  const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(false);
+
+  // Panel lateral tradicional para escritorio
+  const [diaDrawerDesktop, setDiaDrawerDesktop] = useState<string | null>(null);
   const [filtroEstadoDrawer, setFiltroEstadoDrawer] = useState<string>('todos');
 
-  // 1. Agregación Unificada de Entidades
+  // 1. Agregación Unificada de Entidades con enriquecimiento de datos
   const eventosTotales = useMemo<CalendarEvent[]>(() => {
     const list: CalendarEvent[] = [];
 
-    // A. Órdenes de Trabajo (Entregas programadas)
+    // A. Órdenes de Trabajo (Entregas programadas en taller)
     ordenes.forEach(ot => {
       const fecha = ot.fecha_finalizacion 
         ? ot.fecha_finalizacion.slice(0, 10) 
@@ -118,6 +159,9 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         titulo: `${ot.numero_ot} • ${ot.item_nombre}`,
         descripcion: `Cliente: ${ot.cliente_nombre} • Cant: ${ot.cantidad} • Estado: ${ot.estado}`,
         fecha_inicio: fecha,
+        hora: 'Entrega programada',
+        monto: ot.saldo_pendiente || 0,
+        cliente_nombre: ot.cliente_nombre,
         tipo_evento: 'entrega_pedido',
         color: COLORES_TIPO.entrega_pedido.text,
         responsable: ot.operador_asignado?.includes('Juan') ? 'Juan' : ot.operador_asignado?.includes('Wendy') ? 'Wendy' : 'Germán',
@@ -127,7 +171,7 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
       });
     });
 
-    // B. Cuentas de Cobro (Vencimientos de pago pendientes)
+    // B. Cuentas de Cobro (Vencimientos de cobro con montos destacados)
     cuentas.forEach(cc => {
       if (cc.saldo_pendiente > 0) {
         let fechaVenc = cc.fecha_emision;
@@ -142,8 +186,11 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         list.push({
           id: `event-cc-${cc.id}`,
           titulo: `Cobro ${cc.numero_cc} • $${cc.saldo_pendiente.toLocaleString('es-CO')}`,
-          descripcion: `Cliente: ${cc.cliente?.nombre || 'Cliente'} • Tel: ${cc.cliente?.telefono || 'N/A'} • Total: $${cc.total.toLocaleString('es-CO')}`,
+          descripcion: `Cliente: ${cc.cliente?.nombre || 'Cliente'} • Total: $${cc.total.toLocaleString('es-CO')}`,
           fecha_inicio: fechaVenc,
+          hora: 'Vencimiento saldo',
+          monto: cc.saldo_pendiente,
+          cliente_nombre: cc.cliente?.nombre,
           tipo_evento: 'vencimiento_cobro',
           color: COLORES_TIPO.vencimiento_cobro.text,
           responsable: 'Wendy',
@@ -171,6 +218,7 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         titulo: `${t.asignado_a}: ${t.titulo}`,
         descripcion: t.descripcion || `Prioridad: ${t.prioridad}`,
         fecha_inicio: fecha,
+        hora: t.fecha_limite ? 'Límite programado' : 'Todo el día',
         tipo_evento: tipo,
         color: COLORES_TIPO[tipo].text,
         responsable: t.asignado_a,
@@ -182,17 +230,19 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
       });
     });
 
-    // D. Solicitudes de Insumos (Llegada o urgencia)
+    // D. Solicitudes de Insumos
     solicitudesInsumos.forEach(s => {
       if (s.estado !== 'recibido') {
+        const fecha = s.fecha_solicitud ? s.fecha_solicitud.slice(0, 10) : new Date().toISOString().slice(0, 10);
         list.push({
           id: `event-insumo-${s.id}`,
           titulo: `Insumo: ${s.insumo_nombre} (${s.cantidad} ${s.unidad})`,
-          descripcion: `Urgencia: ${s.urgencia} • Encargada: ${s.encargado_compra}`,
-          fecha_inicio: s.fecha_solicitud.slice(0, 10),
+          descripcion: `Urgencia: ${s.urgencia} • Solicitado por: ${s.solicitado_por}`,
+          fecha_inicio: fecha,
+          hora: `Urgencia: ${s.urgencia}`,
           tipo_evento: 'llegada_insumo',
           color: COLORES_TIPO.llegada_insumo.text,
-          responsable: s.encargado_compra,
+          responsable: s.encargado_compra || s.solicitado_por || 'Wendy',
           estado: s.estado === 'en_camino' ? 'en_progreso' : 'pendiente',
           entidad_origen_tipo: 'solicitud_insumo',
           entidad_origen_id: s.id
@@ -223,33 +273,21 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
     });
   }, [eventosTotales, filtros]);
 
-  // Controles de Navegación Temporal
-  const prevPeriod = () => {
-    const d = new Date(currentDate);
-    if (vista === 'mes') d.setMonth(d.getMonth() - 1);
-    else if (vista === 'semana') d.setDate(d.getDate() - 7);
-    else d.setDate(d.getDate() - 1);
-    setCurrentDate(d);
-  };
+  // Eventos específicos del día seleccionado (para la vista Mobile)
+  const eventosDelDiaSeleccionado = useMemo(() => {
+    return eventosFiltrados.filter(ev => ev.fecha_inicio.startsWith(selectedDateStr));
+  }, [eventosFiltrados, selectedDateStr]);
 
-  const nextPeriod = () => {
-    const d = new Date(currentDate);
-    if (vista === 'mes') d.setMonth(d.getMonth() + 1);
-    else if (vista === 'semana') d.setDate(d.getDate() + 7);
-    else d.setDate(d.getDate() + 1);
-    setCurrentDate(d);
-  };
-
-  const setHoy = () => setCurrentDate(new Date());
-
-  const handleSelectDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.value) {
-      setCurrentDate(new Date(`${e.target.value}T12:00:00`));
-    }
-  };
-
-  const hoyStr = new Date().toISOString().slice(0, 10);
-  const currentDateStr = currentDate.toISOString().slice(0, 10);
+  // Eventos para el Drawer Desktop
+  const eventosDelDiaDrawerDesktop = useMemo(() => {
+    if (!diaDrawerDesktop) return [];
+    return eventosTotales.filter(ev => {
+      const matchFecha = ev.fecha_inicio.startsWith(diaDrawerDesktop);
+      if (!matchFecha) return false;
+      if (filtroEstadoDrawer !== 'todos' && ev.estado !== filtroEstadoDrawer) return false;
+      return true;
+    });
+  }, [diaDrawerDesktop, eventosTotales, filtroEstadoDrawer]);
 
   // Deep-Linking al Origen de la Entidad
   const handleDeepLink = (ev: CalendarEvent) => {
@@ -276,144 +314,192 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
       default:
         break;
     }
-    setDiaDrawer(null);
+    setDiaDrawerDesktop(null);
+    setIsBottomSheetOpen(false);
   };
 
-  // Cuadrícula Mensual
-  const diasMes = useMemo(() => {
-    const year = currentDate.getFullYear();
-    const month = currentDate.getMonth();
-    const firstDayIndex = new Date(year, month, 1).getDay();
-    const totalDays = new Date(year, month + 1, 0).getDate();
-    const startOffset = (firstDayIndex + 6) % 7;
-
-    const days: { dateStr: string; dayNumber: number; isCurrentMonth: boolean }[] = [];
-    const prevMonthDays = new Date(year, month, 0).getDate();
-
-    for (let i = startOffset - 1; i >= 0; i--) {
-      const d = prevMonthDays - i;
-      const prevM = month === 0 ? 11 : month - 1;
-      const prevY = month === 0 ? year - 1 : year;
-      const dateStr = `${prevY}-${String(prevM + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
-      days.push({ dateStr, dayNumber: d, isCurrentMonth: false });
+  const handleSelectDateInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.value) {
+      selectDate(e.target.value);
     }
-
-    for (let i = 1; i <= totalDays; i++) {
-      const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-      days.push({ dateStr, dayNumber: i, isCurrentMonth: true });
-    }
-
-    const remaining = (7 - (days.length % 7)) % 7;
-    for (let i = 1; i <= remaining; i++) {
-      const nextM = month === 11 ? 0 : month + 1;
-      const nextY = month === 11 ? year + 1 : year;
-      const dateStr = `${nextY}-${String(nextM + 1).padStart(2, '0')}-${String(i).padStart(2, '0')}`;
-      days.push({ dateStr, dayNumber: i, isCurrentMonth: false });
-    }
-
-    return days;
-  }, [currentDate]);
-
-  // Días de la Vista Semanal
-  const diasSemana = useMemo(() => {
-    const curr = new Date(currentDate);
-    const day = curr.getDay();
-    const diff = curr.getDate() - day + (day === 0 ? -6 : 1); // lunes
-    const startOfWeek = new Date(curr.setDate(diff));
-
-    const days = [];
-    for (let i = 0; i < 7; i++) {
-      const d = new Date(startOfWeek);
-      d.setDate(startOfWeek.getDate() + i);
-      days.push({
-        dateStr: d.toISOString().slice(0, 10),
-        dayNumber: d.getDate(),
-        nombreDia: d.toLocaleDateString('es-ES', { weekday: 'short' }).toUpperCase()
-      });
-    }
-    return days;
-  }, [currentDate]);
-
-  // Eventos para el Drawer de Drill-Down
-  const eventosDelDiaDrawer = useMemo(() => {
-    if (!diaDrawer) return [];
-    return eventosTotales.filter(ev => {
-      const matchFecha = ev.fecha_inicio.startsWith(diaDrawer);
-      if (!matchFecha) return false;
-      if (filtroEstadoDrawer !== 'todos' && ev.estado !== filtroEstadoDrawer) return false;
-      return true;
-    });
-  }, [diaDrawer, eventosTotales, filtroEstadoDrawer]);
-
-  const mesNombre = currentDate.toLocaleDateString('es-ES', { month: 'long', year: 'numeric' });
-  const tituloCabecera = mesNombre.charAt(0).toUpperCase() + mesNombre.slice(1);
+  };
 
   return (
-    <div style={{ paddingBottom: '40px' }}>
-      {/* 1. Header con Navegación Fluida */}
-      <div className="section-header" style={{ marginBottom: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+    <div 
+      className="calendar-operational-module" 
+      style={{ 
+        paddingBottom: '40px',
+        maxWidth: '100%',
+        overflowX: 'hidden'
+      }}
+    >
+      {/* 1. Header Adaptativo */}
+      <div 
+        className="section-header" 
+        style={{ 
+          marginBottom: '14px', 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          flexWrap: 'wrap', 
+          gap: '10px' 
+        }}
+      >
         <div>
-          <h2 className="section-title">
-            <CalendarIcon size={22} color="var(--brand-cyan)" />
-            Calendario Operativo & Agenda Dinámica
+          <h2 className="section-title" style={{ fontSize: isMobile ? '1.15rem' : '1.45rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <CalendarIcon size={isMobile ? 20 : 24} color="var(--brand-cyan)" />
+            Calendario Operativo
           </h2>
-          <p className="section-subtitle">
-            {eventosFiltrados.length} compromisos activos • Sincronización en caliente y deep-linking a OTs, Cobros y Tareas
+          <p className="section-subtitle" style={{ fontSize: isMobile ? '0.78rem' : '0.85rem' }}>
+            {eventosFiltrados.length} compromisos activos • Deep-linking táctil a OTs, Cobros y Tareas
           </p>
         </div>
 
-        {/* Selector de Vistas: Mes, Semana, Día, Agenda */}
-        <div style={{ display: 'flex', gap: '4px', background: 'rgba(255, 255, 255, 0.05)', padding: '4px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-          {(['mes', 'semana', 'dia', 'agenda'] as const).map(v => (
+        {/* Selector de Vistas */}
+        <div style={{ 
+          display: 'flex', 
+          gap: '3px', 
+          background: 'rgba(255, 255, 255, 0.05)', 
+          padding: '3px', 
+          borderRadius: '10px', 
+          border: '1px solid var(--border-subtle)' 
+        }}>
+          {(isMobile ? ['agenda', 'mes'] as const : ['mes', 'semana', 'dia', 'agenda'] as const).map(v => (
             <button
               key={v}
               className={`btn btn-sm ${vista === v ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ padding: '5px 12px', fontSize: '0.78rem', textTransform: 'capitalize', fontWeight: 700 }}
+              style={{ 
+                padding: '4px 10px', 
+                fontSize: '0.74rem', 
+                textTransform: 'capitalize', 
+                fontWeight: 800,
+                minHeight: '28px'
+              }}
               onClick={() => setVista(v)}
             >
-              {v}
+              {v === 'agenda' && isMobile ? 'Día / Agenda' : v}
             </button>
           ))}
         </div>
       </div>
 
-      {/* 2. Barra de Navegación de Fechas, Selector Rápido y Filtros */}
-      <div className="glass-card" style={{ padding: '14px 16px', marginBottom: '16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      {/* 2. Barra de Filtros y Búsqueda (Colapsable en Móvil) */}
+      <div 
+        className="glass-card" 
+        style={{ 
+          padding: isMobile ? '10px 12px' : '12px 16px', 
+          marginBottom: '14px',
+          borderRadius: '14px'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
           
-          {/* Navegación Mes / Día + DatePicker */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-            <button className="btn btn-secondary btn-sm" onClick={prevPeriod} title="Periodo anterior">
+          {/* Navegación y Fecha Rápida */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={isMobile && vista === 'agenda' ? prevWeek : prevMonth} 
+              title="Periodo anterior"
+              style={{ width: '32px', height: '32px', padding: 0 }}
+            >
               <ChevronLeft size={16} />
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={setHoy} style={{ fontWeight: 800 }}>
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={goToToday} 
+              style={{ fontWeight: 800, padding: '4px 10px', minHeight: '32px' }}
+            >
               Hoy
             </button>
-            <button className="btn btn-secondary btn-sm" onClick={nextPeriod} title="Periodo siguiente">
+            <button 
+              className="btn btn-secondary btn-sm" 
+              onClick={isMobile && vista === 'agenda' ? nextWeek : nextMonth} 
+              title="Periodo siguiente"
+              style={{ width: '32px', height: '32px', padding: 0 }}
+            >
               <ChevronRight size={16} />
             </button>
 
-            <span style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fff', marginLeft: '6px' }}>
-              {vista === 'dia' ? currentDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : tituloCabecera}
+            <span style={{ fontSize: isMobile ? '0.95rem' : '1.05rem', fontWeight: 800, color: '#fff', marginLeft: '4px' }}>
+              {monthYearLabel}
             </span>
 
-            {/* Selector rápido de fecha */}
+            {/* Input DatePicker nativo */}
             <input 
               type="date"
               className="form-input"
-              value={currentDateStr}
+              value={selectedDateStr}
               onChange={handleSelectDateInput}
-              style={{ minHeight: '32px', fontSize: '0.8rem', padding: '2px 8px', marginLeft: '8px' }}
-              title="Ir directamente a una fecha"
+              style={{ minHeight: '32px', fontSize: '0.78rem', padding: '2px 8px', width: 'auto' }}
+              title="Seleccionar fecha exacta"
             />
           </div>
 
-          {/* Filtros Granulares */}
-          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-            {/* Responsable */}
+          {/* Botón Filtros en Móvil / Filtros en Escritorio */}
+          {isMobile ? (
+            <button
+              onClick={() => setMostrarFiltrosMobile(!mostrarFiltrosMobile)}
+              className={`btn btn-sm ${mostrarFiltrosMobile ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '5px 10px', fontSize: '0.75rem', fontWeight: 700, gap: '5px' }}
+            >
+              <SlidersHorizontal size={13} />
+              <span>Filtros {filtros.responsable !== 'todos' || filtros.tipoEvento !== 'todos' ? '(1)' : ''}</span>
+            </button>
+          ) : (
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <select
+                className="form-input"
+                style={{ minHeight: '34px', fontSize: '0.8rem', padding: '3px 8px' }}
+                value={filtros.responsable}
+                onChange={e => setFiltros({ ...filtros, responsable: e.target.value })}
+              >
+                <option value="todos">👤 Todos los Responsables</option>
+                <option value="Germán">Germán</option>
+                <option value="Wendy">Wendy</option>
+                <option value="Juan">Juan</option>
+              </select>
+
+              <select
+                className="form-input"
+                style={{ minHeight: '34px', fontSize: '0.8rem', padding: '3px 8px' }}
+                value={filtros.tipoEvento}
+                onChange={e => setFiltros({ ...filtros, tipoEvento: e.target.value })}
+              >
+                <option value="todos">🏷️ Todos los Eventos</option>
+                <option value="vencimiento_cobro">💰 Cobros Pendientes</option>
+                <option value="entrega_pedido">📦 Entregas de Pedidos</option>
+                <option value="tarea_individual">👤 Tareas Personales</option>
+                <option value="tarea_grupal">👥 Tareas Grupales</option>
+                <option value="rutina_diaria">🔄 Rutinas Diarias</option>
+                <option value="llegada_insumo">🛒 Insumos de Taller</option>
+              </select>
+
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Buscar compromiso..."
+                style={{ minHeight: '34px', fontSize: '0.8rem', width: '150px' }}
+                value={filtros.busqueda}
+                onChange={e => setFiltros({ ...filtros, busqueda: e.target.value })}
+              >
+              </input>
+            </div>
+          )}
+        </div>
+
+        {/* Panel Desplegable de Filtros en Móvil */}
+        {isMobile && mostrarFiltrosMobile && (
+          <div style={{
+            marginTop: '12px',
+            paddingTop: '10px',
+            borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'grid',
+            gridTemplateColumns: '1fr',
+            gap: '8px'
+          }}>
             <select
               className="form-input"
-              style={{ minHeight: '36px', fontSize: '0.82rem', padding: '4px 8px' }}
+              style={{ minHeight: '40px', fontSize: '0.85rem' }}
               value={filtros.responsable}
               onChange={e => setFiltros({ ...filtros, responsable: e.target.value })}
             >
@@ -423,10 +509,9 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
               <option value="Juan">Juan</option>
             </select>
 
-            {/* Tipo de Evento */}
             <select
               className="form-input"
-              style={{ minHeight: '36px', fontSize: '0.82rem', padding: '4px 8px' }}
+              style={{ minHeight: '40px', fontSize: '0.85rem' }}
               value={filtros.tipoEvento}
               onChange={e => setFiltros({ ...filtros, tipoEvento: e.target.value })}
             >
@@ -439,105 +524,259 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
               <option value="llegada_insumo">🛒 Insumos de Taller</option>
             </select>
 
-            {/* Búsqueda */}
             <input
               type="text"
               className="form-input"
-              placeholder="Buscar compromiso..."
-              style={{ minHeight: '36px', fontSize: '0.82rem', width: '150px' }}
+              placeholder="Buscar por texto..."
+              style={{ minHeight: '40px', fontSize: '0.85rem' }}
               value={filtros.busqueda}
               onChange={e => setFiltros({ ...filtros, busqueda: e.target.value })}
             />
           </div>
-        </div>
+        )}
       </div>
 
-      {/* 3. VISTAS CONMUTABLES */}
+      {/* =========================================================================
+          3. VISTA PRINCIPAL MÓVIL (MOBILE-FIRST): STRIP SEMANAL + LISTA DE DÍA
+          ========================================================================= */}
+      {isMobile && vista === 'agenda' && (
+        <div className="mobile-calendar-view" style={{ width: '100%', overflowX: 'hidden' }}>
+          
+          {/* Selector Semanal Compacto (7 días con Puntos de Color y Swipe) */}
+          <MobileWeekStrip
+            weekDays={weekDays}
+            eventos={eventosFiltrados}
+            selectedDateStr={selectedDateStr}
+            monthYearLabel={monthYearLabel}
+            onSelectDate={selectDate}
+            onPrevWeek={prevWeek}
+            onNextWeek={nextWeek}
+            onGoToToday={goToToday}
+            touchHandlers={touchHandlers}
+            onOpenBottomSheet={() => setIsBottomSheetOpen(true)}
+          />
 
-      {/* VISTA A: MENSUAL CON DRILL-DOWN */}
-      {vista === 'mes' && (
-        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(130px, 1fr))', gap: '4px', textAlign: 'center', fontWeight: 800, fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-            <div>LUNES</div>
-            <div>MARTES</div>
-            <div>MIÉRCOLES</div>
-            <div>JUEVES</div>
-            <div>VIERNES</div>
-            <div>SÁBADO</div>
-            <div>DOMINGO</div>
+          {/* Encabezado del Día Seleccionado */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: '10px',
+            padding: '0 4px'
+          }}>
+            <div>
+              <h3 style={{
+                margin: 0,
+                fontSize: '1.05rem',
+                fontWeight: 900,
+                color: '#ffffff',
+                letterSpacing: '-0.01em'
+              }}>
+                {selectedDayLabel}
+              </h3>
+              <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
+                {eventosDelDiaSeleccionado.length} compromiso(s) en esta fecha
+              </span>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setIsBottomSheetOpen(true)}
+              className="btn btn-sm btn-secondary"
+              style={{
+                fontSize: '0.74rem',
+                fontWeight: 800,
+                padding: '4px 10px',
+                minHeight: '30px',
+                borderColor: 'rgba(56, 189, 248, 0.3)',
+                color: '#38bdf8'
+              }}
+            >
+              Filtro Rápido
+            </button>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(130px, 1fr))', gap: '6px' }}>
-            {diasMes.map(dia => {
+          {/* Feed Vertical de Tarjetas de Eventos del Día */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            width: '100%'
+          }}>
+            {eventosDelDiaSeleccionado.length === 0 ? (
+              <div 
+                className="glass-card" 
+                style={{ 
+                  textAlign: 'center', 
+                  padding: '36px 16px', 
+                  color: '#94a3b8',
+                  borderRadius: '14px',
+                  border: '1px dashed rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                <CheckCircle2 size={36} color="#10b981" style={{ margin: '0 auto 10px', opacity: 0.8 }} />
+                <h4 style={{ margin: '0 0 4px', color: '#fff', fontSize: '0.98rem' }}>
+                  Sin compromisos para esta fecha
+                </h4>
+                <p style={{ margin: 0, fontSize: '0.8rem' }}>
+                  Toca otro día en la barra superior o desliza para ver otras semanas.
+                </p>
+              </div>
+            ) : (
+              eventosDelDiaSeleccionado.map(ev => (
+                <MobileEventCard
+                  key={ev.id}
+                  event={ev}
+                  onDeepLink={handleDeepLink}
+                  onReschedule={(e) => {
+                    setEventoSeleccionado(e);
+                    setNuevaFechaInput(e.fecha_inicio);
+                  }}
+                />
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          4. VISTAS TABLET / ESCRITORIO O VISTA MENSUAL EXPANDIDA
+          ========================================================================= */}
+
+      {/* VISTA A: MENSUAL */}
+      {vista === 'mes' && (
+        <div className="glass-card" style={{ padding: isMobile ? '10px' : '16px', overflowX: 'auto', borderRadius: '16px' }}>
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: isMobile ? 'repeat(7, 1fr)' : 'repeat(7, minmax(130px, 1fr))', 
+            gap: '4px', 
+            textAlign: 'center', 
+            fontWeight: 800, 
+            fontSize: isMobile ? '0.7rem' : '0.78rem', 
+            color: 'var(--text-muted)', 
+            marginBottom: '8px' 
+          }}>
+            <div>{isMobile ? 'L' : 'LUNES'}</div>
+            <div>{isMobile ? 'M' : 'MARTES'}</div>
+            <div>{isMobile ? 'M' : 'MIÉRCOLES'}</div>
+            <div>{isMobile ? 'J' : 'JUEVES'}</div>
+            <div>{isMobile ? 'V' : 'VIERNES'}</div>
+            <div>{isMobile ? 'S' : 'SÁBADO'}</div>
+            <div>{isMobile ? 'D' : 'DOMINGO'}</div>
+          </div>
+
+          <div style={{ 
+            display: 'grid', 
+            gridTemplateColumns: isMobile ? 'repeat(7, 1fr)' : 'repeat(7, minmax(130px, 1fr))', 
+            gap: isMobile ? '3px' : '6px' 
+          }}>
+            {monthDays.map(dia => {
               const esHoy = dia.dateStr === hoyStr;
+              const esSeleccionado = dia.dateStr === selectedDateStr;
               const eventosDelDia = eventosFiltrados.filter(ev => ev.fecha_inicio.startsWith(dia.dateStr));
 
               return (
                 <div
                   key={dia.dateStr}
-                  onClick={() => setDiaDrawer(dia.dateStr)}
+                  onClick={() => {
+                    selectDate(dia.dateStr);
+                    if (isMobile) {
+                      setIsBottomSheetOpen(true);
+                    } else {
+                      setDiaDrawerDesktop(dia.dateStr);
+                    }
+                  }}
                   style={{
-                    minHeight: '115px',
+                    minHeight: isMobile ? '56px' : '115px',
                     background: dia.isCurrentMonth ? (esHoy ? 'rgba(56, 189, 248, 0.09)' : 'rgba(255, 255, 255, 0.02)') : 'rgba(0, 0, 0, 0.25)',
-                    border: esHoy ? '1px solid var(--brand-cyan)' : '1px solid rgba(255, 255, 255, 0.06)',
-                    borderRadius: '8px',
-                    padding: '6px',
+                    border: esHoy 
+                      ? '1.5px solid var(--brand-cyan)' 
+                      : esSeleccionado 
+                        ? '1px solid rgba(56, 189, 248, 0.4)' 
+                        : '1px solid rgba(255, 255, 255, 0.06)',
+                    borderRadius: isMobile ? '8px' : '10px',
+                    padding: isMobile ? '4px 2px' : '6px',
                     display: 'flex',
                     flexDirection: 'column',
                     cursor: 'pointer',
                     transition: 'all 0.15s ease',
-                    opacity: dia.isCurrentMonth ? 1 : 0.45
+                    opacity: dia.isCurrentMonth ? 1 : 0.45,
+                    touchAction: 'manipulation'
                   }}
                   title="Haz clic para ver la agenda detallada de este día"
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2px', padding: '0 2px' }}>
                     <span style={{ 
-                      fontSize: '0.8rem', 
+                      fontSize: isMobile ? '0.75rem' : '0.8rem', 
                       fontWeight: esHoy ? 900 : 700, 
                       color: esHoy ? 'var(--brand-cyan)' : dia.isCurrentMonth ? '#fff' : 'var(--text-muted)' 
                     }}>
                       {dia.dayNumber}
                     </span>
                     {eventosDelDia.length > 0 && (
-                      <span style={{ fontSize: '0.66rem', background: 'rgba(56, 189, 248, 0.2)', color: 'var(--brand-cyan)', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
+                      <span style={{ 
+                        fontSize: '0.62rem', 
+                        background: 'rgba(56, 189, 248, 0.2)', 
+                        color: 'var(--brand-cyan)', 
+                        padding: '1px 4px', 
+                        borderRadius: '4px', 
+                        fontWeight: 800 
+                      }}>
                         {eventosDelDia.length}
                       </span>
                     )}
                   </div>
 
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflowY: 'hidden' }}>
-                    {eventosDelDia.slice(0, 3).map(ev => {
-                      const cfg = COLORES_TIPO[ev.tipo_evento] || COLORES_TIPO.tarea_individual;
-                      return (
-                        <div
-                          key={ev.id}
-                          style={{
-                            background: cfg.bg,
-                            border: `1px solid ${cfg.border}`,
-                            color: cfg.text,
-                            borderRadius: '4px',
-                            padding: '2px 5px',
-                            fontSize: '0.69rem',
-                            fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                            overflow: 'hidden',
-                            textOverflow: 'ellipsis',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: '3px'
-                          }}
-                        >
-                          <span>{cfg.icon}</span>
-                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.titulo}</span>
-                        </div>
-                      );
-                    })}
-                    {eventosDelDia.length > 3 && (
-                      <span style={{ fontSize: '0.68rem', color: 'var(--brand-cyan)', fontWeight: 800, textAlign: 'center', marginTop: 'auto' }}>
-                        +{eventosDelDia.length - 3} más (ver agenda)
-                      </span>
-                    )}
-                  </div>
+                  {/* Indicadores en Mobile o Eventos en Desktop */}
+                  {isMobile ? (
+                    <div style={{ display: 'flex', gap: '2px', justifyContent: 'center', marginTop: 'auto', minHeight: '6px' }}>
+                      {eventosDelDia.slice(0, 3).map((ev, i) => (
+                        <span 
+                          key={i} 
+                          style={{ 
+                            width: '4px', 
+                            height: '4px', 
+                            borderRadius: '50%', 
+                            backgroundColor: COLORES_TIPO[ev.tipo_evento]?.text || '#38bdf8' 
+                          }} 
+                        />
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, overflowY: 'hidden' }}>
+                      {eventosDelDia.slice(0, 3).map(ev => {
+                        const cfg = COLORES_TIPO[ev.tipo_evento] || COLORES_TIPO.tarea_individual;
+                        return (
+                          <div
+                            key={ev.id}
+                            style={{
+                              background: cfg.bg,
+                              border: `1px solid ${cfg.border}`,
+                              color: cfg.text,
+                              borderRadius: '4px',
+                              padding: '2px 5px',
+                              fontSize: '0.69rem',
+                              fontWeight: 700,
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '3px'
+                            }}
+                          >
+                            <span>{cfg.icon}</span>
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{ev.titulo}</span>
+                          </div>
+                        );
+                      })}
+                      {eventosDelDia.length > 3 && (
+                        <span style={{ fontSize: '0.68rem', color: 'var(--brand-cyan)', fontWeight: 800, textAlign: 'center', marginTop: 'auto' }}>
+                          +{eventosDelDia.length - 3} más
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -545,11 +784,11 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         </div>
       )}
 
-      {/* VISTA B: SEMANAL */}
-      {vista === 'semana' && (
-        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(150px, 1fr))', gap: '8px' }}>
-            {diasSemana.map(d => {
+      {/* VISTA B: SEMANAL (DESKTOP) */}
+      {!isMobile && vista === 'semana' && (
+        <div className="glass-card" style={{ padding: '16px', overflowX: 'auto', borderRadius: '16px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, minmax(140px, 1fr))', gap: '8px' }}>
+            {weekDays.map(d => {
               const esHoy = d.dateStr === hoyStr;
               const evs = eventosFiltrados.filter(ev => ev.fecha_inicio.startsWith(d.dateStr));
 
@@ -567,7 +806,7 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                   }}
                 >
                   <div style={{ textAlign: 'center', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '8px', marginBottom: '8px' }}>
-                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 800 }}>{d.nombreDia}</div>
+                    <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', fontWeight: 800 }}>{d.dayOfWeekFull}</div>
                     <div style={{ fontSize: '1.25rem', fontWeight: 900, color: esHoy ? 'var(--brand-cyan)' : '#fff' }}>{d.dayNumber}</div>
                   </div>
 
@@ -605,21 +844,21 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         </div>
       )}
 
-      {/* VISTA C: DIARIA (BLOQUES DEL DÍA ACTUAL) */}
-      {vista === 'dia' && (
-        <div className="glass-card" style={{ padding: '20px' }}>
+      {/* VISTA C: DIARIA (DESKTOP) */}
+      {!isMobile && vista === 'dia' && (
+        <div className="glass-card" style={{ padding: '20px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <CalendarDays size={20} color="var(--brand-cyan)" />
-              Compromisos de {currentDate.toLocaleDateString('es-ES', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+              Compromisos de {selectedDayLabel}
             </h3>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: 'var(--brand-cyan)' }}>
-              {eventosFiltrados.filter(ev => ev.fecha_inicio.startsWith(currentDateStr)).length} compromisos programados
+              {eventosDelDiaSeleccionado.length} compromisos programados
             </span>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {eventosFiltrados.filter(ev => ev.fecha_inicio.startsWith(currentDateStr)).map(ev => {
+            {eventosDelDiaSeleccionado.map(ev => {
               const cfg = COLORES_TIPO[ev.tipo_evento] || COLORES_TIPO.tarea_individual;
               const resp = AVATARES_RESPONSABLE[ev.responsable] || { color: '#94a3b8', badge: '?' };
 
@@ -630,7 +869,7 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                     background: cfg.bg,
                     border: `1px solid ${cfg.border}`,
                     borderLeft: `5px solid ${cfg.text}`,
-                    borderRadius: '8px',
+                    borderRadius: '10px',
                     padding: '14px 18px',
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -653,6 +892,11 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    {ev.monto !== undefined && ev.monto > 0 && (
+                      <span style={{ fontSize: '0.92rem', fontWeight: 900, color: '#10b981', marginRight: '8px' }}>
+                        ${ev.monto.toLocaleString('es-CO')} COP
+                      </span>
+                    )}
                     <button className="btn btn-primary btn-sm" onClick={() => handleDeepLink(ev)}>
                       <span>Abrir Registro</span>
                       <ExternalLink size={13} />
@@ -665,8 +909,8 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         </div>
       )}
 
-      {/* VISTA D: AGENDA CRONOLÓGICA CON DEEP-LINKS */}
-      {vista === 'agenda' && (
+      {/* VISTA D: AGENDA COMPLETA (DESKTOP) */}
+      {!isMobile && vista === 'agenda' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
           {eventosFiltrados.length === 0 ? (
             <div className="glass-card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
@@ -690,7 +934,8 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     flexWrap: 'wrap',
-                    gap: '12px'
+                    gap: '12px',
+                    borderRadius: '12px'
                   }}
                 >
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
@@ -730,17 +975,22 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    {ev.monto !== undefined && ev.monto > 0 && (
+                      <span style={{ fontSize: '0.95rem', fontWeight: 900, color: '#10b981' }}>
+                        ${ev.monto.toLocaleString('es-CO')} COP
+                      </span>
+                    )}
+
                     <div style={{ textAlign: 'right' }}>
-                      <div style={{ fontSize: '0.85rem', fontWeight: 800, color: '#fff' }}>
+                      <div style={{ fontSize: '0.82rem', fontWeight: 800, color: '#fff' }}>
                         📅 {ev.fecha_inicio}
                       </div>
-                      <span style={{ fontSize: '0.72rem', color: cfg.text, textTransform: 'uppercase', fontWeight: 800 }}>
+                      <span style={{ fontSize: '0.7rem', color: cfg.text, textTransform: 'uppercase', fontWeight: 800 }}>
                         {cfg.label}
                       </span>
                     </div>
 
-                    {/* Botón Deep-Link directo al módulo de origen */}
                     <button 
                       className="btn btn-primary btn-sm"
                       onClick={() => handleDeepLink(ev)}
@@ -748,17 +998,6 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                     >
                       <span>Abrir</span>
                       <ExternalLink size={13} />
-                    </button>
-
-                    <button 
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => {
-                        setEventoSeleccionado(ev);
-                        setNuevaFechaInput(ev.fecha_inicio);
-                      }}
-                      title="Reprogramar fecha"
-                    >
-                      Reprogramar
                     </button>
                   </div>
                 </div>
@@ -768,15 +1007,33 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         </div>
       )}
 
-      {/* 4. PANEL LATERAL / DRAWER DE DRILL-DOWN POR DÍA ESPECÍFICO */}
-      {diaDrawer && (
+      {/* =========================================================================
+          5. BOTTOM SHEET NATIVO MÓVIL
+          ========================================================================= */}
+      <MobileBottomSheet
+        isOpen={isBottomSheetOpen}
+        dateStr={selectedDateStr}
+        dayLabel={selectedDayLabel}
+        eventos={eventosDelDiaSeleccionado}
+        onClose={() => setIsBottomSheetOpen(false)}
+        onDeepLink={handleDeepLink}
+        onReschedule={(e) => {
+          setEventoSeleccionado(e);
+          setNuevaFechaInput(e.fecha_inicio);
+        }}
+      />
+
+      {/* =========================================================================
+          6. DRAWER LATERAL PARA DESKTOP
+          ========================================================================= */}
+      {diaDrawerDesktop && !isMobile && (
         <div 
           style={{
             position: 'fixed', inset: 0,
             background: 'rgba(0, 0, 0, 0.75)', backdropFilter: 'blur(6px)',
             zIndex: 99999, display: 'flex', justifyContent: 'flex-end'
           }}
-          onClick={() => setDiaDrawer(null)}
+          onClick={() => setDiaDrawerDesktop(null)}
         >
           <div 
             style={{
@@ -789,7 +1046,6 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
             }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Cabecera del Drawer */}
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '14px' }}>
               <div>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 900, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -797,19 +1053,18 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                   Agenda del Día
                 </h3>
                 <span style={{ fontSize: '0.85rem', color: 'var(--brand-cyan)', fontWeight: 700 }}>
-                  📅 {diaDrawer}
+                  📅 {diaDrawerDesktop}
                 </span>
               </div>
               <button 
                 type="button" 
-                onClick={() => setDiaDrawer(null)}
+                onClick={() => setDiaDrawerDesktop(null)}
                 style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }}
               >
                 <X size={20} />
               </button>
             </div>
 
-            {/* Filtro por estado en Drawer */}
             <div style={{ display: 'flex', gap: '6px' }}>
               {(['todos', 'pendiente', 'en_progreso', 'completado'] as const).map(st => (
                 <button
@@ -823,15 +1078,14 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
               ))}
             </div>
 
-            {/* Listado de compromisos del día */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
-              {eventosDelDiaDrawer.length === 0 ? (
+              {eventosDelDiaDrawerDesktop.length === 0 ? (
                 <div style={{ textAlign: 'center', padding: '40px 10px', color: 'var(--text-muted)' }}>
                   <CheckCircle2 size={36} color="#34d399" style={{ marginBottom: '8px', opacity: 0.8 }} />
                   <p style={{ margin: 0, fontSize: '0.88rem' }}>Sin compromisos para esta fecha con el filtro seleccionado</p>
                 </div>
               ) : (
-                eventosDelDiaDrawer.map(ev => {
+                eventosDelDiaDrawerDesktop.map(ev => {
                   const cfg = COLORES_TIPO[ev.tipo_evento] || COLORES_TIPO.tarea_individual;
                   return (
                     <div 
@@ -877,7 +1131,9 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
         </div>
       )}
 
-      {/* 5. MODAL REPROGRAMACIÓN DE FECHA */}
+      {/* =========================================================================
+          7. MODAL DE REPROGRAMACIÓN DE FECHA
+          ========================================================================= */}
       {eventoSeleccionado && (
         <div 
           style={{
