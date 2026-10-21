@@ -1,4 +1,4 @@
-export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing' | 'herramientas' | 'calendario';
+export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing' | 'herramientas' | 'calendario' | 'usuarios';
 
 export * from './pos';
 export * from './tasks';

@@ -23,6 +23,7 @@ const MarketingHubView = React.lazy(() => import('./components/marketing/Marketi
 const ToolsHubView = React.lazy(() => import('./components/tools/ToolsHubView').then(m => ({ default: m.ToolsHubView })));
 const BackupDriveModal = React.lazy(() => import('./components/backup/BackupDriveModal').then(m => ({ default: m.BackupDriveModal })));
 const CalendarOperationalView = React.lazy(() => import('./components/calendar/CalendarOperationalView').then(m => ({ default: m.CalendarOperationalView })));
+const UsuariosManagerView = React.lazy(() => import('./components/admin/UsuariosManagerView').then(m => ({ default: m.UsuariosManagerView })));
 import { AuthSecurityService } from './services/authSecurityService';
 
 import { 
@@ -58,7 +59,7 @@ export const App: React.FC = () => {
       const tabParam = params.get('tab') as TabType;
       const validTabs: TabType[] = [
         'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
-        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas', 'calendario'
+        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas', 'calendario', 'usuarios'
       ];
       if (tabParam && validTabs.includes(tabParam)) {
         return tabParam;
@@ -1652,6 +1653,10 @@ export const App: React.FC = () => {
             onActualizarTarea={handleActualizarTarea}
             onNavigateTab={setActiveTab}
           />
+        )}
+
+        {activeTab === 'usuarios' && (
+          <UsuariosManagerView />
         )}
         </React.Suspense>
       </main>

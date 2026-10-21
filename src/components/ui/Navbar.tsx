@@ -157,6 +157,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'usuarios' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
+            onClick={() => onSelectTab('usuarios')}
+            title="Gestión de Personal, Roles y Accesos"
+            style={{ fontWeight: 700 }}
+          >
+            <Users size={14} color={activeTab === 'usuarios' ? '#000' : '#38bdf8'} />
+            <span>Personal</span>
+          </button>
+        )}
+
         <button 
           className="btn btn-secondary btn-sm header-desktop-only"
           onClick={() => onOpenBackupModal ? onOpenBackupModal() : StorageService.exportBackup()}

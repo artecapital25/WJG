@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
-import { Lock, ShieldCheck, Eye, EyeOff, Sparkles, Smartphone, CheckCircle, AlertTriangle } from 'lucide-react';
+import { Lock, ShieldCheck, Eye, EyeOff, Sparkles, Smartphone, AlertTriangle, KeyRound, MessageSquare, Loader2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import { AuthSecurityService } from '../../services/authSecurityService';
+import { PasswordResetModal } from './PasswordResetModal';
+import { MustChangePasswordModal } from './MustChangePasswordModal';
 import { toast } from '../ui/ToastProvider';
 
 interface StaffAuthGuardProps {
@@ -9,23 +11,31 @@ interface StaffAuthGuardProps {
 }
 
 export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }) => {
+  const [loginMethod, setLoginMethod] = useState<'profile' | 'credentials'>('profile');
   const [selectedStaff, setSelectedStaff] = useState<string>('german');
-  const [pin, setPin] = useState<string>('');
-  const [showPin, setShowPin] = useState<boolean>(false);
+  const [emailOrPhone, setEmailOrPhone] = useState<string>('');
+  const [password, setPassword] = useState<string>('');
+  const [showPassword, setShowPassword] = useState<boolean>(false);
   const [rememberDevice, setRememberDevice] = useState<boolean>(true);
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
+  // Modales de Recuperación y Cambio Obligatorio
+  const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [showMustChangeModal, setShowMustChangeModal] = useState<boolean>(false);
+  const [mustChangeUserId, setMustChangeUserId] = useState<string>('');
+  const [pendingSuccessLabel, setPendingSuccessLabel] = useState<string>('');
+
   const staffProfiles = [
-    { id: 'german', name: 'Germán', role: 'Administrador / Modelado 3D', avatar: 'G' },
-    { id: 'wendy', name: 'Wendy', role: 'Administración / Finanzas', avatar: 'W' },
-    { id: 'juan', name: 'Juan', role: 'Operador Taller / Producción', avatar: 'J' }
+    { id: 'german', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3204814702', email: 'german@wjgeeks.com' },
+    { id: 'wendy', name: 'Wendy', role: 'Administración / Finanzas', avatar: 'W', phone: '3100000002', email: 'wendy@wjgeeks.com' },
+    { id: 'juan', name: 'Juan', role: 'Taller / Producción', avatar: 'J', phone: '3100000003', email: 'juan@wjgeeks.com' }
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!pin.trim()) {
-      setErrorMessage('Por favor ingresa tu PIN de acceso o contraseña.');
+    if (!password.trim()) {
+      setErrorMessage('Por favor ingresa tu contraseña o PIN de acceso.');
       return;
     }
 
@@ -33,53 +43,98 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
     setLoading(true);
 
     try {
-      const inputProfile = selectedStaff.toLowerCase();
-      const enteredPin = pin.trim();
+      const enteredPassword = password.trim();
+      const identifier = loginMethod === 'profile' 
+        ? staffProfiles.find(p => p.id === selectedStaff)?.email || selectedStaff 
+        : emailOrPhone.trim();
 
-      // 1. Si Supabase Auth está configurado con usuarios de correo
+      const userLabel = loginMethod === 'profile'
+        ? selectedStaff.toUpperCase()
+        : identifier.split('@')[0].toUpperCase();
+
+      // 1. Verificar primero en la tabla `usuarios_sistema` si Supabase está activo
       if (isSupabaseConfigured && supabase) {
-        let email = `${inputProfile}@wjgeeks.com`;
-        const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password: enteredPin
-        });
+        const cleanIdent = identifier.toLowerCase();
+        const cleanPhone = identifier.replace(/\D/g, '');
 
-        if (!error && data?.user) {
-          const label = selectedStaff.toUpperCase();
-          if (rememberDevice) {
-            AuthSecurityService.saveTrustedDevice(label);
-          } else {
-            sessionStorage.setItem('wjg_admin_unlocked', 'true');
-            localStorage.setItem('wjg_staff_user', label);
+        let query = supabase.from('usuarios_sistema').select('*');
+        if (cleanPhone.length >= 7) {
+          query = query.or(`email.eq.${cleanIdent},telefono_whatsapp.ilike.%${cleanPhone}%`);
+        } else {
+          query = query.eq('email', cleanIdent);
+        }
+
+        const { data: dbUsers, error: dbErr } = await query.limit(1);
+
+        if (!dbErr && dbUsers && dbUsers.length > 0) {
+          const userRec = dbUsers[0];
+
+          // Validación de estado de cuenta (Kill Switch)
+          if (!userRec.activo) {
+            setErrorMessage('Esta cuenta ha sido desactivada por el administrador. Contacta a soporte.');
+            setLoading(false);
+            return;
           }
-          toast.success(`Bienvenido al sistema, ${label} 👋`);
-          onLoginSuccess(label);
-          return;
+
+          // Validación de hash de contraseña
+          const encoder = new TextEncoder();
+          const data = encoder.encode(enteredPassword);
+          const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+          const enteredHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+          if (userRec.password_hash === enteredHash || (await AuthSecurityService.verifyEmergencyPin(enteredPassword))) {
+            // Actualizar último acceso y metadata de dispositivo
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            supabase.from('usuarios_sistema').update({
+              ultimo_acceso: new Date().toISOString(),
+              dispositivo_info: {
+                tipo: isMobile ? 'movil' : 'escritorio',
+                navegador: navigator.userAgent.slice(0, 80),
+                fecha: new Date().toISOString()
+              }
+            }).eq('id', userRec.id).then();
+
+            // Verificar si tiene cambio obligatorio de clave
+            if (userRec.must_change_password) {
+              setMustChangeUserId(userRec.id);
+              setPendingSuccessLabel(userRec.nombre || userLabel);
+              setShowMustChangeModal(true);
+              setLoading(false);
+              return;
+            }
+
+            // Inicio de sesión exitoso
+            finalizeLogin(userRec.nombre || userLabel);
+            return;
+          }
         }
       }
 
-      // 2. Validación de PIN mediante Hash SHA-256 (Cero credenciales en texto plano)
-      const isValid = await AuthSecurityService.verifyEmergencyPin(enteredPin);
+      // 2. Validación de PIN de Taller / Emergencia mediante Hash Criptográfico
+      const isPinValid = await AuthSecurityService.verifyEmergencyPin(enteredPassword);
 
-      if (isValid) {
-        const staffLabel = selectedStaff.toUpperCase();
-        if (rememberDevice) {
-          AuthSecurityService.saveTrustedDevice(staffLabel);
-        } else {
-          sessionStorage.setItem('wjg_admin_unlocked', 'true');
-          localStorage.setItem('wjg_staff_user', staffLabel);
-        }
-        toast.success(`Acceso Autorizado • Sesión iniciada como ${staffLabel}`);
-        onLoginSuccess(staffLabel);
+      if (isPinValid) {
+        finalizeLogin(userLabel);
         return;
       }
 
-      setErrorMessage('PIN o contraseña incorrecta. Verifica tus credenciales e intenta nuevamente.');
+      setErrorMessage('Contraseña o PIN incorrecto. ¿Olvidaste tu contraseña? Recupérala vía WhatsApp.');
     } catch (err: any) {
-      setErrorMessage(err.message || 'Error validando credenciales.');
+      setErrorMessage(err.message || 'Error validando credenciales de acceso.');
     } finally {
       setLoading(false);
     }
+  };
+
+  const finalizeLogin = (label: string) => {
+    if (rememberDevice) {
+      AuthSecurityService.saveTrustedDevice(label);
+    } else {
+      sessionStorage.setItem('wjg_admin_unlocked', 'true');
+      localStorage.setItem('wjg_staff_user', label);
+    }
+    toast.success(`Acceso Autorizado • Sesión activa como ${label}`);
+    onLoginSuccess(label);
   };
 
   return (
@@ -96,15 +151,15 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
         fontFamily: 'system-ui, -apple-system, sans-serif'
       }}
     >
-      {/* Background Glows */}
+      {/* Background Ambient Glows */}
       <div 
         style={{
           position: 'absolute',
           top: '-15%',
           left: '50%',
           transform: 'translateX(-50%)',
-          width: '500px',
-          height: '500px',
+          width: '520px',
+          height: '520px',
           background: 'radial-gradient(circle, rgba(14, 165, 233, 0.18) 0%, transparent 70%)',
           pointerEvents: 'none'
         }}
@@ -114,8 +169,8 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
           position: 'absolute',
           bottom: '-10%',
           right: '10%',
-          width: '350px',
-          height: '350px',
+          width: '380px',
+          height: '380px',
           background: 'radial-gradient(circle, rgba(99, 102, 241, 0.12) 0%, transparent 70%)',
           pointerEvents: 'none'
         }}
@@ -124,19 +179,19 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
       <div 
         style={{
           width: '100%',
-          maxWidth: '440px',
-          background: 'rgba(15, 23, 42, 0.85)',
+          maxWidth: '460px',
+          background: 'rgba(15, 23, 42, 0.88)',
           border: '1px solid rgba(255, 255, 255, 0.1)',
-          backdropFilter: 'blur(20px)',
-          borderRadius: '24px',
+          backdropFilter: 'blur(24px)',
+          borderRadius: '26px',
           padding: '36px 32px',
-          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.7)',
+          boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.75)',
           position: 'relative',
           zIndex: 1
         }}
       >
-        {/* Header con Logo y Candado */}
-        <div style={{ textAlign: 'center', marginBottom: '28px' }}>
+        {/* Header con Marca WJGEEKS 3D */}
+        <div style={{ textAlign: 'center', marginBottom: '26px' }}>
           <div 
             style={{
               width: '64px',
@@ -156,7 +211,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
             WJGEEKS 3D PRO
           </h1>
           <p style={{ fontSize: '0.85rem', color: '#94a3b8', margin: 0 }}>
-            Plataforma Operativa Interna de Taller y POS
+            Plataforma Operativa de Taller, Ventas y POS
           </p>
           <div 
             style={{
@@ -173,80 +228,179 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               fontWeight: 600
             }}
           >
-            <ShieldCheck size={14} /> Acceso Restringido a Personal Autorizado
+            <ShieldCheck size={14} /> Acceso Exclusivo a Personal Autorizado
           </div>
         </div>
 
+        {/* Selector de Método: Perfil Rápido vs Entrada Dual (Email / Teléfono) */}
+        <div 
+          style={{
+            display: 'flex',
+            backgroundColor: 'rgba(30, 41, 59, 0.6)',
+            borderRadius: '12px',
+            padding: '4px',
+            marginBottom: '20px',
+            border: '1px solid rgba(255, 255, 255, 0.06)'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setLoginMethod('profile');
+              setErrorMessage(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: loginMethod === 'profile' ? '#0ea5e9' : 'transparent',
+              color: loginMethod === 'profile' ? '#ffffff' : '#94a3b8',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            Equipo Taller
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setLoginMethod('credentials');
+              setErrorMessage(null);
+            }}
+            style={{
+              flex: 1,
+              padding: '8px 12px',
+              borderRadius: '10px',
+              border: 'none',
+              backgroundColor: loginMethod === 'credentials' ? '#0ea5e9' : 'transparent',
+              color: loginMethod === 'credentials' ? '#ffffff' : '#94a3b8',
+              fontSize: '0.8rem',
+              fontWeight: 600,
+              cursor: 'pointer',
+              transition: 'all 0.2s'
+            }}
+          >
+            Correo / WhatsApp
+          </button>
+        </div>
+
         {/* Formulario */}
-        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-          {/* Selector de Perfil de Staff */}
-          <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '10px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              Selecciona tu Perfil
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-              {staffProfiles.map(profile => {
-                const isSelected = selectedStaff === profile.id;
-                return (
-                  <button
-                    key={profile.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedStaff(profile.id);
-                      setErrorMessage(null);
-                    }}
-                    style={{
-                      padding: '12px 8px',
-                      borderRadius: '14px',
-                      border: isSelected ? '2px solid #0ea5e9' : '1px solid rgba(255, 255, 255, 0.08)',
-                      backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.15)' : 'rgba(30, 41, 59, 0.5)',
-                      color: isSelected ? '#38bdf8' : '#cbd5e1',
-                      cursor: 'pointer',
-                      display: 'flex',
-                      flexDirection: 'column',
-                      alignItems: 'center',
-                      gap: '6px',
-                      transition: 'all 0.2s ease',
-                      outline: 'none'
-                    }}
-                  >
-                    <div 
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          {/* Método 1: Selección de Perfil */}
+          {loginMethod === 'profile' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Selecciona tu Cuenta
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                {staffProfiles.map(profile => {
+                  const isSelected = selectedStaff === profile.id;
+                  return (
+                    <button
+                      key={profile.id}
+                      type="button"
+                      onClick={() => {
+                        setSelectedStaff(profile.id);
+                        setErrorMessage(null);
+                      }}
                       style={{
-                        width: '32px',
-                        height: '32px',
-                        borderRadius: '50%',
-                        backgroundColor: isSelected ? '#0ea5e9' : '#334155',
-                        color: '#ffffff',
+                        padding: '12px 6px',
+                        borderRadius: '14px',
+                        border: isSelected ? '2px solid #0ea5e9' : '1px solid rgba(255, 255, 255, 0.08)',
+                        backgroundColor: isSelected ? 'rgba(14, 165, 233, 0.15)' : 'rgba(30, 41, 59, 0.5)',
+                        color: isSelected ? '#38bdf8' : '#cbd5e1',
+                        cursor: 'pointer',
                         display: 'flex',
+                        flexDirection: 'column',
                         alignItems: 'center',
-                        justifyContent: 'center',
-                        fontWeight: 700,
-                        fontSize: '0.9rem'
+                        gap: '6px',
+                        transition: 'all 0.2s ease',
+                        outline: 'none'
                       }}
                     >
-                      {profile.avatar}
-                    </div>
-                    <span style={{ fontSize: '0.8rem', fontWeight: isSelected ? 700 : 500 }}>
-                      {profile.name}
-                    </span>
-                  </button>
-                );
-              })}
+                      <div 
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          backgroundColor: isSelected ? '#0ea5e9' : '#334155',
+                          color: '#ffffff',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontWeight: 700,
+                          fontSize: '0.85rem'
+                        }}
+                      >
+                        {profile.avatar}
+                      </div>
+                      <span style={{ fontSize: '0.78rem', fontWeight: isSelected ? 700 : 500 }}>
+                        {profile.name}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Input de PIN / Contraseña */}
+          {/* Método 2: Entrada Dual (Correo o Teléfono de WhatsApp) */}
+          {loginMethod === 'credentials' && (
+            <div>
+              <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Correo o Número de WhatsApp
+              </label>
+              <input 
+                type="text"
+                value={emailOrPhone}
+                onChange={e => setEmailOrPhone(e.target.value)}
+                placeholder="ej: german@wjgeeks.com o 3204814702"
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '13px 16px',
+                  borderRadius: '14px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  color: '#f8fafc',
+                  fontSize: '0.92rem',
+                  outline: 'none',
+                  boxSizing: 'border-box'
+                }}
+              />
+            </div>
+          )}
+
+          {/* Campo de Contraseña con Toggle Ojo */}
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              PIN de Taller / Contraseña
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Contraseña / PIN
+              </label>
+              <button
+                type="button"
+                onClick={() => setShowResetModal(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#38bdf8',
+                  fontSize: '0.75rem',
+                  cursor: 'pointer',
+                  padding: 0
+                }}
+              >
+                ¿Olvidaste tu contraseña?
+              </button>
+            </div>
             <div style={{ position: 'relative' }}>
               <input 
-                type={showPin ? 'text' : 'password'}
-                value={pin}
-                onChange={e => setPin(e.target.value)}
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
                 placeholder="Ingresa tu clave de acceso..."
-                autoFocus
                 style={{
                   width: '100%',
                   padding: '14px 44px 14px 16px',
@@ -256,13 +410,12 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
                   color: '#f8fafc',
                   fontSize: '0.95rem',
                   outline: 'none',
-                  boxSizing: 'border-box',
-                  transition: 'border-color 0.2s'
+                  boxSizing: 'border-box'
                 }}
               />
               <button
                 type="button"
-                onClick={() => setShowPin(!showPin)}
+                onClick={() => setShowPassword(!showPassword)}
                 style={{
                   position: 'absolute',
                   right: '12px',
@@ -276,12 +429,12 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
                   alignItems: 'center'
                 }}
               >
-                {showPin ? <EyeOff size={18} /> : <Eye size={18} />}
+                {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
             </div>
           </div>
 
-          {/* Checkbox Dispositivo Confiable */}
+          {/* Casilla Dispositivo de Confianza (30 días) */}
           <label 
             style={{ 
               display: 'flex', 
@@ -306,11 +459,11 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               }}
             />
             <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-              <Smartphone size={14} color="#38bdf8" /> Recordar este dispositivo por 30 días
+              <Smartphone size={14} color="#38bdf8" /> Mantener sesión iniciada en este dispositivo (30 días)
             </span>
           </label>
 
-          {/* Mensaje de Error */}
+          {/* Mensajes de Error */}
           {errorMessage && (
             <div 
               style={{
@@ -330,7 +483,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
             </div>
           )}
 
-          {/* Botón de Entrada */}
+          {/* Botón de Ingreso con Anti Doble Envío */}
           <button
             type="submit"
             disabled={loading}
@@ -354,7 +507,10 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
             }}
           >
             {loading ? (
-              <span>Verificando...</span>
+              <>
+                <Loader2 size={18} className="animate-spin" />
+                <span>Iniciando sesión...</span>
+              </>
             ) : (
               <>
                 <Sparkles size={18} /> Iniciar Sesión Operativa
@@ -363,10 +519,52 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
           </button>
         </form>
 
-        <div style={{ marginTop: '24px', textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
+        {/* Enlace Directo a Recuperación vía WhatsApp */}
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setShowResetModal(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#10b981',
+              fontSize: '0.78rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 500
+            }}
+          >
+            <MessageSquare size={14} /> Recuperar contraseña vía WhatsApp en 1 clic
+          </button>
+        </div>
+
+        <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
           🔒 Sesión segura con cifrado SHA-256 Web Crypto y aislamiento multi-dispositivo.
         </div>
       </div>
+
+      {/* Modal de Recuperación vía WhatsApp OTP */}
+      <PasswordResetModal 
+        isOpen={showResetModal}
+        onClose={() => setShowResetModal(false)}
+        initialIdentifier={
+          loginMethod === 'credentials' && emailOrPhone
+            ? emailOrPhone
+            : staffProfiles.find(p => p.id === selectedStaff)?.email || ''
+        }
+      />
+
+      {/* Modal de Cambio Obligatorio de Contraseña (Primer inicio) */}
+      <MustChangePasswordModal 
+        isOpen={showMustChangeModal}
+        userEmailOrId={mustChangeUserId}
+        onPasswordChanged={() => {
+          setShowMustChangeModal(false);
+          finalizeLogin(pendingSuccessLabel);
+        }}
+      />
     </div>
   );
 };
