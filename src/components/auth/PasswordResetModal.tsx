@@ -219,7 +219,7 @@ export const PasswordResetModal: React.FC<PasswordResetModalProps> = ({
                 type="text"
                 value={identifier}
                 onChange={e => setIdentifier(e.target.value)}
-                placeholder="ej: german@wjgeeks.com o 3204814702"
+                placeholder="ej: german@wjgeeks.com o 3503443140"
                 autoFocus
                 style={{
                   width: '100%',

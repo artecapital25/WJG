@@ -172,6 +172,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       iconColor: 'var(--brand-cyan)'
     },
     {
+      id: 'usuarios',
+      label: 'Personal & Accesos',
+      shortLabel: 'Personal',
+      description: 'Gestión de empleados, roles, contraseñas y Kill Switch',
+      icon: Users,
+      iconBg: 'rgba(14, 165, 233, 0.18)',
+      iconColor: '#38bdf8'
+    },
+    {
       id: 'seguimiento',
       label: 'Rastreo Cliente',
       shortLabel: 'Rastreo',

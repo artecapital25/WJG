@@ -27,9 +27,9 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
   const [pendingSuccessLabel, setPendingSuccessLabel] = useState<string>('');
 
   const staffProfiles = [
-    { id: 'german', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3204814702', email: 'german@wjgeeks.com' },
-    { id: 'wendy', name: 'Wendy', role: 'Administración / Finanzas', avatar: 'W', phone: '3100000002', email: 'wendy@wjgeeks.com' },
-    { id: 'juan', name: 'Juan', role: 'Taller / Producción', avatar: 'J', phone: '3100000003', email: 'juan@wjgeeks.com' }
+    { id: 'german', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3503443140', email: 'german@wjgeeks.com' },
+    { id: 'wendy', name: 'Wendy', role: 'Administración / Finanzas', avatar: 'W', phone: '3204814702', email: 'wendy@wjgeeks.com' },
+    { id: 'juan', name: 'Juan', role: 'Taller / Producción', avatar: 'J', phone: '3217273025', email: 'juan@wjgeeks.com' }
   ];
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -357,7 +357,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
                 type="text"
                 value={emailOrPhone}
                 onChange={e => setEmailOrPhone(e.target.value)}
-                placeholder="ej: german@wjgeeks.com o 3204814702"
+                placeholder="ej: german@wjgeeks.com o 3503443140"
                 autoFocus
                 style={{
                   width: '100%',

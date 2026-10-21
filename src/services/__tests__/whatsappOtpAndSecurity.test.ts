@@ -61,7 +61,7 @@ describe('WhatsApp OTP Service & Security Suite', () => {
 
   it('5. Generador de clave provisional: Genera contraseña válida y segura', () => {
     const prov = WhatsAppOtpService.generateProvisionalPassword();
-    expect(prov.startsWith('Wjg#')).toBe(true);
+    expect(prov.startsWith('Wjg2026#')).toBe(true);
     expect(prov.length).toBeGreaterThanOrEqual(10);
 
     const check = WhatsAppOtpService.calculatePasswordStrength(prov);

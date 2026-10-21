@@ -313,7 +313,11 @@ $$;
 -- Clave por defecto de emergencia ('wjg3d'): bbcfa57ecf8a672f1d0f9a0d796e10de46c29095f6cb7a7cf5e7102ecb290ca0
 INSERT INTO public.usuarios_sistema (nombre, email, telefono_whatsapp, rol, password_hash, must_change_password, activo)
 VALUES 
-    ('Germán (Admin)', 'german@wjgeeks.com', '3204814702', 'admin', 'bbcfa57ecf8a672f1d0f9a0d796e10de46c29095f6cb7a7cf5e7102ecb290ca0', false, true),
-    ('Wendy (Finanzas)', 'wendy@wjgeeks.com', '3100000002', 'cobranzas', '03efa8e49bc68e7ec8ff1ceb76ffcfa6beab15f8a2a51a941bf21d4d8fc5ea19', false, true),
-    ('Juan (Producción)', 'juan@wjgeeks.com', '3100000003', 'taller', 'c40a5a51052dd5fc321cf73812833134bc20c7cc67389ee46ab05eefae02a803', false, true)
-ON CONFLICT (email) DO NOTHING;
+    ('Germán (Admin)', 'german@wjgeeks.com', '3503443140', 'admin', 'bbcfa57ecf8a672f1d0f9a0d796e10de46c29095f6cb7a7cf5e7102ecb290ca0', false, true),
+    ('Wendy (Finanzas)', 'wendy@wjgeeks.com', '3204814702', 'cobranzas', '03efa8e49bc68e7ec8ff1ceb76ffcfa6beab15f8a2a51a941bf21d4d8fc5ea19', false, true),
+    ('Juan (Producción)', 'juan@wjgeeks.com', '3217273025', 'taller', 'c40a5a51052dd5fc321cf73812833134bc20c7cc67389ee46ab05eefae02a803', false, true)
+ON CONFLICT (email) DO UPDATE 
+SET telefono_whatsapp = EXCLUDED.telefono_whatsapp,
+    rol = EXCLUDED.rol,
+    nombre = EXCLUDED.nombre;
+

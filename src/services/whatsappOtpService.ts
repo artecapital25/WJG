@@ -333,8 +333,9 @@ export const WhatsAppOtpService = {
   // 10. Generador de Contraseña Provisional Segura
   generateProvisionalPassword(): string {
     const chars = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKMNPQRSTUVWXYZ23456789!@#$%&*';
-    let pass = 'Wjg#';
-    for (let i = 0; i < 6; i++) {
+    // Garantiza mayúscula, minúscula, número y símbolo
+    let pass = 'Wjg2026#';
+    for (let i = 0; i < 4; i++) {
       pass += chars.charAt(Math.floor(Math.random() * chars.length));
     }
     return pass;
