@@ -39,6 +39,7 @@ import { calcularPieza3D, ParametrosPiezaInput } from '../../services/calculatio
 import { processAndOptimizeImage } from '../../services/imageService';
 import { TarifarioModal } from './TarifarioModal';
 import { detect3DPlatform, formatExternalUrl, getQuickSearchUrls } from '../../services/platformUtils';
+import { toast } from '../ui/ToastProvider';
 
 interface ItemPinturaForm {
   tempId: string;
@@ -298,7 +299,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = ({
   // Manejo de imagen optimizada
   const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen válido (PNG, JPG o WebP).');
+      toast.warning('Por favor selecciona un archivo de imagen válido (PNG, JPG o WebP).');
       return;
     }
     setIsOptimizingImage(true);

@@ -22,6 +22,7 @@ import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/po
 import { Cliente } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { calcularAlertaCobro } from '../../services/posService';
+import { toast } from '../ui/ToastProvider';
 
 interface ModalEditarVentaExpressProps {
   isOpen: boolean;
@@ -110,7 +111,7 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
       setFotoUrl(optimized);
     } catch (err) {
       console.error('Error optimizando foto POS:', err);
-      alert('Hubo un error al procesar la nueva imagen.');
+      toast.error('Hubo un error al procesar la nueva imagen.');
     } finally {
       setIsProcessingImg(false);
     }
@@ -125,12 +126,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombreProducto.trim() || !clienteNombre.trim() || totalNum <= 0) {
-      alert('Por favor completa el nombre de la figura, cliente y valor total.');
+      toast.warning('Por favor completa el nombre de la figura, cliente y valor total.');
       return;
     }
 
     if (requiereOT && !estadoDiseno) {
-      alert('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de guardar.');
+      toast.warning('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de guardar.');
       return;
     }
 

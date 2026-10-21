@@ -33,6 +33,7 @@ import {
 } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService } from '../../services/cloudSyncService';
+import { toast } from '../ui/ToastProvider';
 
 interface CatalogosManagerProps {
   resinas: Resina[];
@@ -369,10 +370,32 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteCliente = (id: string) => {
-    if (confirm('¿Eliminar este cliente?')) {
-      const updated = clientes.filter(c => c.id !== id);
-      onUpdateClientes(updated);
+    const cotizaciones = StorageService.getCotizaciones();
+    const cuentas = StorageService.getCuentas();
+    const cliente = clientes.find(c => c.id === id);
+
+    const cotsAsociadas = cotizaciones.filter(c => c.cliente?.id === id || c.cliente?.nombre === cliente?.nombre);
+    const cuentasAsociadas = cuentas.filter(c => c.cliente?.id === id || c.cliente?.nombre === cliente?.nombre);
+    const tieneDeudas = cuentasAsociadas.some(c => c.saldo_pendiente > 0);
+
+    if (tieneDeudas) {
+      toast.error(`No es posible eliminar a ${cliente?.nombre || 'este cliente'} porque tiene saldos pendientes por cobrar en Cuentas de Cobro.`);
+      return;
     }
+
+    if (cotsAsociadas.length > 0) {
+      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${cotsAsociadas.length} cotización(es) histórica(s). ¿Deseas eliminarlo del directorio de clientes frecuentes?`)) {
+        return;
+      }
+    } else {
+      if (!confirm(`¿Eliminar al cliente "${cliente?.nombre || 'seleccionado'}" del directorio?`)) {
+        return;
+      }
+    }
+
+    const updated = clientes.filter(c => c.id !== id);
+    onUpdateClientes(updated);
+    toast.success('Cliente eliminado del catálogo');
   };
 
   // -----------------------------------------------------------------
@@ -493,7 +516,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       instagram
     };
     onUpdateConfig(updated);
-    alert('Configuración guardada exitosamente.');
+    toast.success('Configuración del taller guardada exitosamente');
   };
 
   return (

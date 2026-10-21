@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { HerramientaLink, CategoriaHerramienta } from '../../types';
 import { StorageService } from '../../services/storageService';
+import { toast } from '../ui/ToastProvider';
 
 const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any; color: string; bg: string }> = {
   ia_3d: {
@@ -107,7 +108,7 @@ export const ToolsHubView: React.FC = () => {
   const handleGuardarTool = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombre.trim() || !url.trim()) {
-      alert('Por favor ingresa el nombre y el enlace de la herramienta.');
+      toast.warning('Por favor ingresa el nombre y el enlace de la herramienta.');
       return;
     }
 

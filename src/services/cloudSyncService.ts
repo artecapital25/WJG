@@ -21,7 +21,8 @@ import {
   VentaExpress,
   TarifaTamano,
   TareaEquipo,
-  SolicitudInsumo
+  SolicitudInsumo,
+  ProductoStock
 } from '../types';
 
 export const CloudSyncService = {
@@ -580,9 +581,46 @@ export const CloudSyncService = {
     }
   },
 
-  // 11. Guardar o Actualizar una Venta Express en Supabase
-  async saveVentaExpress(venta: VentaExpress): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+  // 11. Guardar o Actualizar una Venta Express en Supabase (Transaccional vía RPC con Fallback)
+  async saveVentaExpress(venta: VentaExpress): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!this.isAvailable()) return { success: false, error: 'Supabase no está configurado o sin conexión.' };
+
+    // Intento 1: Procedimiento Transaccional Atómico (ACID) en PostgreSQL
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase!.rpc('rpc_registrar_venta_pos_atomica', {
+        p_id: venta.id,
+        p_numero_venta: venta.numero_venta,
+        p_nombre_producto: venta.nombre_producto,
+        p_cliente_nombre: venta.cliente_nombre,
+        p_cliente_telefono: venta.cliente_telefono || null,
+        p_total: venta.total,
+        p_abono: venta.abono,
+        p_metodo_pago: venta.metodo_pago || 'Nequi',
+        p_fecha_prometida_pago: venta.fecha_prometida_pago || null,
+        p_notas: venta.notas || null,
+        p_creado_por: venta.creado_por || 'Equipo WJGEEKS',
+        p_foto_url: venta.foto_url || null,
+        p_requiere_ot: Boolean(venta.requiere_ot),
+        p_estado_diseno: venta.estado_diseno || null,
+        p_enlace_diseno: venta.enlace_diseno || null,
+        p_notas_diseno: venta.notas_diseno || null,
+        p_producto_stock_id: venta.producto_stock_id || null,
+        p_descontar_stock: Boolean(venta.descontar_stock),
+        p_cantidad_vendida: venta.cantidad_vendida || 1
+      });
+
+      if (!rpcErr && rpcData?.success) {
+        return { success: true, data: rpcData };
+      }
+      if (rpcErr && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
+        console.warn('RPC POS falló con error de negocio:', rpcErr.message);
+        return { success: false, error: rpcErr.message };
+      }
+    } catch (e: any) {
+      console.warn('RPC POS no disponible o en migración, usando fallback directo:', e?.message || e);
+    }
+
+    // Intento 2: Fallback directo a tabla (si el RPC aún no fue migrado en DB)
     try {
       const payload = {
         id: venta.id,
@@ -606,6 +644,9 @@ export const CloudSyncService = {
         ot_numero: venta.ot_numero || null,
         enlace_diseno: venta.enlace_diseno || null,
         notas_diseno: venta.notas_diseno || null,
+        producto_stock_id: venta.producto_stock_id || null,
+        descontar_stock: Boolean(venta.descontar_stock),
+        cantidad_vendida: venta.cantidad_vendida || 1,
         updated_at: new Date().toISOString()
       };
 
@@ -615,18 +656,32 @@ export const CloudSyncService = {
 
       if (error) {
         console.warn('Error saving venta_express in Supabase:', error.message);
-        return false;
+        return { success: false, error: error.message };
       }
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.warn('Exception in saveVentaExpress:', e);
-      return false;
+      return { success: false, error: e?.message || 'Error guardando venta' };
     }
   },
 
-  // Eliminar Venta Express en Supabase
-  async deleteVentaExpress(id: string): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+  // Eliminar Venta Express en Supabase (con Reposición Atómica vía RPC y Fallback)
+  async deleteVentaExpress(id: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable()) return { success: false, error: 'Offline' };
+
+    // Intento 1: Cancelación atómica vía RPC (repone inventario automáticamente)
+    try {
+      const { data: rpcData, error: rpcErr } = await supabase!.rpc('rpc_cancelar_venta_pos_atomica', {
+        p_venta_id: id
+      });
+      if (!rpcErr && rpcData?.success) {
+        return { success: true };
+      }
+    } catch (e) {
+      // Fallback a delete estándar
+    }
+
+    // Intento 2: Delete directo
     try {
       const { error } = await supabase!
         .from('ventas_express')
@@ -635,12 +690,12 @@ export const CloudSyncService = {
 
       if (error) {
         console.warn('Error deleting venta_express in Supabase:', error.message);
-        return false;
+        return { success: false, error: error.message };
       }
-      return true;
-    } catch (e) {
+      return { success: true };
+    } catch (e: any) {
       console.warn('Exception in deleteVentaExpress:', e);
-      return false;
+      return { success: false, error: e?.message || 'Error eliminando venta' };
     }
   },
 
@@ -839,7 +894,118 @@ export const CloudSyncService = {
     }
   },
 
-  // 18. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
+  // 18. Traer Productos en Stock desde Supabase
+  async fetchProductosStock(): Promise<ProductoStock[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('productos_stock')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching productos_stock:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any): ProductoStock => ({
+        id: row.id,
+        codigo: row.codigo || undefined,
+        nombre: row.nombre,
+        categoria: row.categoria || 'Figuras & Miniaturas',
+        precio_unitario: Number(row.precio_unitario) || 0,
+        stock_actual: Number(row.stock_actual) || 0,
+        descripcion: row.descripcion || '',
+        dimensiones: row.dimensiones || '',
+        material: row.material || 'Resina UV Alta Definición',
+        imagen_url: row.imagen_url || '',
+        fecha_actualizacion: row.fecha_actualizacion || new Date().toISOString()
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchProductosStock:', e);
+      return null;
+    }
+  },
+
+  // 19. Guardar o Actualizar Producto en Stock
+  async saveProductoStock(prod: ProductoStock): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: prod.id,
+        codigo: String(prod.codigo || ''),
+        nombre: prod.nombre,
+        categoria: prod.categoria,
+        precio_unitario: prod.precio_unitario,
+        stock_actual: prod.stock_actual,
+        descripcion: prod.descripcion || null,
+        dimensiones: prod.dimensiones || null,
+        material: prod.material || null,
+        imagen_url: prod.imagen_url || null,
+        fecha_actualizacion: new Date().toISOString()
+      };
+
+      const { error } = await supabase!
+        .from('productos_stock')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Error saving producto_stock in Supabase:', error.message);
+        return false;
+      }
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveProductoStock:', e);
+      return false;
+    }
+  },
+
+  // 20. Sincronizar Resinas en Supabase
+  async saveResina(resina: Resina): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: resina.id,
+        tipo: resina.tipo,
+        marca: resina.marca,
+        color: resina.color,
+        volumen_l: resina.volumen_l,
+        densidad_g_cm3: resina.densidad_g_cm3,
+        peso_g: resina.peso_g,
+        precio_compra: resina.precio_compra,
+        costo_gramo: resina.costo_gramo,
+        velocidad_impresion_mm_h: resina.velocidad_impresion_mm_h
+      };
+      const { error } = await supabase!.from('resinas').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21. Sincronizar Insumos en Supabase
+  async saveInsumo(insumo: Insumo): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: insumo.id,
+        codigo_item: insumo.codigo,
+        nombre: insumo.nombre,
+        marca: insumo.marca,
+        categoria: insumo.categoria,
+        cantidad_presentacion: insumo.presentacion || 1,
+        costo_total: insumo.costo_total,
+        costo_unitario: insumo.costo_unitario,
+        enlace_compra: insumo.enlace_compra || null,
+        descripcion: insumo.descripcion || null
+      };
+      const { error } = await supabase!.from('insumos').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 22. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
   subscribeRealtime(
     onCotizacionChange: () => void, 
     onOTChange: () => void, 

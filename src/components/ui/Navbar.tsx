@@ -1,4 +1,4 @@
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet } from 'lucide-react';
+import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet, ShieldCheck, Calendar } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -9,6 +9,9 @@ interface NavbarProps {
   onInstallPwa?: () => void;
   isInstallable?: boolean;
   onOpenBackupModal?: () => void;
+  onOpenStaffLogin?: () => void;
+  isStaffAuthenticated?: boolean;
+  staffUser?: string | null;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ 
@@ -18,7 +21,10 @@ export const Navbar: React.FC<NavbarProps> = ({
   cloudStatus = 'connected',
   onInstallPwa,
   isInstallable,
-  onOpenBackupModal
+  onOpenBackupModal,
+  onOpenStaffLogin,
+  isStaffAuthenticated,
+  staffUser
 }) => {
   return (
     <header className="top-header">
@@ -139,6 +145,18 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
+        {onSelectTab && (
+          <button 
+            className={`btn btn-sm ${activeTab === 'calendario' ? 'btn-primary' : 'btn-secondary'} header-desktop-only`}
+            onClick={() => onSelectTab('calendario')}
+            title="Ver Calendario Operativo & Cronograma"
+            style={{ fontWeight: 700 }}
+          >
+            <Calendar size={14} color={activeTab === 'calendario' ? '#000' : 'var(--brand-cyan)'} />
+            <span>Calendario</span>
+          </button>
+        )}
+
         <button 
           className="btn btn-secondary btn-sm header-desktop-only"
           onClick={() => onOpenBackupModal ? onOpenBackupModal() : StorageService.exportBackup()}
@@ -148,6 +166,29 @@ export const Navbar: React.FC<NavbarProps> = ({
           <FileSpreadsheet size={14} color="#34d399" />
           <span>Drive & Sheets</span>
         </button>
+
+        {/* Botón / Indicador de Acceso Staff */}
+        {onOpenStaffLogin && (
+          <button 
+            className="btn btn-secondary btn-sm"
+            onClick={onOpenStaffLogin}
+            title={isStaffAuthenticated ? `Personal conectado: ${staffUser || 'Staff'}` : "Acceso Personal Staff"}
+            style={{ 
+              padding: '6px 10px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px',
+              borderColor: isStaffAuthenticated ? 'rgba(52, 211, 153, 0.4)' : 'rgba(255, 255, 255, 0.1)',
+              background: isStaffAuthenticated ? 'rgba(52, 211, 153, 0.1)' : 'rgba(255, 255, 255, 0.04)',
+              color: isStaffAuthenticated ? '#34d399' : '#cbd5e1'
+            }}
+          >
+            <ShieldCheck size={14} color={isStaffAuthenticated ? '#34d399' : '#94a3b8'} />
+            <span className="btn-label-desktop">
+              {isStaffAuthenticated ? (staffUser || 'Staff') : 'Staff'}
+            </span>
+          </button>
+        )}
 
         {/* 1. Botón Instalar App: En celular SOLO ícono sin texto, en PC con texto */}
         {onInstallPwa && (

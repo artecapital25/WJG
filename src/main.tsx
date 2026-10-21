@@ -17,8 +17,12 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+import { ToastProvider } from './components/ui/ToastProvider';
+
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <App />
+    <ToastProvider>
+      <App />
+    </ToastProvider>
   </React.StrictMode>
 );

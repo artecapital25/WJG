@@ -20,11 +20,12 @@ import {
   RotateCcw,
   Edit3,
   Wrench,
-  CheckCircle2
+  CheckCircle2,
+  Boxes
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
-import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType } from '../../types';
+import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { 
   calcularAlertaCobro, 
@@ -34,12 +35,14 @@ import {
 } from '../../services/posService';
 import { openWhatsApp } from '../../services/whatsappService';
 import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
+import { toast } from '../ui/ToastProvider';
 
 interface POSExpressViewProps {
   ventas: VentaExpress[];
   clientes: Cliente[];
   config: ConfiguracionTaller;
   ordenes?: OrdenTrabajo[];
+  productosStock?: ProductoStock[];
   onGuardarVenta: (nuevaVenta: VentaExpress) => void;
   onActualizarVenta: (ventaActualizada: VentaExpress) => void;
   onEliminarVenta?: (ventaId: string) => void;
@@ -62,6 +65,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   clientes,
   config,
   ordenes = [],
+  productosStock = [],
   onGuardarVenta,
   onActualizarVenta,
   onEliminarVenta,
@@ -72,6 +76,9 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [fotoUrl, setFotoUrl] = useState<string>('');
   const [isProcessingImg, setIsProcessingImg] = useState<boolean>(false);
   const [nombreProducto, setNombreProducto] = useState<string>('');
+  const [productoStockId, setProductoStockId] = useState<string>('');
+  const [descontarStock, setDescontarStock] = useState<boolean>(true);
+  const [cantidadVender, setCantidadVender] = useState<number>(1);
   const [clienteNombre, setClienteNombre] = useState<string>('');
   const [clienteTelefono, setClienteTelefono] = useState<string>('');
   const [total, setTotal] = useState<number | ''>(80000);
@@ -124,7 +131,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       setFotoUrl(optimized);
     } catch (err) {
       console.error('Error optimizando foto POS:', err);
-      alert('Hubo un error al procesar la foto.');
+      toast.error('Hubo un error al procesar la foto.');
     } finally {
       setIsProcessingImg(false);
     }
@@ -134,6 +141,38 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const handleSelectCliente = (cli: Cliente) => {
     setClienteNombre(cli.nombre);
     setClienteTelefono(cli.telefono);
+  };
+
+  // Manejo de Selección de Producto en Stock Físico (Conciliación Automática)
+  const handleSelectProductoStock = (prodId: string) => {
+    setProductoStockId(prodId);
+    if (!prodId) return;
+
+    const prod = productosStock.find(p => p.id === prodId);
+    if (prod) {
+      setNombreProducto(prod.nombre);
+      const precioTotal = prod.precio_unitario * cantidadVender;
+      setTotal(precioTotal);
+      setAbono(precioTotal);
+      setDescontarStock(true);
+      setRequiereOT(false); // Entrega física inmediata de vitrina
+      if (prod.imagen_url) {
+        setFotoUrl(prod.imagen_url);
+      }
+    }
+  };
+
+  const handleCambiarCantidadVender = (nuevaCant: number) => {
+    const cant = Math.max(1, nuevaCant);
+    setCantidadVender(cant);
+    if (productoStockId) {
+      const prod = productosStock.find(p => p.id === productoStockId);
+      if (prod) {
+        const precioTotal = prod.precio_unitario * cant;
+        setTotal(precioTotal);
+        setAbono(precioTotal);
+      }
+    }
   };
 
   // Atajos para fecha prometida
@@ -147,20 +186,20 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const handleSubmitVenta = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombreProducto.trim()) {
-      alert('Ingresa el nombre de la figura o producto.');
+      toast.warning('Ingresa el nombre de la figura o producto.');
       return;
     }
     if (!clienteNombre.trim()) {
-      alert('Ingresa el nombre de la persona que compra/debe.');
+      toast.warning('Ingresa el nombre de la persona que compra/debe.');
       return;
     }
     if (totalNum <= 0) {
-      alert('Ingresa un valor total válido.');
+      toast.warning('Ingresa un valor total válido mayor a $0.');
       return;
     }
 
     if (requiereOT && !estadoDiseno) {
-      alert('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de registrar la venta.');
+      toast.warning('Debes validar si el diseño 3D ya está realizado o si requiere un nuevo diseño antes de registrar la venta.');
       return;
     }
 
@@ -183,7 +222,10 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       requiere_ot: requiereOT,
       estado_diseno: requiereOT ? estadoDiseno : undefined,
       enlace_diseno: (requiereOT && enlaceDiseno.trim()) ? enlaceDiseno.trim() : undefined,
-      notas_diseno: (requiereOT && notasDiseno.trim()) ? notasDiseno.trim() : undefined
+      notas_diseno: (requiereOT && notasDiseno.trim()) ? notasDiseno.trim() : undefined,
+      producto_stock_id: productoStockId || undefined,
+      descontar_stock: Boolean(productoStockId && descontarStock),
+      cantidad_vendida: cantidadVender
     };
 
     onGuardarVenta(nuevaVenta);
@@ -222,6 +264,9 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
 
     // Reset Form
     setFotoUrl('');
+    setProductoStockId('');
+    setDescontarStock(true);
+    setCantidadVender(1);
     setNombreProducto('');
     setClienteNombre('');
     setClienteTelefono('');
@@ -410,6 +455,68 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 onChange={handleImageUpload} 
               />
             </div>
+
+            {/* Selector Rápido de Stock Físico (Conciliación Automática de Vitrina) */}
+            {productosStock.length > 0 && (
+              <div style={{ marginBottom: '14px', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '8px', padding: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                  <label style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <Boxes size={14} />
+                    VENDER FIGURA DESDE STOCK FÍSICO:
+                  </label>
+                  {productoStockId && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setProductoStockId('');
+                        setNombreProducto('');
+                        setDescontarStock(false);
+                      }}
+                      style={{ background: 'transparent', border: 'none', color: '#f87171', fontSize: '0.7rem', cursor: 'pointer' }}
+                    >
+                      ✕ Quitar selección
+                    </button>
+                  )}
+                </div>
+                <select 
+                  className="form-input"
+                  style={{ background: '#0b1329', borderColor: productoStockId ? '#38bdf8' : 'var(--border-subtle)' }}
+                  value={productoStockId}
+                  onChange={e => handleSelectProductoStock(e.target.value)}
+                >
+                  <option value="">-- Personalizado / A pedido (no descuenta vitrina) --</option>
+                  {productosStock.map(p => (
+                    <option key={p.id} value={p.id}>
+                      {p.nombre} (Disponibles: {p.stock_actual} | ${p.precio_unitario.toLocaleString('es-CO')})
+                    </option>
+                  ))}
+                </select>
+
+                {productoStockId && (
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: descontarStock ? '#34d399' : 'inherit' }}>
+                      <input 
+                        type="checkbox"
+                        checked={descontarStock}
+                        onChange={e => setDescontarStock(e.target.checked)}
+                      />
+                      <span>✓ Descontar inventario al guardar</span>
+                    </label>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span>Cantidad:</span>
+                      <input 
+                        type="number"
+                        min="1"
+                        max="99"
+                        value={cantidadVender}
+                        onChange={e => handleCambiarCantidadVender(parseInt(e.target.value) || 1)}
+                        style={{ width: '52px', padding: '2px 6px', background: '#020617', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: '#fff', textAlign: 'center' }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Nombre del Producto */}
             <div style={{ marginBottom: '14px' }}>

@@ -122,8 +122,7 @@ Tablero Kanban interactivo que refleja el estado de la línea de fabricación:
 Protege los secretos comerciales y la información de otros clientes cuando se comparte el estado de una figura:
 - **URL Aislada:** Al generar el link desde la OT (`/?portal=cliente&ot=OT-XXXX`), el sistema entra en modo público estricto.
 - **Ocultamiento Total de Navegación:** Desaparecen la barra superior ([Navbar.tsx](src/components/ui/Navbar.tsx)), el menú inferior ([BottomNav.tsx](src/components/ui/BottomNav.tsx)) y los buscadores globales.
-- **Vista Exclusiva del Pedido:** El cliente solo ve la foto de su figura, la etapa actual de fabricación, los tiempos estimados y botones para contactar al taller.
-- **Candado Administrativo:** Si el equipo de WJGEEKS abre el enlace en su móvil, un botón discreto de candado permite desbloquear la administración ingresando el PIN maestro (`wjg3d` o `3202796115`).
+- **Aislamiento Total Criptográfico:** La vista de cliente no incluye botones de inicio de sesión, credenciales ni accesos al panel administrativo, consultándose exclusivamente mediante token criptográfico no secuencial.
 
 ### 8. Equipo, Tareas & Rutinas de Mantenimiento
 Organizador de prioridades y mantenimiento preventivo para prolongar la vida útil de las pantallas LCD y tanques de resina:

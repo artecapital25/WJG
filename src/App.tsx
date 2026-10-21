@@ -3,20 +3,26 @@ import { Navbar } from './components/ui/Navbar';
 import { BottomNav } from './components/ui/BottomNav';
 import { CotizadorForm } from './components/cotizador/CotizadorForm';
 import { CotizacionBuilder } from './components/cotizador/CotizacionBuilder';
-import { WorkOrdersPipeline } from './components/workflow/WorkOrdersPipeline';
-import { CotizacionesList } from './components/cotizaciones/CotizacionesList';
-import { CuentasCobroList } from './components/cuentasCobro/CuentasCobroList';
-import { CatalogosManager } from './components/catalogos/CatalogosManager';
-import { ProjectPlanView } from './components/plan/ProjectPlanView';
-import { STLAnalyzer } from './components/stl/STLAnalyzer';
-import { ProductosStockView } from './components/stock/ProductosStockView';
-import { CustomerTrackingView } from './components/tracking/CustomerTrackingView';
-import { FinancialReportView } from './components/reports/FinancialReportView';
-import { POSExpressView } from './components/pos/POSExpressView';
-import { TeamTasksView } from './components/team/TeamTasksView';
-import { MarketingHubView } from './components/marketing/MarketingHubView';
-import { ToolsHubView } from './components/tools/ToolsHubView';
-import { BackupDriveModal } from './components/backup/BackupDriveModal';
+import { TabLoadingSkeleton } from './components/ui/TabLoadingSkeleton';
+import { StaffLoginModal } from './components/auth/StaffLoginModal';
+import { toast } from './components/ui/ToastProvider';
+
+const WorkOrdersPipeline = React.lazy(() => import('./components/workflow/WorkOrdersPipeline').then(m => ({ default: m.WorkOrdersPipeline })));
+const CotizacionesList = React.lazy(() => import('./components/cotizaciones/CotizacionesList').then(m => ({ default: m.CotizacionesList })));
+const CuentasCobroList = React.lazy(() => import('./components/cuentasCobro/CuentasCobroList').then(m => ({ default: m.CuentasCobroList })));
+const CatalogosManager = React.lazy(() => import('./components/catalogos/CatalogosManager').then(m => ({ default: m.CatalogosManager })));
+const ProjectPlanView = React.lazy(() => import('./components/plan/ProjectPlanView').then(m => ({ default: m.ProjectPlanView })));
+const STLAnalyzer = React.lazy(() => import('./components/stl/STLAnalyzer').then(m => ({ default: m.STLAnalyzer })));
+const ProductosStockView = React.lazy(() => import('./components/stock/ProductosStockView').then(m => ({ default: m.ProductosStockView })));
+const CustomerTrackingView = React.lazy(() => import('./components/tracking/CustomerTrackingView').then(m => ({ default: m.CustomerTrackingView })));
+const FinancialReportView = React.lazy(() => import('./components/reports/FinancialReportView').then(m => ({ default: m.FinancialReportView })));
+const POSExpressView = React.lazy(() => import('./components/pos/POSExpressView').then(m => ({ default: m.POSExpressView })));
+const TeamTasksView = React.lazy(() => import('./components/team/TeamTasksView').then(m => ({ default: m.TeamTasksView })));
+const MarketingHubView = React.lazy(() => import('./components/marketing/MarketingHubView').then(m => ({ default: m.MarketingHubView })));
+const ToolsHubView = React.lazy(() => import('./components/tools/ToolsHubView').then(m => ({ default: m.ToolsHubView })));
+const BackupDriveModal = React.lazy(() => import('./components/backup/BackupDriveModal').then(m => ({ default: m.BackupDriveModal })));
+const CalendarOperationalView = React.lazy(() => import('./components/calendar/CalendarOperationalView').then(m => ({ default: m.CalendarOperationalView })));
+import { AuthSecurityService } from './services/authSecurityService';
 
 import { 
   TabType, 
@@ -51,7 +57,7 @@ export const App: React.FC = () => {
       const tabParam = params.get('tab') as TabType;
       const validTabs: TabType[] = [
         'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
-        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas'
+        'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas', 'calendario'
       ];
       if (tabParam && validTabs.includes(tabParam)) {
         return tabParam;
@@ -70,8 +76,8 @@ export const App: React.FC = () => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const isExplicitPortal = params.get('portal') === 'cliente';
-      const hasTrackingParam = Boolean(params.get('ot') || params.get('cot'));
-      const isExplicitAdmin = params.get('admin') === '1' || sessionStorage.getItem('wjg_admin_unlocked') === 'true';
+      const hasTrackingParam = Boolean(params.get('ot') || params.get('cot') || params.get('token'));
+      const isExplicitAdmin = sessionStorage.getItem('wjg_admin_unlocked') === 'true' || AuthSecurityService.checkTrustedDevice().isTrusted;
 
       if ((isExplicitPortal || hasTrackingParam) && !isExplicitAdmin) {
         return true;
@@ -80,27 +86,38 @@ export const App: React.FC = () => {
     return false;
   });
 
-  const [showAdminPinModal, setShowAdminPinModal] = useState<boolean>(false);
-  const [adminPinInput, setAdminPinInput] = useState<string>('');
-  const [adminPinError, setAdminPinError] = useState<string | null>(null);
+  const [showStaffModal, setShowStaffModal] = useState<boolean>(false);
+  
+  // Autenticación Persistente ("Minuto Cero") y Dispositivos de Confianza
+  const [staffUser, setStaffUser] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const trusted = AuthSecurityService.checkTrustedDevice();
+      if (trusted.isTrusted && trusted.staffUser) return trusted.staffUser;
+      return localStorage.getItem('wjg_staff_user');
+    }
+    return null;
+  });
 
-  const handleUnlockAdmin = () => {
-    setShowAdminPinModal(true);
-    setAdminPinInput('');
-    setAdminPinError(null);
+  const [isStaffAuthenticated, setIsStaffAuthenticated] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const trusted = AuthSecurityService.checkTrustedDevice();
+      if (trusted.isTrusted) return true;
+      return sessionStorage.getItem('wjg_admin_unlocked') === 'true';
+    }
+    return false;
+  });
+
+  const handleStaffLoginSuccess = (userLabel: string) => {
+    setStaffUser(userLabel);
+    setIsStaffAuthenticated(true);
+    setIsClientPortalMode(false);
   };
 
-  const handleVerifyAdminPin = (e: React.FormEvent) => {
-    e.preventDefault();
-    const cleanPin = adminPinInput.trim().toLowerCase();
-    // Claves válidas: wjg3d o teléfonos corporativos
-    if (cleanPin === 'wjg3d' || cleanPin === '3202796115' || cleanPin === '3217273025') {
-      sessionStorage.setItem('wjg_admin_unlocked', 'true');
-      setIsClientPortalMode(false);
-      setShowAdminPinModal(false);
-    } else {
-      setAdminPinError('PIN incorrecto. Intenta de nuevo.');
-    }
+  const handleStaffLogout = () => {
+    setStaffUser(null);
+    setIsStaffAuthenticated(false);
+    AuthSecurityService.revokeTrustedDevice();
+    setIsClientPortalMode(true);
   };
 
   // Estado PWA (Instalación nativa en navegador / móvil)
@@ -555,7 +572,7 @@ export const App: React.FC = () => {
     setActiveTab('cotizador');
   };
 
-  // Guardar Cotización (nueva o modificada)
+  // Guardar Cotización (nueva o modificada con Reconciliación Transaccional de OTs)
   const handleSaveCotizacion = (cotizacion: Cotizacion) => {
     let updated: Cotizacion[];
     if (editingCotizacion && editingCotizacion.id === cotizacion.id) {
@@ -569,8 +586,88 @@ export const App: React.FC = () => {
     setEditingCotizacion(null);
     setActiveTab('cotizaciones');
 
-    // Sincronizar en la nube Supabase en segundo plano
-    CloudSyncService.saveCotizacion(cotizacion);
+    // Sincronizar en la nube Supabase en segundo plano con notificación operativa
+    CloudSyncService.saveCotizacion(cotizacion).then(ok => {
+      if (!ok) {
+        toast.warning(`Cotización ${cotizacion.numero_cot} guardada localmente. Sincronización en la nube pendiente.`);
+      } else {
+        toast.success(`Cotización ${cotizacion.numero_cot} guardada y sincronizada.`);
+      }
+    });
+
+    // Reconciliación Transaccional con Órdenes de Trabajo (OT) del Taller si la cotización ya tiene OTs
+    const currentOrders = StorageService.getOrdenes();
+    const otsAsociadas = currentOrders.filter(o => 
+      o.cotizacion_id === cotizacion.id || o.cotizacion_numero === cotizacion.numero_cot
+    );
+
+    if (otsAsociadas.length > 0) {
+      let maxConsecutive = StorageService.getNextOTConsecutive(currentOrders);
+      let otsActualizadas = [...currentOrders];
+      const items = cotizacion.items || [];
+
+      items.forEach((item, idx) => {
+        const indexExistente = otsActualizadas.findIndex(o => 
+          (o.cotizacion_id === cotizacion.id || o.cotizacion_numero === cotizacion.numero_cot) &&
+          o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
+        );
+
+        if (indexExistente !== -1) {
+          // Actualizar OT existente con nuevos parámetros
+          const otActual = otsActualizadas[indexExistente];
+          const otModificada: OrdenTrabajo = {
+            ...otActual,
+            cliente_nombre: cotizacion.cliente.nombre,
+            cliente_telefono: cotizacion.cliente.telefono,
+            cantidad: item.cantidad || 1,
+            tiempo_impresion_min: item.tiempo_impresion_min || otActual.tiempo_impresion_min,
+            tiempo_armado_min: item.tiempo_armado_min || otActual.tiempo_armado_min,
+            tiempo_pintura_min: item.tiempo_pintura_min || otActual.tiempo_pintura_min,
+            peso_estimado_g: item.peso_estimado_g || otActual.peso_estimado_g,
+            detalles_tecnicos: item.descripcion_tecnica || otActual.detalles_tecnicos,
+            precio_cobrado: item.precio_total || otActual.precio_cobrado,
+            imagen_url: item.imagen_url || otActual.imagen_url
+          };
+          otsActualizadas[indexExistente] = otModificada;
+          CloudSyncService.saveOrdenTrabajo(otModificada);
+        } else {
+          // Nueva pieza agregada a la cotización aprobada: crear su OT
+          maxConsecutive++;
+          const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
+          const nuevaOT: OrdenTrabajo = {
+            id: `ot-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+            numero_ot: numOT,
+            cotizacion_id: cotizacion.id,
+            cotizacion_numero: cotizacion.numero_cot,
+            cliente_nombre: cotizacion.cliente.nombre,
+            cliente_telefono: cotizacion.cliente.telefono,
+            item_nombre: item.nombre_item,
+            cantidad: item.cantidad || 1,
+            estado: 'En Cola',
+            operador_asignado: 'Operador 3D',
+            fecha_creacion: new Date().toISOString(),
+            tiempo_impresion_min: item.tiempo_impresion_min || 0,
+            tiempo_armado_min: item.tiempo_armado_min || 0,
+            tiempo_pintura_min: item.tiempo_pintura_min || 0,
+            peso_estimado_g: item.peso_estimado_g || 0,
+            resina_id: item.resina_id,
+            inventario_descontado: false,
+            resina_nombre: item.resina_nombre,
+            maquina_nombre: item.maquina_nombre,
+            detalles_tecnicos: item.descripcion_tecnica,
+            imagen_url: item.imagen_url,
+            precio_cobrado: item.precio_total,
+            estado_pago: cotizacion.estado_pago || 'Pendiente'
+          };
+          otsActualizadas = [nuevaOT, ...otsActualizadas];
+          CloudSyncService.saveOrdenTrabajo(nuevaOT);
+        }
+      });
+
+      setOrdenes(otsActualizadas);
+      StorageService.saveOrdenes(otsActualizadas);
+      toast.info(`Se sincronizaron ${otsAsociadas.length} órdenes de trabajo en el taller`);
+    }
 
     // Si la cotización tiene abono o pago registrado, crear o actualizar automáticamente Cuenta de Cobro
     if (cotizacion.estado_pago && cotizacion.estado_pago !== 'Pendiente') {
@@ -615,6 +712,7 @@ export const App: React.FC = () => {
         CloudSyncService.saveCuentaCobro(nuevaCC);
       }
     }
+    toast.success('Cotización guardada exitosamente');
   };
 
   // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT) y registra pagos / cuentas de cobro
@@ -1047,10 +1145,30 @@ export const App: React.FC = () => {
   const handleUpdateProductosStock = (items: ProductoStock[]) => {
     setProductosStock(items);
     StorageService.saveProductosStock(items);
+    // Sincronizar en Supabase
+    items.forEach(prod => CloudSyncService.saveProductoStock(prod));
   };
 
   const handleGuardarVentaExpress = (nuevaVenta: VentaExpress) => {
     let ventaFinal: VentaExpress = { ...nuevaVenta };
+
+    // Conciliación y descuento inmediato de stock físico si aplica
+    if (ventaFinal.descontar_stock && ventaFinal.producto_stock_id) {
+      const cantVendida = ventaFinal.cantidad_vendida || 1;
+      const updatedStock = productosStock.map(p => {
+        if (p.id === ventaFinal.producto_stock_id) {
+          const nuevoStock = Math.max(0, (p.stock_actual || 0) - cantVendida);
+          return { ...p, stock_actual: nuevoStock, fecha_actualizacion: new Date().toISOString() };
+        }
+        return p;
+      });
+      setProductosStock(updatedStock);
+      StorageService.saveProductosStock(updatedStock);
+      const prodAfectado = updatedStock.find(p => p.id === ventaFinal.producto_stock_id);
+      if (prodAfectado) {
+        CloudSyncService.saveProductoStock(prodAfectado);
+      }
+    }
 
     // Si la venta requiere Orden de Trabajo (OT) y taller, generamos la OT con su trazabilidad de diseño
     if (ventaFinal.requiere_ot) {
@@ -1105,7 +1223,14 @@ export const App: React.FC = () => {
     const updated = [ventaFinal, ...ventasExpress];
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
-    CloudSyncService.saveVentaExpress(ventaFinal);
+
+    CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
+      if (res && !res.success && res.error) {
+        toast.warning(`Venta guardada localmente. Pendiente en nube: ${res.error}`);
+      } else {
+        toast.success(`Venta ${ventaFinal.numero_venta} registrada correctamente.`);
+      }
+    });
   };
 
   const handleActualizarVentaExpress = (ventaActualizada: VentaExpress) => {
@@ -1200,14 +1325,46 @@ export const App: React.FC = () => {
     const updated = ventasExpress.map(v => v.id === ventaFinal.id ? ventaFinal : v);
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
-    CloudSyncService.saveVentaExpress(ventaFinal);
+
+    CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
+      if (res && !res.success && res.error) {
+        toast.warning(`Cambios guardados localmente. Sincronización pendiente: ${res.error}`);
+      } else {
+        toast.success(`Venta ${ventaFinal.numero_venta} actualizada.`);
+      }
+    });
   };
 
   const handleEliminarVentaExpress = (ventaId: string) => {
+    // Si la venta descontó stock físico, reponerlo al inventario
+    const ventaAEliminar = ventasExpress.find(v => v.id === ventaId);
+    if (ventaAEliminar?.descontar_stock && ventaAEliminar.producto_stock_id) {
+      const cantDevuelta = ventaAEliminar.cantidad_vendida || 1;
+      const updatedStock = productosStock.map(p => {
+        if (p.id === ventaAEliminar.producto_stock_id) {
+          return { ...p, stock_actual: (p.stock_actual || 0) + cantDevuelta, fecha_actualizacion: new Date().toISOString() };
+        }
+        return p;
+      });
+      setProductosStock(updatedStock);
+      StorageService.saveProductosStock(updatedStock);
+      const prodAfectado = updatedStock.find(p => p.id === ventaAEliminar.producto_stock_id);
+      if (prodAfectado) {
+        CloudSyncService.saveProductoStock(prodAfectado);
+      }
+    }
+
     const updated = ventasExpress.filter(v => v.id !== ventaId);
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
-    CloudSyncService.deleteVentaExpress(ventaId);
+
+    CloudSyncService.deleteVentaExpress(ventaId).then(res => {
+      if (res && !res.success && res.error) {
+        toast.warning(`Venta eliminada localmente. Pendiente en nube: ${res.error}`);
+      } else {
+        toast.success('Venta eliminada e inventario repuesto.');
+      }
+    });
   };
 
   const handleEliminarCuentaCobro = (cuentaId: string) => {
@@ -1430,88 +1587,8 @@ export const App: React.FC = () => {
             cotizaciones={cotizaciones}
             config={config}
             isIsolatedMode={true}
-            onUnlockAdmin={handleUnlockAdmin}
           />
         </main>
-
-        {/* Modal de Desbloqueo Admin para el equipo de WJGEEKS */}
-        {showAdminPinModal && (
-          <div 
-            style={{
-              position: 'fixed',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              background: 'rgba(0, 0, 0, 0.85)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              zIndex: 99999,
-              padding: '16px'
-            }}
-            onClick={() => setShowAdminPinModal(false)}
-          >
-            <div 
-              className="glass-card" 
-              style={{ maxWidth: '380px', width: '100%', margin: 0, padding: '24px', border: '1px solid var(--brand-cyan)' }}
-              onClick={e => e.stopPropagation()}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <span>🔒</span> Acceso Taller WJGEEKS
-                </h3>
-                <button 
-                  type="button" 
-                  onClick={() => setShowAdminPinModal(false)}
-                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
-                >
-                  ✕
-                </button>
-              </div>
-
-              <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-                Ingresa el PIN de seguridad del taller para desbloquear el panel administrativo completo en este equipo:
-              </p>
-
-              <form onSubmit={handleVerifyAdminPin}>
-                <input 
-                  type="password"
-                  className="form-input"
-                  placeholder="Ingresa clave o PIN (ej: wjg3d)"
-                  value={adminPinInput}
-                  onChange={e => setAdminPinInput(e.target.value)}
-                  autoFocus
-                  style={{ width: '100%', marginBottom: '10px', fontSize: '1rem', padding: '10px 14px' }}
-                />
-
-                {adminPinError && (
-                  <div style={{ color: 'var(--accent-danger)', fontSize: '0.8rem', marginBottom: '12px', fontWeight: 600 }}>
-                    {adminPinError}
-                  </div>
-                )}
-
-                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '16px' }}>
-                  <button 
-                    type="button" 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setShowAdminPinModal(false)}
-                  >
-                    Cancelar
-                  </button>
-                  <button 
-                    type="submit" 
-                    className="btn btn-primary btn-sm"
-                    style={{ fontWeight: 700 }}
-                  >
-                    Desbloquear Taller
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
       </div>
     );
   }
@@ -1527,11 +1604,15 @@ export const App: React.FC = () => {
         onInstallPwa={handleInstallPwa}
         isInstallable={isInstallable}
         onOpenBackupModal={() => setShowBackupModal(true)}
+        onOpenStaffLogin={() => setShowStaffModal(true)}
+        isStaffAuthenticated={isStaffAuthenticated}
+        staffUser={staffUser}
       />
 
-      {/* Contenido Principal según Pestaña */}
+      {/* Contenido Principal según Pestaña con Suspense y Lazy Loading */}
       <main className="main-content">
-        {activeTab === 'cotizador' && (
+        <React.Suspense fallback={<TabLoadingSkeleton />}>
+          {activeTab === 'cotizador' && (
           <div>
             <CotizadorForm 
               resinas={resinas}
@@ -1610,6 +1691,7 @@ export const App: React.FC = () => {
             clientes={clientes}
             config={config}
             ordenes={ordenes}
+            productosStock={productosStock}
             onGuardarVenta={handleGuardarVentaExpress}
             onActualizarVenta={handleActualizarVentaExpress}
             onEliminarVenta={handleEliminarVentaExpress}
@@ -1645,8 +1727,16 @@ export const App: React.FC = () => {
             proveedores={proveedores}
             config={config}
             tarifasTamanos={tarifasTamanos}
-            onUpdateResinas={r => { setResinas(r); StorageService.saveResinas(r); }}
-            onUpdateInsumos={i => { setInsumos(i); StorageService.saveInsumos(i); }}
+            onUpdateResinas={r => { 
+              setResinas(r); 
+              StorageService.saveResinas(r); 
+              r.forEach(res => CloudSyncService.saveResina(res));
+            }}
+            onUpdateInsumos={i => { 
+              setInsumos(i); 
+              StorageService.saveInsumos(i); 
+              i.forEach(ins => CloudSyncService.saveInsumo(ins));
+            }}
             onUpdateMaquinas={m => { setMaquinas(m); StorageService.saveMaquinas(m); }}
             onUpdatePersonal={p => { setPersonal(p); StorageService.savePersonal(p); }}
             onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
@@ -1723,6 +1813,22 @@ export const App: React.FC = () => {
         {activeTab === 'herramientas' && (
           <ToolsHubView />
         )}
+
+        {activeTab === 'calendario' && (
+          <CalendarOperationalView 
+            ordenes={ordenes}
+            cuentas={cuentas}
+            cotizaciones={cotizaciones}
+            tareas={tareas}
+            solicitudesInsumos={solicitudesInsumos}
+            config={config}
+            onActualizarOT={handleActualizarOT}
+            onActualizarCuenta={handleUpdatePago ? (cuenta) => handleUpdatePago(cuenta.id, cuenta.abono) : undefined}
+            onActualizarTarea={handleActualizarTarea}
+            onNavigateTab={setActiveTab}
+          />
+        )}
+        </React.Suspense>
       </main>
 
       {/* Barra de Navegación Inferior Mobile-First */}
@@ -1735,10 +1841,22 @@ export const App: React.FC = () => {
       />
 
       {/* Modal de Respaldos y Google Drive */}
-      <BackupDriveModal 
-        isOpen={showBackupModal}
-        onClose={() => setShowBackupModal(false)}
-        cloudStatus={cloudSyncStatus}
+      <React.Suspense fallback={null}>
+        <BackupDriveModal 
+          isOpen={showBackupModal}
+          onClose={() => setShowBackupModal(false)}
+          cloudStatus={cloudSyncStatus}
+        />
+      </React.Suspense>
+
+      {/* Modal de Autenticación de Personal Staff */}
+      <StaffLoginModal 
+        isOpen={showStaffModal}
+        onClose={() => setShowStaffModal(false)}
+        onLoginSuccess={handleStaffLoginSuccess}
+        onLogout={handleStaffLogout}
+        isAuthenticated={isStaffAuthenticated}
+        currentUser={staffUser}
       />
     </div>
   );

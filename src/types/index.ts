@@ -1,7 +1,8 @@
-export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing' | 'herramientas';
+export type TabType = 'cotizador' | 'pos' | 'workflow' | 'cotizaciones' | 'cuentas' | 'catalogos' | 'plan' | 'stl' | 'stock' | 'seguimiento' | 'finanzas' | 'tareas' | 'marketing' | 'herramientas' | 'calendario';
 
 export * from './pos';
 export * from './tasks';
+export * from './calendar';
 
 export type CategoriaHerramienta = 'ia_3d' | 'stl_repos' | 'slicers' | 'pintura' | 'utilidades';
 
@@ -216,6 +217,7 @@ export interface Cotizacion {
   saldo_pendiente?: number;
   metodo_pago?: string;
   comprobante_pago?: string;
+  tracking_token?: string;
 }
 
 export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega';
@@ -233,9 +235,11 @@ export interface OrdenTrabajo {
   cantidad: number;
   estado: EstadoOT;
   operador_asignado: string;
+  tracking_token?: string;
   fecha_creacion: string;
   fecha_inicio?: string;
   fecha_fin?: string;
+  fecha_finalizacion?: string;
   tiempo_impresion_min: number;
   tiempo_armado_min: number;
   tiempo_pintura_min: number;

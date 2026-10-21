@@ -27,6 +27,11 @@ export interface VentaExpress {
   ot_numero?: string;
   enlace_diseno?: string;
   notas_diseno?: string;
+
+  // Vinculación y Conciliación Inmediata con Stock Físico
+  producto_stock_id?: string;
+  descontar_stock?: boolean;
+  cantidad_vendida?: number;
 }
 
 export type NivelAlertaPago = 'vencido' | 'hoy' | 'proximo' | 'al_dia' | 'pagado';

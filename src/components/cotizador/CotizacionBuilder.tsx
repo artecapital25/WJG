@@ -44,6 +44,7 @@ import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfSe
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
+import { toast } from '../ui/ToastProvider';
 
 interface CotizacionBuilderProps {
   items: PiezaCotizada[];
@@ -277,7 +278,7 @@ export const CotizacionBuilder: React.FC<CotizacionBuilderProps> = ({
   const handleItemImageUpload = async (itemId: string, file: File) => {
     if (!onUpdatePieceImage) return;
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
+      toast.warning('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
       return;
     }
     try {

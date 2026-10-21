@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { ProductoStock, PiezaCotizada } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { toast } from '../ui/ToastProvider';
 
 interface ProductosStockViewProps {
   productos: ProductoStock[];
@@ -94,7 +95,7 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   // Subir o cambiar foto de producto
   const handleImageFile = async (file: File) => {
     if (!file.type.startsWith('image/')) {
-      alert('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
+      toast.warning('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
       return;
     }
     try {
@@ -134,7 +135,7 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   const handleSaveProduct = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingItem.nombre.trim()) {
-      alert('Por favor escribe el nombre del producto.');
+      toast.warning('Por favor escribe el nombre del producto.');
       return;
     }
 
@@ -241,7 +242,7 @@ ${prod.descripcion ? `💡 *Detalles:* ${prod.descripcion}\n` : ''}
   const handleCopyFullCatalog = async () => {
     const disponibles = productos.filter(p => (p.stock_actual || 0) > 0);
     if (disponibles.length === 0) {
-      alert('No hay productos con stock mayor a 0 para generar el catálogo.');
+      toast.warning('No hay productos con stock mayor a 0 para generar el catálogo.');
       return;
     }
 

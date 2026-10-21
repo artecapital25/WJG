@@ -22,7 +22,6 @@ interface CustomerTrackingViewProps {
   config: ConfiguracionTaller;
   initialQuery?: string;
   isIsolatedMode?: boolean;
-  onUnlockAdmin?: () => void;
 }
 
 const ETAPAS: { estado: EstadoOT; label: string; icon: any; desc: string; porcentaje: number }[] = [
@@ -75,32 +74,32 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
   cotizaciones,
   config,
   initialQuery = '',
-  isIsolatedMode = false,
-  onUnlockAdmin
+  isIsolatedMode = false
 }) => {
   const [searchTerm, setSearchTerm] = useState(initialQuery);
   const [copiedLink, setCopiedLink] = useState(false);
 
-  // Leer parámetros de URL al montar (?ot=OT-0001 o ?cot=25-074)
+  // Leer parámetros de URL al montar (?token=uuid o ?ot=OT-0001 o ?cot=25-074)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    const otParam = params.get('ot') || params.get('cot') || params.get('search');
+    const otParam = params.get('token') || params.get('ot') || params.get('cot') || params.get('search');
     if (otParam) {
       setSearchTerm(otParam);
     }
   }, []);
 
-  // Buscar orden o cotización
+  // Buscar orden o cotización (por token criptográfico o identificador oficial)
   const cleanTerm = searchTerm.trim().toLowerCase();
   const matchedOT = ordenes.find(o => 
-    o.numero_ot.toLowerCase().includes(cleanTerm) ||
-    o.cotizacion_numero.toLowerCase().includes(cleanTerm) ||
-    // En modo aislado cliente no se busca por nombre libre para evitar exponer datos de otros clientes
+    (o.tracking_token && o.tracking_token.toLowerCase() === cleanTerm) ||
+    o.numero_ot.toLowerCase() === cleanTerm ||
+    o.cotizacion_numero.toLowerCase() === cleanTerm ||
     (!isIsolatedMode && cleanTerm.length >= 4 && o.cliente_nombre.toLowerCase().includes(cleanTerm))
   );
 
   const matchedCot = cotizaciones.find(c => 
-    c.numero_cot.toLowerCase().includes(cleanTerm) ||
+    (c.tracking_token && c.tracking_token.toLowerCase() === cleanTerm) ||
+    c.numero_cot.toLowerCase() === cleanTerm ||
     (matchedOT && c.id === matchedOT.cotizacion_id)
   );
 
@@ -112,7 +111,8 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
 
   const handleCopyShareLink = () => {
     if (!matchedOT) return;
-    const url = `${window.location.origin}/?portal=cliente&ot=${encodeURIComponent(matchedOT.numero_ot)}`;
+    const tokenParam = matchedOT.tracking_token ? `token=${encodeURIComponent(matchedOT.tracking_token)}` : `ot=${encodeURIComponent(matchedOT.numero_ot)}`;
+    const url = `${window.location.origin}/?portal=cliente&${tokenParam}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2500);
@@ -387,27 +387,9 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
           <p style={{ margin: '0 0 8px 0' }}>
             🔒 <strong>Enlace confidencial:</strong> Este portal muestra exclusivamente el progreso técnico de tu pieza sin exponer datos de otros clientes ni costos internos.
           </p>
-          <p style={{ margin: '0 0 12px 0' }}>
+          <p style={{ margin: '0 0 4px 0' }}>
             WJGEEKS 3D • Manufactura de Alta Definición UV • Bogotá, Colombia • WhatsApp: +57 320 279 6115
           </p>
-
-          {onUnlockAdmin && (
-            <button
-              type="button"
-              onClick={onUnlockAdmin}
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'rgba(255, 255, 255, 0.25)',
-                fontSize: '0.7rem',
-                cursor: 'pointer',
-                textDecoration: 'underline'
-              }}
-              title="Acceso restringido para el equipo de WJGEEKS"
-            >
-              🔒 Ingreso Personal de Taller
-            </button>
-          )}
         </div>
       )}
     </div>

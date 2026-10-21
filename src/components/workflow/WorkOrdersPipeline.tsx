@@ -43,6 +43,7 @@ import {
   EnlaceReferenciaCompra,
   DatosPagoRegistro
 } from '../../types';
+import { toast } from '../ui/ToastProvider';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { StorageService } from '../../services/storageService';
@@ -231,7 +232,7 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
       setFotoUrlRapida(opt);
     } catch (err) {
       console.error('Error optimizando foto proyecto rápido:', err);
-      alert('Error al procesar la foto.');
+      toast.error('Error al procesar la foto.');
     } finally {
       setIsProcessingImg(false);
     }
@@ -241,11 +242,11 @@ Por favor verifica la malla, genera los soportes en Chitubox/Lychee y confirma c
   const handleGuardarProyectoRapido = (e: React.FormEvent) => {
     e.preventDefault();
     if (!nombreItemRapido.trim()) {
-      alert('Ingresa el nombre de la figura o proyecto.');
+      toast.warning('Ingresa el nombre de la figura o proyecto.');
       return;
     }
     if (!clienteNombreRapido.trim()) {
-      alert('Ingresa el nombre del cliente.');
+      toast.warning('Ingresa el nombre del cliente.');
       return;
     }
 

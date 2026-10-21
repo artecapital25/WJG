@@ -19,7 +19,8 @@ import {
   Users,
   Megaphone,
   Wrench,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Calendar
 } from 'lucide-react';
 import { TabType } from '../../types';
 import { StorageService } from '../../services/storageService';
@@ -160,6 +161,15 @@ export const BottomNav: React.FC<BottomNavProps> = ({
       icon: Megaphone,
       iconBg: 'rgba(236, 72, 153, 0.15)',
       iconColor: '#f472b6'
+    },
+    {
+      id: 'calendario',
+      label: 'Calendario & Cronograma',
+      shortLabel: 'Calendario',
+      description: 'Entregas, vencimientos de cobro, tareas y agenda',
+      icon: Calendar,
+      iconBg: 'rgba(56, 189, 248, 0.18)',
+      iconColor: 'var(--brand-cyan)'
     },
     {
       id: 'seguimiento',
