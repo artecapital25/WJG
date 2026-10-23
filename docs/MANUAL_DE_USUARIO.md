@@ -1,181 +1,219 @@
 # Manual Oficial de Usuario y Operaciones del Sistema: WJGEEKS 3D PRO
 
-**Versión:** 2.0 Enterprise  
-**Fecha de Publicación:** Octubre 2026  
+**Versión:** 3.0 Enterprise (Master Schema v3)  
+**Fecha de Actualización:** Octubre 2026  
 **Autor:** Equipo de Arquitectura de Software & Tech Lead WJGEEKS 3D  
-**Clasificación:** Documento Interno de Operación y Seguridad  
+**Clasificación:** Documento Interno de Operación, Seguridad y Despliegue  
 
 ---
 
-## 1. Directorio Oficial del Personal y Roles de Acceso
+## 📑 Índice de Contenidos
 
-El sistema WJGEEKS 3D PRO cuenta con control de acceso por roles y notificaciones directas a los números canónicos autorizados de la empresa:
+1. [Directorio Oficial del Personal y UUIDs Canónicos](#1-directorio-oficial-del-personal-y-uuids-canónicos)
+2. [Autenticación Blindada, Credenciales Flexibles y Gestión de Sesión](#2-autenticación-blindada-credenciales-flexibles-y-gestión-de-sesión)
+   - [2.1 Modalidades de Clave: PIN Rápido vs Contraseña Compleja](#21-modalidades-de-clave-pin-rápido-vs-contraseña-compleja)
+   - [2.2 Blindaje del Encabezado (Header Minimalista) y Cierre de Sesión](#22-blindaje-del-encabezado-header-minimalista-y-cierre-de-sesión)
+   - [2.3 Soporte Multi-Dispositivo y Acceso Móvil Resiliente (Anti-22P02)](#23-soporte-multi-dispositivo-y-acceso-móvil-resiliente-anti-22p02)
+   - [2.4 Flujo de Recuperación de Credenciales](#24-flujo-de-recuperación-de-credenciales)
+   - [2.5 Administración de Colaboradores (PersonalView)](#25-administración-de-colaboradores-personalview)
+3. [Módulo 1: Calendario Operativo Interactivo 100% Funcional](#3-módulo-1-calendario-operativo-interactivo-100-funcional)
+4. [Módulo 2: Mensajería Desatendida por WhatsApp Business API](#4-módulo-2-mensajería-desatendida-por-whatsapp-business-api)
+5. [Módulo 3: Arquitectura Supabase Master v3 y Vistas con Security Invoker](#5-módulo-3-arquitectura-supabase-master-v3-y-vistas-con-security-invoker)
+   - [5.1 Principio de Security Invoker (Supabase Linter 0010)](#51-principio-de-security-invoker-supabase-linter-0010)
+   - [5.2 Tablas del Ledger y Políticas RLS](#52-tablas-del-ledger-y-políticas-rls)
+   - [5.3 Procedimientos Almacenados (RPCs) Transaccionales](#53-procedimientos-almacenados-rpcs-transaccionales)
+6. [Módulo 4: Portal de Clientes Aislado y Confidencial](#6-módulo-4-portal-de-clientes-aislado-y-confidencial)
+7. [Flujos Operativos Integrales de Negocio (Workflows Paso a Paso)](#7-flujos-operativos-integrales-de-negocio-workflows-paso-a-paso)
+   - [Flujo A: Cotización ➔ Anticipo 50% ➔ Taller ➔ Liquidación](#flujo-a-cotización--anticipo-50--taller--liquidación)
+   - [Flujo B: Venta Express POS Mostrador con Cámara WebP](#flujo-b-venta-express-pos-mostrador-con-cámara-webp)
+   - [Flujo C: Cambio Seguro de Turno / Operador en Taller](#flujo-c-cambio-seguro-de-turno--operador-en-taller)
+8. [Preguntas Frecuentes, Guía de Diagnóstico y Soporte](#8-preguntas-frecuentes-guía-de-diagnóstico-y-soporte)
 
-| Miembro del Personal | Rol en el Sistema | Especialidad Operativa | WhatsApp Oficial | Correo Electrónico |
-| :--- | :--- | :--- | :--- | :--- |
-| **Germán Reyes** | `admin` (Administrador Global) | Dirección, Modelado 3D, Tarifarios y Control Maestro | **350 3443140** | `german@wjgeeks.com` |
-| **Wendy Castro** | `cobranzas` (Administración / Finanzas) | Cartera, Cuentas de Cobro, Conciliación y Compras | **320 4814702** | `wendy@wjgeeks.com` |
-| **Juan David Guzmán** | `taller` (Producción & Impresión 3D) | Cola de Fabricación, Postprocesado, Curado y S.O.S Insumos | **321 7273025** | `juan@wjgeeks.com` |
+---
+
+## 1. Directorio Oficial del Personal y UUIDs Canónicos
+
+El sistema WJGEEKS 3D PRO cuenta con un control de acceso basado en roles (RBAC) sincronizado de forma estricta con la tabla `public.usuarios_taller` en Supabase:
+
+| Miembro del Personal | Identificador Canónico (UUID Supabase) | Rol RBAC | Áreas de Acceso | WhatsApp Oficial | Correo Electrónico |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| **Germán Reyes** | `08c6c49a-0422-414b-813e-8f58fa651bd5` | `ADMIN_COBRANZAS` (Director Global) | `ventas`, `taller`, `finanzas`, `gestion` | **+57 350 3443140** | `german@wjgeeks.com` |
+| **Wendy Castro** | `4485aa21-3896-4510-b693-fc68e947372d` | `PINTURA_ACABADOS` (Cobranzas & Post) | `taller`, `gestion` | **+57 320 4814702** | `wendy@wjgeeks.com` |
+| **Juan David Guzmán** | `a48df7ca-8b06-4bab-bfa4-3b058912b06f` | `IMPRESION_MANTENIMIENTO` (Taller 3D) | `taller` | **+57 321 7273025** | `juan@wjgeeks.com` |
 
 > [!IMPORTANT]
-> **Canal Exclusivo de Notificaciones:** Todos los códigos de seguridad OTP, recordatorios de cobro y alertas de producción del sistema se emiten exclusivamente a los números anteriores. No se admiten números alternativos sin previa autorización del Administrador Global.
+> **Canal Exclusivo de Notificaciones y Seguridad:**  
+> Todos los códigos OTP, recordatorios de mora, alertas de insumos (S.O.S) y comprobantes se enrutan exclusivamente a las líneas canónicas anteriores.
 
 ---
 
-## 2. Acceso al Sistema y Persistencia "Minuto Cero"
+## 2. Autenticación Blindada, Credenciales Flexibles y Gestión de Sesión
 
-### 2.1 Modalidades de Inicio de Sesión
-La plataforma cuenta con una pantalla de autenticación blindada (`StaffAuthGuard`) accesible desde el botón superior **Staff** o al ingresar a rutas internas:
+### 2.1 Modalidades de Clave: PIN Rápido vs Contraseña Compleja
+A partir de la versión 3.0, el sistema elimina las restricciones rígidas de contraseñas. Cada colaborador puede configurar la credencial que mejor se adapte a su forma de trabajo:
 
-1. **Método 1: Selector de Perfil Rápido (Taller & Móviles Habituales):**
-   - Haz clic sobre tu tarjeta de perfil (Germán, Wendy o Juan).
-   - Ingresa tu clave o PIN numérico.
-   - El sistema valida el hash criptográfico SHA-256 en milisegundos.
-2. **Método 2: Entrada Dual (Correo o Teléfono de WhatsApp):**
-   - Diseñado para cuando no se desea desplegar perfiles predefinidos.
-   - Ingresa tu correo (ej: `wendy@wjgeeks.com`) o tu número de WhatsApp (ej: `3204814702`).
-   - Ingresa tu contraseña y presiona **Ingresar al Sistema**.
+1. **PIN Numérico Rápido (4 o más dígitos):**
+   - Diseñado para operadores en planta de impresión o tabletas táctiles con guantes de nitrilo.
+   - Detectado automáticamente por la interfaz (`badge` azul: *"PIN Rápido"*).
+2. **Contraseña Alfanumérica Compleja (Longitud variable >= 4 caracteres):**
+   - Permite letras mayúsculas, minúsculas, números y símbolos especiales (ej: `WJG3rm4n2605@`).
+   - Detectado automáticamente por la interfaz (`badge` morado: *"Contraseña Alfanumérica"*).
+3. **Almacenamiento Criptográfico Seguro:**
+   - En la base de datos PostgreSQL, la clave se persiste en formato texto en `pin_acceso` (ampliado a tipo `TEXT`), acompañado de su hash unidireccional SHA-256 en la columna `password_hash`.
+   - La aplicación admite validación híbrida (comparación directa segura o verificación de hash criptográfico).
 
-### 2.2 Dispositivos de Confianza (Persistencia de 30 Días)
-Para evitar tener que escribir la contraseña cada vez que abras la aplicación en tu celular habitual del taller o en tu computador de trabajo:
-- Marca la casilla **"Recordar este dispositivo por 30 días (Dispositivo Seguro)"** antes de presionar Entrar.
-- El sistema registrará una sesión segura persistente ("Minuto Cero"), permitiéndote cerrar el navegador, apagar el dispositivo o recargar la página sin perder el acceso.
-- Si utilizas un computador público o ajeno, **desmarca** esta casilla para que la sesión expire al cerrar la pestaña.
+### 2.2 Blindaje del Encabezado (Header Minimalista) y Cierre de Sesión
+Anteriormente existía un conmutador de pruebas en desarrollo que permitía alternar operadores haciendo clic sobre el nombre. **Este atajo ha sido completamente eliminado.**
 
-### 2.3 Recuperación de Contraseña Vía WhatsApp OTP (6 Dígitos)
-Si olvidaste tu clave o necesitas restablecerla de emergencia:
-1. En la pantalla de login, presiona el enlace **"¿Olvidaste tu contraseña o necesitas recuperarla? Restablecer por WhatsApp"**.
-2. Digita tu correo corporativo o tu número de teléfono registrado (Germán: `3503443140`, Wendy: `3204814702`, Juan: `3217273025`).
-3. El backend generará un código OTP numérico de **6 dígitos** criptográficamente seguro y lo enviará de inmediato a tu WhatsApp.
-4. **Vigencia:** El código tiene una ventana de validez estricta de **10 minutos**.
-5. Ingresa el código en el modal y escribe tu nueva contraseña. El sistema cuenta con un medidor de fortaleza en tiempo real (mínimo 8 caracteres, mayúscula, número y símbolo).
-6. Al presionar **Actualizar Contraseña**, tus credenciales quedarán renovadas en Supabase y podrás iniciar sesión al instante.
+- **Badge de Solo Lectura:** El indicador superior (`Sesión: Germán`) es estrictamente informativo. No conmuta de usuario ni escala privilegios al hacer clic.
+- **Botón de Cambio de Clave / PIN (`KeyRound` - Icono de Llave):** Permite al operador activo abrir [`CambiarPinModal`](file:///d:/WJG/src/components/auth/CambiarPinModal.tsx) para actualizar su clave personal ingresando la clave actual y la nueva.
+- **Botón de Salida Segura (`LogOut` - Icono de Puerta Roja):** 
+  - Revoca inmediatamente la sesión activa y el dispositivo de confianza local.
+  - Redirige al operador a la pantalla de guardia ([`StaffAuthGuard`](file:///d:/WJG/src/components/auth/StaffAuthGuard.tsx)).
+  - **Obligatoriedad de Credenciales:** Para ingresar como otro usuario (por ejemplo, de Germán a Wendy), el nuevo operador **debe introducir obligatoriamente su PIN o contraseña**.
 
-### 2.4 Gestión de Usuarios y Kill Switch (`UsuariosManagerView`)
-Desde la pestaña **Personal** (accesible en la barra superior o en el menú móvil):
-- Los administradores pueden visualizar la lista de personal activo, su rol y su última fecha de conexión.
-- **Creación de nuevos usuarios:** Genera contraseñas provisionales seguras y fuerza el cambio de clave en el primer inicio de sesión (`must_change_password`).
-- **Kill Switch (Interruptor de Bloqueo Inmediato):** En caso de pérdida de un celular o desvinculación de personal, desactiva el switch del usuario para revocar instantáneamente todas sus sesiones activas en todos los dispositivos.
+### 2.3 Soporte Multi-Dispositivo y Acceso Móvil Resiliente (Anti-22P02)
+En dispositivos móviles sin sesiones previas (o al acceder desde una nueva pestaña de incógnito):
+- Los selectores rápidos de perfil utilizan los UUIDs canónicos oficiales de Supabase (`08c6c49a-...`).
+- El guardián ejecuta una consulta higienizada con la función `isUUID()`: si un identificador no cumple la expresión regular de UUID, filtra de forma segura por `nombre` y `email`, eliminando por completo el error de PostgreSQL `ERROR 22P02 (invalid input syntax for type uuid)`.
+- Al validar credenciales con éxito contra la nube, se hidrata inmediatamente el almacenamiento local del teléfono (`wjg_usuarios_taller_cache`), asegurando que el celular pueda operar en modo fuera de línea si se interrumpe la conexión Wi-Fi en el taller.
+
+### 2.4 Flujo de Recuperación de Credenciales
+Si un colaborador olvida su contraseña o PIN:
+1. **Recuperación Inmediata por Cédula y Teléfono:**
+   - En [`StaffAuthGuard`](file:///d:/WJG/src/components/auth/StaffAuthGuard.tsx), pulsa sobre *"¿Olvidaste tu PIN o contraseña?"*.
+   - Digita el número de cédula registrado (ej: `1098765432`) y el teléfono corporativo (`3503443140`).
+   - El sistema valida la identidad contra `usuarios_taller` y permite ingresar una nueva clave de acceso inmediatamente.
+2. **Recuperación por WhatsApp OTP:**
+   - Mediante el servicio [`whatsappOtpService.ts`](file:///d:/WJG/src/services/whatsappOtpService.ts), se despacha un código numérico aleatorio de 6 dígitos con vigencia de 10 minutos a la línea del colaborador.
+
+### 2.5 Administración de Colaboradores (`PersonalView`)
+Accesible desde la sección de **Gestión** para usuarios con rol administrativo:
+- **Alta de Nuevos Operadores:** Formulario interactivo con selector de áreas asignadas (`ventas`, `taller`, `finanzas`, `gestion`).
+- **Campo de Clave con Visibilidad Alternable:** Icono de ojo (`Eye` / `EyeOff`) para verificar la clave o PIN asignado antes de guardar.
+- **Despacho Automático de Bienvenida:** Botón *"Enviar WhatsApp de Bienvenida"* que redacta y abre una plantilla preformateada en WhatsApp con el enlace de la app, usuario, teléfono, áreas autorizadas y su clave de acceso inicial.
+- **Kill Switch:** Interruptor para desactivar instantáneamente el acceso de cualquier cuenta comprometida.
 
 ---
 
 ## 3. Módulo 1: Calendario Operativo Interactivo 100% Funcional
 
-El Calendario Operativo (`CalendarOperationalView`) centraliza todos los eventos de producción, finanzas y mantenimiento en un único cronograma reactivo.
-
-### 3.1 Controles de Navegación y Vistas Dinámicas
-En la cabecera del calendario encontrarás:
-- **Vistas Disponibles:**
-  - **Mes:** Panorama global de carga de trabajo mensual con cuadrícula de 35 a 42 días.
-  - **Semana:** Distribución horaria y diaria detallada de lunes a domingo.
-  - **Día:** Enfoque ultra detallado por horas de la jornada actual.
-  - **Agenda:** Lista cronológica secuencial tipo feed de los próximos eventos ordenados por fecha y hora.
-- **Navegación Temporal:** Flechas de avance y retroceso mes a mes y día a día.
-- **Botón "Hoy":** Regresa inmediatamente a la fecha actual con un solo clic.
-- **Filtros Avanzados:** Filtra en tiempo real por responsable (Germán, Wendy, Juan, Todos), por tipo de evento o por estado (Pendiente, Completado, Vencido).
-
-### 3.2 Interacción y Desglose por Día (Drill-Down Drawer)
-- **Apertura de la Ficha Diaria:** Al hacer clic sobre cualquier celda de fecha en la vista mensual, o sobre el indicador interactivo `+X más`, se despliega un **panel lateral (Drawer)** desde la derecha.
-- **Desglose Cronológico:** El drawer lista de forma ordenada todas las entregas de OT, cobros de cartera, tareas personales y rutinas de mantenimiento programadas para ese día específico.
-- **Filtro Rápido:** Dentro del drawer puedes filtrar rápidamente entre eventos pendientes y completados.
-
-### 3.3 Codificación Cromática Inteligente
-Cada evento se dibuja con una paleta cromática de alto contraste para identificación visual inmediata:
-
-| Tipo de Evento | Color / Borde | Icono | Descripción Operativa |
-| :--- | :--- | :---: | :--- |
-| **Vencimiento de Cobro** | Rojo Neón (`#ef4444`) | 💰 | Cuentas de cobro o saldos pendientes con fecha límite de pago a clientes. |
-| **Entrega de Pedido (OT)** | Azul Cian (`#38bdf8`) | 📦 | Órdenes de trabajo terminadas o con compromiso de entrega en taller. |
-| **Tarea Individual** | Ámbar (`#f59e0b`) | 👤 | Tareas asignadas a una persona específica (Germán, Wendy o Juan). |
-| **Tarea Grupal / Taller** | Púrpura (`#a855f7`) | 👥 | Actividades que involucran a todo el equipo o mantenimiento mayor. |
-| **Rutina Diaria / Periódica** | Verde Esmeralda (`#10b981`) | 🔄 | Limpieza de cubas, calibración de impresoras, respaldos y revisión de stock. |
-| **Llegada de Insumos** | Rosa Magenta (`#ec4899`) | 🛒 | Reabastecimiento de resinas UV, alcohol isopropílico, filtros o repuestos. |
-| **Vencimiento de Cotización**| Gris Slate (`#94a3b8`) | 📄 | Cotizaciones comerciales pendientes de respuesta o anticipo del cliente. |
-
-### 3.4 Deep-Linking (Navegación Directa al Registro Exacto)
-Cada evento en el calendario es un enlace directo al registro original:
-- Al hacer clic en un evento de **Cobro**, el sistema te redirige a la **Cuenta de Cobro** exacta en la pestaña *Cobros* para registrar abonos o emitir paz y salvo.
-- Al hacer clic en una **Entrega de Pedido**, el sistema abre la **Orden de Trabajo (OT)** correspondiente en el *Workflow Pipeline*.
-- Al hacer clic en una **Tarea de Equipo**, se abre la gestión de tareas en *Equipo*.
-- **Reprogramación Rápida:** Puedes reprogramar cualquier fecha directamente desde el modal del evento; la nueva fecha se sincroniza automáticamente con la OT o Cuenta de Cobro en la base de datos Supabase.
+El Calendario Operativo (`CalendarOperationalView`) consolida la agenda técnica y comercial del taller:
+- **Vistas Soportadas:** Mes, Semana, Día y Agenda tipo feed.
+- **Drawer Lateral de Desglose Diario:** Al presionar sobre cualquier celda de fecha, se abre un panel lateral con los compromisos clasificados en pendientes y completados.
+- **Codificación Cromática:**
+  - 🔴 **Vencimiento de Cobro (`#ef4444`):** Saldos de cartera con fecha límite.
+  - 🔵 **Entrega de Orden de Trabajo (`#38bdf8`):** Compromisos de entrega de piezas impresas.
+  - 👤 **Tarea Individual (`#f59e0b`):** Asignaciones específicas a Germán, Wendy o Juan.
+  - 🔄 **Rutina Periódica (`#10b981`):** Mantenimiento de tanques FEP, filtrado de resina y respaldos.
+- **Deep-Linking:** Hacer clic sobre un evento navega directamente a la Cuenta de Cobro o a la Orden de Trabajo técnica en el pipeline.
 
 ---
 
-## 4. Módulo 2: Mensajería Desatendida por WhatsApp (Cero Intervención Manual)
+## 4. Módulo 2: Mensajería Desatendida por WhatsApp Business API
 
-El sistema integra un motor de despacho automatizado y desatendido conectado a la API de WhatsApp Business Cloud de Meta.
-
-### 4.1 Disparos Automáticos en Backend
-1. **Cobranzas y Cartera:**
-   - Una rutina en base de datos evalúa diariamente las cuentas de cobro con saldo pendiente.
-   - Si una cuenta está a 48 horas de vencer o ya está vencida, el sistema encola automáticamente un mensaje personalizado con el nombre del cliente, número de cuenta de cobro, saldo pendiente y enlace de pago.
-2. **Alertas de Órdenes de Trabajo (Taller):**
-   - Cuando el operario de taller cambia el estado de una OT a **"Listo para entrega"**, el sistema genera y envía una notificación automática al WhatsApp del cliente informándole que su pieza 3D está lista para retiro o despacho.
-3. **Recuperación de Contraseña OTP:**
-   - Emisión desatendida del código de 6 dígitos con expiración de 10 minutos.
-
-### 4.2 Auditoría e Idempotencia (`whatsapp_notification_logs`)
-- Para evitar que un cliente o miembro del equipo reciba mensajes duplicados, cada envío genera una clave de idempotencia única (`idempotency_key`, por ejemplo: `cobro-cc-102-2026-10-21`).
-- La tabla registra el estado en tiempo real: `queued` (en cola), `sent` (enviado), `delivered` (entregado) o `failed` (fallido).
-- Cuenta con un mecanismo de reintento automático de hasta 3 intentos con retroceso exponencial.
+El sistema cuenta con un motor asíncrono para notificaciones al cliente y al equipo:
+1. **Cobranzas y Cartera:** Despacho programado a las 7:00 AM para cuentas de cobro con vencimiento en las próximas 48 horas.
+2. **Fin de Fabricación:** Notificación automática al cliente en cuanto la OT alcanza el estado `"Listo para entrega"`, adjuntando foto del producto y balance pendiente.
+3. **Daily Briefing Matutino:** Resumen ejecutivo enviado a Germán y Wendy con los cobros del día, entregas programadas y salud técnica del sistema.
 
 ---
 
-## 5. Módulo 3: Sincronización Multi-Dispositivo en Tiempo Real
+## 5. Módulo 3: Arquitectura Supabase Master v3 y Vistas con Security Invoker
 
-### 5.1 Fuente de la Verdad Unificada
-- Toda la información mostrada en pantalla proviene en vivo de la base de datos PostgreSQL en Supabase.
-- Se eliminaron todos los datos estáticos de prueba (mocks). Lo que ves en tu teléfono es exactamente lo que el equipo en el taller está registrando en la computadora de producción.
+### 5.1 Principio de Security Invoker (Supabase Linter 0010)
+Las vistas del sistema están configuradas con la propiedad `WITH (security_invoker = true)`:
+- `public.vista_balance_taller`: Agrega en tiempo real ingresos por Nequi, Bre-B, Efectivo y saldo por cobrar.
+- `public.payments`: Ledger consolidado de abonos y comprobantes.
+- `public.cuentas_cobro`: Vista canónica de cartera comercial.
 
-### 5.2 Supabase Realtime (`postgres_changes`)
-- Las tablas críticas (`ordenes_trabajo`, `cuentas_cobro`, `cotizaciones`, `ventas_express`, `calendar_events`) tienen activado `REPLICA IDENTITY FULL`.
-- Si Wendy registra un abono en contabilidad, la cuenta de cobro y el saldo se actualizan en el teléfono de Germán y de Juan **en tiempo real, sin recargar la página**.
-- Si Juan avanza una OT en el taller de "Imprimiendo" a "Curado", el tablero Kanban y el calendario se mueven al instante en todos los dispositivos conectados.
+> [!NOTE]
+> Al estar definidas como **`SECURITY INVOKER`**, PostgreSQL evalúa las políticas RLS del usuario que realiza la consulta, garantizando que un cliente externo nunca pueda ver balances globales y resolviendo al 100% las advertencias del Database Linter de Supabase.
 
-### 5.3 Portal de Clientes Aislado y Seguro (`/seguimiento/[token]`)
-- Los clientes acceden a su pedido a través de un enlace público único con token criptográfico (ej: `https://wjgeeks3d.com/?ot=OT-104&token=abc123xyz`).
-- **Aislamiento Total:** El portal para clientes es estrictamente de **solo lectura**.
-- **Seguridad Garantizada:** En esta vista no existen botones de inicio de sesión de personal, menús administrativos, márgenes de ganancia ni costos internos de resina.
-- El cliente puede ver el avance de su pieza en una barra de progreso de 6 fases y presionar un botón para contactar al WhatsApp de soporte de WJGEEKS.
+### 5.2 Tablas del Ledger y Políticas RLS
+Todas las tablas cuentan con Row Level Security activado (`ENABLE ROW LEVEL SECURITY`) con políticas explícitas:
+- `usuarios_taller`: Directorio y credenciales.
+- `clientes` & `cotizaciones` & `cotizacion_items`: Área comercial.
+- `ordenes_trabajo` & `historial_estados_ot`: Taller de manufactura 3D.
+- `abonos_pagos`: Ledger contable inmutable con trazabilidad a POS y Cuentas de Cobro.
+- `productos_stock` & `ventas_express`: Inventario físico y ventas de mostrador.
+
+### 5.3 Procedimientos Almacenados (RPCs) Transaccionales
+- `fn_cambiar_pin_usuario`: Cambio atómico de clave o PIN con recálculo de hash SHA-256 en base de datos.
+- `fn_eliminar_cobro_duplicado`: Eliminación segura de un registro de abono con recálculo automático del saldo en la orden de trabajo correspondiente.
+- `fn_validar_reglas_anticipo_y_entrega`: Trigger que bloquea el paso de una OT a fases de impresión o curado si el abono registrado es inferior al **50%**.
 
 ---
 
-## 6. Flujo Operativo Integral de Negocio (Paso a Paso)
+## 6. Módulo 4: Portal de Clientes Aislado y Confidencial
+
+- **Ruta de Acceso:** Enlace único parametrizado con token criptográfico (ej: `https://wjgeeks3d.com/?ot=OT-0001&token=uuid`).
+- **Aislamiento Total:** El portal detecta el modo cliente y oculta todas las barras de navegación, botones de login administrativo y costos de resina.
+- **Barra de Progreso:** Representación visual de 6 etapas (*Recepción ➔ Preparación STL ➔ Impresión 3D ➔ Curado UV ➔ Acabados & Pintura ➔ ¡Listo para Entrega!*).
+- **Garantía de Saldo:** Si la pieza está totalmente pagada y lista, la barra refleja el 100% de cumplimiento.
+
+---
+
+## 7. Flujos Operativos Integrales de Negocio (Workflows Paso a Paso)
+
+### Flujo A: Cotización ➔ Anticipo 50% ➔ Taller ➔ Liquidación
 
 ```mermaid
-flowchart LR
-    A[Cotización Técnica 3D] -->|Abono 50%| B[Cuenta de Cobro Atómica]
-    B --> C[Orden de Trabajo en Taller]
-    C --> D[Calendario Operativo]
-    C -->|Listo para entrega| E[WhatsApp Automático al Cliente]
-    E -->|Pago Saldo Final| F[Paz y Salvo & Entrega]
+sequenceDiagram
+    autonumber
+    actor Cliente
+    actor German as Germán (Ventas/Dir)
+    actor Juan as Juan (Taller)
+    participant Sistema as WJGEEKS 3D PRO
+    participant DB as Supabase PostgreSQL
+
+    German->>Sistema: Carga dimensiones STL o altura en cm ($10k/cm)
+    Sistema->>German: Cálculo de gramos, tiempo y precio de venta
+    German->>Cliente: Envía presupuesto oficial por WhatsApp
+    Cliente-->>German: Transfiere anticipo (mínimo 50% vía Bre-B o Nequi)
+    German->>Sistema: Presiona "Aprobar Cotización" y registra abono
+    Sistema->>DB: Ejecuta transacción atómica: Crea OT + Cuenta Cobro + Evento Calendario
+    Juan->>Sistema: Visualiza OT en Kanban de Taller y descarga archivo STL
+    Juan->>Sistema: Avanza OT: En Cola -> Imprimiendo -> Curado -> Listo para entrega
+    Sistema-->>Cliente: Notificación automática de WhatsApp: ¡Tu pieza está lista!
+    Cliente-->>German: Cancela saldo restante
+    German->>Sistema: Registra pago final -> Saldo pasa a $0
+    Sistema->>DB: Cierra orden y emite Comprobante de Paz y Salvo
 ```
 
-1. **Cotización Técnica (`Cotizador 3D`):**
-   - Sube el archivo STL o ingresa los gramos de resina y dimensiones.
-   - El motor calcula costo de resina UV, desgaste de máquina, insumos de curado/limpieza, mano de obra y margen de ganancia.
-   - Guarda la cotización con datos del cliente.
-2. **Aprobación y Creación de Cuenta de Cobro (`Cotizaciones`):**
-   - Cuando el cliente aprueba el presupuesto, presiona **"Aprobar Cotización"**.
-   - Ingresa el abono inicial (por ejemplo, 50%).
-   - El sistema ejecuta la transacción atómica `approve_quote_and_settle`:
-     - Genera automáticamente la Cuenta de Cobro (`CC-XXX`) con el saldo restante.
-     - Crea la Orden de Trabajo (`OT-XXX`) en el taller.
-     - Agenda la fecha de entrega en el Calendario Operativo.
-3. **Producción en Taller (`Pipeline Workflow`):**
-   - Juan visualiza la OT en el Kanban y asigna la máquina correspondiente.
-   - Avanza las etapas: *En Cola -> Imprimiendo -> Lavado & Curado -> Control de Calidad -> Listo para entrega*.
-4. **Entrega y Liquidación (`Cobros`):**
-   - Al marcar "Listo para entrega", se notifica al cliente por WhatsApp.
-   - Al recibir el saldo final, se registra el pago en *Cuentas de Cobro*, emitiendo el comprobante oficial y cerrando la orden.
+### Flujo B: Venta Express POS Mostrador con Cámara WebP
+1. El cliente escoge una figura exhibida en el taller o feria.
+2. El operario abre **Ventas Express (POS)**, pulsa el botón de la cámara y toma una foto de la pieza.
+3. El motor del navegador comprime la foto a formato WebP ultraligero.
+4. Selecciona el chip de valor rápido (ej: `$80.000`) e ingresa el anticipo entregado.
+5. Si queda saldo pendiente, selecciona la fecha prometida de pago (*Fin de semana*, *15 días*, etc.).
+6. Al presionar **"Registrar Venta Express"**:
+   - Se guarda la venta en `ventas_express`.
+   - Si se marcó descontar stock, se disminuye automáticamente la unidad en `productos_stock`.
+   - Se registra el abono en el ledger contable `abonos_pagos`.
+   - Se abre el enlace directo a WhatsApp con el recibo digital con emojis listo para enviar al comprador.
+
+### Flujo C: Cambio Seguro de Turno / Operador en Taller
+1. El operador que entrega el turno (ej. Germán) pulsa el botón rojo **Cerrar Sesión (`LogOut`)** en la esquina superior derecha.
+2. El sistema revoca la sesión local y regresa a la pantalla de guardia [`StaffAuthGuard`](file:///d:/WJG/src/components/auth/StaffAuthGuard.tsx).
+3. El operador que recibe el turno (ej. Wendy o Juan) selecciona su perfil en la pantalla táctil o escribe su número de teléfono.
+4. Digita su PIN numérico o contraseña personal.
+5. El sistema valida las credenciales y carga el espacio de trabajo con los permisos RBAC exactos del nuevo operador.
 
 ---
 
-## 7. Preguntas Frecuentes y Soporte Técnico
+## 8. Preguntas Frecuentes, Guía de Diagnóstico y Soporte
 
-- **¿Qué hago si no recibo el código OTP por WhatsApp?**
-  Verifica que hayas ingresado tu número oficial exactamente como está registrado (`3503443140`, `3204814702` o `3217273025`). Asegúrate de que tu celular tenga señal de datos e inténtalo nuevamente tras 60 segundos.
-- **¿Cómo cambio la fecha de entrega de un pedido?**
-  Entra al **Calendario**, busca el evento de la OT, pulsa sobre él, selecciona la nueva fecha y guarda. La orden de trabajo en el taller actualizará su fecha de entrega automáticamente.
-- **¿Es seguro dejar la sesión abierta en mi celular?**
-  Sí, siempre que tu teléfono personal cuente con bloqueo de pantalla por huella, PIN o reconocimiento facial. Si extravías tu equipo, solicita inmediatamente al Administrador que active el **Kill Switch** de tu usuario en la sección *Personal*.
+| Situación / Pregunta | Causa Técnica | Solución Inmediata |
+| :--- | :--- | :--- |
+| **En el celular me decía "clave incorrecta" tras cambiarla en el PC** | El perfil móvil enviaba un ID no UUID (`id.eq.german`), disparando el error Postgres `22P02`. | **Solucionado en v3.0.** Actualiza la app en el celular. Los perfiles ahora utilizan UUIDs canónicos y validación segura `isUUID()`. |
+| **Error `42601 syntax error at or near DECLARE` en Supabase** | Se intentó ejecutar un script de base de datos teniendo texto sombreado con el mouse ("Run selected"). | Abre una pestaña **NUEVA** en el SQL Editor de Supabase, asegúrate de no tener texto sombreado y presiona **Run**. |
+| **Advertencia `security_definer_view` en el linter de Supabase** | Vistas creadas sin la opción `WITH (security_invoker = true)`. | Ejecuta: `ALTER VIEW public.vista_balance_taller SET (security_invoker = true);` (incluido en la migración 4). |
+| **¿Cómo recupero mi clave si no recuerdo el PIN?** | Olvido de credenciales de operador. | En la pantalla de login pulsa *"¿Olvidaste tu PIN?"*, digita tu cédula y teléfono corporativo para definir una nueva clave al instante. |
+
+---
+
+<div align="center">
+  <p><strong>WJGEEKS 3D PRO — Excelencia Técnica en Manufactura Aditiva</strong></p>
+  <p>Soporte Oficial & Mesa de Ayuda: <code>+57 320 279 6115</code> • Bogotá D.C., Colombia</p>
+</div>

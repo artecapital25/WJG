@@ -4,7 +4,7 @@
   <img src="public/wjg_logo_vector.svg" alt="WJGEEKS 3D Logo" width="260" />
   <p><strong>Sistema Empresarial de Cotización Paramétrica, Punto de Venta Express (POS), Gestión de Cartera y Deudores, Pipeline de Producción, Trazabilidad STL, Marketing Meta/Instagram y Sincronización en Tiempo Real en la Nube.</strong></p>
   <p>
-    <code>Versión 2.0.0 Pro</code> • <code>Local-First & Supabase Cloud</code> • <code>Hecho para Taller en Colombia 🇨🇴</code>
+    <code>Versión 3.0.0 Pro Enterprise</code> • <code>Master Schema v3</code> • <code>Supabase Realtime & Offline-First</code> • <code>Hecho para Taller en Colombia 🇨🇴</code>
   </p>
 </div>
 
@@ -14,7 +14,7 @@
 
 1. [Visión General del Sistema](#-visión-general-del-sistema)
 2. [Ecosistema de Módulos & Funcionalidades](#-ecosistema-de-módulos--funcionalidades)
-   - [1. POS Express (Punto de Venta Rápido con Cámara)](#1-pos-express-punto-de-venta-rápido-con-cámara)
+   - [1. POS Express (Punto de Venta Rápido con Cámara WebP)](#1-pos-express-punto-de-venta-rápido-con-cámara-webp)
    - [2. Central de Deudores & Cuentas por Cobrar](#2-central-de-deudores--cuentas-por-cobrar)
    - [3. Tarifario Oficial por Centímetros ($10.000 / cm)](#3-tarifario-oficial-por-centímetros-10000--cm)
    - [4. Trazabilidad STL & Handoff de Taller (Germán ➔ Juan)](#4-trazabilidad-stl--handoff-de-taller-germán--juan)
@@ -26,53 +26,56 @@
    - [10. Marketing Hub & Catálogo Meta Commerce (Instagram / WhatsApp)](#10-marketing-hub--catálogo-meta-commerce-instagram--whatsapp)
    - [11. Catálogo de Figuras en Stock Inmediato](#11-catálogo-de-figuras-en-stock-inmediato)
    - [12. Balance Contable, Costos & Reportes Financieros](#12-balance-contable-costos--reportes-financieros)
-3. [Manual Operativo por Roles](#-manual-operativo-por-roles)
-   - [Germán (Modelado 3D, Ventas & Dirección Técnica)](#-rol-germán-modelador-3d--director)
-   - [Wendy (Administración, Cartera & Suministros)](#-rol-wendy-administración-cartera--compras)
-   - [Juan (Operador de Impresoras, Curado & Mantenimiento)](#-rol-juan-operador-de-impresión-post-procesado--taller)
-4. [Arquitectura Tecnológica & Base de Datos](#-arquitectura-tecnológica--base-de-datos)
-5. [Instalación Local & PWA](#-instalación-local--pwa)
-6. [Respaldo, Exportación y Recuperación de Datos](#-respaldo-exportación-y-recuperación-de-datos)
+3. [Seguridad, Autenticación y Control de Sesión (v3.0)](#-seguridad-autenticación-y-control-de-sesión-v30)
+   - [3.1 Claves Flexibles: PIN Rápido o Contraseña Compleja](#31-claves-flexibles-pin-rápido-o-contraseña-compleja)
+   - [3.2 Blindaje del Encabezado (Header Minimalista) y Logout Seguro](#32-blindaje-del-encabezado-header-minimalista-y-logout-seguro)
+   - [3.3 Resiliencia Multi-Dispositivo y Prevención de Errores UUID (Anti-22P02)](#33-resiliencia-multi-dispositivo-y-prevención-de-errores-uuid-anti-22p02)
+   - [3.4 Procedimientos de Recuperación y Gestión en PersonalView](#34-procedimientos-de-recuperación-y-gestión-en-personalview)
+4. [Manual Operativo por Roles](#-manual-operativo-por-roles)
+5. [Arquitectura Tecnológica & Base de Datos (Supabase Master v3)](#-arquitectura-tecnológica--base-de-datos-supabase-master-v3)
+   - [Vistas Canónicas con Security Invoker (Supabase Linter 0010)](#vistas-canónicas-con-security-invoker-supabase-linter-0010)
+   - [Catálogo de Tablas del Ledger](#catálogo-de-tablas-del-ledger)
+6. [Flujos de Trabajo del Negocio (Workflows)](#-flujos-de-trabajo-del-negocio-workflows)
+7. [Instalación Local, Variables de Entorno & PWA](#-instalación-local-variables-de-entorno--pwa)
+8. [Respaldo, Google Sheets & Sincronización en Drive](#-respaldo-google-sheets--sincronización-en-drive)
 
 ---
 
 ## 🎯 Visión General del Sistema
 
-**WJGEEKS 3D PRO** es una solución desarrollada a la medida para talleres de manufactura aditiva y figuras de colección en resina de alta resolución (8K). 
+**WJGEEKS 3D PRO** es una solución empresarial de vanguardia desarrollada a la medida para talleres de manufactura aditiva y figuras de colección en resina UV de alta definición (8K).
 
 El sistema resuelve la complejidad operativa real del taller:
-- Permite vender figuras unicas o fuera de catálogo en **10 segundos** tomando una foto.
-- Controla al 100% quién debe dinero, cuánto debe y cuándo prometió pagar.
-- Permite presupuestar proyectos en 3 segundos según su altura ($10.000 / cm) o con el motor paramétrico de 20 variables.
-- Coordina el paso de archivos 3D de modelado a impresión sin pérdidas de archivos ni versiones equivocadas.
-- Envía enlaces de seguimiento a los clientes **totalmente protegidos y aislados** para no exponer costos ni cotizaciones de otros clientes.
-- Genera el feed oficial de productos para sincronizar con **Instagram Shopping** y el **Catálogo de WhatsApp Business**.
+- Permite vender figuras de mostrador en **10 segundos** capturando una fotografía comprimida en WebP.
+- Controla el 100% de la cartera de clientes, anticipos, abonos sucesivos y fechas prometidas de pago.
+- Presupuesta proyectos en 3 segundos según su altura ($10.000 / cm) o con el motor paramétrico de 20 variables.
+- Coordina el paso de archivos 3D de modelado a impresión sin pérdidas de archivos ni discrepancias de versión.
+- Emite enlaces de seguimiento protegidos y confidenciales para clientes.
+- Administra el personal del taller con control de acceso por roles (RBAC), sesiones blindadas y claves flexibles.
 
 ---
 
 ## 🧩 Ecosistema de Módulos & Funcionalidades
 
-### 1. POS Express (Punto de Venta Rápido con Cámara)
-Diseñado para ferias, eventos o ventas directas de figuras que no están en inventario ni requieren pasar por una cotización larga:
-- **Disparo Fotográfico Directo:** Activa la cámara del teléfono o permite arrastrar imágenes. Cuenta con compresión automática a formato moderno **WebP** en el navegador para ahorrar espacio y cargar a ultra-velocidad.
-- **Botones de Monto Rápido:** Chips de un clic para montos habituales ($50k, $70k, $80k, $100k, $120k).
-- **Control de Abonos y Saldo:** Registra cuánto dio el cliente de anticipo (Nequi, Daviplata, Bancolombia, Efectivo) y calcula automáticamente el saldo pendiente.
-- **Fecha Prometida de Pago:** Selección rápida con botones inteligentes (*Hoy, Mañana, En 3 días, Fin de semana, 15 días* o fecha exacta en calendario).
-- **Recibo Digital para WhatsApp:** Genera instantáneamente el comprobante formateado con emojis, saldo y enlace directo para enviárselo al cliente en 1 clic.
-- **Gestión de Pagos Posteriores:** Modal emergente para registrar abonos sucesivos hasta liquidar el saldo total.
+### 1. POS Express (Punto de Venta Rápido con Cámara WebP)
+Diseñado para ferias, eventos o ventas directas de figuras en mostrador:
+- **Disparo Fotográfico Directo:** Captura directa con cámara web o móvil con compresión automática a formato **WebP** en el navegador para ahorrar ancho de banda y almacenamiento.
+- **Botones de Monto Rápido:** Chips de un toque para montos habituales ($50k, $70k, $80k, $100k, $120k).
+- **Control de Abonos y Saldo:** Registro del anticipo entregado (Nequi, Bre-B, Daviplata, Efectivo) con cálculo automático de saldo pendiente.
+- **Recibo Digital para WhatsApp:** Genera instantáneamente el comprobante formateado con emojis y desglose para enviarlo al cliente en 1 clic.
 
 ### 2. Central de Deudores & Cuentas por Cobrar
-Unifica en una sola vista toda la cartera del negocio, cruzando tanto las ventas de **POS Express** como las **Cuentas de Cobro de Cotizaciones Formales**:
-- **Vista de Deudores Consolidados:** Agrupa todas las deudas por persona (si un cliente tiene 2 ventas POS y 1 cotización pendiente, se presenta en una sola tarjeta con el total acumulado).
+Unifica en una sola vista toda la cartera del negocio, consolidando ventas de mostrador y cotizaciones:
+- **Vista de Deudores Consolidados:** Agrupa todas las deudas por persona con cálculo del saldo total acumulado.
 - **Semáforo Inteligente de Alertas de Pago:**
-  - 🔴 **Vencido:** La fecha prometida de pago ya pasó (muestra los días de mora).
-  - 🟡 **Paga Hoy:** Clientes con compromiso de pago para el día en curso.
-  - 🔵 **Próximo al Pago:** Vence en los próximos 1 a 3 días.
-  - 🟢 **Al Día / Pagado Total:** Compromisos cubiertos o dentro del plazo normal.
-- **Cobro Amigable con 1 Clic por WhatsApp:** Genera un mensaje cordial y profesional con el saludo personalizado, el detalle de la figura, el saldo pendiente y los datos de pago del taller.
+  - 🔴 **Vencido:** Días de mora transcurridos.
+  - 🟡 **Paga Hoy:** Clientes con compromiso para la fecha en curso.
+  - 🔵 **Próximo al Pago:** Vencimientos en los próximos 1 a 3 días.
+  - 🟢 **Al Día / Pagado Total:** Compromisos saldados.
+- **Cobro Asistido por WhatsApp:** Plantilla de cobro amigable generada con 1 clic.
 
 ### 3. Tarifario Oficial por Centímetros ($10.000 / cm)
-Tabla oficial estandarizada para figuras coleccionables en resina UV de 8K con acabado artesanal:
+Tabla oficial estandarizada para figuras coleccionables en resina UV de 8K:
 
 | Altura de Pieza | Precio Oficial (COP) | Tiempo Estimado de Taller |
 | :---: | :---: | :---: |
@@ -85,209 +88,165 @@ Tabla oficial estandarizada para figuras coleccionables en resina UV de 8K con a
 | **11 cm** | **$110.000** | 7 Días hábiles |
 | **12 cm** | **$120.000** | 7 Días hábiles |
 
-> *Nota:* Cualquier figura que supere los 12 cm o requiera ensamble complejo multiparte se cotiza mediante el motor paramétrico.
-
 ### 4. Trazabilidad STL & Handoff de Taller (Germán ➔ Juan)
-Garantiza que el archivo que entra a la impresora sea exactamente el modelado y aprobado:
-- **Estados del Modelo 3D:**
-  1. *Modelado Pendiente*
-  2. *Diseñado por Germán*
-  3. *Laminado por Juan*
-  4. *En Impresora*
-  5. *Impreso*
-- **Control de Versiones:** Registro de versión (`v1.0`, `v1.1`, `v2.0-ahuecado`).
-- **Enlace de Descarga Digital:** Guarda el link a Google Drive, WeTransfer, OneDrive o nube con el archivo STL o Chitubox listo.
-- **Despacho Directo a Juan por WhatsApp:** Botón en la tarjeta de la OT para notificar al operador que el archivo ya está listo para mandar a impresión.
+- **Ciclo de Estados:** *Modelado Pendiente ➔ Diseñado por Germán ➔ Laminado por Juan ➔ En Impresora ➔ Impreso*.
+- **Control de Versiones:** Registro de versión de malla (`v1.0`, `v1.1`, `v2.0-ahuecado`).
+- **Enlace de Descarga Digital:** Conexión con Google Drive, WeTransfer o nube técnica.
 
 ### 5. Cotizador Paramétrico 3D de Alta Precisión
-Motor matemático de 20 variables de costos industriales:
-- **Modo Dimensiones vs Gramos Slicer:** Introduce las medidas $X \times Y \times Z$ o los gramos exactos calculados por el laminador (Chitubox, Lychee, Bambu Studio).
-- **Costos Reales Computados:**
-  - Consumo de resina con factor de merma y soportes (40% de fábrica).
-  - Gasto eléctrico según potencia de la máquina y tarifa por kWh ($1.050 COP/kWh).
-  - Lavado químico y curado UV (alcohol isopropílico de 99%).
-  - Mano de obra especializada de diseño, ensamble y pintura de detalle.
-  - Empaques, cajas, imanes de neodimio, argollas y tornillería.
-- **Modo Cotización Parcial / Pendiente:** Guarda borradores con medidas tentativas para no frenar la atención comercial mientras el cliente envía el archivo definitivo.
+Motor de cálculo técnico de costos reales de producción:
+- Gramos de resina UV consumidos y volumen en cm³.
+- Depreciación de pantallas LCD, película FEP y fuentes de luz UV.
+- Desgaste de insumos de lavado (alcohol isopropílico) y curado UV.
+- Mano de obra técnica de post-procesado, soporteo y lijado.
+- Márgenes de utilidad comercial y cálculo de anticipo mínimo del 50%.
 
 ### 6. Pipeline de Producción & Taller (Órdenes de Trabajo OT)
-Tablero Kanban interactivo que refleja el estado de la línea de fabricación:
-- **Etapas de Producción:**
-  `En Cola ➔ Imprimiendo ➔ Curado ➔ Pintura y Armado ➔ Control de Calidad ➔ Listo para Entrega`
-- **Proyecto Rápido (Tarifario Express):** Botón `➕ Proyecto Rápido` para crear una OT en 5 segundos subiendo una foto y seleccionando los centímetros (5 a 12 cm), con opción de generar automáticamente el cobro en el POS.
-- **Descuento de Inventario Automático:** Al avanzar la OT a impresión, descuenta los gramos de resina y mililitros de alcohol del inventario local.
-- **Generador de Cuenta de Cobro:** Cuando la pieza está terminada, genera con un solo toque la cuenta de cobro digital para enviar al cliente.
+Tablero Kanban interactivo para el control físico de piezas en taller:
+- Transiciones de estado auditadas con fecha y operario responsable.
+- Registro de parámetros de máquina: altura de capa (micras), tiempo de exposición y resina utilizada.
+- Notificaciones automáticas de cambio de estado.
 
 ### 7. Escudo de Privacidad de Seguimiento para Clientes
-Protege los secretos comerciales y la información de otros clientes cuando se comparte el estado de una figura:
-- **URL Aislada:** Al generar el link desde la OT (`/?portal=cliente&ot=OT-XXXX`), el sistema entra en modo público estricto.
-- **Ocultamiento Total de Navegación:** Desaparecen la barra superior ([Navbar.tsx](src/components/ui/Navbar.tsx)), el menú inferior ([BottomNav.tsx](src/components/ui/BottomNav.tsx)) y los buscadores globales.
-- **Aislamiento Total Criptográfico:** La vista de cliente no incluye botones de inicio de sesión, credenciales ni accesos al panel administrativo, consultándose exclusivamente mediante token criptográfico no secuencial.
+Portal público aislado (`/?ot=OT-XXXX&token=uuid`):
+- Estrictamente de **solo lectura**.
+- Oculta costos internos, márgenes y paneles de administración.
+- Muestra el progreso de fabricación en 6 fases con garantía de 100% de cumplimiento al liquidar saldo.
 
-### 8. Equipo, Tareas & Rutinas de Mantenimiento
-Organizador de prioridades y mantenimiento preventivo para prolongar la vida útil de las pantallas LCD y tanques de resina:
-- **Vistas Especializadas:** Pestañas separadas para **Germán**, **Wendy**, **Juan** y **Tareas Generales**.
-- **Rutinas Recurrentes Pre-cargadas:**
-  - Cambio y calibración de tensión del film FEP de la tina.
-  - Lubricación con grasa de litio del tornillo sinfín (eje Z).
-  - Filtrado de resina UV con embudo de 190 micras para retirar microfragmentos curados.
-  - Conciliación bancaria de Nequi, Daviplata y Bancolombia.
-- **Buzón Rápido de Ideas WhatsApp:** Permite pegar un mensaje recibido de un cliente o apunte mental y convertirlo en tarea asignada con un solo clic.
+---
 
-### 9. S.O.S Insumos de Taller (Despacho de Compras Express)
-Botón de auxilio en el taller para cuando se agotan los materiales esenciales:
-- **Disparador Inmediato:** Permite solicitar Resina (Standard, HD, Lavable en agua), Alcohol Isopropílico, Pinceles triple cero, Pinturas, FEP o Cajas de Envío.
-- **Semáforo de Emergencia:** *Normal*, *Urgente* o *Taller Detenido* (bloqueo crítico).
-- **Orden de Compra por WhatsApp:** Genera automáticamente el mensaje estructurado con la cantidad solicitada, enlace del proveedor y grado de urgencia para enviárselo directamente a Wendy o Germán.
+## 🔐 Seguridad, Autenticación y Control de Sesión (v3.0)
 
-### 10. Marketing Hub & Catálogo Meta Commerce (Instagram / WhatsApp)
-Suite de captación y ventas para potenciar la presencia digital de WJGEEKS 3D PRO:
-- **Exportador Oficial de Catálogo Meta CSV:** Genera el archivo `wjg_meta_commerce_catalog.csv` con todas las especificaciones de Meta (Google Product Category, FB Product Category, títulos, precios en COP y disponibilidad) para subir a **Meta Commerce Manager** y habilitar el etiquetado de productos en **Instagram Shopping** y el **Catálogo de WhatsApp Business**.
-- **Generador de Copys de Alta Conversión para Redes:**
-  - Plantillas especializadas: *Lanzamiento de Figura*, *Tarifario por Altura*, *Entrega Inmediata (Stock)*, *Detrás de Cámaras Artesanal* y *Regalo Geek/Gamer*.
-  - Inserta automáticamente los precios, dimensiones y un enlace directo a la línea corporativa: `https://wa.me/573202796115?text=...`
-- **Difusiones Masivas:** Textos listos para listas de difusión de WhatsApp para promociones relámpago de fin de semana y novedades de colecciones.
+### 3.1 Claves Flexibles: PIN Rápido o Contraseña Compleja
+A partir de la versión 3.0, el personal puede utilizar cualquiera de las dos modalidades de acceso:
+- **PIN Numérico Rápido (4+ dígitos):** Diseñado para ingreso veloz en tablets o dispositivos del taller.
+- **Contraseña Alfanumérica Compleja:** Admite letras mayúsculas, minúsculas, números y símbolos especiales de cualquier longitud.
+- **Esquema de Almacenamiento:** La columna `pin_acceso` en `usuarios_taller` fue ampliada a tipo `TEXT`, complementada con `password_hash` y `pin_hash` mediante hashes criptográficos **SHA-256**.
+- **Componentes Asociados:**
+  - [`CambiarPinModal.tsx`](file:///d:/WJG/src/components/auth/CambiarPinModal.tsx): Modal interactivo con badge dinámico en tiempo real (*PIN Rápido* vs *Contraseña Alfanumérica*).
+  - [`PasswordResetModal.tsx`](file:///d:/WJG/src/components/auth/PasswordResetModal.tsx): Restablecimiento seguro mediante WhatsApp OTP.
+  - [`MustChangePasswordModal.tsx`](file:///d:/WJG/src/components/auth/MustChangePasswordModal.tsx): Forzado de cambio en primer inicio de sesión.
 
-### 11. Catálogo de Figuras en Stock Inmediato
-- Control de inventario físico de piezas terminadas listas para entrega sin tiempo de espera.
-- Alertas de existencias agotadas o bajo inventario.
-- Botón para enviar una figura de stock directo al cotizador o al POS Express.
+### 3.2 Blindaje del Encabezado (Header Minimalista) y Logout Seguro
+- **Eliminación del Conmutador de Desarrollo:** Se retiró el atajo no autenticado que alternaba entre Juan, Wendy y Germán al hacer clic en la barra superior.
+- **Badge Informativo:** El nombre del operador activo es de solo lectura y refleja exactamente la sesión autenticada (`activeOperator === staffUser`).
+- **Botón de Cerrar Sesión (`LogOut`):** Ubicado en el encabezado. Revoca la sesión local y el dispositivo de confianza, redirigiendo obligatoriamente a [`StaffAuthGuard.tsx`](file:///d:/WJG/src/components/auth/StaffAuthGuard.tsx) para que el siguiente usuario deba ingresar su PIN o clave.
+- **Botón de Cambio de Clave (`KeyRound`):** Acceso directo para que el operador activo actualice sus propias credenciales.
 
-### 12. Balance Contable, Costos & Reportes Financieros
-- Métricas en vivo de facturación total, anticipos cobrados, saldo pendiente en calle y costos de producción.
-- Cálculo de rentabilidad neta del taller.
-- Exportación del libro de balances a formato compatible con Microsoft Excel y hojas de cálculo.
+### 3.3 Resiliencia Multi-Dispositivo y Prevención de Errores UUID (Anti-22P02)
+- En dispositivos móviles o pestañas de incógnito, los perfiles utilizan los UUIDs canónicos oficiales de Supabase:
+  - **Germán:** `08c6c49a-0422-414b-813e-8f58fa651bd5`
+  - **Wendy:** `4485aa21-3896-4510-b693-fc68e947372d`
+  - **Juan:** `a48df7ca-8b06-4bab-bfa4-3b058912b06f`
+- La consulta SQL en `StaffAuthGuard` valida con `isUUID()` antes de construir condiciones `id.eq.<val>`, eliminando por completo el error de PostgreSQL `ERROR 22P02: invalid input syntax for type uuid`.
+- Hidratación instantánea del caché local (`wjg_usuarios_taller_cache`) para permitir acceso offline en el celular del taller.
+
+### 3.4 Procedimientos de Recuperación y Gestión en PersonalView
+- **Recuperación por Cédula y Teléfono:** Permite a cualquier miembro restablecer su acceso validando su cédula y línea corporativa registrada en `usuarios_taller`.
+- **Panel Administrativo [`PersonalView.tsx`](file:///d:/WJG/src/components/personal/PersonalView.tsx):**
+  - Creación y edición de colaboradores con selector de áreas RBAC (`ventas`, `taller`, `finanzas`, `gestion`).
+  - Campo de contraseña con conmutador de visibilidad (`Eye`/`EyeOff`).
+  - Botón de despacho de credenciales de bienvenida formateado para WhatsApp.
+  - Kill Switch para suspender accesos de inmediato.
 
 ---
 
 ## 👥 Manual Operativo por Roles
 
-```
-                      ┌──────────────────────────────┐
-                      │    GERMÁN (Director / 3D)    │
-                      │  • Modelado STL y Escultura   │
-                      │  • Cotizaciones Paramétricas  │
-                      │  • Campañas & Redes Sociales │
-                      └──────────────┬───────────────┘
-                                     │
-           ┌─────────────────────────┴─────────────────────────┐
-           ▼                                                   ▼
-┌──────────────────────────────┐            ┌──────────────────────────────┐
-│   WENDY (Administración)     │            │    JUAN (Línea de Taller)    │
-│  • Cuentas de Cobro & Abonos │            │  • Laminado & Soportes       │
-│  • Control de Deudores POS   │            │  • Impresión 8K & Curado     │
-│  • Compras de Insumos (S.O.S)│            │  • Mantenimiento Eje Z y FEP │
-└──────────────────────────────┘            └──────────────────────────────┘
-```
-
-### 🎨 Rol: Germán (Modelador 3D / Director)
-1. **Atención de Cotizaciones Especiales:** Abre la pestaña **Cotizador 3D**, ingresa dimensiones o carga el modelo en el **Visor STL 3D** para estimar el peso en resina.
-2. **Generación del Archivo de Impresión:** Tras modelar la figura en Blender/ZBrush, guarda el archivo en la nube (Drive/WeTransfer), entra a la OT en **Taller**, cambia el estado a `Diseñado por Germán`, pega el enlace y presiona **Enviar STL a Juan**.
-3. **Campañas de Redes:** En el **Marketing Hub**, elige la figura destacada de la semana, copia el copy pre-formateado con emojis y publícalo en Instagram Reels o Estados con el enlace a WhatsApp.
-
-### 💼 Rol: Wendy (Administración, Cartera & Compras)
-1. **Cobro y Registro POS:** En ferias o ventas de mostrador, ingresa a **POS Express**, toma la foto de la pieza, ingresa el nombre del comprador, selecciona el abono y fija la fecha prometida de pago.
-2. **Revisión de Cartera Diaria:** En **Cuentas de Cobro**, revisa la sub-pestaña **Deudores Consolidados**. Todos los clientes con etiqueta 🔴 *Vencido* o 🟡 *Paga Hoy* deben recibir el recordatorio con el botón verde de WhatsApp.
-3. **Gestión de Compras (S.O.S Insumos):** En **Equipo & Tareas ➔ S.O.S Insumos**, recibe las solicitudes de Juan (resina, alcohol, pinturas), adquiere el material con los proveedores habituales y marca la solicitud como `Comprado` o `En Camino`.
-
-### 🖨️ Rol: Juan (Operador de Impresión, Post-procesado & Taller)
-1. **Recepción de STL:** Al recibir la notificación de WhatsApp de Germán, abre la OT en el pipeline, descarga el archivo desde el enlace y procede con la preparación de soportes y laminado.
-2. **Flujo de Producción:** Mueve la tarjeta en el tablero Kanban conforme avanza la pieza: `En Cola ➔ Imprimiendo ➔ Curado ➔ Pintura y Armado ➔ Listo para Entrega`.
-3. **Mantenimiento Preventivo:** En **Equipo & Tareas**, marca diariamente el filtrado de resina y semanalmente la lubricación del eje Z y revisión del film FEP.
-4. **Alerta de Materiales:** Si la resina baja de 200 ml o queda poco alcohol isopropílico, presiona `🚨 Pedir Insumo S.O.S` para que Wendy gestione el pedido antes de que se detenga la producción.
+| Operador | Rol del Sistema | Responsabilidades Clave |
+| :--- | :--- | :--- |
+| **Germán Reyes** | `ADMIN_COBRANZAS` (Director Global) | Modelado 3D, presupuestos formales, control de tarifarios, cierres contables y administración de accesos. |
+| **Wendy Castro** | `PINTURA_ACABADOS` (Cobranzas & Post) | Seguimiento de cartera, conciliación de pagos (Bre-B/Nequi), compras de insumos y acabado artesanal. |
+| **Juan David Guzmán** | `IMPRESION_MANTENIMIENTO` (Taller 3D) | Preparación de archivos en Slicer, calibración de impresoras, curado UV, mantenimiento FEP y control de resinas. |
 
 ---
 
-## 🏗️ Arquitectura Tecnológica & Base de Datos
+## 🏗️ Arquitectura Tecnológica & Base de Datos (Supabase Master v3)
 
-El sistema implementa una arquitectura **Local-First con Sincronización Cloud**:
-- **Funcionamiento Autónomo Offline:** Toda la aplicación funciona inmediatamente desde el almacenamiento local del dispositivo (`localStorage`), garantizando que el taller nunca se detenga si se cae el internet.
-- **Sincronización Bidireccional:** Cuando hay conexión, se sincroniza en segundo plano con **Supabase (PostgreSQL 15+)**.
-- **Multi-dispositivo en Tiempo Real:** Las tablas utilizan `supabase_realtime` para que una venta registrada en un celular actualice automáticamente la pantalla de la computadora central del taller.
+### Vistas Canónicas con Security Invoker (Supabase Linter 0010)
+Para cumplir con las directrices de seguridad de PostgreSQL 15+ y resolver las advertencias del auditor de Supabase (`0010_security_definer_view`), las vistas canónicas están declaradas con **`WITH (security_invoker = true)`**:
+- `public.vista_balance_taller`: Sumatoria consolidada de recaudos y cartera pendiente.
+- `public.payments`: Libro consolidado de abonos y comprobantes.
+- `public.cuentas_cobro`: Vista de compromisos comerciales.
 
-### Modelo de Tablas en Supabase
-1. `ventas_express`: Registros de POS con fotografía, montos, abonos y fecha prometida de pago.
-2. `tarifas_tamanos`: Tarifario oficial de 5 cm a 12 cm ($10k/cm).
-3. `tareas_equipo`: Tareas puntuales y rutinas periódicas asignadas a Germán, Wendy o Juan.
-4. `solicitudes_insumos`: Pedidos de auxilio y compras internas del taller.
-5. `archivos_stl`: Trazabilidad de archivos digitales, versiones y enlaces de descarga.
-6. `cotizaciones`: Historial de presupuestos paramétricos formales.
-7. `ordenes_trabajo`: Órdenes en línea de producción Kanban.
-8. `cuentas_cobro`: Cuentas formales con control de anticipos del 50%.
-9. `clientes` y `proveedores`: Directorios de contactos comerciales.
+```sql
+ALTER VIEW public.vista_balance_taller SET (security_invoker = true);
+ALTER VIEW public.payments SET (security_invoker = true);
+ALTER VIEW public.cuentas_cobro SET (security_invoker = true);
+```
+
+### Catálogo de Tablas del Ledger
+1. `usuarios_taller`: Directorio oficial de personal, credenciales (`pin_acceso TEXT`, `password_hash`), roles y permisos RBAC.
+2. `clientes`: Directorio unificado de clientes y teléfonos.
+3. `cotizaciones` & `cotizacion_items`: Historial de presupuestos paramétricos con columnas calculadas de saldo.
+4. `ordenes_trabajo` & `historial_estados_ot`: Pipeline de manufactura física en taller.
+5. `abonos_pagos`: Ledger contable inmutable de anticipos y liquidaciones con trazabilidad a POS y cotizaciones.
+6. `ventas_express`: Punto de venta de mostrador con soporte de imagen WebP.
+7. `productos_stock`: Inventario físico de piezas terminadas con alerta de stock crítico.
+8. `tareas_equipo` & `tarea_avances`: Bitácora técnica y tablero Kanban de tareas operativas.
 
 ---
 
-## 💻 Instalación Local & PWA
+## 🔄 Flujos de Trabajo del Negocio (Workflows)
+
+```mermaid
+graph TD
+    A[Cotización 3D / Venta POS] -->|Anticipo Mínimo 50%| B(Abonos Pagos Ledger)
+    B --> C{Tipo de Operación}
+    C -->|Producción Taller| D[Orden de Trabajo OT]
+    C -->|Venta Inmediata| E[Descuento de Stock]
+    D --> F[Laminado Slicer Chitubox]
+    F --> G[Impresión 3D UV]
+    G --> H[Lavado & Curado]
+    H --> I[Control Calidad & Acabados]
+    I -->|Listo para Entrega| J[WhatsApp Automático al Cliente]
+    J -->|Pago Saldo Final 100%| K[Paz y Salvo & Despacho]
+```
+
+1. **Flujo de Producción:** Cotización ➔ Anticipo 50% ➔ Creación atómica de OT y Cuenta de Cobro ➔ Fabricación en Taller ➔ Notificación desatendida por WhatsApp ➔ Liquidación y entrega.
+2. **Flujo de Seguridad de Sesión:** Ingreso autenticado en `StaffAuthGuard` ➔ Sincronización de `activeOperator` ➔ Acceso según RBAC ➔ Cierre de sesión explícito mediante botón `LogOut` ➔ Obligatoriedad de credenciales para el siguiente usuario.
+
+---
+
+## 💻 Instalación Local, Variables de Entorno & PWA
 
 ### Requisitos Previos
 - **Node.js** v18.0.0 o superior
 - **npm** v9.0.0 o superior
 
-### Pasos de Despliegue
-1. Clonar el repositorio:
-   ```bash
-   git clone https://github.com/tu-usuario/wjgeeks-3d.git
-   cd wjgeeks-3d
-   ```
-2. Instalar dependencias:
-   ```bash
-   npm install
-   ```
-3. Configurar variables de entorno (opcional si ya están en `src/services/supabaseClient.ts`):
-   Crear un archivo `.env` en la raíz:
-   ```env
-   VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
-   VITE_SUPABASE_ANON_KEY=tu-anon-key-de-supabase
-   ```
-4. Ejecutar en modo desarrollo:
-   ```bash
-   npm run dev
-   ```
-   La aplicación quedará disponible en `http://localhost:5173/`.
+### Variables de Entorno Requeridas (`.env`)
+Crear un archivo `.env` en la raíz del proyecto:
 
-5. Compilar para producción:
-   ```bash
-   npm run build
-   ```
+```env
+VITE_SUPABASE_URL=https://tu-proyecto.supabase.co
+VITE_SUPABASE_ANON_KEY=tu-anon-key-de-supabase
+```
 
-### 📱 Instalación como Aplicación Móvil / Escritorio (PWA)
-La aplicación cuenta con manifiesto web y service worker:
-- **En Google Chrome / Edge (PC):** Haz clic en el botón **Instalar App** en la barra superior o en el ícono de instalación en la barra de direcciones.
-- **En Android / iOS:** Abre la URL en el navegador y selecciona **"Agregar a la pantalla principal"** para usarla como una app nativa a pantalla completa.
+### Comandos de Ejecución y Validación
+```bash
+# 1. Instalar dependencias
+npm install
+
+# 2. Iniciar servidor de desarrollo
+npm run dev
+
+# 3. Ejecutar suite de pruebas unitarias (Vitest)
+npm test
+
+# 4. Compilar para producción (TypeScript estricto + Vite build)
+npm run build
+```
 
 ---
 
-## 💾 Respaldo, Google Sheets & Sincronización en Google Drive
+## 💾 Respaldo, Google Sheets & Sincronización en Drive
 
-El sistema cuenta con un centro de sincronización dual para garantizar que jamás se pierda información y que los datos sean fácilmente consultables y auditables:
-
-### 📊 1. Base de Datos Tabular en Google Drive (Google Sheets & Apps Script)
-Diseñado para que cualquier miembro del equipo (o contabilidad) pueda abrir **Google Drive**, consultar una **Hoja de Cálculo** con formato profesional y validar los números desde su celular o PC:
-- **8 Pestañas Automáticas y Estilizadas:**
-  1. `📊 00_RESUMEN_EJECUTIVO`: KPIs de ingresos, órdenes activas, clientes registrados y totales en tiempo real.
-  2. `💼 01_COTIZACIONES`: Historial completo con valores, descuentos, clientes y modelos.
-  3. `⚙️ 02_ORDENES_TRABAJO`: Pipeline de taller, saldo pendiente, abonos, fechas de entrega y máquinas.
-  4. `⚡ 03_VENTAS_POS`: Ventas rápidas de mostrador, medios de pago y estado de cartera.
-  5. `👥 04_CLIENTES`: Directorio telefónico y datos de contacto de clientes.
-  6. `📦 05_STOCK_PRODUCTOS`: Inventario de figuras con alerta de stock bajo.
-  7. `🧪 06_RESINAS_E_INSUMOS`: Costos por kg/gramo y consumibles del taller.
-  8. `🛠️ 07_APPS_3D_HERRAMIENTAS`: Lanzador de herramientas e Inteligencias Artificiales 3D.
-- **Sincronización con 1 Clic o Automática:** Pulsa el botón `⚡ Sincronizar a Drive` en la aplicación o activa la casilla de *Auto-sincronización* para que cada nueva cotización o venta se envíe al instante.
-- **Instalación de Google Apps Script (2 Minutos):**
-  1. Crea una Hoja de Cálculo en blanco en tu Google Drive.
-  2. Ve a `Extensiones > Apps Script`, pega el código que se encuentra en [scripts/google_apps_script.js](scripts/google_apps_script.js) y guarda.
-  3. Haz clic en `Implementar > Nueva implementación`, tipo `Aplicación web`, Ejecutar como `Yo`, acceso `Cualquiera`.
-  4. Copia la URL resultante (`https://script.google.com/macros/s/.../exec`) y pégala en la ventana de **Drive & Sheets** dentro de WJGEEKS 3D.
-
-### 📁 2. Copia de Seguridad JSON & Compartir
-- **Guardar en Google Drive (Celular):** Mediante la Web Share API, puedes enviar el respaldo directamente a tu app de Google Drive en Android/iOS en 1 toque.
-- **Descargar JSON (PC):** Genera un archivo `WJGEEKS_Backup_YYYY-MM-DD.json` con todos los catálogos e historiales.
-- **Restauración:** Permite cargar un archivo JSON previo para migrar o restaurar todo el taller en cualquier momento.
+- **Sincronización Dual:** Copia de respaldo automática hacia Google Sheets vía Google Apps Script ([scripts/google_apps_script.js](scripts/google_apps_script.js)).
+- **Respaldo JSON Inmediato:** Exportación completa de todos los módulos mediante Web Share API o descarga de archivo cifrado.
 
 ---
 
 <div align="center">
   <p><strong>WJGEEKS 3D PRO — Excelencia en Manufactura Aditiva & Coleccionables</strong></p>
-  <p>Línea Oficial de Atención y Ventas: <code>+57 320 279 6115</code></p>
+  <p>Línea Oficial de Atención y Ventas: <code>+57 320 279 6115</code> • Bogotá D.C., Colombia</p>
 </div>
