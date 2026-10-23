@@ -208,6 +208,22 @@ graph TD
 
 ---
 
+## 📚 Documentación Técnica y Manuales Operativos Modulares
+
+WJGEEKS 3D PRO cuenta con una suite completa de manuales especializados ubicados en la carpeta [`docs/`](docs/):
+
+| Documento | Área / Enfoque | Contenido Clave |
+| :--- | :--- | :--- |
+| **[00. Ecosistema y Relación Intermodular](docs/00_ARQUITECTURA_Y_RELACION_INTERMODULAR.md)** | Arquitectura Global | Ciclo de vida unificado, diagrama ERD de Supabase, matriz de estados y consistencia transaccional. |
+| **[01. Manual del Cotizador y Motor de Cálculos](docs/01_MANUAL_COTIZADOR_Y_CALCULOS.md)** | Ventas e Ingeniería | Las 20 variables paramétricas, fórmulas exactas de resina, energía, mano de obra, merma (40%) y tarifario $10k/cm. |
+| **[02. Manual del POS Express y Venta Mostrador](docs/02_MANUAL_POS_EXPRESS.md)** | Mostrador y Caja | Compresión WebP en canvas (max 800x800px), ventas de contado/crédito, deducción de stock y semáforo de cobro. |
+| **[03. Manual de Taller y Producción Kanban](docs/03_MANUAL_TALLER_Y_PRODUCCION.md)** | Manufactura MES | Pipeline de 7 fases, regla de anticipo 50%, trazabilidad STL, relevo de turno (Germán ➔ Juan ➔ Wendy) y SOS Insumos. |
+| **[04. Manual de Finanzas, Cartera y Conciliación](docs/04_MANUAL_FINANZAS_Y_CARTERA.md)** | Tesorería y Cobranzas | Central unificada de deudores, libro mayor multicanal, generación de PDF y RPC atómica `eliminar_abonos_duplicados()`. |
+| **[05. Manual de Gestión, Personal y Administración](docs/05_MANUAL_GESTION_Y_ADMINISTRACION.md)** | Dirección y RBAC | Directorio de colaboradores, claves flexibles (PIN o alfanumérica), bitácora técnica de máquinas y catálogo Meta Commerce. |
+| **[Manual Maestro Consolidado](docs/MANUAL_DE_USUARIO.md)** | Operaciones y Soporte | Guía maestra para usuarios finales, resolución de incidencias, preguntas frecuentes y despliegue. |
+
+---
+
 ## 💻 Instalación Local, Variables de Entorno & PWA
 
 ### Requisitos Previos

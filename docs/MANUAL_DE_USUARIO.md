@@ -7,6 +7,18 @@
 
 ---
 
+> [!TIP]
+> ### 📚 Suite Modular de Manuales Operativos en la Carpeta `docs/`
+> Para consultar el flujo detallado y la guía especializada de cada área, refiérase a la suite modular:
+> - **[00. Ecosistema y Relación Intermodular](file:///d:/WJG/docs/00_ARQUITECTURA_Y_RELACION_INTERMODULAR.md):** Mapa relacional, ciclo de vida unificado y consistencia transaccional.
+> - **[01. Manual del Cotizador y Motor de Cálculos](file:///d:/WJG/docs/01_MANUAL_COTIZADOR_Y_CALCULOS.md):** Las 20 variables paramétricas, fórmulas matemáticas y tarifario de $10.000/cm.
+> - **[02. Manual del POS Express y Venta Mostrador](file:///d:/WJG/docs/02_MANUAL_POS_EXPRESS.md):** Compresión WebP en canvas, ventas de mostrador y semáforo de cobranza.
+> - **[03. Manual de Taller y Flujo de Producción Kanban](file:///d:/WJG/docs/03_MANUAL_TALLER_Y_PRODUCCION.md):** Pipeline de 7 fases, regla de anticipo del 50%, trazabilidad STL y relevo de turno.
+> - **[04. Manual de Finanzas, Cartera y Conciliación](file:///d:/WJG/docs/04_MANUAL_FINANZAS_Y_CARTERA.md):** Central de deudores, libro mayor multicanal y RPC atómica de limpieza de duplicados.
+> - **[05. Manual de Gestión, Personal y Administración](file:///d:/WJG/docs/05_MANUAL_GESTION_Y_ADMINISTRACION.md):** Directorio RBAC, bitácora técnica de máquinas y catálogo Meta Commerce.
+
+---
+
 ## 📑 Índice de Contenidos
 
 1. [Directorio Oficial del Personal y UUIDs Canónicos](#1-directorio-oficial-del-personal-y-uuids-canónicos)
