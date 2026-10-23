@@ -8,7 +8,7 @@ const LOCAL_STORAGE_USERS_KEY = 'wjg_usuarios_taller_cache';
 
 const DEFAULT_USERS_SEED: UsuarioTaller[] = [
   {
-    id: 'user-german-01',
+    id: '08c6c49a-0422-414b-813e-8f58fa651bd5',
     nombre: 'Germán',
     rol: 'ADMIN_COBRANZAS',
     telefono: '3503443140',
@@ -21,7 +21,7 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
     must_change_password: false
   },
   {
-    id: 'user-wendy-02',
+    id: '4485aa21-3896-4510-b693-fc68e947372d',
     nombre: 'Wendy',
     rol: 'PINTURA_ACABADOS',
     telefono: '3204814702',
@@ -34,7 +34,7 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
     must_change_password: false
   },
   {
-    id: 'user-juan-03',
+    id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
     nombre: 'Juan',
     rol: 'IMPRESION_MANTENIMIENTO',
     telefono: '3217273025',
@@ -92,7 +92,7 @@ export function useUsuariosTaller() {
     try {
       const { data, error } = await supabase
         .from('usuarios_taller')
-        .select('id, nombre, rol, telefono, telefono_notificaciones, email, cedula, permisos_areas, activo, pin_acceso, must_change_password, ultimo_acceso, dispositivo_info, created_at')
+        .select('id, nombre, rol, telefono, telefono_notificaciones, email, cedula, permisos_areas, activo, pin_acceso, password_hash, must_change_password, ultimo_acceso, dispositivo_info, created_at')
         .order('nombre', { ascending: true });
 
       if (error) {
@@ -307,6 +307,8 @@ export function useUsuariosTaller() {
       payload.telefono_notificaciones = notif;
     }
 
+    const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+
     // Si se especificó una nueva clave o PIN en la edición
     if (updates.pin_acceso && updates.pin_acceso.trim()) {
       const cleanKey = updates.pin_acceso.trim();
@@ -314,7 +316,6 @@ export function useUsuariosTaller() {
       try {
         const hash = await AuthSecurityService.sha256(cleanKey);
         payload.password_hash = hash;
-        payload.pin_hash = hash;
       } catch {
         // ignore hash error
       }
@@ -322,16 +323,25 @@ export function useUsuariosTaller() {
 
     if (isSupabaseConfigured && supabase) {
       try {
-        const { error } = await supabase
-          .from('usuarios_taller')
-          .update(payload)
-          .eq('id', id);
+        const target = usuarios.find(u => u.id === id);
+        let query = supabase.from('usuarios_taller').update(payload);
+        if (isUUID(id)) {
+          query = query.eq('id', id);
+        } else if (target && isUUID(target.id)) {
+          query = query.eq('id', target.id);
+        } else if (target) {
+          query = query.ilike('nombre', `%${target.nombre}%`);
+        } else {
+          query = query.eq('id', id);
+        }
+
+        const { error } = await query;
 
         if (error) {
           return { success: false, message: handlePostgresError(error) };
         }
 
-        const updated = usuarios.map(u => u.id === id ? { ...u, ...payload } : u);
+        const updated = usuarios.map(u => (u.id === id || (u.nombre && target && u.nombre === target.nombre)) ? { ...u, ...payload } : u);
         persistCache(updated);
         return { success: true, message: 'Datos del colaborador actualizados exitosamente.' };
       } catch (err: any) {
@@ -400,7 +410,8 @@ export function useUsuariosTaller() {
         }
 
         // Intento 2: Fallback directo a UPDATE con verificación exhaustiva
-        const target = usuarios.find(u => u.id === id);
+        const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+        const target = usuarios.find(u => u.id === id || (u.nombre && u.nombre.toLowerCase() === id.toLowerCase()));
         if (target) {
           const isActualValid = (target.pin_acceso && target.pin_acceso === cleanActual) ||
                                 (target.password_hash && target.password_hash === actualHash) ||
@@ -412,16 +423,25 @@ export function useUsuariosTaller() {
           }
         }
 
-        const { error: updErr } = await supabase
-          .from('usuarios_taller')
-          .update({
-            pin_acceso: cleanNuevo,
-            password_hash: newHash,
-            pin_hash: newHash,
-            must_change_password: false,
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', id);
+        const updateData: Record<string, any> = {
+          pin_acceso: cleanNuevo,
+          password_hash: newHash,
+          must_change_password: false,
+          updated_at: new Date().toISOString()
+        };
+
+        let query = supabase.from('usuarios_taller').update(updateData);
+        if (isUUID(id)) {
+          query = query.eq('id', id);
+        } else if (target && isUUID(target.id)) {
+          query = query.eq('id', target.id);
+        } else if (target) {
+          query = query.ilike('nombre', `%${target.nombre}%`);
+        } else {
+          query = query.eq('id', id);
+        }
+
+        const { error: updErr } = await query;
 
         if (updErr) return { success: false, message: updErr.message };
 

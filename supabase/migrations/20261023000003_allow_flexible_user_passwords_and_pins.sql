@@ -8,7 +8,7 @@ ALTER TABLE public.usuarios_taller ALTER COLUMN pin_acceso TYPE TEXT;
 
 -- 2. Asegurar columnas de hash tanto password_hash como pin_hash
 ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
-ALTER TABLE public.usuarios_taller ALTER COLUMN pin_hash DROP NOT NULL;
+ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS pin_hash VARCHAR(255);
 
 -- 3. Sincronizar hashes existentes si uno de los dos está vacío
 UPDATE public.usuarios_taller 

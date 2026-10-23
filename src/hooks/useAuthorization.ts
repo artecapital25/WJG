@@ -32,7 +32,7 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
     // Fallbacks predeterminados para los miembros base
     if (cleanName.includes('german') || cleanName.includes('germán')) {
       return {
-        id: 'admin-german',
+        id: '08c6c49a-0422-414b-813e-8f58fa651bd5',
         nombre: 'Germán',
         rol: 'ADMIN_COBRANZAS',
         telefono: '3503443140',
@@ -44,7 +44,7 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
 
     if (cleanName.includes('wendy')) {
       return {
-        id: 'user-wendy',
+        id: '4485aa21-3896-4510-b693-fc68e947372d',
         nombre: 'Wendy',
         rol: 'PINTURA_ACABADOS',
         telefono: '3204814702',
@@ -56,7 +56,7 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
 
     // Default Juan: Solo Taller
     return {
-      id: 'user-juan',
+      id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
       nombre: 'Juan',
       rol: 'IMPRESION_MANTENIMIENTO',
       telefono: '3217273025',

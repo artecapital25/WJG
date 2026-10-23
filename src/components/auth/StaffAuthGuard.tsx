@@ -12,10 +12,12 @@ interface StaffAuthGuardProps {
   onLoginSuccess: (userLabel: string) => void;
 }
 
+const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
+
 export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }) => {
   const { usuarios, recuperarPin } = useUsuariosTaller();
   const [loginMethod, setLoginMethod] = useState<'profile' | 'credentials'>('profile');
-  const [selectedStaff, setSelectedStaff] = useState<string>('german');
+  const [selectedStaff, setSelectedStaff] = useState<string>('08c6c49a-0422-414b-813e-8f58fa651bd5');
   const [emailOrPhone, setEmailOrPhone] = useState<string>('');
   const [password, setPassword] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
@@ -31,9 +33,9 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
   const [pendingSuccessLabel, setPendingSuccessLabel] = useState<string>('');
 
   const defaultStaffProfiles = [
-    { id: 'german', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3503443140', email: 'german@wjgeeks.com' },
-    { id: 'wendy', name: 'Wendy', role: 'Pintura & Acabados', avatar: 'W', phone: '3204814702', email: 'wendy@wjgeeks.com' },
-    { id: 'juan', name: 'Juan', role: 'Impresión & Slicer', avatar: 'J', phone: '3217273025', email: 'juan@wjgeeks.com' }
+    { id: '08c6c49a-0422-414b-813e-8f58fa651bd5', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3503443140', email: 'german@wjgeeks.com' },
+    { id: '4485aa21-3896-4510-b693-fc68e947372d', name: 'Wendy', role: 'Pintura & Acabados', avatar: 'W', phone: '3204814702', email: 'wendy@wjgeeks.com' },
+    { id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f', name: 'Juan', role: 'Impresión & Slicer', avatar: 'J', phone: '3217273025', email: 'juan@wjgeeks.com' }
   ];
 
   // Perfiles de taller enriquecidos dinámicamente desde el directorio oficial
@@ -80,14 +82,32 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
         const cleanIdent = identifier.toLowerCase();
         const cleanPhone = identifier.replace(/\D/g, '');
 
-        // Consultar usuarios_taller
+        // Consultar usuarios_taller de forma segura sin romper tipos UUID en Postgres
         let qTaller = supabase.from('usuarios_taller').select('*');
+        const orConditions: string[] = [];
+
         if (loginMethod === 'profile' && targetProfile) {
-          qTaller = qTaller.or(`id.eq.${targetProfile.id},email.ilike.%${cleanIdent}%,nombre.ilike.%${targetProfile.name}%`);
+          if (isUUID(targetProfile.id)) {
+            orConditions.push(`id.eq.${targetProfile.id}`);
+          }
+          if (targetProfile.name) {
+            orConditions.push(`nombre.ilike.%${targetProfile.name}%`);
+          }
+          if (cleanIdent && cleanIdent !== targetProfile.name.toLowerCase()) {
+            orConditions.push(`email.ilike.%${cleanIdent}%`);
+          }
         } else if (cleanPhone.length >= 7) {
-          qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,telefono.ilike.%${cleanPhone}%,telefono_notificaciones.ilike.%${cleanPhone}%,nombre.ilike.%${cleanIdent}%`);
+          orConditions.push(`email.ilike.%${cleanIdent}%`);
+          orConditions.push(`telefono.ilike.%${cleanPhone}%`);
+          orConditions.push(`telefono_notificaciones.ilike.%${cleanPhone}%`);
+          orConditions.push(`nombre.ilike.%${cleanIdent}%`);
         } else {
-          qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,nombre.ilike.%${cleanIdent}%`);
+          orConditions.push(`email.ilike.%${cleanIdent}%`);
+          orConditions.push(`nombre.ilike.%${cleanIdent}%`);
+        }
+
+        if (orConditions.length > 0) {
+          qTaller = qTaller.or(orConditions.join(','));
         }
 
         const { data: tallerUsers } = await qTaller.limit(1);
@@ -117,6 +137,18 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
             supabase.from('usuarios_taller').update({
               ultimo_acceso: new Date().toISOString()
             }).eq('id', userRec.id).then();
+
+            // Sincronizar de inmediato el caché local del dispositivo móvil/pc
+            try {
+              const currentCache: any[] = JSON.parse(localStorage.getItem('wjg_usuarios_taller_cache') || '[]');
+              const existingIdx = currentCache.findIndex(u => u.id === userRec.id || (u.nombre && u.nombre.toLowerCase() === userRec.nombre.toLowerCase()));
+              if (existingIdx >= 0) {
+                currentCache[existingIdx] = { ...currentCache[existingIdx], ...userRec };
+              } else {
+                currentCache.push(userRec);
+              }
+              localStorage.setItem('wjg_usuarios_taller_cache', JSON.stringify(currentCache));
+            } catch {}
 
             finalizeLogin(userRec.nombre);
             return;
