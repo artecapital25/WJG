@@ -24,50 +24,85 @@ interface CustomerTrackingViewProps {
   isIsolatedMode?: boolean;
 }
 
-const ETAPAS: { estado: EstadoOT; label: string; icon: any; desc: string; porcentaje: number }[] = [
+export interface EtapaProduccion {
+  codigo: string;
+  aliases: string[];
+  label: string;
+  icon: any;
+  desc: string;
+  porcentaje: number;
+}
+
+export const ETAPAS: EtapaProduccion[] = [
   { 
-    estado: 'En Cola', 
+    codigo: 'EN_COLA_OT',
+    aliases: ['en cola', 'en_cola_ot', 'aprobada / en cola ot', 'en cola de taller'],
     label: 'En Cola de Taller', 
     icon: Clock, 
     desc: 'Tu archivo 3D ha sido verificado y está programado en la fila de producción.',
     porcentaje: 15
   },
   { 
-    estado: 'Imprimiendo', 
+    codigo: 'IMPRESION',
+    aliases: ['imprimiendo', 'impresion', 'impresión 3d', 'imprimiendo en 3d'],
     label: 'Imprimiendo en 3D', 
     icon: Printer, 
     desc: 'La figura se encuentra en la impresora Anycubic MONO 4 fotopolimerizando resina líquida capa por capa.',
-    porcentaje: 40
+    porcentaje: 35
   },
   { 
-    estado: 'Curado', 
+    codigo: 'CURADO',
+    aliases: ['curado', 'lavado y curado uv', 'lavado & curado uv', 'lavado y curado'],
     label: 'Lavado & Curado UV', 
     icon: Sun, 
     desc: 'Lavado químico para remover residuos y curado en cámara ultravioleta para máxima dureza mecánica.',
-    porcentaje: 65
+    porcentaje: 55
   },
   { 
-    estado: 'Pintura y Armado', 
-    label: 'Acabados y Detallado', 
+    codigo: 'PINTADO_ARMADO',
+    aliases: ['pintura y armado', 'pintado_armado', 'acabados y detallado', 'pintado', 'armado'],
+    label: 'Pintura & Acabados', 
     icon: Palette, 
     desc: 'Retiro de soportes, lijado fino, imprimación bicapa y mesa de pintura/armado artesanal.',
-    porcentaje: 85
+    porcentaje: 75
   },
   { 
-    estado: 'Control de Calidad', 
+    codigo: 'CONTROL_CALIDAD',
+    aliases: ['control de calidad', 'control_calidad', 'inspección'],
     label: 'Control de Calidad', 
     icon: ShieldCheck, 
     desc: 'Inspección minuciosa de tolerancias dimensionales, empaque protector y preparación de despacho.',
-    porcentaje: 95
+    porcentaje: 90
   },
   { 
-    estado: 'Listo para Entrega', 
+    codigo: 'ENTREGADO',
+    aliases: ['listo para entrega', 'entregado', 'enviado / entregado', 'completado', 'finalizado'],
     label: '¡Listo para Entrega!', 
     icon: PackageCheck, 
-    desc: '¡Tu pedido está completamente terminado y disponible para entrega inmediata o envío!',
+    desc: '¡Tu pedido está completamente terminado, inspeccionado y disponible para entrega inmediata o envío!',
     porcentaje: 100
   }
 ];
+
+export function normalizeEstadoOT(estado: string): string {
+  const s = (estado || '').trim().toLowerCase();
+  if (s.includes('entrega') || s === 'entregado' || s === 'listo para entrega' || s === 'completado' || s === 'finalizado') {
+    return 'ENTREGADO';
+  }
+  if (s.includes('calidad') || s.includes('control')) {
+    return 'CONTROL_CALIDAD';
+  }
+  if (s.includes('pint') || s.includes('armad') || s.includes('acabado')) {
+    return 'PINTADO_ARMADO';
+  }
+  if (s.includes('curad') || s.includes('lavad')) {
+    return 'CURADO';
+  }
+  if (s.includes('imp') || s.includes('slic')) {
+    return 'IMPRESION';
+  }
+  return 'EN_COLA_OT';
+}
 
 export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
   ordenes,
@@ -103,9 +138,23 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
     (matchedOT && c.id === matchedOT.cotizacion_id)
   );
 
-  const activeEtapaIndex = matchedOT 
-    ? ETAPAS.findIndex(e => e.estado === matchedOT.estado)
-    : -1;
+  // Cálculo seguro del avance: garantía absoluta de 100% si está terminada o pagada y en despacho
+  const normCode = matchedOT ? normalizeEstadoOT(matchedOT.estado) : '';
+  const isFinished = normCode === 'ENTREGADO' || matchedOT?.estado === 'Listo para Entrega' || (matchedOT?.estado as string) === 'Entregado';
+  const isFullyPaid = matchedOT ? ((matchedOT.saldo_pendiente ?? 0) <= 0 && (matchedOT.abono || 0) > 0) || matchedOT.estado_pago === 'Pagado Total' : false;
+
+  let activeEtapaIndex = -1;
+  if (matchedOT) {
+    if (isFinished || (isFullyPaid && (normCode === 'CONTROL_CALIDAD' || normCode === 'ENTREGADO'))) {
+      activeEtapaIndex = 5; // 100% ¡Listo para Entrega!
+    } else {
+      const foundIdx = ETAPAS.findIndex(e => 
+        e.codigo === normCode || 
+        e.aliases.includes((matchedOT.estado || '').toLowerCase().trim())
+      );
+      activeEtapaIndex = foundIdx >= 0 ? foundIdx : 0;
+    }
+  }
 
   const currentEtapa = activeEtapaIndex >= 0 ? ETAPAS[activeEtapaIndex] : ETAPAS[0];
 
@@ -219,20 +268,39 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
             </div>
 
             {/* Badge Estado Actual */}
-            <div style={{ 
-              display: 'inline-flex', 
-              alignItems: 'center', 
-              gap: '8px', 
-              padding: '8px 16px', 
-              borderRadius: '9999px',
-              background: matchedOT.estado === 'Listo para Entrega' ? 'rgba(16, 185, 129, 0.2)' : 'rgba(27, 98, 177, 0.25)',
-              border: matchedOT.estado === 'Listo para Entrega' ? '1px solid #10b981' : '1px solid var(--brand-cyan)',
-              color: matchedOT.estado === 'Listo para Entrega' ? '#34d399' : '#38bdf8',
-              fontWeight: 800,
-              fontSize: '0.95rem'
-            }}>
-              <currentEtapa.icon size={18} />
-              <span>{matchedOT.estado}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ 
+                display: 'inline-flex', 
+                alignItems: 'center', 
+                gap: '8px', 
+                padding: '8px 16px', 
+                borderRadius: '9999px',
+                background: currentEtapa.porcentaje === 100 ? 'rgba(16, 185, 129, 0.2)' : 'rgba(27, 98, 177, 0.25)',
+                border: currentEtapa.porcentaje === 100 ? '1px solid #10b981' : '1px solid var(--brand-cyan)',
+                color: currentEtapa.porcentaje === 100 ? '#34d399' : '#38bdf8',
+                fontWeight: 800,
+                fontSize: '0.95rem'
+              }}>
+                <currentEtapa.icon size={18} />
+                <span>{currentEtapa.label}</span>
+              </div>
+              {isFullyPaid && (
+                <div style={{ 
+                  display: 'inline-flex', 
+                  alignItems: 'center', 
+                  gap: '4px', 
+                  padding: '6px 12px', 
+                  borderRadius: '9999px',
+                  background: 'rgba(16, 185, 129, 0.15)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  color: '#34d399',
+                  fontWeight: 700,
+                  fontSize: '0.82rem'
+                }}>
+                  <CheckCircle2 size={14} />
+                  <span>100% Pagado</span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -240,13 +308,15 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
           <div style={{ marginBottom: '28px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
               <span>Avance de Manufactura:</span>
-              <span style={{ fontWeight: 800, color: 'var(--brand-cyan)' }}>{currentEtapa.porcentaje}%</span>
+              <span style={{ fontWeight: 800, color: currentEtapa.porcentaje === 100 ? '#34d399' : 'var(--brand-cyan)' }}>
+                {currentEtapa.porcentaje}%
+              </span>
             </div>
             <div style={{ width: '100%', height: '8px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '9999px', overflow: 'hidden' }}>
               <div style={{ 
                 width: `${currentEtapa.porcentaje}%`, 
                 height: '100%', 
-                background: matchedOT.estado === 'Listo para Entrega' ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #1b62b1, #38bdf8)',
+                background: currentEtapa.porcentaje === 100 ? 'linear-gradient(90deg, #10b981, #34d399)' : 'linear-gradient(90deg, #1b62b1, #38bdf8)',
                 transition: 'width 0.6s ease'
               }} />
             </div>
@@ -262,7 +332,7 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
 
               return (
                 <div 
-                  key={etapa.estado}
+                  key={etapa.codigo}
                   style={{
                     display: 'flex',
                     alignItems: 'flex-start',

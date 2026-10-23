@@ -18,7 +18,8 @@ import {
   Boxes,
   ArrowRight,
   TrendingUp,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw
 } from 'lucide-react';
 import { ProductoStock, PiezaCotizada } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
@@ -29,6 +30,7 @@ interface ProductosStockViewProps {
   onUpdateProductos: (items: ProductoStock[]) => void;
   onAgregarACotizacion?: (pieza: PiezaCotizada) => void;
   onNavigateToCotizador?: () => void;
+  onRefreshStock?: () => Promise<ProductoStock[] | null>;
 }
 
 const CATEGORIAS_PREDEFINIDAS = [
@@ -43,11 +45,13 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   productos,
   onUpdateProductos,
   onAgregarACotizacion,
-  onNavigateToCotizador
+  onNavigateToCotizador,
+  onRefreshStock
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState<string>('Todos');
   const [soloDisponibles, setSoloDisponibles] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Estados de Modales
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
@@ -66,6 +70,34 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   const valorTotalInventario = productos.reduce((sum, p) => sum + (p.precio_unitario * (p.stock_actual || 0)), 0);
   const productosAgotados = productos.filter(p => (p.stock_actual || 0) <= 0).length;
 
+  // Normalizar categorías para matching flexible entre UI y Base de Datos (ej: "FIGURAS" <-> "Figuras & Miniaturas")
+  const matchCategoriaHelper = (prodCat: string | undefined, selected: string): boolean => {
+    if (selected === 'Todos') return true;
+    if (!prodCat) return selected === 'Otros';
+
+    const pCat = prodCat.trim().toUpperCase();
+    const sCat = selected.trim().toUpperCase();
+
+    if (pCat === sCat) return true;
+
+    if (selected === 'Figuras & Miniaturas') {
+      return pCat === 'FIGURAS' || pCat.includes('FIGURA') || pCat.includes('MINIATURA');
+    }
+    if (selected === 'Joyería & Accesorios') {
+      return pCat === 'COLLARES' || pCat === 'ARETES' || pCat.includes('JOYER') || pCat.includes('ACCESORIO');
+    }
+    if (selected === 'Llaveros & Aretes') {
+      return pCat === 'LLAVEROS' || pCat === 'ARETES' || pCat.includes('LLAVERO') || pCat.includes('ARETE');
+    }
+    if (selected === 'Personalizados') {
+      return pCat === 'PERSONALIZADOS' || pCat.includes('PERSONALIZAD');
+    }
+    if (selected === 'Otros') {
+      return !['FIGURAS', 'COLLARES', 'ARETES', 'LLAVEROS', 'PERSONALIZADOS'].includes(pCat);
+    }
+    return false;
+  };
+
   // Filtrado de productos
   const productosFiltrados = useMemo(() => {
     return productos.filter(p => {
@@ -73,12 +105,47 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
         (p.descripcion && p.descripcion.toLowerCase().includes(searchTerm.toLowerCase())) ||
         (p.dimensiones && p.dimensiones.toLowerCase().includes(searchTerm.toLowerCase()));
 
-      const matchCat = selectedCategoria === 'Todos' || p.categoria === selectedCategoria;
+      const matchCat = matchCategoriaHelper(p.categoria, selectedCategoria);
       const matchStock = !soloDisponibles || (p.stock_actual || 0) > 0;
 
       return matchSearch && matchCat && matchStock;
     });
   }, [productos, searchTerm, selectedCategoria, soloDisponibles]);
+
+  // Categorías mostradas en los chips (predefinidas + dinámicas de la base de datos)
+  const categoriasChips = useMemo(() => {
+    const list = ['Todos', ...CATEGORIAS_PREDEFINIDAS];
+    const extras = new Set<string>();
+    productos.forEach(p => {
+      if (p.categoria) {
+        const cat = p.categoria.trim();
+        const upper = cat.toUpperCase();
+        if (!['FIGURAS', 'COLLARES', 'ARETES', 'LLAVEROS', 'PERSONALIZADOS'].includes(upper) &&
+            !CATEGORIAS_PREDEFINIDAS.includes(cat)) {
+          extras.add(cat);
+        }
+      }
+    });
+    return [...list, ...Array.from(extras)];
+  }, [productos]);
+
+  // Refresco manual de stock desde Supabase
+  const handleManualRefresh = async () => {
+    if (!onRefreshStock) return;
+    try {
+      setIsRefreshing(true);
+      const res = await onRefreshStock();
+      if (res && res.length > 0) {
+        toast.success(`✓ ${res.length} productos de stock sincronizados`);
+      } else {
+        toast.info('Inventario actualizado.');
+      }
+    } catch {
+      toast.error('Error al sincronizar inventario de stock.');
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   // Manejo de Ajuste Rápido de Stock (+ / -)
   const handleAjustarStock = (id: string, delta: number) => {
@@ -293,6 +360,19 @@ ${itemsText}
             <span>{copiedCatalog ? '¡Catálogo Copiado! 🎉' : 'Copiar Catálogo WhatsApp'}</span>
           </button>
 
+          {onRefreshStock && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={handleManualRefresh}
+              disabled={isRefreshing}
+              title="Sincronizar productos en stock directamente desde Supabase"
+            >
+              <RefreshCw size={14} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
+              <span>{isRefreshing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-cyan btn-sm"
@@ -413,7 +493,7 @@ ${itemsText}
 
         {/* Chips de categorías */}
         <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', marginTop: '12px', paddingBottom: '4px' }}>
-          {['Todos', ...CATEGORIAS_PREDEFINIDAS].map(cat => {
+          {categoriasChips.map(cat => {
             const isSelected = selectedCategoria === cat;
             return (
               <button

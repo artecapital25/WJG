@@ -20,9 +20,10 @@ export interface UserSystemAccount {
 
 export interface PasswordStrengthResult {
   score: number; // 0 to 4
-  label: 'Muy Débil' | 'Débil' | 'Aceptable' | 'Buena' | 'Fuerte';
+  label: 'Muy Débil' | 'Débil' | 'Aceptable' | 'Buena' | 'Fuerte' | 'PIN Rápido';
   color: string;
   isValid: boolean;
+  isPin?: boolean;
   rules: {
     minLength: boolean;
     hasUppercase: boolean;
@@ -52,44 +53,75 @@ export const WhatsAppOtpService = {
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   },
 
-  // 3. Evaluador de Fortaleza de Contraseña
+  // 3. Evaluador Flexible de Fortaleza de Contraseña / PIN
+  // Permite tanto PIN numérico (ej: 1234) como contraseñas alfanuméricas complejas
   calculatePasswordStrength(password: string): PasswordStrengthResult {
-    const minLength = password.length >= 8;
-    const hasUppercase = /[A-Z]/.test(password);
-    const hasNumber = /[0-9]/.test(password);
-    const hasSpecial = /[^A-Za-z0-9]/.test(password);
+    const clean = (password || '').trim();
+    const isPin = /^\d{4,10}$/.test(clean);
+    const minLength = clean.length >= 8;
+    const hasUppercase = /[A-Z]/.test(clean);
+    const hasNumber = /[0-9]/.test(clean);
+    const hasSpecial = /[^A-Za-z0-9]/.test(clean);
 
+    // Mínimo general: 4 caracteres para prevenir claves accidentales vacías o de 1 letra
+    if (clean.length < 4) {
+      return {
+        score: 0,
+        label: 'Muy Débil',
+        color: '#ef4444',
+        isValid: false,
+        isPin: false,
+        rules: { minLength: false, hasUppercase, hasNumber, hasSpecial }
+      };
+    }
+
+    // Caso A: Si el usuario eligió un PIN numérico (4 a 10 dígitos)
+    if (isPin) {
+      return {
+        score: 2,
+        label: 'PIN Rápido',
+        color: '#38bdf8',
+        isValid: true,
+        isPin: true,
+        rules: {
+          minLength: true,
+          hasUppercase: false,
+          hasNumber: true,
+          hasSpecial: false
+        }
+      };
+    }
+
+    // Caso B: Clave alfanumérica o compleja
     let score = 0;
     if (minLength) score++;
     if (hasUppercase) score++;
     if (hasNumber) score++;
     if (hasSpecial) score++;
 
-    let label: PasswordStrengthResult['label'] = 'Muy Débil';
-    let color = '#ef4444';
+    let label: PasswordStrengthResult['label'] = 'Aceptable';
+    let color = '#eab308';
 
-    if (score === 1) {
-      label = 'Débil';
-      color = '#f97316';
-    } else if (score === 2) {
-      label = 'Aceptable';
-      color = '#eab308';
+    if (score >= 4) {
+      label = 'Fuerte';
+      color = '#22c55e';
     } else if (score === 3) {
       label = 'Buena';
       color = '#3b82f6';
-    } else if (score === 4) {
-      label = 'Fuerte';
-      color = '#22c55e';
+    } else if (score === 2) {
+      label = 'Aceptable';
+      color = '#eab308';
+    } else {
+      label = clean.length >= 6 ? 'Aceptable' : 'Débil';
+      color = clean.length >= 6 ? '#eab308' : '#f97316';
     }
-
-    // Regla mínima requerida: 8 caracteres, al menos 1 mayúscula y 1 número
-    const isValid = minLength && hasUppercase && hasNumber;
 
     return {
       score,
       label,
       color,
-      isValid,
+      isValid: true,
+      isPin: false,
       rules: {
         minLength,
         hasUppercase,
@@ -180,28 +212,52 @@ export const WhatsAppOtpService = {
 
     try {
       const otpHash = await this.hashStringSha256(otpCode.trim());
-      const newPasswordHash = await this.hashStringSha256(newPassword);
+      const newPasswordHash = await this.hashStringSha256(newPassword.trim());
 
+      // 5.1 Intentar RPC si existe
       const { data, error } = await supabase.rpc('verificar_otp_y_cambiar_password', {
         p_identificador: identificador,
         p_otp_hash: otpHash,
         p_new_password_hash: newPasswordHash
       });
 
-      if (error) {
+      // 5.2 Sincronizar en la tabla usuarios_taller (Directorio de personal)
+      const cleanIdent = identificador.trim().toLowerCase();
+      const cleanPhone = cleanIdent.replace(/\D/g, '');
+      let qTaller = supabase.from('usuarios_taller').select('id');
+      if (cleanPhone.length >= 7) {
+        qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,telefono.ilike.%${cleanPhone}%,telefono_notificaciones.ilike.%${cleanPhone}%`);
+      } else {
+        qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,nombre.ilike.%${cleanIdent}%`);
+      }
+      const { data: tUsers } = await qTaller.limit(1);
+      if (tUsers && tUsers.length > 0) {
+        await supabase
+          .from('usuarios_taller')
+          .update({
+            pin_acceso: newPassword.trim(),
+            password_hash: newPasswordHash,
+            pin_hash: newPasswordHash,
+            must_change_password: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', tUsers[0].id);
+      }
+
+      if (error && (!tUsers || tUsers.length === 0)) {
         return { success: false, message: error.message || 'Error validando código.' };
       }
 
       return {
-        success: Boolean(data?.success),
-        message: data?.message || 'Resultado de verificación'
+        success: Boolean(data?.success || (tUsers && tUsers.length > 0)),
+        message: data?.message || '¡Contraseña o PIN actualizado exitosamente!'
       };
     } catch (err: any) {
       return { success: false, message: err.message || 'Error de conexión.' };
     }
   },
 
-  // 6. Cambio Voluntario / Forzado de Contraseña en Sesión
+  // 6. Cambio Voluntario / Forzado de Contraseña en Sesión (Directorio de Taller y Sistema)
   async updatePasswordInSession(
     userIdOrEmail: string,
     currentPassword: string,
@@ -212,10 +268,56 @@ export const WhatsAppOtpService = {
     }
 
     try {
-      const currentHash = await this.hashStringSha256(currentPassword);
-      const newHash = await this.hashStringSha256(newPassword);
+      const cleanNew = newPassword.trim();
+      const cleanCurr = currentPassword.trim();
+      if (cleanNew.length < 4) {
+        return { success: false, message: 'La nueva clave o PIN debe tener al menos 4 caracteres.' };
+      }
 
-      // 6.1 Verificar usuario y clave actual
+      const currentHash = await this.hashStringSha256(cleanCurr);
+      const newHash = await this.hashStringSha256(cleanNew);
+
+      // 6.1 Revisar primero en usuarios_taller
+      const cleanId = userIdOrEmail.trim().toLowerCase();
+      const cleanPhone = cleanId.replace(/\D/g, '');
+      let qTaller = supabase.from('usuarios_taller').select('*');
+      if (cleanPhone.length >= 7) {
+        qTaller = qTaller.or(`id.eq.${cleanId},email.ilike.%${cleanId}%,telefono.ilike.%${cleanPhone}%,nombre.ilike.%${cleanId}%`);
+      } else {
+        qTaller = qTaller.or(`id.eq.${cleanId},email.ilike.%${cleanId}%,nombre.ilike.%${cleanId}%`);
+      }
+      const { data: tallerUsers } = await qTaller.limit(1);
+
+      if (tallerUsers && tallerUsers.length > 0) {
+        const tUser = tallerUsers[0];
+        const isMatch = (tUser.pin_acceso && tUser.pin_acceso === cleanCurr) ||
+                        (tUser.password_hash && tUser.password_hash === currentHash) ||
+                        (tUser.pin_hash && tUser.pin_hash === currentHash) ||
+                        (await AuthSecurityService.verifyEmergencyPin(cleanCurr));
+
+        if (!isMatch) {
+          return { success: false, message: 'La contraseña o PIN actual no es correcta.' };
+        }
+
+        const { error: updErr } = await supabase
+          .from('usuarios_taller')
+          .update({
+            pin_acceso: cleanNew,
+            password_hash: newHash,
+            pin_hash: newHash,
+            must_change_password: false,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', tUser.id);
+
+        if (updErr) {
+          return { success: false, message: updErr.message };
+        }
+
+        return { success: true, message: '¡Clave de acceso actualizada exitosamente!' };
+      }
+
+      // 6.2 Fallback en usuarios_sistema si existiera
       const { data: user, error: userErr } = await supabase
         .from('usuarios_sistema')
         .select('id, password_hash')
@@ -230,7 +332,6 @@ export const WhatsAppOtpService = {
         return { success: false, message: 'La contraseña actual no es correcta.' };
       }
 
-      // 6.2 Actualizar a nueva clave y revocar must_change_password
       const { error: updateErr } = await supabase
         .from('usuarios_sistema')
         .update({

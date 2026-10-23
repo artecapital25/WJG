@@ -125,6 +125,7 @@ export class AuthSecurityService {
     // Hashes precalculados para los PINs autorizados de taller
     const hash = await this.sha256(clean.toLowerCase());
     const authorizedHashes = [
+      '03ac674216f3e15c761ee1a5e255f067953623c8b388b4459e13f978d7c846f4', // PIN por defecto de taller (1234)
       'bbcfa57ecf8a672f1d0f9a0d796e10de46c29095f6cb7a7cf5e7102ecb290ca0', // PIN maestro 1 (wjg3d)
       '03efac9b7e1ae3464dda07930a93a687b31041ec621e264502066ecf5d48c305', // Teléfono Taller 1
       'c40a44228f4e7a78507244a6dd7c5a8456a9bbcca793436cde33666ca74bc5ce'  // Teléfono Taller 2

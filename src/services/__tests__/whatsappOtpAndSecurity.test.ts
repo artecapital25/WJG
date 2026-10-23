@@ -32,25 +32,33 @@ describe('WhatsApp OTP Service & Security Suite', () => {
     expect(hash).not.toBe(hash2);
   });
 
-  it('3. Evaluador de fortaleza de contraseña: Detecta contraseñas débiles', () => {
-    // Menos de 8 caracteres
-    const r1 = WhatsAppOtpService.calculatePasswordStrength('Short1A');
+  it('3. Evaluador de claves: Valida PIN numérico y detecta claves demasiado cortas (< 4 caracteres)', () => {
+    // Menos de 4 caracteres es inválido
+    const r1 = WhatsAppOtpService.calculatePasswordStrength('123');
     expect(r1.isValid).toBe(false);
+    expect(r1.label).toBe('Muy Débil');
 
-    // Sin mayúscula
-    const r2 = WhatsAppOtpService.calculatePasswordStrength('password1234');
-    expect(r2.isValid).toBe(false);
-    expect(r2.rules.hasUppercase).toBe(false);
+    // PIN numérico de 4 dígitos es válido y detectado como PIN
+    const pin4 = WhatsAppOtpService.calculatePasswordStrength('1234');
+    expect(pin4.isValid).toBe(true);
+    expect(pin4.isPin).toBe(true);
+    expect(pin4.label).toBe('PIN Rápido');
 
-    // Sin número
-    const r3 = WhatsAppOtpService.calculatePasswordStrength('PasswordOnly');
-    expect(r3.isValid).toBe(false);
-    expect(r3.rules.hasNumber).toBe(false);
+    // PIN numérico de 6 dígitos es válido
+    const pin6 = WhatsAppOtpService.calculatePasswordStrength('987654');
+    expect(pin6.isValid).toBe(true);
+    expect(pin6.isPin).toBe(true);
+
+    // Clave alfanumérica sencilla (6 caracteres) es válida
+    const simpleAlpha = WhatsAppOtpService.calculatePasswordStrength('juan3d');
+    expect(simpleAlpha.isValid).toBe(true);
+    expect(simpleAlpha.isPin).toBe(false);
   });
 
-  it('4. Evaluador de fortaleza de contraseña: Valida contraseñas robustas', () => {
+  it('4. Evaluador de claves: Valida contraseñas complejas y calcula fortaleza', () => {
     const strong = WhatsAppOtpService.calculatePasswordStrength('Wjg#2026Pro!');
     expect(strong.isValid).toBe(true);
+    expect(strong.isPin).toBe(false);
     expect(strong.score).toBe(4);
     expect(strong.label).toBe('Fuerte');
     expect(strong.rules.minLength).toBe(true);

@@ -1,4 +1,49 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+vi.mock('../supabaseClient', () => ({
+  supabase: {
+    rpc: vi.fn().mockImplementation((fnName: string) => {
+      if (fnName === 'fn_whatsapp_healthcheck') {
+        return Promise.resolve({
+          data: {
+            status: 'operativo',
+            linea_oficial: '+57 320 2796115',
+            motor_activo: true,
+            total_ultimas_24h: 12,
+            enviados_24h: 12,
+            fallidos_24h: 0,
+            pendientes_cola: 0,
+            estancados_mas_15m: 0,
+            tasa_fallo_pct: 0,
+            mensajes_programados_hoy: 4,
+            alerta_mensaje: 'Motor WhatsApp en modo operativo (Supabase Cloud).',
+            evaluado_at: new Date().toISOString()
+          },
+          error: null
+        });
+      }
+      if (fnName === 'get_daily_company_briefing') {
+        return Promise.resolve({
+          data: {
+            success: true,
+            mensaje_whatsapp: `🌅 *WJGEEKS 3D PRO — REPORTE DIARIO OPERATIVO*
+Línea oficial: +57 320 2796115
+Llave Bre-B: 0090778625
+*ESTADO DE LA MENSAJERÍA AUTOMÁTICA*
+*COMPROMISOS FINANCIEROS Y COBRANZAS*
+*OPERACIÓN DE TALLER Y ENTREGAS*
+*INSUMOS Y LOGÍSTICA*
+*ACCIONES PRIORITARIAS PARA EL DÍA*`
+          },
+          error: null
+        });
+      }
+      return Promise.resolve({ data: null, error: null });
+    })
+  },
+  isSupabaseConfigured: true
+}));
+
 import { WhatsAppNotificationService } from '../whatsappNotificationService';
 
 describe('WhatsApp Healthcheck & Daily Briefing Suite', () => {

@@ -1,9 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Lock, ShieldCheck, Eye, EyeOff, Sparkles, Smartphone, AlertTriangle, KeyRound, MessageSquare, Loader2 } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import { AuthSecurityService } from '../../services/authSecurityService';
 import { PasswordResetModal } from './PasswordResetModal';
 import { MustChangePasswordModal } from './MustChangePasswordModal';
+import { CambiarPinModal } from './CambiarPinModal';
+import { useUsuariosTaller } from '../../hooks/useUsuariosTaller';
 import { toast } from '../ui/ToastProvider';
 
 interface StaffAuthGuardProps {
@@ -11,6 +13,7 @@ interface StaffAuthGuardProps {
 }
 
 export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }) => {
+  const { usuarios, recuperarPin } = useUsuariosTaller();
   const [loginMethod, setLoginMethod] = useState<'profile' | 'credentials'>('profile');
   const [selectedStaff, setSelectedStaff] = useState<string>('german');
   const [emailOrPhone, setEmailOrPhone] = useState<string>('');
@@ -22,15 +25,34 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
 
   // Modales de Recuperación y Cambio Obligatorio
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
+  const [showPinRecoveryModal, setShowPinRecoveryModal] = useState<boolean>(false);
   const [showMustChangeModal, setShowMustChangeModal] = useState<boolean>(false);
   const [mustChangeUserId, setMustChangeUserId] = useState<string>('');
   const [pendingSuccessLabel, setPendingSuccessLabel] = useState<string>('');
 
-  const staffProfiles = [
+  const defaultStaffProfiles = [
     { id: 'german', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3503443140', email: 'german@wjgeeks.com' },
-    { id: 'wendy', name: 'Wendy', role: 'Administración / Finanzas', avatar: 'W', phone: '3204814702', email: 'wendy@wjgeeks.com' },
-    { id: 'juan', name: 'Juan', role: 'Taller / Producción', avatar: 'J', phone: '3217273025', email: 'juan@wjgeeks.com' }
+    { id: 'wendy', name: 'Wendy', role: 'Pintura & Acabados', avatar: 'W', phone: '3204814702', email: 'wendy@wjgeeks.com' },
+    { id: 'juan', name: 'Juan', role: 'Impresión & Slicer', avatar: 'J', phone: '3217273025', email: 'juan@wjgeeks.com' }
   ];
+
+  // Perfiles de taller enriquecidos dinámicamente desde el directorio oficial
+  const staffProfiles = useMemo(() => {
+    if (usuarios && usuarios.length > 0) {
+      const active = usuarios.filter(u => u.activo);
+      if (active.length > 0) {
+        return active.map(u => ({
+          id: u.id,
+          name: u.nombre,
+          role: u.rol,
+          avatar: u.nombre.charAt(0).toUpperCase(),
+          phone: u.telefono,
+          email: u.email || ''
+        }));
+      }
+    }
+    return defaultStaffProfiles;
+  }, [usuarios]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,19 +66,64 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
 
     try {
       const enteredPassword = password.trim();
+      const targetProfile = staffProfiles.find(p => p.id === selectedStaff);
       const identifier = loginMethod === 'profile' 
-        ? staffProfiles.find(p => p.id === selectedStaff)?.email || selectedStaff 
+        ? targetProfile?.email || targetProfile?.name || selectedStaff 
         : emailOrPhone.trim();
 
       const userLabel = loginMethod === 'profile'
-        ? selectedStaff.toUpperCase()
+        ? targetProfile?.name.toUpperCase() || selectedStaff.toUpperCase()
         : identifier.split('@')[0].toUpperCase();
 
-      // 1. Verificar primero en la tabla `usuarios_sistema` si Supabase está activo
+      // 1. Verificar primero en la tabla `usuarios_taller` (Directorio Operativo Oficial)
       if (isSupabaseConfigured && supabase) {
         const cleanIdent = identifier.toLowerCase();
         const cleanPhone = identifier.replace(/\D/g, '');
 
+        // Consultar usuarios_taller
+        let qTaller = supabase.from('usuarios_taller').select('*');
+        if (loginMethod === 'profile' && targetProfile) {
+          qTaller = qTaller.or(`id.eq.${targetProfile.id},email.ilike.%${cleanIdent}%,nombre.ilike.%${targetProfile.name}%`);
+        } else if (cleanPhone.length >= 7) {
+          qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,telefono.ilike.%${cleanPhone}%,telefono_notificaciones.ilike.%${cleanPhone}%,nombre.ilike.%${cleanIdent}%`);
+        } else {
+          qTaller = qTaller.or(`email.ilike.%${cleanIdent}%,nombre.ilike.%${cleanIdent}%`);
+        }
+
+        const { data: tallerUsers } = await qTaller.limit(1);
+
+        if (tallerUsers && tallerUsers.length > 0) {
+          const userRec = tallerUsers[0];
+
+          if (!userRec.activo) {
+            setErrorMessage('Esta cuenta ha sido desactivada por el administrador (Kill Switch). Contacta a Germán.');
+            setLoading(false);
+            return;
+          }
+
+          // Validación de hash o PIN/clave directa
+          const encoder = new TextEncoder();
+          const data = encoder.encode(enteredPassword);
+          const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+          const enteredHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+          const isMatch = (userRec.pin_acceso && userRec.pin_acceso === enteredPassword) ||
+                          (userRec.password_hash && userRec.password_hash === enteredHash) ||
+                          (userRec.pin_hash && userRec.pin_hash === enteredHash) ||
+                          (await AuthSecurityService.verifyEmergencyPin(enteredPassword));
+
+          if (isMatch) {
+            // Actualizar último acceso
+            supabase.from('usuarios_taller').update({
+              ultimo_acceso: new Date().toISOString()
+            }).eq('id', userRec.id).then();
+
+            finalizeLogin(userRec.nombre);
+            return;
+          }
+        }
+
+        // Respaldo en usuarios_sistema si existiera
         let query = supabase.from('usuarios_sistema').select('*');
         if (cleanPhone.length >= 7) {
           query = query.or(`email.eq.${cleanIdent},telefono_whatsapp.ilike.%${cleanPhone}%`);
@@ -64,53 +131,65 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
           query = query.eq('email', cleanIdent);
         }
 
-        const { data: dbUsers, error: dbErr } = await query.limit(1);
-
-        if (!dbErr && dbUsers && dbUsers.length > 0) {
+        const { data: dbUsers } = await query.limit(1);
+        if (dbUsers && dbUsers.length > 0) {
           const userRec = dbUsers[0];
-
-          // Validación de estado de cuenta (Kill Switch)
           if (!userRec.activo) {
             setErrorMessage('Esta cuenta ha sido desactivada por el administrador. Contacta a soporte.');
             setLoading(false);
             return;
           }
 
-          // Validación de hash de contraseña
           const encoder = new TextEncoder();
           const data = encoder.encode(enteredPassword);
           const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
           const enteredHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
 
           if (userRec.password_hash === enteredHash || (await AuthSecurityService.verifyEmergencyPin(enteredPassword))) {
-            // Actualizar último acceso y metadata de dispositivo
-            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-            supabase.from('usuarios_sistema').update({
-              ultimo_acceso: new Date().toISOString(),
-              dispositivo_info: {
-                tipo: isMobile ? 'movil' : 'escritorio',
-                navegador: navigator.userAgent.slice(0, 80),
-                fecha: new Date().toISOString()
-              }
-            }).eq('id', userRec.id).then();
-
-            // Verificar si tiene cambio obligatorio de clave
-            if (userRec.must_change_password) {
-              setMustChangeUserId(userRec.id);
-              setPendingSuccessLabel(userRec.nombre || userLabel);
-              setShowMustChangeModal(true);
-              setLoading(false);
-              return;
-            }
-
-            // Inicio de sesión exitoso
             finalizeLogin(userRec.nombre || userLabel);
             return;
           }
         }
       }
 
-      // 2. Validación de PIN de Taller / Emergencia mediante Hash Criptográfico
+      // 2. Respaldo en caché local de usuarios_taller (soporte offline)
+      try {
+        const cachedUsers: any[] = JSON.parse(localStorage.getItem('wjg_usuarios_taller_cache') || '[]');
+        if (cachedUsers.length > 0) {
+          const localTarget = cachedUsers.find(u => {
+            if (!u.activo) return false;
+            if (loginMethod === 'profile') {
+              return u.id === selectedStaff || (u.nombre && u.nombre.toLowerCase() === userLabel.toLowerCase());
+            }
+            const cleanPhone = emailOrPhone.replace(/\D/g, '');
+            const cleanIdent = emailOrPhone.trim().toLowerCase();
+            return (u.email && u.email.toLowerCase() === cleanIdent) ||
+                   (cleanPhone.length >= 7 && (u.telefono?.includes(cleanPhone) || u.telefono_notificaciones?.includes(cleanPhone))) ||
+                   (u.nombre && u.nombre.toLowerCase().includes(cleanIdent));
+          });
+
+          if (localTarget) {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(enteredPassword);
+            const hashBuffer = await window.crypto.subtle.digest('SHA-256', data);
+            const enteredHash = Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+
+            if (
+              (localTarget.pin_acceso && localTarget.pin_acceso === enteredPassword) ||
+              (localTarget.password_hash && localTarget.password_hash === enteredHash) ||
+              (localTarget.pin_hash && localTarget.pin_hash === enteredHash) ||
+              (await AuthSecurityService.verifyEmergencyPin(enteredPassword))
+            ) {
+              finalizeLogin(localTarget.nombre);
+              return;
+            }
+          }
+        }
+      } catch {
+        // ignore cache parse error
+      }
+
+      // 3. Fallback de PIN de Taller / Emergencia mediante Hash Criptográfico
       const isPinValid = await AuthSecurityService.verifyEmergencyPin(enteredPassword);
 
       if (isPinValid) {
@@ -118,7 +197,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
         return;
       }
 
-      setErrorMessage('Contraseña o PIN incorrecto. ¿Olvidaste tu contraseña? Recupérala vía WhatsApp.');
+      setErrorMessage('Contraseña o PIN incorrecto. Puedes recuperar tu acceso por cédula y teléfono.');
     } catch (err: any) {
       setErrorMessage(err.message || 'Error validando credenciales de acceso.');
     } finally {
@@ -400,7 +479,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                placeholder="Ingresa tu clave de acceso..."
+                placeholder="Ingresa tu PIN (ej: 1234) o clave personal..."
                 style={{
                   width: '100%',
                   padding: '14px 44px 14px 16px',
@@ -431,6 +510,9 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               >
                 {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
               </button>
+            </div>
+            <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '6px' }}>
+              🔑 Acceso flexible: Ingresa con tu PIN numérico o contraseña alfanumérica compleja.
             </div>
           </div>
 
@@ -519,8 +601,26 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
           </button>
         </form>
 
-        {/* Enlace Directo a Recuperación vía WhatsApp */}
-        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+        {/* Enlace Directo a Recuperación de PIN */}
+        <div style={{ marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            onClick={() => setShowPinRecoveryModal(true)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#38bdf8',
+              fontSize: '0.8rem',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: 600
+            }}
+          >
+            <KeyRound size={14} /> Olvidé mi PIN / Cambiar clave (por Cédula)
+          </button>
+
           <button
             type="button"
             onClick={() => setShowResetModal(true)}
@@ -536,14 +636,26 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               fontWeight: 500
             }}
           >
-            <MessageSquare size={14} /> Recuperar contraseña vía WhatsApp en 1 clic
+            <MessageSquare size={13} /> Enviar OTP temporal por WhatsApp
           </button>
         </div>
 
         <div style={{ marginTop: '20px', textAlign: 'center', fontSize: '0.72rem', color: '#64748b' }}>
-          🔒 Sesión segura con cifrado SHA-256 Web Crypto y aislamiento multi-dispositivo.
+          🔒 Directorio sincronizado con public.usuarios_taller • Acceso por PIN numérico o clave personal
         </div>
       </div>
+
+      {/* Modal de Restablecimiento de PIN por Cédula y Teléfono */}
+      <CambiarPinModal
+        isOpen={showPinRecoveryModal}
+        onClose={() => setShowPinRecoveryModal(false)}
+        mode="recovery"
+        onRecuperarPin={recuperarPin}
+        onSuccess={() => {
+          setShowPinRecoveryModal(false);
+          toast.success('¡PIN actualizado! Ya puedes ingresar con tu nueva credencial.');
+        }}
+      />
 
       {/* Modal de Recuperación vía WhatsApp OTP */}
       <PasswordResetModal 

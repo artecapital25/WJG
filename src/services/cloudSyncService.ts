@@ -23,8 +23,21 @@ import {
   TareaEquipo,
   SolicitudInsumo,
   ProductoStock,
-  PaymentRecord
+  PaymentRecord,
+  EstadoOT
 } from '../types';
+
+// Interfaz canónica para el Balance Financiero Consolidado
+export interface BalanceTaller {
+  total_ingresos_recaudados: number;
+  recaudado_nequi: number;
+  recaudado_bre_b: number;
+  recaudado_efectivo: number;
+  total_por_cobrar: number;
+}
+
+// Cache en memoria para prevención de doble clic y cobros duplicados en ventana de 60 segundos
+const recentPaymentsCache = new Map<string, number>();
 
 export const CloudSyncService = {
   isAvailable: () => isSupabaseConfigured && supabase !== null,
@@ -47,13 +60,65 @@ export const CloudSyncService = {
   async fetchCotizaciones(): Promise<Cotizacion[] | null> {
     if (!this.isAvailable()) return null;
     try {
-      const { data, error } = await supabase!
+      // 1. Intento primario con relación explícita única canónica
+      let { data, error } = await supabase!
         .from('cotizaciones')
-        .select('*, cliente:clientes(*), items:cotizacion_items(*)')
+        .select('*, cliente:clientes!fk_cotizaciones_cliente_unica(*), items:cotizacion_items(*)')
         .order('numero_cot', { ascending: false });
 
+      // Fallback 1: Si la relación por nombre fk aún no recargó en cache, usar relación por columna cliente_id
+      if (error && (error.code === 'PGRST200' || error.message?.includes('relationship') || error.message?.includes('fk_cotizaciones_cliente_unica'))) {
+        const fallbackRel = await supabase!
+          .from('cotizaciones')
+          .select('*, cliente:clientes!cliente_id(*), items:cotizacion_items(*)')
+          .order('numero_cot', { ascending: false });
+        data = fallbackRel.data;
+        error = fallbackRel.error;
+      }
+
+      // Fallback 2: si cotizacion_items no existe como tabla relacional
+      if (error && (error.code === 'PGRST200' || error.message?.includes('cotizacion_items'))) {
+        const fallback = await supabase!
+          .from('cotizaciones')
+          .select('*, cliente:clientes!cliente_id(*)')
+          .order('numero_cot', { ascending: false });
+        data = fallback.data;
+        error = fallback.error;
+      }
+
+      // Fallback 3 (Desacoplado Ultra-Resiliente): Si PostgREST tiene ambigüedad de relaciones en cache,
+      // consultar cotizaciones directamente y ensamblar en memoria con clientes e items
+      if (error && (error.code === 'PGRST200' || error.message?.includes('relationship') || error.message?.includes('embed'))) {
+        try {
+          const { data: rawCot, error: errCot } = await supabase!
+            .from('cotizaciones')
+            .select('*')
+            .order('numero_cot', { ascending: false });
+
+          if (!errCot && rawCot) {
+            const { data: rawClientes } = await supabase!.from('clientes').select('*');
+            const { data: rawItems } = await supabase!.from('cotizacion_items').select('*');
+
+            const clientMap = new Map((rawClientes || []).map((c: any) => [c.id, c]));
+            const itemsMap = new Map<string, any[]>();
+            (rawItems || []).forEach((it: any) => {
+              const list = itemsMap.get(it.cotizacion_id) || [];
+              list.push(it);
+              itemsMap.set(it.cotizacion_id, list);
+            });
+
+            data = rawCot.map((c: any) => ({
+              ...c,
+              cliente: clientMap.get(c.cliente_id) || null,
+              items: itemsMap.get(c.id) || []
+            }));
+            error = null;
+          }
+        } catch (_) {}
+      }
+
       if (error) {
-        console.warn('Error fetching cotizaciones from Supabase:', error);
+        console.warn('Error fetching cotizaciones from Supabase:', error.message);
         return null;
       }
 
@@ -172,91 +237,113 @@ export const CloudSyncService = {
 
       if (!data || data.length === 0) return [];
 
-      return data.map((row: any): OrdenTrabajo => ({
-        id: row.id,
-        numero_ot: row.numero_ot,
-        cotizacion_id: row.cotizacion_id || '',
-        cotizacion_numero: row.numero_ot.replace('OT-', 'COT-'),
-        cliente_nombre: row.cliente_nombre,
-        cliente_telefono: row.cliente_telefono || '',
-        item_nombre: row.item_nombre,
-        cantidad: Number(row.cantidad) || 1,
-        estado: row.estado as any,
-        operador_asignado: row.operador_asignado || 'Operador 3D',
-        fecha_creacion: row.created_at || new Date().toISOString(),
-        tiempo_impresion_min: 0,
-        tiempo_armado_min: 0,
-        tiempo_pintura_min: 0,
-        resina_nombre: 'Resina Standard',
-        maquina_nombre: 'Anycubic MONO 4',
-        va_pintado: false,
-        tiene_empaque: false,
-        detalles_tecnicos: row.observaciones || '',
-        pos_venta_id: row.pos_venta_id || undefined,
-        precio_cobrado: row.precio_cobrado !== undefined ? Number(row.precio_cobrado) : undefined,
-        abono: row.abono !== undefined ? Number(row.abono) : 0,
-        saldo_pendiente: row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : 0,
-        estado_pago: row.estado_pago || 'Pendiente',
-        metodo_pago: row.metodo_pago || 'Bre-B',
-        comprobante_pago: row.comprobante_pago || undefined
-      }));
+      const dbToUiEstadoMap: Record<string, EstadoOT> = {
+        'COTIZACION': 'En Cola',
+        'EN_COLA_OT': 'En Cola',
+        'IMPRESION': 'Imprimiendo',
+        'CURADO': 'Curado',
+        'PINTADO_ARMADO': 'Pintura y Armado',
+        'CONTROL_CALIDAD': 'Control de Calidad',
+        'ENTREGADO': 'Listo para Entrega',
+        'CANCELADO': 'Listo para Entrega',
+        'En Cola': 'En Cola',
+        'Imprimiendo': 'Imprimiendo',
+        'Curado': 'Curado',
+        'Pintura y Armado': 'Pintura y Armado',
+        'Control de Calidad': 'Control de Calidad',
+        'Listo para Entrega': 'Listo para Entrega'
+      };
+
+      return data.map((row: any): OrdenTrabajo => {
+        const rawEstado = row.estado_actual || row.estado || 'EN_COLA_OT';
+        const estadoFinal: EstadoOT = dbToUiEstadoMap[rawEstado] || 'En Cola';
+        const total = Number(row.total_ot) || Number(row.precio_cobrado) || 0;
+        const abono = Number(row.total_abonado) || Number(row.abono) || 0;
+        const saldo = row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, total - abono);
+
+        return {
+          id: row.id,
+          numero_ot: row.numero_ot,
+          cotizacion_id: row.cotizacion_id || '',
+          cotizacion_numero: (row.numero_ot || '').replace(/^OT-/, 'COT-'),
+          cliente_nombre: row.cliente_nombre || 'Cliente General',
+          cliente_telefono: row.cliente_telefono || '',
+          item_nombre: row.item_nombre || row.item_descripcion || 'Pieza 3D',
+          cantidad: Number(row.cantidad) || 1,
+          estado: estadoFinal,
+          operador_asignado: row.operador_asignado || 'Operador 3D',
+          tracking_token: row.tracking_token || undefined,
+          stl_url: row.stl_url || undefined,
+          fecha_creacion: row.created_at || new Date().toISOString(),
+          tiempo_impresion_min: 0,
+          tiempo_armado_min: 0,
+          tiempo_pintura_min: 0,
+          resina_nombre: 'Resina Standard',
+          maquina_nombre: 'Anycubic MONO 4',
+          va_pintado: false,
+          tiene_empaque: false,
+          detalles_tecnicos: row.item_descripcion || row.observaciones || '',
+          pos_venta_id: row.pos_venta_id || undefined,
+          precio_cobrado: total,
+          abono,
+          saldo_pendiente: saldo,
+          estado_pago: row.estado_pago || (saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
+          metodo_pago: row.metodo_pago || 'Bre-B',
+          comprobante_pago: row.comprobante_pago || undefined
+        };
+      });
     } catch (e) {
       console.warn('Exception in fetchOrdenes:', e);
       return null;
     }
   },
 
-  // 5. Traer Cuentas de Cobro desde la Nube
+  // 5. Traer Cuentas de Cobro desde la Nube (Ledger Unificado con ordenes_trabajo)
   async fetchCuentas(): Promise<CuentaCobro[] | null> {
     if (!this.isAvailable()) return null;
     try {
-      const { data, error } = await supabase!
-        .from('cuentas_cobro')
-        .select('*, cliente:clientes(*)')
+      // 1. Intento primario: Consultar directamente ordenes_trabajo (Fuente de verdad)
+      const { data: otData, error: otErr } = await supabase!
+        .from('ordenes_trabajo')
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.warn('Error fetching cuentas_cobro:', error);
-        return null;
+      if (!otErr && otData) {
+        return otData.map((row: any): CuentaCobro => {
+          const total = Number(row.total_ot) || Number(row.precio_cobrado) || 0;
+          const abono = Number(row.total_abonado) || Number(row.abono) || 0;
+          const saldo = row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, total - abono);
+          const numOT = row.numero_ot || 'OT-000';
+          const numCC = numOT.startsWith('CC-') ? numOT : `CC-${numOT.replace(/^OT-/, '')}`;
+
+          return {
+            id: row.id,
+            numero_cc: numCC,
+            cotizacion_id: row.cotizacion_id || '',
+            cotizacion_numero: numOT.replace(/^OT-/, 'COT-'),
+            cliente: {
+              id: row.cliente_id || `cli-${row.id}`,
+              codigo: 1,
+              nombre: row.cliente_nombre || 'Cliente General',
+              nit_cc: '',
+              telefono: row.cliente_telefono || '',
+              correo: ''
+            },
+            fecha_emision: (row.created_at || new Date().toISOString()).slice(0, 10),
+            items_resumen: row.item_nombre || row.item_descripcion || 'Servicios de Impresión 3D y Manufactura',
+            total,
+            abono,
+            saldo_pendiente: saldo,
+            estado_pago: (row.estado_pago as any) || (saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
+            comprobante_url: row.comprobante_pago || undefined
+          };
+        });
       }
 
-      if (!data || data.length === 0) return [];
-
-      return data.map((row: any): CuentaCobro => {
-        const clienteMapeado: Cliente = row.cliente ? {
-          id: row.cliente.id,
-          codigo: row.cliente.codigo || 1,
-          nombre: row.cliente.nombre || 'Cliente General',
-          nit_cc: row.cliente.nit_cc || '',
-          telefono: row.cliente.telefono || '',
-          correo: row.cliente.correo || ''
-        } : {
-          id: row.cliente_id || `cli-${Date.now()}`,
-          codigo: 1,
-          nombre: 'Cliente General',
-          nit_cc: '',
-          telefono: '',
-          correo: ''
-        };
-
-        return {
-          id: row.id,
-          numero_cc: row.numero_cc,
-          cotizacion_id: row.cotizacion_id || '',
-          cotizacion_numero: row.numero_cc.replace('CC-', 'COT-'),
-          cliente: clienteMapeado,
-          fecha_emision: row.fecha_emision || new Date().toISOString().slice(0, 10),
-          items_resumen: 'Servicios de Impresión 3D y Manufactura',
-          total: Number(row.total) || 0,
-          abono: Number(row.abono) || 0,
-          saldo_pendiente: Number(row.saldo_pendiente) || 0,
-          estado_pago: (row.estado_pago as any) || 'Pendiente',
-          comprobante_url: row.comprobante_url || undefined
-        };
-      });
+      return [];
     } catch (e) {
       console.warn('Exception in fetchCuentas:', e);
-      return null;
+      return [];
     }
   },
 
@@ -364,36 +451,79 @@ export const CloudSyncService = {
     }
   },
 
-  // 6. Guardar o Actualizar una Orden de Trabajo (OT) en Supabase
+  // 6. Guardar o Actualizar una Orden de Trabajo (OT) en Supabase (Core V3 Compatible)
   async saveOrdenTrabajo(ot: OrdenTrabajo): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const { error } = await supabase!
-        .from('ordenes_trabajo')
-        .upsert({
-          numero_ot: ot.numero_ot,
-          cliente_nombre: ot.cliente_nombre,
-          cliente_telefono: ot.cliente_telefono || null,
-          item_nombre: ot.item_nombre,
-          cantidad: ot.cantidad,
-          estado: ot.estado,
-          operador_asignado: ot.operador_asignado || 'Operador 3D',
-          observaciones: ot.detalles_tecnicos || null,
-          cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null,
-          pos_venta_id: ot.pos_venta_id || null,
-          precio_cobrado: ot.precio_cobrado || null,
-          abono: ot.abono ?? 0,
-          saldo_pendiente: ot.saldo_pendiente ?? 0,
-          estado_pago: ot.estado_pago || 'Pendiente',
-          metodo_pago: ot.metodo_pago || 'Bre-B',
-          comprobante_pago: ot.comprobante_pago || null
-        }, { onConflict: 'numero_ot' });
+      const totalOtCalc = Number(ot.precio_cobrado || (ot.abono || 0) + (ot.saldo_pendiente || 0) || 0);
+      const totalAbonadoCalc = Number(ot.abono || 0);
+      const saldoCalc = Math.max(0, totalOtCalc - totalAbonadoCalc);
 
-      if (error) {
-        console.warn('Error saving OT to cloud:', error);
-        return false;
+      const estadoMap: Record<string, string> = {
+        'En Cola': 'EN_COLA_OT',
+        'Imprimiendo': 'IMPRESION',
+        'Curado': 'CURADO',
+        'Pintura y Armado': 'PINTADO_ARMADO',
+        'Control de Calidad': 'CONTROL_CALIDAD',
+        'Listo para Entrega': 'ENTREGADO',
+        'Entregado': 'ENTREGADO',
+        'Cancelado': 'CANCELADO'
+      };
+
+      let estadoDb = estadoMap[ot.estado] || 'EN_COLA_OT';
+      // Regla de integridad DB: solo pasar a ENTREGADO si el saldo pendiente está liquidado
+      if (estadoDb === 'ENTREGADO' && saldoCalc > 0) {
+        estadoDb = 'CONTROL_CALIDAD';
       }
-      return true;
+
+      const payloadV3: any = {
+        numero_ot: ot.numero_ot,
+        cliente_nombre: ot.cliente_nombre || 'Cliente',
+        cliente_telefono: ot.cliente_telefono || 'Sin teléfono',
+        item_descripcion: ot.item_nombre || 'Pieza 3D',
+        cantidad: Number(ot.cantidad) || 1,
+        total_ot: totalOtCalc,
+        total_abonado: totalAbonadoCalc,
+        estado_actual: estadoDb,
+        stl_url: ot.stl_url || null,
+        cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null
+      };
+
+      if (ot.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.id)) {
+        payloadV3.id = ot.id;
+      }
+
+      // Intento en Core V3 (tabla ordenes_trabajo)
+      const { error: errV3 } = await supabase!
+        .from('ordenes_trabajo')
+        .upsert(payloadV3, { onConflict: 'numero_ot' });
+
+      if (!errV3) return true;
+
+      // Fallback para esquema legado (sin saldo_pendiente generado)
+      const payloadLegacy: any = {
+        numero_ot: ot.numero_ot,
+        cliente_nombre: ot.cliente_nombre,
+        cliente_telefono: ot.cliente_telefono || null,
+        item_nombre: ot.item_nombre,
+        cantidad: ot.cantidad,
+        estado: ot.estado,
+        operador_asignado: ot.operador_asignado || 'Operador 3D',
+        observaciones: ot.detalles_tecnicos || null,
+        cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null,
+        pos_venta_id: ot.pos_venta_id || null,
+        precio_cobrado: ot.precio_cobrado || null,
+        abono: ot.abono ?? 0,
+        estado_pago: ot.estado_pago || 'Pendiente',
+        metodo_pago: ot.metodo_pago || 'Bre-B',
+        comprobante_pago: ot.comprobante_pago || null
+      };
+
+      const { error: errLegacy } = await supabase!
+        .from('ordenes_trabajo')
+        .upsert(payloadLegacy, { onConflict: 'numero_ot' });
+
+      return !errLegacy;
     } catch (e) {
       console.warn('Exception saving OT to cloud:', e);
       return false;
@@ -427,26 +557,21 @@ export const CloudSyncService = {
     }
   },
 
-  // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase
+  // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase (sincronizada en ordenes_trabajo)
   async saveCuentaCobro(cc: CuentaCobro): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const numOT = cc.numero_cc.replace(/^CC-/, 'OT-');
       const { error } = await supabase!
-        .from('cuentas_cobro')
-        .upsert({
-          numero_cc: cc.numero_cc,
-          fecha_emision: cc.fecha_emision || new Date().toISOString().slice(0, 10),
-          total: cc.total,
-          abono: cc.abono,
-          saldo_pendiente: cc.saldo_pendiente,
-          estado_pago: cc.estado_pago
-        }, { onConflict: 'numero_cc' });
+        .from('ordenes_trabajo')
+        .update({
+          total_abonado: cc.abono,
+          estado_pago: cc.estado_pago,
+          updated_at: new Date().toISOString()
+        })
+        .eq('numero_ot', numOT);
 
-      if (error) {
-        console.warn('Error saving CC to cloud:', error);
-        return false;
-      }
-      return true;
+      return !error;
     } catch (e) {
       console.warn('Exception saving CC to cloud:', e);
       return false;
@@ -736,26 +861,18 @@ export const CloudSyncService = {
     }
   },
 
-  // Eliminar Cuenta de Cobro en Supabase
+  // Eliminar Cuenta de Cobro en Supabase (sincronizado con ordenes_trabajo / abonos_pagos)
   async deleteCuentaCobro(id: string, numero_cc?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const isUuid = Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
-      let query = supabase!.from('cuentas_cobro').delete();
-      if (numero_cc && isUuid) {
-        query = query.or(`id.eq.${id},numero_cc.eq.${numero_cc}`);
-      } else if (numero_cc) {
-        query = query.eq('numero_cc', numero_cc);
-      } else if (isUuid) {
-        query = query.eq('id', id);
-      } else {
-        return false;
-      }
-
-      const { error } = await query;
-      if (error) {
-        console.warn('Error deleting cuenta_cobro in Supabase:', error.message);
-        return false;
+      const numeroOT = numero_cc?.replace(/^CC-/, 'OT-') || numero_cc;
+      if (numeroOT) {
+        // En el esquema canónico v3, las cuentas de cobro se derivan de ordenes_trabajo y abonos_pagos.
+        // Si se elimina una cuenta, limpiamos los abonos registrados con esa referencia
+        await supabase!
+          .from('abonos_pagos')
+          .delete()
+          .eq('referencia_transaccion', numero_cc);
       }
       return true;
     } catch (e) {
@@ -810,7 +927,9 @@ export const CloudSyncService = {
         prioridad: (row.prioridad || 'media') as any,
         completada: row.estado === 'completada',
         fecha_limite: row.fecha_limite || undefined,
-        fecha_creacion: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+        fecha_creacion: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        porcentaje_completado: typeof row.porcentaje_completado === 'number' ? row.porcentaje_completado : 0,
+        ultimo_avance_at: row.ultimo_avance_at || undefined
       }));
     } catch (e) {
       console.warn('Exception in fetchTareasEquipo:', e);
@@ -822,7 +941,7 @@ export const CloudSyncService = {
   async saveTareaEquipo(tarea: TareaEquipo): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const payload = {
+      const payload: Record<string, any> = {
         id: tarea.id,
         titulo: tarea.titulo,
         descripcion: tarea.descripcion || null,
@@ -832,6 +951,8 @@ export const CloudSyncService = {
         prioridad: tarea.prioridad,
         estado: tarea.completada ? 'completada' : 'pendiente',
         fecha_limite: tarea.fecha_limite || null,
+        porcentaje_completado: typeof tarea.porcentaje_completado === 'number' ? tarea.porcentaje_completado : 0,
+        ultimo_avance_at: tarea.ultimo_avance_at || null,
         creado_por: 'Equipo WJGEEKS',
         updated_at: new Date().toISOString()
       };
@@ -946,6 +1067,7 @@ export const CloudSyncService = {
       const { data, error } = await supabase!
         .from('productos_stock')
         .select('*')
+        .or('activo.eq.true,activo.is.null')
         .order('nombre', { ascending: true });
 
       if (error) {
@@ -957,13 +1079,13 @@ export const CloudSyncService = {
         codigo: row.codigo || undefined,
         nombre: row.nombre,
         categoria: row.categoria || 'Figuras & Miniaturas',
-        precio_unitario: Number(row.precio_unitario) || 0,
+        precio_unitario: Number(row.precio_unitario ?? row.precio_venta) || 0,
         stock_actual: Number(row.stock_actual) || 0,
         descripcion: row.descripcion || '',
         dimensiones: row.dimensiones || '',
         material: row.material || 'Resina UV Alta Definición',
         imagen_url: row.imagen_url || '',
-        fecha_actualizacion: row.fecha_actualizacion || new Date().toISOString()
+        fecha_actualizacion: row.fecha_actualizacion || row.updated_at || new Date().toISOString()
       }));
     } catch (e) {
       console.warn('Exception in fetchProductosStock:', e);
@@ -1050,35 +1172,102 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.1 Guardar transacción centralizada en Ledger (payments)
+  // 21.1 Guardar transacción centralizada en Ledger Inmutable (abonos_pagos Core V3) con Anti-Double-Click 60s
   async savePayment(payment: PaymentRecord): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const isCotUuid = Boolean(payment.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cotizacion_id));
-      const isCliUuid = Boolean(payment.cliente_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cliente_id));
-      const isCcUuid = Boolean(payment.cuenta_cobro_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.cuenta_cobro_id));
-
-      const { error } = await supabase!
-        .from('payments')
-        .insert({
-          id: payment.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payment.id) ? payment.id : undefined,
-          monto: Number(payment.monto) || 0,
-          metodo_pago: payment.metodo_pago || 'Bre-B',
-          referencia_pago: payment.referencia_pago || null,
-          comprobante_url: payment.comprobante_url || null,
-          nota: payment.nota || null,
-          cliente_id: isCliUuid ? payment.cliente_id : null,
-          cotizacion_id: isCotUuid ? payment.cotizacion_id : null,
-          pos_venta_id: payment.pos_venta_id || null,
-          cuenta_cobro_id: isCcUuid ? payment.cuenta_cobro_id : null,
-          origen_modulo: payment.origen_modulo || 'pos',
-          registrado_por: payment.registrado_por || 'Equipo WJGEEKS'
-        });
-
-      if (error) {
-        console.warn('Error saving payment in Supabase ledger:', error.message);
+      const montoNum = Number(payment.monto);
+      if (isNaN(montoNum) || montoNum <= 0) {
+        console.warn(`[savePayment] Monto inválido ($${payment.monto}). Debe ser mayor a 0 para el ledger.`);
         return false;
       }
+
+      // Prevención de doble clic y cobros duplicados en intervalo menor a 60 segundos
+      const dedupKey = `${payment.orden_trabajo_id || payment.cotizacion_id || payment.cuenta_cobro_id || 'ot'}_${montoNum}_${(payment.referencia_pago || '').trim().toLowerCase()}`;
+      const lastSaved = recentPaymentsCache.get(dedupKey);
+      const now = Date.now();
+      if (lastSaved && (now - lastSaved) < 60000) {
+        const segRestantes = Math.round((60000 - (now - lastSaved)) / 1000);
+        console.warn(`[Anti-Double-Click] Cobro idéntico prevenido: ${dedupKey} (${segRestantes}s restantes antes de reintento).`);
+        return false;
+      }
+      recentPaymentsCache.set(dedupKey, now);
+
+      // Limpieza periódica de llaves antiguas en caché
+      if (recentPaymentsCache.size > 200) {
+        for (const [key, ts] of recentPaymentsCache.entries()) {
+          if (now - ts > 60000) recentPaymentsCache.delete(key);
+        }
+      }
+
+      // Normalización estricta al ENUM tipo_metodo_pago de PostgreSQL
+      const normalizarMetodoPago = (metodo?: string): 'NEQUI' | 'BRE_B' | 'EFECTIVO' | 'TRANSFERENCIA' | 'TARJETA' => {
+        if (!metodo) return 'BRE_B';
+        const m = metodo.toUpperCase().trim();
+        if (m.includes('NEQUI')) return 'NEQUI';
+        if (m.includes('EFECTIVO') || m.includes('CASH')) return 'EFECTIVO';
+        if (m.includes('TRANSF') || m.includes('BANCO') || m.includes('DAVIPLATA')) return 'TRANSFERENCIA';
+        if (m.includes('TARJETA') || m.includes('DATAFONO') || m.includes('DATÁFONO') || m.includes('CARD') || m.includes('CREDITO') || m.includes('DEBITO')) return 'TARJETA';
+        return 'BRE_B';
+      };
+
+      const metodoFinal = normalizarMetodoPago(payment.metodo_pago);
+      const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+      // Validación estricta de UUID para cotizacion_id
+      const cotUuid = (payment.cotizacion_id && UUID_REGEX.test(payment.cotizacion_id)) ? payment.cotizacion_id : null;
+
+      // Validación estricta de UUID para orden_trabajo_id
+      let otUuid: string | null = null;
+      let posVentaId = payment.pos_venta_id || null;
+
+      if (payment.orden_trabajo_id) {
+        if (UUID_REGEX.test(payment.orden_trabajo_id)) {
+          otUuid = payment.orden_trabajo_id;
+        } else {
+          // Búsqueda segura por numero_ot
+          try {
+            const { data: otRow } = await supabase!
+              .from('ordenes_trabajo')
+              .select('id')
+              .eq('numero_ot', payment.orden_trabajo_id)
+              .maybeSingle();
+            if (otRow?.id && UUID_REGEX.test(otRow.id)) {
+              otUuid = otRow.id;
+            } else {
+              // Si no es UUID ni se encuentra como OT, almacenar como referencia en pos_venta_id
+              if (!posVentaId) posVentaId = payment.orden_trabajo_id;
+            }
+          } catch (_) {}
+        }
+      }
+
+      const cuentaReceptora = metodoFinal === 'NEQUI' 
+        ? 'Nequi 3217273025 (Juan)' 
+        : 'Bre-B 0090778625 (Germán)';
+
+      const payload = {
+        orden_trabajo_id: otUuid,
+        cotizacion_id: cotUuid,
+        pos_venta_id: posVentaId,
+        cuenta_cobro_id: payment.cuenta_cobro_id || null,
+        monto: montoNum,
+        metodo_pago: metodoFinal,
+        referencia_transaccion: payment.referencia_pago || 'Registro Sistema',
+        comprobante_url: payment.comprobante_url || null,
+        cuenta_receptora: cuentaReceptora,
+        nota: payment.nota || null
+      };
+
+      const { error: insertError } = await supabase!
+        .from('abonos_pagos')
+        .insert(payload);
+
+      if (insertError) {
+        console.warn('Error asentando en abonos_pagos ledger:', insertError.message);
+        return false;
+      }
+
       return true;
     } catch (e: any) {
       console.warn('Exception saving payment in ledger:', e?.message || e);
@@ -1086,17 +1275,154 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.2 Consultar historial de pagos centralizados
-  async fetchPayments(filtro?: { cotizacion_id?: string; pos_venta_id?: string; cliente_id?: string }): Promise<PaymentRecord[]> {
+  // 21.2 Consultar Balance Canónico del Taller desde Vista Central
+  async fetchBalanceTaller(): Promise<BalanceTaller | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('vista_balance_taller')
+        .select('*')
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Error fetching vista_balance_taller:', error.message);
+        return null;
+      }
+      if (!data) return null;
+      return {
+        total_ingresos_recaudados: Number(data.total_ingresos_recaudados) || 0,
+        recaudado_nequi: Number(data.recaudado_nequi) || 0,
+        recaudado_bre_b: Number(data.recaudado_bre_b) || 0,
+        recaudado_efectivo: Number(data.recaudado_efectivo) || 0,
+        total_por_cobrar: Number(data.total_por_cobrar) || 0,
+      };
+    } catch (e) {
+      console.warn('Exception in fetchBalanceTaller:', e);
+      return null;
+    }
+  },
+
+  // 21.2 Eliminar Cobro o Abono Duplicado Atómicamente
+  async eliminarCobroDuplicado(
+    cobroId: string, 
+    otId?: string, 
+    monto?: number
+  ): Promise<{ success: boolean; message: string }> {
+    if (!this.isAvailable()) {
+      return { success: false, message: 'Supabase no está conectado' };
+    }
+    try {
+      const isUuid = Boolean(cobroId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(cobroId));
+
+      // 1. Invocar función RPC atómica en Supabase si está disponible
+      if (isUuid) {
+        const { data: rpcRes, error: rpcErr } = await supabase!.rpc('fn_eliminar_cobro_duplicado', {
+          p_cobro_id: cobroId
+        });
+        if (!rpcErr && rpcRes && rpcRes.success) {
+          return { success: true, message: rpcRes.message || 'Cobro duplicado eliminado' };
+        }
+      }
+
+      // 2. Eliminación directa en ledger único abonos_pagos
+      let deleted = false;
+      if (isUuid) {
+        const { error: errAbonos } = await supabase!
+          .from('abonos_pagos')
+          .delete()
+          .eq('id', cobroId);
+        if (!errAbonos) deleted = true;
+      }
+
+      // 3. Recálculo defensivo en ordenes_trabajo si no se activó el trigger
+      if (otId && monto && monto > 0) {
+        const isOtUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(otId);
+        let otQuery = supabase!.from('ordenes_trabajo').select('id, total_ot, total_abonado, precio_cobrado, abono');
+        if (isOtUuid) {
+          otQuery = otQuery.eq('id', otId);
+        } else {
+          otQuery = otQuery.eq('numero_ot', otId);
+        }
+        const { data: otData } = await otQuery.maybeSingle();
+
+        if (otData) {
+          const totalOT = Number(otData.total_ot) || Number(otData.precio_cobrado) || 0;
+          const abonoActual = Number(otData.total_abonado) || Number(otData.abono) || 0;
+          const nuevoAbono = Math.max(0, abonoActual - monto);
+          const nuevoSaldo = Math.max(0, totalOT - nuevoAbono);
+          const nuevoEstado = nuevoSaldo <= 0 ? 'Pagado Total' : (nuevoAbono > 0 ? 'Abono Parcial' : 'Pendiente');
+
+          await supabase!
+            .from('ordenes_trabajo')
+            .update({
+              total_abonado: nuevoAbono,
+              abono: nuevoAbono,
+              saldo_pendiente: nuevoSaldo,
+              estado_pago: nuevoEstado,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', otData.id);
+        }
+      }
+
+      return {
+        success: true,
+        message: 'Cobro duplicado eliminado y saldos recalculados correctamente'
+      };
+    } catch (e: any) {
+      console.error('Error al eliminar cobro duplicado:', e);
+      return { success: false, message: e?.message || 'Error en la eliminación del cobro' };
+    }
+  },
+
+  // 21.3 Consultar historial de abonos y pagos centralizados en abonos_pagos
+  async fetchAbonos(filtro?: { orden_trabajo_id?: string; cotizacion_id?: string }): Promise<Array<{
+    id: string;
+    orden_trabajo_id: string;
+    cotizacion_id?: string;
+    monto: number;
+    metodo_pago: string;
+    referencia_transaccion?: string;
+    fecha_pago?: string;
+    created_at?: string;
+    nota?: string;
+  }>> {
     if (!this.isAvailable()) return [];
     try {
-      let query = supabase!.from('payments').select('*').order('created_at', { ascending: false });
+      let query = supabase!.from('abonos_pagos').select('*').order('created_at', { ascending: false });
+      if (filtro?.orden_trabajo_id) query = query.eq('orden_trabajo_id', filtro.orden_trabajo_id);
       if (filtro?.cotizacion_id) query = query.eq('cotizacion_id', filtro.cotizacion_id);
-      if (filtro?.pos_venta_id) query = query.eq('pos_venta_id', filtro.pos_venta_id);
-      if (filtro?.cliente_id) query = query.eq('cliente_id', filtro.cliente_id);
+      const { data, error } = await query;
+      if (!error && data) return data;
+      return [];
+    } catch (e) {
+      return [];
+    }
+  },
+
+  // 21.4 Consultar historial financiero unificado (mapeado desde el ledger canónico abonos_pagos)
+  async fetchPayments(filtro?: { cotizacion_id?: string; pos_venta_id?: string; cliente_id?: string; orden_trabajo_id?: string }): Promise<PaymentRecord[]> {
+    if (!this.isAvailable()) return [];
+    try {
+      let query = supabase!.from('abonos_pagos').select('*').order('created_at', { ascending: false });
+      if (filtro?.cotizacion_id) query = query.eq('cotizacion_id', filtro.cotizacion_id);
+      if (filtro?.orden_trabajo_id) query = query.eq('orden_trabajo_id', filtro.orden_trabajo_id);
       const { data, error } = await query;
       if (error) throw error;
-      return data || [];
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        monto: Number(row.monto) || 0,
+        metodo_pago: row.metodo_pago || 'Bre-B',
+        referencia_pago: row.referencia_transaccion || '',
+        comprobante_url: row.comprobante_url || undefined,
+        nota: row.nota || row.notas || undefined,
+        cotizacion_id: row.cotizacion_id || undefined,
+        orden_trabajo_id: row.orden_trabajo_id || undefined,
+        origen_modulo: 'taller',
+        registrado_por: row.registrado_por_nombre || 'Equipo WJGEEKS',
+        fecha_pago: row.created_at,
+        created_at: row.created_at
+      }));
     } catch (e) {
       console.warn('Exception in fetchPayments:', e);
       return [];
@@ -1111,9 +1437,18 @@ export const CloudSyncService = {
     onVentaExpressChange?: () => void,
     onTareaChange?: () => void,
     onSolicitudChange?: () => void,
-    onPaymentChange?: () => void
+    onPaymentChange?: () => void,
+    onStockChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
+
+    // Remover canal previo si existe para evitar advertencias de canal duplicado
+    try {
+      const existing = supabase!.getChannels().find(c => c.topic === 'realtime:wjgeeks_live_sync');
+      if (existing) {
+        supabase!.removeChannel(existing);
+      }
+    } catch {}
 
     const channel = supabase!.channel('wjgeeks_live_sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cotizaciones' }, () => {
@@ -1121,9 +1456,12 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ordenes_trabajo' }, () => {
         onOTChange();
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_cobro' }, () => {
         onCuentaChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'abonos_pagos' }, () => {
+        onOTChange();
+        onCuentaChange();
+        if (onPaymentChange) onPaymentChange();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas_express' }, () => {
         if (onVentaExpressChange) onVentaExpressChange();
@@ -1134,16 +1472,45 @@ export const CloudSyncService = {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_insumos' }, () => {
         if (onSolicitudChange) onSolicitudChange();
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
-        // Al mutar cualquier pago en el ledger central, invalidar todas las vistas financieras
-        onCotizacionChange();
-        onOTChange();
-        onCuentaChange();
-        if (onVentaExpressChange) onVentaExpressChange();
-        if (onPaymentChange) onPaymentChange();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'productos_stock' }, () => {
+        if (onStockChange) onStockChange();
       })
       .subscribe();
 
     return channel;
+  },
+
+  // 23. Encolar Notificación Oficial en la DB para Despacho Asíncrono desde la Línea Central (+57 320 2796115)
+  async enqueueNotification(notif: {
+    orden_trabajo_id?: string;
+    destinatario_nombre: string;
+    destinatario_telefono: string;
+    rol_destinatario: 'CLIENTE' | 'JUAN_TALLER' | 'WENDY_PINTURA' | 'GERMAN_ADMIN' | 'TRIPARTITO';
+    mensaje_plano: string;
+    plantilla_hsm?: string;
+    variables_plantilla?: Record<string, string>;
+  }): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const idempotency = `notif-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+      const isOtUuid = Boolean(notif.orden_trabajo_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(notif.orden_trabajo_id));
+
+      const { error } = await supabase!.from('registro_notificaciones').insert({
+        idempotency_key: idempotency,
+        orden_trabajo_id: isOtUuid ? notif.orden_trabajo_id : null,
+        destinatario_nombre: notif.destinatario_nombre,
+        destinatario_telefono: notif.destinatario_telefono,
+        rol_destinatario: notif.rol_destinatario,
+        mensaje_plano: notif.mensaje_plano,
+        plantilla_hsm: notif.plantilla_hsm || null,
+        variables_plantilla: notif.variables_plantilla || null,
+        estado: 'PENDIENTE'
+      });
+
+      return !error;
+    } catch (e) {
+      console.warn('Exception queuing notification:', e);
+      return false;
+    }
   }
 };

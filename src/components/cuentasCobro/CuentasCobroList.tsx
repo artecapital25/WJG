@@ -35,6 +35,85 @@ import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../ser
 import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
+import { ModalConfirmarEliminarCobro, InfoCobroAEliminar } from '../common/ModalConfirmarEliminarCobro';
+import { CloudSyncService } from '../../services/cloudSyncService';
+import { toast } from '../ui/ToastProvider';
+
+// Estructura de Ítem de Deuda Unificado para Cartera
+export interface ItemDeudaConsolidado {
+  id: string;
+  tipo: 'cuenta' | 'ot' | 'pos';
+  codigo: string;
+  descripcion: string;
+  total: number;
+  abono: number;
+  saldo: number;
+  estado_taller?: string;
+  fecha_limite?: string;
+  alerta_texto?: string;
+  alerta_color?: string;
+  alerta_bg?: string;
+  cliente_nombre: string;
+  cliente_telefono?: string;
+  rawCuenta?: CuentaCobro;
+  rawOT?: OrdenTrabajo;
+  rawVenta?: VentaExpress;
+}
+
+export interface DeudorConsolidado {
+  cliente_nombre: string;
+  cliente_telefono: string;
+  total_deuda: number;
+  total_abonos: number;
+  saldo_pendiente: number;
+  items: ItemDeudaConsolidado[];
+  peor_alerta_texto?: string;
+  peor_alerta_color?: string;
+  peor_alerta_bg?: string;
+}
+
+// Helper para vincular de forma estricta una OT a una Cuenta de Cobro y no duplicarla
+export const otMatchesCuenta = (o: OrdenTrabajo, c: CuentaCobro): boolean => {
+  if (o.cotizacion_id && c.cotizacion_id && o.cotizacion_id === c.cotizacion_id) return true;
+  if (o.cotizacion_numero && c.cotizacion_numero && o.cotizacion_numero === c.cotizacion_numero) return true;
+  if (c.id === o.id || c.numero_cc === o.numero_ot) return true;
+  if (c.items_resumen && o.numero_ot && c.items_resumen.includes(o.numero_ot)) return true;
+  if (
+    o.cliente_nombre && c.cliente?.nombre &&
+    o.cliente_nombre.trim().toLowerCase() === c.cliente.nombre.trim().toLowerCase() &&
+    o.item_nombre && c.items_resumen &&
+    c.items_resumen.toLowerCase().includes(o.item_nombre.trim().toLowerCase())
+  ) {
+    return true;
+  }
+  return false;
+};
+
+// Helper para vincular una OT a una Venta Express (POS)
+export const otMatchesVenta = (o: OrdenTrabajo, v: VentaExpress): boolean => {
+  if (o.pos_venta_id && (o.pos_venta_id === v.id || o.pos_venta_id === v.numero_venta)) return true;
+  if (v.ot_id && (v.ot_id === o.id || v.ot_id === o.numero_ot)) return true;
+  if (v.ot_numero && (v.ot_numero === o.numero_ot || v.ot_numero === o.id)) return true;
+  if (o.cotizacion_numero && (o.cotizacion_numero === v.numero_venta || o.cotizacion_id === v.id)) return true;
+  if (v.notas && o.numero_ot && v.notas.includes(o.numero_ot)) return true;
+  if (
+    o.cliente_nombre && v.cliente_nombre &&
+    o.cliente_nombre.trim().toLowerCase() === v.cliente_nombre.trim().toLowerCase() &&
+    o.item_nombre && v.nombre_producto &&
+    o.item_nombre.trim().toLowerCase() === v.nombre_producto.trim().toLowerCase()
+  ) {
+    return true;
+  }
+  return false;
+};
+
+// Helper para vincular una Venta Express (POS) a una Cuenta de Cobro
+export const ventaMatchesCuenta = (v: VentaExpress, c: CuentaCobro): boolean => {
+  if (c.cotizacion_id && (c.cotizacion_id === v.id || c.cotizacion_id === v.numero_venta)) return true;
+  if (c.cotizacion_numero && c.cotizacion_numero === v.numero_venta) return true;
+  if (c.items_resumen && v.numero_venta && c.items_resumen.includes(v.numero_venta)) return true;
+  return false;
+};
 
 // Helper para generar mensaje de cobro por WhatsApp de una Orden de Trabajo
 const generarWhatsAppCobroOT = (ot: OrdenTrabajo, config: ConfiguracionTaller): string => {
@@ -77,6 +156,7 @@ interface CuentasCobroListProps {
   onEliminarCuentaCobro?: (cuentaId: string) => void;
   onActualizarOT?: (ot: OrdenTrabajo) => void;
   onCrearCuentaCobro?: (nuevaCC: CuentaCobro) => void;
+  onRegistrarPagoConsolidado?: (item: ItemDeudaConsolidado, datos: DatosPagoRegistro) => void;
   onNavigateTab?: (tab: any) => void;
 }
 
@@ -92,6 +172,7 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   onEliminarCuentaCobro,
   onActualizarOT,
   onCrearCuentaCobro,
+  onRegistrarPagoConsolidado,
   onNavigateTab
 }) => {
   const [subTab, setSubTab] = useState<'deudores' | 'ordenes' | 'pos' | 'cuentas'>('deudores');
@@ -99,19 +180,141 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   const [showModalNuevaDeuda, setShowModalNuevaDeuda] = useState(false);
   const [notifCartera, setNotifCartera] = useState<string | null>(null);
 
-  // Modales
-  const [selectedCuenta, setSelectedCuenta] = useState<CuentaCobro | null>(null);
-  const [abonoInput, setAbonoInput] = useState<number>(0);
+  // Modal Centralizado Unificado de Pagos (Bre-B & Nequi)
+  const [itemParaAbono, setItemParaAbono] = useState<ItemDeudaConsolidado | null>(null);
   const [cuentaParaEliminar, setCuentaParaEliminar] = useState<CuentaCobro | null>(null);
-
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
+  const [cobroParaEliminar, setCobroParaEliminar] = useState<InfoCobroAEliminar | null>(null);
 
-  const [selectedVenta, setSelectedVenta] = useState<VentaExpress | null>(null);
-  const [abonoVentaInput, setAbonoVentaInput] = useState<number>(0);
+  const handleAbrirModalEliminarCobro = (item: ItemDeudaConsolidado) => {
+    let cobroId = item.id.replace(/^(ot-|cc-|pos-)/, '');
+    let fecha = new Date().toISOString().slice(0, 10);
+    let referencia = 'Registro Sistema / Bre-B';
+    const otId = item.rawOT?.id || (item.tipo === 'ot' ? item.id.replace(/^ot-/, '') : undefined);
 
-  // Modal Abono OT directo desde Cartera
-  const [otParaAbono, setOtParaAbono] = useState<OrdenTrabajo | null>(null);
+    // Apertura inmediata del modal sin bloqueo de red
+    setCobroParaEliminar({
+      id: cobroId,
+      monto: item.abono,
+      referencia,
+      fecha,
+      concepto: `${item.codigo} • ${item.descripcion}`,
+      clienteNombre: item.cliente_nombre,
+      otId,
+      cuentaId: item.rawCuenta?.id
+    });
+
+    if (otId) {
+      CloudSyncService.fetchAbonos({ orden_trabajo_id: otId }).then(abonos => {
+        if (abonos && abonos.length > 0) {
+          const ultimo = abonos[0];
+          setCobroParaEliminar(prev => prev ? ({
+            ...prev,
+            id: ultimo.id || prev.id,
+            fecha: (ultimo.fecha_pago || ultimo.created_at || prev.fecha).slice(0, 10),
+            referencia: ultimo.referencia_transaccion || prev.referencia
+          }) : null);
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const handleAbrirModalEliminarCobroOT = (ot: OrdenTrabajo) => {
+    let cobroId = ot.id;
+    let fecha = ot.fecha_creacion ? ot.fecha_creacion.slice(0, 10) : new Date().toISOString().slice(0, 10);
+    let referencia = ot.metodo_pago || 'Bre-B';
+
+    setCobroParaEliminar({
+      id: cobroId,
+      monto: ot.abono || 0,
+      referencia,
+      fecha,
+      concepto: `${ot.numero_ot} • ${ot.item_nombre}`,
+      clienteNombre: ot.cliente_nombre,
+      otId: ot.id
+    });
+
+    CloudSyncService.fetchAbonos({ orden_trabajo_id: ot.id }).then(abonos => {
+      if (abonos && abonos.length > 0) {
+        const ultimo = abonos[0];
+        setCobroParaEliminar(prev => prev ? ({
+          ...prev,
+          id: ultimo.id || prev.id,
+          fecha: (ultimo.fecha_pago || ultimo.created_at || prev.fecha).slice(0, 10),
+          referencia: ultimo.referencia_transaccion || prev.referencia
+        }) : null);
+      }
+    }).catch(() => {});
+  };
+
+  const handleAbrirModalEliminarCobroCuenta = (cuenta: CuentaCobro) => {
+    const matchingOT = ordenes.find(o => otMatchesCuenta(o, cuenta));
+    let cobroId = cuenta.id;
+    let fecha = cuenta.fecha_emision || new Date().toISOString().slice(0, 10);
+    let referencia = 'Bre-B 0090778625';
+
+    setCobroParaEliminar({
+      id: cobroId,
+      monto: cuenta.abono,
+      referencia,
+      fecha,
+      concepto: `${cuenta.numero_cc} • ${cuenta.items_resumen}`,
+      clienteNombre: cuenta.cliente.nombre,
+      otId: matchingOT?.id,
+      cuentaId: cuenta.id
+    });
+
+    if (matchingOT) {
+      CloudSyncService.fetchAbonos({ orden_trabajo_id: matchingOT.id }).then(abonos => {
+        if (abonos && abonos.length > 0) {
+          const ultimo = abonos[0];
+          setCobroParaEliminar(prev => prev ? ({
+            ...prev,
+            id: ultimo.id || prev.id,
+            fecha: (ultimo.fecha_pago || ultimo.created_at || prev.fecha).slice(0, 10),
+            referencia: ultimo.referencia_transaccion || prev.referencia
+          }) : null);
+        }
+      }).catch(() => {});
+    }
+  };
+
+  const handleConfirmarEliminarCobro = async (cobroId: string, otId?: string, monto?: number) => {
+    const res = await CloudSyncService.eliminarCobroDuplicado(cobroId, otId, monto);
+    if (!res.success) {
+      toast.error(res.message || 'Error al eliminar cobro duplicado');
+      return;
+    }
+
+    // Actualizar estado reactivo en ordenes de trabajo
+    if (otId && onActualizarOT && monto) {
+      const otActual = ordenes.find(o => o.id === otId || o.numero_ot === otId);
+      if (otActual) {
+        const nuevoAbono = Math.max(0, (otActual.abono || 0) - monto);
+        const totalOT = otActual.precio_cobrado || 0;
+        const nuevoSaldo = Math.max(0, totalOT - nuevoAbono);
+        onActualizarOT({
+          ...otActual,
+          abono: nuevoAbono,
+          saldo_pendiente: nuevoSaldo,
+          estado_pago: nuevoSaldo <= 0 ? 'Pagado Total' : (nuevoAbono > 0 ? 'Abono Parcial' : 'Pendiente')
+        });
+      }
+    }
+
+    // Actualizar cuenta si aplica
+    if (cobroParaEliminar?.cuentaId && monto) {
+      const cActual = cuentas.find(c => c.id === cobroParaEliminar.cuentaId);
+      if (cActual) {
+        const nuevoAbono = Math.max(0, cActual.abono - monto);
+        onUpdatePago(cActual.id, nuevoAbono);
+      }
+    }
+
+    toast.success('Cobro duplicado eliminado y saldos de la orden recalculados exitosamente.');
+    setCobroParaEliminar(null);
+  };
 
   const handleGuardarDeudaManual = (nuevaCC: CuentaCobro) => {
     if (onCrearCuentaCobro) {
@@ -121,209 +324,251 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
     setTimeout(() => setNotifCartera(null), 5000);
   };
 
-  const handleConfirmarAbonoOT = (datos: DatosPagoRegistro) => {
-    if (!otParaAbono || !onActualizarOT) return;
-    const updatedOT: OrdenTrabajo = {
-      ...otParaAbono,
-      estado_pago: datos.estado_pago,
-      abono: datos.abono,
-      saldo_pendiente: datos.saldo_pendiente,
-      metodo_pago: datos.metodo_pago,
-      comprobante_pago: datos.comprobante_pago
-    };
-    onActualizarOT(updatedOT);
-    setOtParaAbono(null);
-    setNotifCartera(`✅ Pago/abono actualizado para la orden ${updatedOT.numero_ot}.`);
+  // Confirmar Abono o Liquidación 100% desde Cobranzas (Punto Central Unificado)
+  const handleConfirmarPagoItem = (item: ItemDeudaConsolidado, datos: DatosPagoRegistro) => {
+    const deltaAbono = Math.max(0, datos.abono - (item.abono || 0));
+
+    if (onRegistrarPagoConsolidado) {
+      onRegistrarPagoConsolidado(item, datos);
+    } else {
+      // Fallback seguro: registrar en la entidad primaria para evitar inserciones duplicadas
+      if (item.rawOT && onActualizarOT) {
+        const isTotalmentePagado = datos.saldo_pendiente <= 0;
+        const nuevoEstado = (isTotalmentePagado && (item.rawOT.estado === 'Control de Calidad' || item.rawOT.estado === 'Pintura y Armado' || item.rawOT.estado === 'Listo para Entrega'))
+          ? 'Listo para Entrega'
+          : item.rawOT.estado;
+
+        onActualizarOT({
+          ...item.rawOT,
+          estado_pago: datos.estado_pago,
+          abono: datos.abono,
+          saldo_pendiente: datos.saldo_pendiente,
+          metodo_pago: datos.metodo_pago,
+          comprobante_pago: datos.comprobante_pago,
+          estado: nuevoEstado
+        });
+      } else if (item.rawCuenta) {
+        onUpdatePago(item.rawCuenta.id, datos.abono);
+      } else if (item.rawVenta && onUpdateVentaExpress) {
+        onUpdateVentaExpress({
+          ...item.rawVenta,
+          abono: datos.abono,
+          saldo_pendiente: datos.saldo_pendiente,
+          estado_pago: datos.estado_pago as any,
+          metodo_pago: datos.metodo_pago
+        });
+      }
+    }
+
+    setItemParaAbono(null);
+    setNotifCartera(`✅ Pago de $${deltaAbono > 0 ? deltaAbono.toLocaleString('es-CO') : datos.abono.toLocaleString('es-CO')} COP registrado para ${item.codigo}.`);
     setTimeout(() => setNotifCartera(null), 5000);
   };
 
-  // Manejo de Abono para Cuenta de Cobro Formal
-  const handleOpenAbonoModal = (cuenta: CuentaCobro) => {
-    setSelectedCuenta(cuenta);
-    setAbonoInput(cuenta.saldo_pendiente);
-  };
-
-  const handleGuardarAbono = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedCuenta) return;
-
-    const montoNuevo = Number(abonoInput) || 0;
-    const totalAbono = selectedCuenta.abono + montoNuevo;
-    onUpdatePago(selectedCuenta.id, totalAbono);
-    setSelectedCuenta(null);
-  };
-
-  // Manejo de Abono para Venta Express
-  const handleOpenAbonoVentaModal = (venta: VentaExpress) => {
-    setSelectedVenta(venta);
-    setAbonoVentaInput(venta.saldo_pendiente);
-  };
-
-  const handleGuardarAbonoVenta = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedVenta || !onUpdateVentaExpress) return;
-
-    const extra = Number(abonoVentaInput) || 0;
-    const totalAbono = Math.min(selectedVenta.total, selectedVenta.abono + extra);
-    const nuevoSaldo = Math.max(0, selectedVenta.total - totalAbono);
-
-    onUpdateVentaExpress({
-      ...selectedVenta,
-      abono: totalAbono,
-      saldo_pendiente: nuevoSaldo,
-      estado_pago: nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial'
+  const handleAbrirAbonoCuenta = (cuenta: CuentaCobro) => {
+    const matchingOT = ordenes.find(o => otMatchesCuenta(o, cuenta));
+    const matchingVenta = ventasExpress.find(v => ventaMatchesCuenta(v, cuenta));
+    setItemParaAbono({
+      id: `cc-${cuenta.id}`,
+      tipo: 'cuenta',
+      codigo: matchingOT ? `${cuenta.numero_cc} • ${matchingOT.numero_ot}` : cuenta.numero_cc,
+      descripcion: cuenta.items_resumen || (matchingOT ? matchingOT.item_nombre : 'Cuenta de Cobro'),
+      total: cuenta.total,
+      abono: cuenta.abono,
+      saldo: cuenta.saldo_pendiente,
+      estado_taller: matchingOT?.estado,
+      cliente_nombre: cuenta.cliente?.nombre || 'Cliente',
+      cliente_telefono: cuenta.cliente?.telefono,
+      rawCuenta: cuenta,
+      rawOT: matchingOT,
+      rawVenta: matchingVenta
     });
-    setSelectedVenta(null);
   };
 
-  // Base de Deudores Consolidada (Cuentas Formales + Ventas Express + Órdenes de Trabajo)
-  const deudoresConsolidados = useMemo(() => {
-    const map: Record<string, {
-      cliente_nombre: string;
-      cliente_telefono: string;
-      total_deuda: number;
-      total_abonos: number;
-      saldo_pendiente: number;
-      cuentas: CuentaCobro[];
-      ventas: VentaExpress[];
-      ordenes: OrdenTrabajo[];
-      peor_alerta_texto?: string;
-      peor_alerta_color?: string;
-      peor_alerta_bg?: string;
-    }> = {};
+  const handleAbrirAbonoOT = (ot: OrdenTrabajo) => {
+    const saldoOT = ot.saldo_pendiente ?? Math.max(0, (ot.precio_cobrado || 0) - (ot.abono || 0));
+    const totalOT = ot.precio_cobrado || ((ot.abono || 0) + saldoOT);
+    const matchingCC = cuentas.find(c => otMatchesCuenta(ot, c));
+    const matchingVenta = ventasExpress.find(v => otMatchesVenta(ot, v));
 
-    // 1. Agregar Cuentas Formales
+    setItemParaAbono({
+      id: `ot-${ot.id}`,
+      tipo: 'ot',
+      codigo: ot.numero_ot,
+      descripcion: ot.item_nombre,
+      total: totalOT,
+      abono: ot.abono || 0,
+      saldo: saldoOT,
+      estado_taller: ot.estado,
+      cliente_nombre: ot.cliente_nombre,
+      cliente_telefono: ot.cliente_telefono,
+      rawOT: ot,
+      rawCuenta: matchingCC,
+      rawVenta: matchingVenta
+    });
+  };
+
+  const handleAbrirAbonoVenta = (venta: VentaExpress) => {
+    const matchingOT = ordenes.find(o => otMatchesVenta(o, venta));
+    const matchingCC = cuentas.find(c => ventaMatchesCuenta(venta, c));
+    setItemParaAbono({
+      id: `pos-${venta.id}`,
+      tipo: 'pos',
+      codigo: matchingOT ? `${venta.numero_venta} • ${matchingOT.numero_ot}` : venta.numero_venta,
+      descripcion: venta.nombre_producto,
+      total: venta.total,
+      abono: venta.abono,
+      saldo: venta.saldo_pendiente,
+      cliente_nombre: venta.cliente_nombre,
+      cliente_telefono: venta.cliente_telefono,
+      rawVenta: venta,
+      rawOT: matchingOT,
+      rawCuenta: matchingCC
+    });
+  };
+
+  // Base de Deudores Consolidada y DEDUPLICADA (Cuentas Formales + Ventas Express + Órdenes de Trabajo)
+  const deudoresConsolidados = useMemo((): DeudorConsolidado[] => {
+    const map: Record<string, DeudorConsolidado> = {};
+
+    const getOrCreateDeudor = (nombre: string, telefono?: string): DeudorConsolidado => {
+      const key = (nombre || 'Cliente').trim().toLowerCase();
+      if (!map[key]) {
+        map[key] = {
+          cliente_nombre: nombre || 'Cliente',
+          cliente_telefono: telefono || '',
+          total_deuda: 0,
+          total_abonos: 0,
+          saldo_pendiente: 0,
+          items: []
+        };
+      }
+      if (telefono && !map[key].cliente_telefono) {
+        map[key].cliente_telefono = telefono;
+      }
+      return map[key];
+    };
+
+    // Rastrear qué IDs ya han sido agrupados en un ítem consolidado para evitar cualquier duplicación
+    const matchedCuentaIds = new Set<string>();
+    const matchedOTIds = new Set<string>();
+    const matchedVentaIds = new Set<string>();
+
+    // 1. Procesar Cuentas de Cobro Formales con saldo pendiente
     cuentas.forEach(c => {
       if (c.saldo_pendiente <= 0) return;
-      const key = c.cliente.nombre.trim().toLowerCase();
-      if (!map[key]) {
-        map[key] = {
-          cliente_nombre: c.cliente.nombre,
-          cliente_telefono: c.cliente.telefono,
-          total_deuda: 0,
-          total_abonos: 0,
-          saldo_pendiente: 0,
-          cuentas: [],
-          ventas: [],
-          ordenes: []
-        };
-      }
-      map[key].total_deuda += c.total;
-      map[key].total_abonos += c.abono;
-      map[key].saldo_pendiente += c.saldo_pendiente;
-      map[key].cuentas.push(c);
-      if (c.cliente.telefono && !map[key].cliente_telefono) {
-        map[key].cliente_telefono = c.cliente.telefono;
-      }
+      matchedCuentaIds.add(c.id);
+
+      const d = getOrCreateDeudor(c.cliente?.nombre || 'Cliente', c.cliente?.telefono);
+      const matchingOT = ordenes.find(o => !matchedOTIds.has(o.id) && otMatchesCuenta(o, c));
+      if (matchingOT) matchedOTIds.add(matchingOT.id);
+
+      const matchingVenta = ventasExpress.find(v => !matchedVentaIds.has(v.id) && ventaMatchesCuenta(v, c));
+      if (matchingVenta) matchedVentaIds.add(matchingVenta.id);
+
+      d.items.push({
+        id: `cc-${c.id}`,
+        tipo: 'cuenta',
+        codigo: matchingOT ? `${c.numero_cc} • ${matchingOT.numero_ot}` : c.numero_cc,
+        descripcion: c.items_resumen || (matchingOT ? matchingOT.item_nombre : 'Figura / Pedido 3D'),
+        total: c.total,
+        abono: c.abono,
+        saldo: c.saldo_pendiente,
+        estado_taller: matchingOT?.estado,
+        rawCuenta: c,
+        rawOT: matchingOT,
+        rawVenta: matchingVenta,
+        cliente_nombre: d.cliente_nombre,
+        cliente_telefono: d.cliente_telefono
+      });
     });
 
-    // 2. Agregar Ventas Express
+    // 2. Procesar Ventas Express con saldo pendiente (que no estén ya incluidas en una Cuenta)
     ventasExpress.forEach(v => {
       if (v.saldo_pendiente <= 0) return;
-      const key = v.cliente_nombre.trim().toLowerCase();
+      if (matchedVentaIds.has(v.id)) return; // Ya representada en Cuenta de Cobro
+
+      matchedVentaIds.add(v.id);
+      const d = getOrCreateDeudor(v.cliente_nombre, v.cliente_telefono);
       const alerta = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
 
-      if (!map[key]) {
-        map[key] = {
-          cliente_nombre: v.cliente_nombre,
-          cliente_telefono: v.cliente_telefono,
-          total_deuda: 0,
-          total_abonos: 0,
-          saldo_pendiente: 0,
-          cuentas: [],
-          ventas: [],
-          ordenes: [],
-          peor_alerta_texto: alerta.texto,
-          peor_alerta_color: alerta.color,
-          peor_alerta_bg: alerta.badgeBg
-        };
-      }
-      map[key].total_deuda += v.total;
-      map[key].total_abonos += v.abono;
-      map[key].saldo_pendiente += v.saldo_pendiente;
-      map[key].ventas.push(v);
-      if (v.cliente_telefono && !map[key].cliente_telefono) {
-        map[key].cliente_telefono = v.cliente_telefono;
-      }
+      const matchingOT = ordenes.find(o => !matchedOTIds.has(o.id) && otMatchesVenta(o, v));
+      if (matchingOT) matchedOTIds.add(matchingOT.id);
 
-      if (!map[key].peor_alerta_texto || alerta.nivel === 'vencido' || alerta.nivel === 'hoy') {
-        map[key].peor_alerta_texto = alerta.texto;
-        map[key].peor_alerta_color = alerta.color;
-        map[key].peor_alerta_bg = alerta.badgeBg;
+      d.items.push({
+        id: `pos-${v.id}`,
+        tipo: 'pos',
+        codigo: matchingOT ? `${v.numero_venta} • ${matchingOT.numero_ot}` : v.numero_venta,
+        descripcion: v.nombre_producto,
+        total: v.total,
+        abono: v.abono,
+        saldo: v.saldo_pendiente,
+        fecha_limite: v.fecha_prometida_pago,
+        alerta_texto: alerta.texto,
+        alerta_color: alerta.color,
+        alerta_bg: alerta.badgeBg,
+        estado_taller: matchingOT?.estado,
+        rawVenta: v,
+        rawOT: matchingOT,
+        cliente_nombre: d.cliente_nombre,
+        cliente_telefono: d.cliente_telefono
+      });
+
+      if (!d.peor_alerta_texto || alerta.nivel === 'vencido' || alerta.nivel === 'hoy') {
+        d.peor_alerta_texto = alerta.texto;
+        d.peor_alerta_color = alerta.color;
+        d.peor_alerta_bg = alerta.badgeBg;
       }
     });
 
-    // 3. Agregar Órdenes de Trabajo (OT) pendientes de pago
+    // 3. Procesar Órdenes de Trabajo pendientes (SOLO si no fueron ya representadas en Cuenta o Venta)
     ordenes.forEach(o => {
-      // Si la orden ya está pagada al 100%, ignorar
       if (o.estado_pago === 'Pagado Total') return;
+      if (matchedOTIds.has(o.id)) return; // Ya representada en Cuenta o Venta POS
 
-      // Calcular saldo pendiente de la OT
       const saldoOT = o.saldo_pendiente !== undefined 
         ? o.saldo_pendiente 
         : Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
 
       if (saldoOT <= 0) return;
 
-      const key = (o.cliente_nombre || 'Cliente OT').trim().toLowerCase();
-      if (!map[key]) {
-        map[key] = {
-          cliente_nombre: o.cliente_nombre || 'Cliente OT',
-          cliente_telefono: o.cliente_telefono || '',
-          total_deuda: 0,
-          total_abonos: 0,
-          saldo_pendiente: 0,
-          cuentas: [],
-          ventas: [],
-          ordenes: []
-        };
-      }
+      matchedOTIds.add(o.id);
+      const d = getOrCreateDeudor(o.cliente_nombre, o.cliente_telefono);
+      const totalOT = o.precio_cobrado || ((o.abono || 0) + saldoOT);
 
-      // Evitar doble conteo del saldo si ya existe una Cuenta de Cobro generada para esta cotización/orden
-      const yaEnCuenta = cuentas.some(c => 
-        (o.cotizacion_id && c.cotizacion_id === o.cotizacion_id) ||
-        (o.cotizacion_numero && c.cotizacion_numero === o.cotizacion_numero) ||
-        c.id === o.id ||
-        c.numero_cc === o.numero_ot
-      );
-      if (!yaEnCuenta) {
-        const totalOT = o.precio_cobrado || ((o.abono || 0) + saldoOT);
-        map[key].total_deuda += totalOT;
-        map[key].total_abonos += (o.abono || 0);
-        map[key].saldo_pendiente += saldoOT;
-      }
+      d.items.push({
+        id: `ot-${o.id}`,
+        tipo: 'ot',
+        codigo: o.numero_ot,
+        descripcion: o.item_nombre,
+        total: totalOT,
+        abono: o.abono || 0,
+        saldo: saldoOT,
+        estado_taller: o.estado,
+        rawOT: o,
+        cliente_nombre: d.cliente_nombre,
+        cliente_telefono: d.cliente_telefono
+      });
+    });
 
-      // SIEMPRE agregamos la OT a las órdenes pendientes del deudor para que sea visible y gestionable
-      if (!map[key].ordenes.some(existing => existing.id === o.id)) {
-        map[key].ordenes.push(o);
-      }
-
-      if (o.cliente_telefono && !map[key].cliente_telefono) {
-        map[key].cliente_telefono = o.cliente_telefono;
-      }
+    // 4. Calcular totales acumulados reales y exactos por deudor a partir de la lista consolidada de ítems
+    Object.values(map).forEach(d => {
+      d.total_deuda = d.items.reduce((sum, it) => sum + it.total, 0);
+      d.total_abonos = d.items.reduce((sum, it) => sum + it.abono, 0);
+      d.saldo_pendiente = d.items.reduce((sum, it) => sum + it.saldo, 0);
     });
 
     return Object.values(map)
+      .filter(d => d.saldo_pendiente > 0)
       .filter(d => {
         if (!searchDeudor.trim()) return true;
         const q = searchDeudor.toLowerCase();
         return (
           d.cliente_nombre.toLowerCase().includes(q) ||
           d.cliente_telefono.includes(q) ||
-          d.ordenes?.some(o => 
-            o.numero_ot.toLowerCase().includes(q) || 
-            o.item_nombre?.toLowerCase().includes(q) ||
-            (o.cotizacion_numero && o.cotizacion_numero.toLowerCase().includes(q))
-          ) ||
-          d.cuentas?.some(c => 
-            c.numero_cc.toLowerCase().includes(q) || 
-            c.items_resumen?.toLowerCase().includes(q) ||
-            (c.cotizacion_numero && c.cotizacion_numero.toLowerCase().includes(q))
-          ) ||
-          d.ventas?.some(v => 
-            v.numero_venta.toLowerCase().includes(q) || 
-            v.nombre_producto?.toLowerCase().includes(q) ||
-            (v.ot_numero && v.ot_numero.toLowerCase().includes(q))
+          d.items.some(it => 
+            it.codigo.toLowerCase().includes(q) || 
+            it.descripcion.toLowerCase().includes(q)
           )
         );
       })
@@ -352,30 +597,18 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   const cuentasFormalesPendientes = cuentas.filter(c => c.saldo_pendiente > 0);
 
   // Enviar estado de cuenta consolidado por WhatsApp a un deudor
-  const handleEnviarEstadoCuenta = (deudor: typeof deudoresConsolidados[0]) => {
+  const handleEnviarEstadoCuenta = (deudor: DeudorConsolidado) => {
     const phone = formatWhatsAppPhone(deudor.cliente_telefono);
     const conceptos: string[] = [];
 
-    deudor.cuentas.forEach(c => {
-      conceptos.push(`• Ref ${c.numero_cc} (${c.items_resumen}): Saldo $${c.saldo_pendiente.toLocaleString('es-CO')} COP`);
+    deudor.items.forEach(it => {
+      conceptos.push(`• ${it.codigo}: ${it.descripcion} — Saldo: $${it.saldo.toLocaleString('es-CO')} COP ${it.estado_taller ? `[${it.estado_taller}]` : ''}`);
     });
-
-    deudor.ventas.forEach(v => {
-      const alerta = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
-      conceptos.push(`• Venta ${v.numero_venta} (${v.nombre_producto}): Saldo $${v.saldo_pendiente.toLocaleString('es-CO')} COP ${v.fecha_prometida_pago ? `(Límite: ${v.fecha_prometida_pago})` : ''}`);
-    });
-
-    if (deudor.ordenes) {
-      deudor.ordenes.forEach(o => {
-        const saldoOT = o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
-        conceptos.push(`• Orden ${o.numero_ot} (${o.item_nombre}): Saldo $${saldoOT.toLocaleString('es-CO')} COP [${o.estado}]`);
-      });
-    }
 
     const mensaje = 
 `👋 Hola *${deudor.cliente_nombre}*, un saludo desde *WJGEEKS 3D* 🚀
 
-Te compartimos el resumen de tu saldo pendiente con nuestro taller:
+Te compartimos el resumen oficial de tu saldo pendiente con nuestro taller:
 
 📋 *Detalle de Pedidos / Figuras:*
 ${conceptos.join('\n')}
@@ -384,11 +617,11 @@ ${conceptos.join('\n')}
 💵 *TOTAL PENDIENTE:* *$${deudor.saldo_pendiente.toLocaleString('es-CO')} COP*
 ━━━━━━━━━━━━━━━━━━━━
 
-📲 *Medios de Pago Disponibles:*
+📲 *Medios Oficiales de Pago:*
 • *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
-• *Nequi:* ${config.nequi} (${config.titular_cuenta})
+• *Nequi Taller:* ${config.nequi || '3217273025'} (${config.titular_cuenta || 'Juan / Germán'})
 
-Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracias por tu apoyo a nuestro arte! ✨🎨`;
+Agradecemos nos compartas el soporte una vez realizado el abono para actualizar tu saldo de inmediato. ¡Muchas gracias por tu apoyo a nuestro arte! ✨🎨`;
 
     openWhatsApp(`https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`);
   };
@@ -603,115 +836,104 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                     </div>
                   )}
 
-                  {/* Lista de Conceptos Pendientes */}
+                  {/* Lista de Conceptos Pendientes Consolidados (Sin Duplicados) */}
                   <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '0.78rem' }}>
-                    <div style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: '6px' }}>
-                      PEDIDOS / FIGURAS PENDIENTES:
+                    <div style={{ fontWeight: 700, color: 'var(--text-muted)', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>PEDIDOS / FIGURAS PENDIENTES ({deudor.items.length}):</span>
+                      <span>TOTAL: ${deudor.saldo_pendiente.toLocaleString('es-CO')} COP</span>
                     </div>
 
-                    {deudor.ventas.map(v => (
-                      <div key={v.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0', borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-                        <span style={{ color: '#fff' }}>
-                          ⚡ {v.nombre_producto} ({v.numero_venta})
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <span style={{ fontWeight: 700, color: '#fbbf24' }}>
-                            ${v.saldo_pendiente.toLocaleString('es-CO')}
-                          </span>
-                          {onUpdateVentaExpress && (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      {deudor.items.map(item => (
+                        <div 
+                          key={item.id} 
+                          style={{ 
+                            display: 'flex', 
+                            justifyContent: 'space-between', 
+                            alignItems: 'center', 
+                            padding: '6px 0', 
+                            borderBottom: '1px solid rgba(255,255,255,0.05)',
+                            gap: '10px',
+                            flexWrap: 'wrap'
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', flex: 1, minWidth: '180px' }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <span style={{ fontSize: '0.85rem' }}>
+                                {item.tipo === 'pos' ? '⚡' : item.tipo === 'cuenta' ? '📄' : '🛠️'}
+                              </span>
+                              <span style={{ color: '#fff', fontWeight: 700 }}>
+                                {item.codigo}: {item.descripcion}
+                              </span>
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px', flexWrap: 'wrap' }}>
+                              {item.estado_taller && (
+                                <span style={{ color: 'var(--brand-cyan)' }}>
+                                  Taller: <strong>{item.estado_taller}</strong>
+                                </span>
+                              )}
+                              <span>Total: ${item.total.toLocaleString('es-CO')}</span>
+                              <span style={{ color: '#34d399' }}>Abonado: ${item.abono.toLocaleString('es-CO')}</span>
+                            </div>
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                            <span style={{ fontWeight: 800, color: '#fbbf24', fontSize: '0.92rem' }}>
+                              ${item.saldo.toLocaleString('es-CO')}
+                            </span>
                             <button
                               type="button"
                               className="btn btn-secondary btn-sm"
-                              onClick={() => handleOpenAbonoVentaModal(v)}
-                              style={{ padding: '2px 6px', fontSize: '0.68rem' }}
-                              title="Abonar a esta figura"
+                              onClick={() => setItemParaAbono(item)}
+                              style={{ 
+                                padding: '3px 10px', 
+                                fontSize: '0.72rem', 
+                                background: 'rgba(56, 189, 248, 0.15)', 
+                                border: '1px solid rgba(56, 189, 248, 0.4)', 
+                                color: 'var(--brand-cyan)',
+                                fontWeight: 800
+                              }}
+                              title={`Registrar pago o abono para ${item.codigo}`}
                             >
                               + Abono
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => setVentaParaEditar(v)}
-                            style={{ padding: '2px 5px', fontSize: '0.68rem', color: 'var(--brand-cyan)' }}
-                            title="Editar esta venta POS"
-                          >
-                            <Edit3 size={11} />
-                          </button>
-                          {onEliminarVentaExpress && (
-                            <button
-                              type="button"
-                              className="btn btn-secondary btn-sm"
-                              onClick={() => setVentaParaEliminar(v)}
-                              style={{ padding: '2px 5px', fontSize: '0.68rem', color: '#f87171' }}
-                              title="Eliminar venta POS"
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-
-                    {deudor.cuentas.map(c => (
-                      <div key={c.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
-                        <span style={{ color: '#fff' }}>
-                          📄 {c.items_resumen || c.numero_cc}
-                        </span>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <span style={{ fontWeight: 700, color: '#fbbf24' }}>
-                            ${c.saldo_pendiente.toLocaleString('es-CO')}
-                          </span>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            onClick={() => handleOpenAbonoModal(c)}
-                            style={{ padding: '2px 6px', fontSize: '0.68rem' }}
-                            title="Abonar a esta cuenta"
-                          >
-                            + Abono
-                          </button>
-                        </div>
-                      </div>
-                    ))}
-
-                    {deudor.ordenes && deudor.ordenes.map(o => {
-                      const saldoOT = o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0));
-                      return (
-                        <div key={o.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '5px 0', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <span style={{ color: '#fff', fontWeight: 600 }}>
-                              🛠️ {o.numero_ot}: {o.item_nombre} {o.cantidad > 1 ? `(x${o.cantidad})` : ''}
-                            </span>
-                            <span style={{ fontSize: '0.68rem', color: 'var(--brand-cyan)' }}>
-                              Taller: {o.estado} {o.estado_pago ? `• ${o.estado_pago}` : ''}
-                            </span>
-                          </div>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <span style={{ fontWeight: 700, color: '#fbbf24' }}>
-                              ${saldoOT.toLocaleString('es-CO')}
-                            </span>
-                            {onActualizarOT && (
+                            {item.abono > 0 && (
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
-                                onClick={() => setOtParaAbono(o)}
+                                onClick={() => handleAbrirModalEliminarCobro(item)}
                                 style={{ 
-                                  padding: '2px 8px', 
-                                  fontSize: '0.68rem', 
-                                  background: 'rgba(56, 189, 248, 0.15)', 
-                                  border: '1px solid rgba(56, 189, 248, 0.4)', 
-                                  color: 'var(--brand-cyan)' 
+                                  padding: '3px 8px', 
+                                  fontSize: '0.70rem', 
+                                  background: 'rgba(239, 68, 68, 0.12)', 
+                                  border: '1px solid rgba(239, 68, 68, 0.35)', 
+                                  color: '#f87171',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
                                 }}
-                                title="Registrar abono a esta Orden de Trabajo"
+                                title="Eliminar cobro o abono duplicado"
                               >
-                                + Abono
+                                <Trash2 size={11} />
+                                <span>Eliminar duplicado</span>
+                              </button>
+                            )}
+                            {item.rawVenta && onEliminarVentaExpress && (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                onClick={() => setVentaParaEliminar(item.rawVenta!)}
+                                style={{ padding: '3px 6px', fontSize: '0.68rem', color: '#f87171' }}
+                                title="Eliminar venta POS"
+                              >
+                                <Trash2 size={11} />
                               </button>
                             )}
                           </div>
                         </div>
-                      );
-                    })}
+                      ))}
+                    </div>
                   </div>
 
                   {/* Acciones Rápidas */}
@@ -862,10 +1084,30 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                         type="button"
                         className="btn btn-primary btn-sm"
                         style={{ marginLeft: 'auto', fontWeight: 800 }}
-                        onClick={() => setOtParaAbono(ot)}
+                        onClick={() => handleAbrirAbonoOT(ot)}
                       >
                         <DollarSign size={14} />
                         <span>Registrar Abono</span>
+                      </button>
+                    )}
+
+                    {(ot.abono && ot.abono > 0) && (
+                      <button 
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ 
+                          color: '#f87171', 
+                          border: '1px solid rgba(239, 68, 68, 0.35)', 
+                          fontWeight: 700, 
+                          display: 'inline-flex', 
+                          alignItems: 'center', 
+                          gap: '5px' 
+                        }}
+                        onClick={() => handleAbrirModalEliminarCobroOT(ot)}
+                        title="Eliminar cobro o abono duplicado"
+                      >
+                        <Trash2 size={13} />
+                        <span>Eliminar duplicado</span>
                       </button>
                     )}
 
@@ -959,7 +1201,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                         <button
                           type="button"
                           className="btn btn-secondary btn-sm"
-                          onClick={() => handleOpenAbonoVentaModal(v)}
+                          onClick={() => handleAbrirAbonoVenta(v)}
                         >
                           <DollarSign size={14} color="#34d399" />
                           <span>Abonar</span>
@@ -1059,10 +1301,31 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                     <button 
                       className="btn btn-primary btn-sm"
                       style={{ marginLeft: 'auto' }}
-                      onClick={() => handleOpenAbonoModal(cuenta)}
+                      onClick={() => handleAbrirAbonoCuenta(cuenta)}
                     >
                       <DollarSign size={14} />
                       <span>Registrar Abono</span>
+                    </button>
+                  )}
+
+                  {cuenta.abono > 0 && (
+                    <button 
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ 
+                        color: '#f87171', 
+                        border: '1px solid rgba(239, 68, 68, 0.35)', 
+                        fontWeight: 700, 
+                        display: 'inline-flex', 
+                        alignItems: 'center', 
+                        gap: '5px',
+                        marginLeft: cuenta.saldo_pendiente <= 0 ? 'auto' : undefined
+                      }}
+                      onClick={() => handleAbrirModalEliminarCobroCuenta(cuenta)}
+                      title="Eliminar cobro o abono duplicado"
+                    >
+                      <Trash2 size={13} />
+                      <span>Eliminar duplicado</span>
                     </button>
                   )}
 
@@ -1071,7 +1334,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
                       type="button"
                       className="btn btn-secondary btn-sm"
                       onClick={() => setCuentaParaEliminar(cuenta)}
-                      style={{ color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)', marginLeft: cuenta.saldo_pendiente <= 0 ? 'auto' : undefined }}
+                      style={{ color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}
                       title="Eliminar esta cuenta de cobro"
                     >
                       <Trash2 size={14} />
@@ -1082,109 +1345,6 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
               </div>
             ))
           )}
-        </div>
-      )}
-
-      {/* MODAL REGISTRAR ABONO CUENTA FORMAL */}
-      {selectedCuenta && (
-        <div 
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '16px'
-          }}
-          onClick={() => setSelectedCuenta(null)}
-        >
-          <div className="glass-card" style={{ maxWidth: '400px', width: '100%', margin: 0, padding: '24px' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '12px', color: '#fff', fontWeight: 800 }}>
-              Registrar Abono • {selectedCuenta.numero_cc}
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-              Cliente: <strong style={{ color: '#fff' }}>{selectedCuenta.cliente.nombre}</strong><br />
-              Saldo Pendiente: <strong style={{ color: '#fbbf24' }}>${selectedCuenta.saldo_pendiente.toLocaleString('es-CO')} COP</strong>
-            </p>
-
-            <form onSubmit={handleGuardarAbono}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  MONTO DEL ABONO (COP):
-                </label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={abonoInput}
-                  onChange={e => setAbonoInput(parseFloat(e.target.value) || 0)}
-                  max={selectedCuenta.saldo_pendiente}
-                  min="1"
-                  step="5000"
-                  autoFocus
-                  required
-                  style={{ fontSize: '1.2rem', fontWeight: 800, padding: '10px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setSelectedCuenta(null)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ fontWeight: 800 }}>
-                  Confirmar Abono
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL REGISTRAR ABONO VENTA EXPRESS */}
-      {selectedVenta && (
-        <div 
-          style={{
-            position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(6px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 99999, padding: '16px'
-          }}
-          onClick={() => setSelectedVenta(null)}
-        >
-          <div className="glass-card" style={{ maxWidth: '400px', width: '100%', margin: 0, padding: '24px' }} onClick={e => e.stopPropagation()}>
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '12px', color: '#fff', fontWeight: 800 }}>
-              Registrar Abono • {selectedVenta.numero_venta}
-            </h3>
-            <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-              Cliente: <strong style={{ color: '#fff' }}>{selectedVenta.cliente_nombre}</strong><br />
-              Figura: <strong>{selectedVenta.nombre_producto}</strong><br />
-              Saldo Pendiente: <strong style={{ color: '#fbbf24' }}>${selectedVenta.saldo_pendiente.toLocaleString('es-CO')} COP</strong>
-            </p>
-
-            <form onSubmit={handleGuardarAbonoVenta}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  MONTO DEL ABONO (COP):
-                </label>
-                <input 
-                  type="number" 
-                  className="form-input" 
-                  value={abonoVentaInput}
-                  onChange={e => setAbonoVentaInput(parseFloat(e.target.value) || 0)}
-                  max={selectedVenta.saldo_pendiente}
-                  min="1"
-                  step="5000"
-                  autoFocus
-                  required
-                  style={{ fontSize: '1.2rem', fontWeight: 800, padding: '10px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setSelectedVenta(null)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary" style={{ fontWeight: 800 }}>
-                  Confirmar Abono
-                </button>
-              </div>
-            </form>
-          </div>
         </div>
       )}
 
@@ -1199,26 +1359,25 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
         />
       )}
 
-      {/* MODAL REGISTRAR ABONO A ORDEN DE TRABAJO (OT) */}
-      {otParaAbono && (
+      {/* MODAL UNIFICADO DE REGISTRO DE PAGO / ABONO (Bre-B & Nequi) */}
+      {itemParaAbono && (
         <ModalRegistrarPago
-          isOpen={!!otParaAbono}
-          onClose={() => setOtParaAbono(null)}
-          titulo={`Registrar Abono • ${otParaAbono.numero_ot}`}
-          subtitulo={otParaAbono.item_nombre}
-          referenciaDoc={otParaAbono.numero_ot}
-          clienteNombre={otParaAbono.cliente_nombre}
-          clienteTelefono={otParaAbono.cliente_telefono}
-          montoTotal={otParaAbono.precio_cobrado || ((otParaAbono.abono || 0) + (otParaAbono.saldo_pendiente || 0))}
+          isOpen={!!itemParaAbono}
+          onClose={() => setItemParaAbono(null)}
+          titulo={`Registrar Abono • ${itemParaAbono.codigo}`}
+          subtitulo={`${itemParaAbono.cliente_nombre} — ${itemParaAbono.descripcion}`}
+          referenciaDoc={itemParaAbono.codigo}
+          clienteNombre={itemParaAbono.cliente_nombre}
+          clienteTelefono={itemParaAbono.cliente_telefono}
+          montoTotal={itemParaAbono.total}
           pagoActual={{
-            estado_pago: otParaAbono.estado_pago,
-            abono: otParaAbono.abono,
-            saldo_pendiente: otParaAbono.saldo_pendiente,
-            metodo_pago: otParaAbono.metodo_pago,
-            comprobante_pago: otParaAbono.comprobante_pago
+            abono: itemParaAbono.abono,
+            saldo_pendiente: itemParaAbono.saldo,
+            metodo_pago: itemParaAbono.rawOT?.metodo_pago || itemParaAbono.rawCuenta?.metodo_pago || itemParaAbono.rawVenta?.metodo_pago || 'Bre-B',
+            comprobante_pago: itemParaAbono.rawOT?.comprobante_pago || itemParaAbono.rawCuenta?.comprobante_url
           }}
           esAprobacionCotizacion={false}
-          onConfirmarPago={(datos) => handleConfirmarAbonoOT(datos)}
+          onConfirmarPago={(datos) => handleConfirmarPagoItem(itemParaAbono, datos)}
         />
       )}
 
@@ -1407,6 +1566,14 @@ Agradecemos nos compartas el soporte una vez realizado el abono. ¡Muchas gracia
           </div>
         </div>
       )}
+
+      {/* MODAL CONFIRMAR ELIMINAR COBRO DUPLICADO */}
+      <ModalConfirmarEliminarCobro
+        isOpen={Boolean(cobroParaEliminar)}
+        cobro={cobroParaEliminar}
+        onClose={() => setCobroParaEliminar(null)}
+        onConfirmar={handleConfirmarEliminarCobro}
+      />
     </div>
   );
 };

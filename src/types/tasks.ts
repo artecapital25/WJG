@@ -19,6 +19,27 @@ export interface TareaEquipo {
   origen?: 'whatsapp' | 'manual' | 'taller';
   fecha_creacion: string;
   fecha_completada?: string;
+  porcentaje_completado?: number;
+  ultimo_avance_at?: string;
+  total_avances?: number;
+}
+
+export interface TareaAvance {
+  id: string;
+  tarea_id: string;
+  usuario_id?: string;
+  usuario_nombre: string;
+  nota_avance: string;
+  porcentaje_avance?: number;
+  created_at: string;
+}
+
+export interface TareaAvanceInput {
+  tarea_id: string;
+  usuario_id?: string;
+  usuario_nombre: string;
+  nota_avance: string;
+  porcentaje_avance?: number;
 }
 
 export type UrgenciaInsumo = 'normal' | 'urgente' | 'taller_detenido';

@@ -36,6 +36,9 @@ import {
   generateSOSInsumoWhatsAppUrl 
 } from '../../services/whatsappService';
 import { ModalEnviarTareaWhatsApp } from './ModalEnviarTareaWhatsApp';
+import { TareaCard } from './TareaCard';
+import { BitacoraTareaModal } from './BitacoraTareaModal';
+import { useTareaAvances } from '../../hooks/useTareaAvances';
 
 interface TeamTasksViewProps {
   tareas: TareaEquipo[];
@@ -47,6 +50,8 @@ interface TeamTasksViewProps {
   onEliminarTarea: (id: string) => void;
   onCrearSolicitudInsumo: (solicitud: SolicitudInsumo) => void;
   onActualizarSolicitudInsumo: (solicitud: SolicitudInsumo) => void;
+  activeOperator?: string;
+  currentUser?: { id?: string; nombre: string; rol?: string };
 }
 
 const INTEGRANTES: IntegranteEquipo[] = ['Germán', 'Wendy', 'Juan', 'Todos'];
@@ -60,14 +65,29 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   onActualizarTarea,
   onEliminarTarea,
   onCrearSolicitudInsumo,
-  onActualizarSolicitudInsumo
+  onActualizarSolicitudInsumo,
+  activeOperator = 'Juan',
+  currentUser
 }) => {
-  const [activeTab, setActiveTab] = useState<IntegranteEquipo | 'periodicas' | 'sos'>('Germán');
+  const [activeTab, setActiveTab] = useState<IntegranteEquipo | 'periodicas' | 'sos'>(() => {
+    if (activeOperator === 'Juan' || activeOperator === 'Wendy' || activeOperator === 'Germán') {
+      return activeOperator;
+    }
+    return 'Germán';
+  });
+
+  // Hook de bitácora y conteo de avances
+  const { conteos, refreshConteos } = useTareaAvances();
+  const [tareaParaBitacora, setTareaParaBitacora] = useState<TareaEquipo | null>(null);
+  const [showBitacoraModal, setShowBitacoraModal] = useState<boolean>(false);
 
   // Formulario Nueva Tarea / Idea Rápida de WhatsApp
   const [tituloTarea, setTituloTarea] = useState('');
   const [descripcionTarea, setDescripcionTarea] = useState('');
-  const [asignadoA, setAsignadoA] = useState<IntegranteEquipo>('Germán');
+  const [asignadoA, setAsignadoA] = useState<IntegranteEquipo>(() => {
+    if (activeOperator === 'Juan' || activeOperator === 'Wendy') return activeOperator;
+    return 'Germán';
+  });
   const [tipoTarea, setTipoTarea] = useState<'puntual' | 'periodica'>('puntual');
   const [frecuencia, setFrecuencia] = useState<'diaria' | 'semanal' | 'quincenal' | 'mensual'>('semanal');
   const [prioridad, setPrioridad] = useState<'baja' | 'media' | 'alta' | 'urgente'>('media');
@@ -597,119 +617,20 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                {tareasFiltradas.map(t => {
-                  const esUrgente = t.prioridad === 'urgente';
-                  const esAlta = t.prioridad === 'alta';
-
-                  return (
-                    <div 
-                      key={t.id} 
-                      className="glass-card" 
-                      style={{ 
-                        margin: 0, 
-                        padding: '14px', 
-                        opacity: t.completada ? 0.6 : 1,
-                        borderLeft: `4px solid ${esUrgente ? '#ef4444' : esAlta ? '#f59e0b' : 'var(--border-subtle)'}` 
-                      }}
-                    >
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
-                        {/* Checkbox circular */}
-                        <button
-                          type="button"
-                          onClick={() => handleToggleCompletada(t)}
-                          style={{
-                            width: '24px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            border: `2px solid ${t.completada ? '#10b981' : 'var(--text-muted)'}`,
-                            background: t.completada ? '#10b981' : 'transparent',
-                            color: '#fff',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            cursor: 'pointer',
-                            flexShrink: 0,
-                            marginTop: '2px'
-                          }}
-                        >
-                          {t.completada && <Check size={14} />}
-                        </button>
-
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '3px' }}>
-                            <span style={{ 
-                              fontSize: '0.92rem', 
-                              fontWeight: 700, 
-                              color: t.completada ? 'var(--text-muted)' : '#fff',
-                              textDecoration: t.completada ? 'line-through' : 'none' 
-                            }}>
-                              {t.titulo}
-                            </span>
-
-                            {t.tipo === 'periodica' && (
-                              <span style={{ fontSize: '0.68rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
-                                🔄 {t.frecuencia}
-                              </span>
-                            )}
-
-                            {t.origen === 'whatsapp' && (
-                              <span style={{ fontSize: '0.68rem', background: 'rgba(34, 197, 94, 0.15)', color: '#4ade80', padding: '1px 6px', borderRadius: '4px', fontWeight: 700 }}>
-                                💬 WhatsApp
-                              </span>
-                            )}
-
-                            {esUrgente && (
-                              <span style={{ fontSize: '0.68rem', background: 'rgba(239, 68, 68, 0.2)', color: '#f87171', padding: '1px 6px', borderRadius: '4px', fontWeight: 800 }}>
-                                🔥 Urgente
-                              </span>
-                            )}
-                          </div>
-
-                          {t.descripcion && (
-                            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', margin: '0 0 6px 0', lineHeight: 1.4 }}>
-                              {t.descripcion}
-                            </p>
-                          )}
-
-                          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', display: 'flex', gap: '10px' }}>
-                            <span>Asignado: <strong>{t.asignado_a}</strong></span>
-                            <span>Creado: {t.fecha_creacion}</span>
-                            {t.fecha_completada && <span style={{ color: '#34d399' }}>Completado: {t.fecha_completada}</span>}
-                          </div>
-                        </div>
-
-                        {/* Botón Compartir / Enviar por WhatsApp a los 3 integrantes */}
-                        <button
-                          type="button"
-                          onClick={() => setTareaParaWhatsApp(t)}
-                          className="btn btn-whatsapp btn-sm"
-                          style={{
-                            fontSize: '0.72rem',
-                            padding: '3px 8px',
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            gap: '4px',
-                            flexShrink: 0
-                          }}
-                          title="Enviar tarea por WhatsApp a Germán (3503443140), Juan (3217273025) y Wendy (3204814702)"
-                        >
-                          <Send size={12} />
-                          <span>WhatsApp</span>
-                        </button>
-
-                        {/* Botón Eliminar */}
-                        <button
-                          type="button"
-                          onClick={() => onEliminarTarea(t.id)}
-                          style={{ background: 'transparent', border: 'none', color: 'rgba(255,255,255,0.2)', cursor: 'pointer', padding: '4px' }}
-                          title="Eliminar tarea"
-                        >
-                          <Trash2 size={14} />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
+                {tareasFiltradas.map(t => (
+                  <TareaCard
+                    key={t.id}
+                    tarea={t}
+                    conteoAvances={conteos[t.id] || 0}
+                    onToggleCompletada={handleToggleCompletada}
+                    onEliminarTarea={onEliminarTarea}
+                    onOpenWhatsApp={setTareaParaWhatsApp}
+                    onOpenBitacora={(selectedTarea) => {
+                      setTareaParaBitacora(selectedTarea);
+                      setShowBitacoraModal(true);
+                    }}
+                  />
+                ))}
               </div>
             )}
           </div>
@@ -898,6 +819,23 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
         isOpen={Boolean(tareaParaWhatsApp)}
         tarea={tareaParaWhatsApp}
         onClose={() => setTareaParaWhatsApp(null)}
+      />
+
+      {/* MODAL DE BITÁCORA Y AVANCES DE TAREA */}
+      <BitacoraTareaModal
+        isOpen={showBitacoraModal}
+        onClose={() => {
+          setShowBitacoraModal(false);
+          setTareaParaBitacora(null);
+        }}
+        tarea={tareaParaBitacora}
+        activeOperator={activeOperator}
+        currentUser={currentUser}
+        onAvanceGuardado={(tareaActualizada) => {
+          onActualizarTarea(tareaActualizada);
+          setTareaParaBitacora(tareaActualizada);
+          refreshConteos();
+        }}
       />
     </div>
   );

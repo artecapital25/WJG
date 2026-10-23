@@ -1,12 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Navbar } from './components/ui/Navbar';
-import { BottomNav } from './components/ui/BottomNav';
-import { CotizadorForm } from './components/cotizador/CotizadorForm';
-import { CotizacionBuilder } from './components/cotizador/CotizacionBuilder';
+import { HeaderMinimal } from './components/ui/HeaderMinimal';
+import { BottomNavBar, HubType } from './components/ui/BottomNavBar';
+import { HubNavigationController } from './components/ui/HubNavigationController';
+const CotizadorForm = React.lazy(() => import('./components/cotizador/CotizadorForm').then(m => ({ default: m.CotizadorForm })));
+const CotizacionBuilder = React.lazy(() => import('./components/cotizador/CotizacionBuilder').then(m => ({ default: m.CotizacionBuilder })));
 import { TabLoadingSkeleton } from './components/ui/TabLoadingSkeleton';
 import { StaffLoginModal } from './components/auth/StaffLoginModal';
 import { StaffAuthGuard } from './components/auth/StaffAuthGuard';
 import { toast } from './components/ui/ToastProvider';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 const WorkOrdersPipeline = React.lazy(() => import('./components/workflow/WorkOrdersPipeline').then(m => ({ default: m.WorkOrdersPipeline })));
 const CotizacionesList = React.lazy(() => import('./components/cotizaciones/CotizacionesList').then(m => ({ default: m.CotizacionesList })));
@@ -27,6 +29,10 @@ const UsuariosManagerView = React.lazy(() => import('./components/admin/Usuarios
 const DailyBriefingModal = React.lazy(() => import('./components/admin/DailyBriefingModal').then(m => ({ default: m.DailyBriefingModal })));
 import { AuthSecurityService } from './services/authSecurityService';
 import { WhatsAppNotificationService } from './services/whatsappNotificationService';
+import { useUsuariosTaller } from './hooks/useUsuariosTaller';
+import { useAuthorization } from './hooks/useAuthorization';
+import { AccessDeniedView } from './components/ui/AccessDeniedView';
+import { CambiarPinModal } from './components/auth/CambiarPinModal';
 
 import { 
   TabType, 
@@ -51,6 +57,7 @@ import {
   TareaEquipo,
   SolicitudInsumo
 } from './types';
+import type { ItemDeudaConsolidado } from './components/cuentasCobro/CuentasCobroList';
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 
@@ -72,6 +79,41 @@ export const App: React.FC = () => {
     }
     return 'cotizador';
   });
+
+  const [activeHub, setActiveHub] = useState<HubType>(() => {
+    if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) return 'ventas';
+    if (['workflow', 'stl', 'stock', 'calendario', 'seguimiento'].includes(activeTab)) return 'taller';
+    if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) return 'finanzas';
+    return 'gestion';
+  });
+
+  const [activeOperator, setActiveOperator] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      const trusted = AuthSecurityService.checkTrustedDevice();
+      if (trusted.isTrusted && trusted.staffUser) return trusted.staffUser;
+      const stored = localStorage.getItem('wjg_staff_user');
+      if (stored) return stored;
+    }
+    return 'Juan';
+  });
+  const [showChangePinModal, setShowChangePinModal] = useState<boolean>(false);
+
+  // Hook de Usuarios de Taller y RBAC
+  const { usuarios: usuariosTaller, cambiarPin, recuperarPin } = useUsuariosTaller();
+  const { currentUser, permisos, canAccessHub, canAccessTab } = useAuthorization(activeOperator, usuariosTaller);
+
+  useEffect(() => {
+    if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) setActiveHub('ventas');
+    else if (['workflow', 'stl', 'stock', 'calendario', 'seguimiento'].includes(activeTab)) setActiveHub('taller');
+    else if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) setActiveHub('finanzas');
+    else if (activeTab === 'tareas') {
+      if (activeHub === 'taller' || !canAccessHub('gestion')) {
+        setActiveHub('taller');
+      } else {
+        setActiveHub('gestion');
+      }
+    } else setActiveHub('gestion');
+  }, [activeTab, activeHub, canAccessHub]);
 
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showDailyBriefingModal, setShowDailyBriefingModal] = useState(false);
@@ -136,6 +178,7 @@ export const App: React.FC = () => {
 
   const handleStaffLoginSuccess = (userLabel: string) => {
     setStaffUser(userLabel);
+    setActiveOperator(userLabel);
     setIsStaffAuthenticated(true);
     setIsClientPortalMode(false);
   };
@@ -144,7 +187,10 @@ export const App: React.FC = () => {
     setStaffUser(null);
     setIsStaffAuthenticated(false);
     AuthSecurityService.revokeTrustedDevice();
-    setIsClientPortalMode(true);
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const isExplicitPortal = params?.get('portal') === 'cliente';
+    const hasTrackingParam = Boolean(params?.get('ot') || params?.get('cot') || params?.get('token'));
+    setIsClientPortalMode(Boolean(isExplicitPortal || hasTrackingParam));
   };
 
   // Estado PWA (Instalación nativa en navegador / móvil)
@@ -240,14 +286,15 @@ export const App: React.FC = () => {
     // 2. Traer datos frescos de Supabase en segundo plano como Fuente Única de la Verdad (Single Source of Truth)
     const syncCloudData = async () => {
       try {
-        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes] = await Promise.all([
+        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes, cloudStock] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
           CloudSyncService.fetchOrdenes(),
           CloudSyncService.fetchVentasExpress(),
           CloudSyncService.fetchCuentas(),
           CloudSyncService.fetchTareasEquipo(),
-          CloudSyncService.fetchSolicitudesInsumos()
+          CloudSyncService.fetchSolicitudesInsumos(),
+          CloudSyncService.fetchProductosStock()
         ]);
 
         if (cloudCots !== null) {
@@ -283,6 +330,11 @@ export const App: React.FC = () => {
         if (cloudSolicitudes !== null) {
           setSolicitudesInsumos(cloudSolicitudes);
           StorageService.saveSolicitudesInsumos(cloudSolicitudes);
+        }
+
+        if (cloudStock !== null) {
+          setProductosStock(cloudStock);
+          StorageService.saveProductosStock(cloudStock);
         }
 
         setCloudSyncStatus('connected');
@@ -350,6 +402,14 @@ export const App: React.FC = () => {
         if (ots) { setOrdenes(ots); StorageService.saveOrdenes(ots); }
         if (ccs) { setCuentas(ccs); StorageService.saveCuentas(ccs); }
         if (vts) { setVentasExpress(vts); StorageService.saveVentasExpress(vts); }
+      },
+      async () => {
+        // Sincronización en tiempo real de productos_stock
+        const freshStock = await CloudSyncService.fetchProductosStock();
+        if (freshStock !== null) {
+          setProductosStock(freshStock);
+          StorageService.saveProductosStock(freshStock);
+        }
       }
     );
 
@@ -908,12 +968,47 @@ export const App: React.FC = () => {
     if (updatedTargetOT) CloudSyncService.saveOrdenTrabajo(updatedTargetOT);
   };
 
-  // Generar Cuenta de Cobro a partir de una OT terminada
+  // Generar Cuenta de Cobro a partir de una OT terminada (sin duplicaciones ni abonos inventados)
   const handleGenerarCuentaCobro = (ot: OrdenTrabajo) => {
+    // 1. Verificar si ya existe una Cuenta de Cobro para esta OT o Cotización
+    const existingCC = cuentas.find(c => 
+      (ot.cotizacion_id && c.cotizacion_id === ot.cotizacion_id) ||
+      (ot.cotizacion_numero && c.cotizacion_numero === ot.cotizacion_numero) ||
+      c.id === ot.id ||
+      c.numero_cc === ot.numero_ot ||
+      (c.items_resumen && c.items_resumen.includes(ot.numero_ot))
+    );
+
     const cotOriginal = cotizaciones.find(c => c.id === ot.cotizacion_id);
-    const totalMonto = cotOriginal ? cotOriginal.total : 50000;
-    const abonoMonto = Math.round(totalMonto * 0.5); // 50% anticipo por defecto
-    const saldo = totalMonto - abonoMonto;
+    const totalMonto = ot.precio_cobrado && ot.precio_cobrado > 0 
+      ? ot.precio_cobrado 
+      : (cotOriginal ? cotOriginal.total : ((ot.abono || 0) + (ot.saldo_pendiente || 0) || 50000));
+    const abonoMonto = ot.abono || 0; // Usar el abono real registrado en taller, nunca inventar 50%
+    const saldo = Math.max(0, totalMonto - abonoMonto);
+
+    if (existingCC) {
+      // Actualizar la existente sin duplicar
+      const updated = cuentas.map(c => {
+        if (c.id === existingCC.id) {
+          return {
+            ...c,
+            total: totalMonto,
+            abono: abonoMonto,
+            saldo_pendiente: saldo,
+            estado_pago: saldo === 0 ? ('Pagado Total' as const) : (abonoMonto > 0 ? ('Abono Parcial' as const) : ('Pendiente' as const)),
+            items_resumen: c.items_resumen || `${ot.numero_ot}: ${ot.item_nombre} (x${ot.cantidad})`
+          };
+        }
+        return c;
+      });
+      setCuentas(updated);
+      StorageService.saveCuentas(updated);
+      const target = updated.find(c => c.id === existingCC.id);
+      if (target) CloudSyncService.saveCuentaCobro(target);
+      toast.info(`Cuenta ${existingCC.numero_cc} sincronizada con orden ${ot.numero_ot}.`);
+      setActiveTab('cuentas');
+      return;
+    }
 
     const nuevaCC: CuentaCobro = {
       id: `cc-${Date.now()}`,
@@ -929,11 +1024,11 @@ export const App: React.FC = () => {
         correo: ''
       },
       fecha_emision: new Date().toISOString().slice(0, 10),
-      items_resumen: `${ot.item_nombre} (x${ot.cantidad})`,
+      items_resumen: `${ot.numero_ot}: ${ot.item_nombre} (x${ot.cantidad})`,
       total: totalMonto,
       abono: abonoMonto,
       saldo_pendiente: saldo,
-      estado_pago: saldo === 0 ? 'Pagado Total' : 'Abono Parcial'
+      estado_pago: saldo === 0 ? 'Pagado Total' : (abonoMonto > 0 ? 'Abono Parcial' : 'Pendiente')
     };
 
     const updated = [nuevaCC, ...cuentas];
@@ -943,27 +1038,32 @@ export const App: React.FC = () => {
 
     // Sincronizar cuenta de cobro en Supabase
     CloudSyncService.saveCuentaCobro(nuevaCC);
+    toast.success(`Cuenta de cobro ${nuevaCC.numero_cc} generada para ${ot.item_nombre}.`);
   };
 
   // Actualizar Pago en Cuenta de Cobro y sincronizar multi-módulo
   const handleUpdatePago = (cuentaId: string, nuevoAbono: number) => {
-    let updatedCC: CuentaCobro | null = null;
+    const cuentaPrevia = cuentas.find(c => c.id === cuentaId);
+    if (!cuentaPrevia) return;
+
+    const deltaAbono = Math.max(0, nuevoAbono - (cuentaPrevia.abono || 0));
+    const saldo = Math.max(0, cuentaPrevia.total - nuevoAbono);
+    const estadoPago = saldo === 0 ? ('Pagado Total' as const) : (nuevoAbono > 0 ? ('Abono Parcial' as const) : ('Pendiente' as const));
+
     const updated = cuentas.map(c => {
       if (c.id === cuentaId) {
-        const saldo = Math.max(0, c.total - nuevoAbono);
-        const item = {
+        return {
           ...c,
           abono: nuevoAbono,
           saldo_pendiente: saldo,
-          estado_pago: saldo === 0 ? ('Pagado Total' as const) : ('Abono Parcial' as const)
+          estado_pago: estadoPago
         };
-        updatedCC = item;
-        return item;
       }
       return c;
     });
     setCuentas(updated);
     StorageService.saveCuentas(updated);
+
     const targetCC = updated.find(c => c.id === cuentaId);
     if (targetCC) {
       CloudSyncService.saveCuentaCobro(targetCC);
@@ -990,40 +1090,66 @@ export const App: React.FC = () => {
           (targetCC.cotizacion_numero && c.numero_cot === targetCC.cotizacion_numero)
         );
         if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+      }
 
-        // Sincronizar OTs vinculadas
+      // Sincronizar OTs vinculadas
+      const matchingOTs = ordenes.filter(o => 
+        (targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
+        (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero) ||
+        targetCC.id === o.id ||
+        targetCC.numero_cc === o.numero_ot ||
+        (targetCC.items_resumen && targetCC.items_resumen.includes(o.numero_ot))
+      );
+
+      if (matchingOTs.length > 0) {
         const updatedOTs = ordenes.map(o => {
-          if ((targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
-              (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero)) {
+          const isMatch = matchingOTs.some(m => m.id === o.id);
+          if (!isMatch) return o;
+
+          if (matchingOTs.length === 1) {
+            const otSaldo = Math.max(0, (o.precio_cobrado || targetCC.total) - nuevoAbono);
             return {
               ...o,
-              abono: targetCC.abono,
-              saldo_pendiente: targetCC.saldo_pendiente,
-              estado_pago: targetCC.estado_pago,
+              abono: nuevoAbono,
+              saldo_pendiente: otSaldo,
+              estado_pago: otSaldo === 0 ? ('Pagado Total' as const) : (nuevoAbono > 0 ? ('Abono Parcial' as const) : ('Pendiente' as const)),
+              metodo_pago: targetCC.metodo_pago || o.metodo_pago
+            };
+          } else {
+            const ratio = (o.precio_cobrado || 1) / (targetCC.total || 1);
+            const otAbono = Math.round(nuevoAbono * ratio);
+            const otSaldo = Math.max(0, (o.precio_cobrado || 0) - otAbono);
+            return {
+              ...o,
+              abono: otAbono,
+              saldo_pendiente: otSaldo,
+              estado_pago: otSaldo === 0 ? ('Pagado Total' as const) : (otAbono > 0 ? ('Abono Parcial' as const) : ('Pendiente' as const)),
               metodo_pago: targetCC.metodo_pago || o.metodo_pago
             };
           }
-          return o;
         });
         setOrdenes(updatedOTs);
         StorageService.saveOrdenes(updatedOTs);
-        updatedOTs.filter(o => 
-          (targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
-          (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero)
-        ).forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+        matchingOTs.forEach(m => {
+          const u = updatedOTs.find(o => o.id === m.id);
+          if (u) CloudSyncService.saveOrdenTrabajo(u);
+        });
       }
 
-      // Asentar en Ledger Central de Payments
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: nuevoAbono,
-        metodo_pago: targetCC.metodo_pago || 'Bre-B',
-        comprobante_url: targetCC.comprobante_url,
-        cotizacion_id: targetCC.cotizacion_id,
-        cuenta_cobro_id: targetCC.id,
-        origen_modulo: 'cuenta_cobro',
-        nota: `Abono/Pago registrado en Cuenta de Cobro ${targetCC.numero_cc}`
-      });
+      // Asentar en Ledger Central SOLO si hubo un incremento real (delta > 0)
+      if (deltaAbono > 0) {
+        CloudSyncService.savePayment({
+          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          monto: deltaAbono,
+          metodo_pago: targetCC.metodo_pago || 'Bre-B',
+          comprobante_url: targetCC.comprobante_url,
+          cotizacion_id: targetCC.cotizacion_id,
+          cuenta_cobro_id: targetCC.id,
+          orden_trabajo_id: matchingOTs[0]?.id,
+          origen_modulo: 'cuenta_cobro',
+          nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} en Cuenta de Cobro ${targetCC.numero_cc}`
+        });
+      }
     }
   };
 
@@ -1136,6 +1262,19 @@ export const App: React.FC = () => {
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
 
+    // Asentar en Ledger Inmutable (abonos_pagos) el abono inicial recibido en el POS
+    if (Number(ventaFinal.abono) > 0) {
+      CloudSyncService.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: Number(ventaFinal.abono),
+        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
+        pos_venta_id: ventaFinal.id,
+        orden_trabajo_id: ventaFinal.ot_id || undefined,
+        origen_modulo: 'pos',
+        nota: `Abono inicial de $${Number(ventaFinal.abono).toLocaleString('es-CO')} en Venta ${ventaFinal.numero_venta} (${ventaFinal.nombre_producto})`
+      });
+    }
+
     CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
       if (res && !res.success && res.error) {
         toast.warning(`Venta guardada localmente. Pendiente en nube: ${res.error}`);
@@ -1238,15 +1377,17 @@ export const App: React.FC = () => {
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
 
-    // Asentar en Ledger Central (payments) si se registró un abono en POS
-    if (ventaFinal.abono && ventaFinal.abono > 0) {
+    // Asentar en Ledger Central si hubo un incremento real en el abono (delta > 0)
+    const prevVenta = ventasExpress.find(v => v.id === ventaFinal.id);
+    const deltaAbonoVenta = Math.max(0, (ventaFinal.abono || 0) - (prevVenta?.abono || 0));
+    if (deltaAbonoVenta > 0) {
       CloudSyncService.savePayment({
         id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: ventaFinal.abono,
+        monto: deltaAbonoVenta,
         metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
         pos_venta_id: ventaFinal.id,
         origen_modulo: 'pos',
-        nota: `Abono/Pago registrado en POS Express ${ventaFinal.numero_venta}`
+        nota: `Abono de $${deltaAbonoVenta.toLocaleString('es-CO')} registrado en POS Express ${ventaFinal.numero_venta}`
       });
     }
 
@@ -1336,31 +1477,151 @@ export const App: React.FC = () => {
     CloudSyncService.saveSolicitudInsumo(solicitud);
   };
 
-  // Handler para Crear Orden Rápida desde Tarifario Express
+  // Handler para Crear Orden Rápida desde Tarifario Express (vinculación bidireccional inmediata sin duplicación)
   const handleCrearOrdenRapida = (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => {
-    const updatedOTs = [nuevaOT, ...ordenes];
-    setOrdenes(updatedOTs);
-    StorageService.saveOrdenes(updatedOTs);
-    CloudSyncService.saveOrdenTrabajo(nuevaOT);
+    let otFinal: OrdenTrabajo = { ...nuevaOT };
+    let nuevaVenta: VentaExpress | null = null;
 
     if (crearCobroPOS) {
-      const precioEstimado = nuevaOT.altura_cm_tarifario ? (nuevaOT.altura_cm_tarifario * 10000) : (nuevaOT.precio_cobrado || 80000);
-      const nuevaVenta: VentaExpress = {
-        id: `pos-${Date.now()}`,
-        numero_venta: `POS-${(ventasExpress.length + 1).toString().padStart(3, '0')}`,
-        nombre_producto: nuevaOT.item_nombre,
-        cliente_nombre: nuevaOT.cliente_nombre,
-        cliente_telefono: nuevaOT.cliente_telefono,
+      const precioEstimado = otFinal.altura_cm_tarifario ? (otFinal.altura_cm_tarifario * 10000) : (otFinal.precio_cobrado || 80000);
+      const ventaId = `pos-${Date.now()}`;
+      const numVenta = `POS-${(ventasExpress.length + 1).toString().padStart(3, '0')}`;
+
+      nuevaVenta = {
+        id: ventaId,
+        numero_venta: numVenta,
+        ot_id: otFinal.id,
+        ot_numero: otFinal.numero_ot,
+        nombre_producto: otFinal.item_nombre,
+        cliente_nombre: otFinal.cliente_nombre,
+        cliente_telefono: otFinal.cliente_telefono,
         total: precioEstimado,
-        abono: 0,
-        saldo_pendiente: precioEstimado,
-        estado_pago: 'Pendiente',
+        abono: otFinal.abono || 0,
+        saldo_pendiente: Math.max(0, precioEstimado - (otFinal.abono || 0)),
+        estado_pago: otFinal.estado_pago || 'Pendiente',
         fecha_venta: new Date().toISOString().slice(0, 10),
-        foto_url: nuevaOT.imagen_url || '',
-        notas: `Proyecto Rápido ${nuevaOT.numero_ot}`
+        foto_url: otFinal.imagen_url || '',
+        notas: `Proyecto Rápido ${otFinal.numero_ot}`
       };
-      handleGuardarVentaExpress(nuevaVenta);
+
+      otFinal.pos_venta_id = ventaId;
+      otFinal.cotizacion_id = ventaId;
+      otFinal.cotizacion_numero = numVenta;
     }
+
+    const updatedOTs = [otFinal, ...ordenes];
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
+    CloudSyncService.saveOrdenTrabajo(otFinal);
+
+    if (nuevaVenta) {
+      const updatedVentas = [nuevaVenta, ...ventasExpress];
+      setVentasExpress(updatedVentas);
+      StorageService.saveVentasExpress(updatedVentas);
+      CloudSyncService.saveVentaExpress(nuevaVenta);
+    }
+  };
+
+  // Handler Central Unificado de Pagos desde Cobranzas (Ledger Único Inmutable en abonos_pagos)
+  const handleRegistrarPagoConsolidado = (
+    item: ItemDeudaConsolidado,
+    datos: DatosPagoRegistro
+  ) => {
+    const deltaAbono = Math.max(0, datos.abono - (item.abono || 0));
+
+    // 1. Asentar en Ledger Inmutable Core V3 (abonos_pagos) EXACTAMENTE UNA VEZ si hubo incremento real
+    if (deltaAbono > 0) {
+      CloudSyncService.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: deltaAbono,
+        metodo_pago: datos.metodo_pago || 'Bre-B',
+        comprobante_url: datos.comprobante_pago,
+        cotizacion_id: item.rawOT?.cotizacion_id || item.rawCuenta?.cotizacion_id || (item.rawVenta ? item.rawVenta.id : undefined),
+        cuenta_cobro_id: item.rawCuenta?.id,
+        orden_trabajo_id: item.rawOT?.id,
+        pos_venta_id: item.rawVenta?.id,
+        origen_modulo: 'cuenta_cobro',
+        nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} recibido en Cobranzas para ${item.codigo} (${datos.metodo_pago})`
+      });
+    }
+
+    // 2. Sincronizar en la Orden de Trabajo de taller (si existe o coincide)
+    if (item.rawOT) {
+      const isTotalmentePagado = datos.saldo_pendiente <= 0;
+      const nuevoEstado = (isTotalmentePagado && (item.rawOT.estado === 'Control de Calidad' || item.rawOT.estado === 'Pintura y Armado' || item.rawOT.estado === 'Listo para Entrega'))
+        ? 'Listo para Entrega'
+        : item.rawOT.estado;
+
+      const updatedOT: OrdenTrabajo = {
+        ...item.rawOT,
+        estado_pago: datos.estado_pago,
+        abono: datos.abono,
+        saldo_pendiente: datos.saldo_pendiente,
+        metodo_pago: datos.metodo_pago,
+        comprobante_pago: datos.comprobante_pago,
+        estado: nuevoEstado
+      };
+      const updatedOTs = ordenes.map(o => o.id === updatedOT.id ? updatedOT : o);
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+      CloudSyncService.saveOrdenTrabajo(updatedOT);
+    }
+
+    // 3. Sincronizar en la Cuenta de Cobro formal (si existe o coincide)
+    if (item.rawCuenta) {
+      const updatedCC: CuentaCobro = {
+        ...item.rawCuenta,
+        estado_pago: datos.estado_pago,
+        abono: datos.abono,
+        saldo_pendiente: datos.saldo_pendiente,
+        metodo_pago: datos.metodo_pago,
+        comprobante_url: datos.comprobante_pago
+      };
+      const updatedCCs = cuentas.map(c => c.id === updatedCC.id ? updatedCC : c);
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      CloudSyncService.saveCuentaCobro(updatedCC);
+    }
+
+    // 4. Sincronizar en la Venta Express de POS (si existe o coincide)
+    if (item.rawVenta) {
+      const updatedVenta: VentaExpress = {
+        ...item.rawVenta,
+        estado_pago: datos.estado_pago as any,
+        abono: datos.abono,
+        saldo_pendiente: datos.saldo_pendiente,
+        metodo_pago: datos.metodo_pago
+      };
+      const updatedVentas = ventasExpress.map(v => v.id === updatedVenta.id ? updatedVenta : v);
+      setVentasExpress(updatedVentas);
+      StorageService.saveVentasExpress(updatedVentas);
+      CloudSyncService.saveVentaExpress(updatedVenta);
+    }
+
+    // 5. Sincronizar en Cotización vinculada si existe
+    const cotId = item.rawOT?.cotizacion_id || item.rawCuenta?.cotizacion_id;
+    const cotNum = item.rawOT?.cotizacion_numero || item.rawCuenta?.cotizacion_numero;
+    if (cotId || cotNum) {
+      const updatedCots = cotizaciones.map(c => {
+        if ((cotId && c.id === cotId) || (cotNum && c.numero_cot === cotNum)) {
+          return {
+            ...c,
+            abono: datos.abono,
+            saldo_pendiente: datos.saldo_pendiente,
+            estado_pago: datos.estado_pago,
+            metodo_pago: datos.metodo_pago,
+            comprobante_pago: datos.comprobante_pago
+          };
+        }
+        return c;
+      });
+      setCotizaciones(updatedCots);
+      StorageService.saveCotizaciones(updatedCots);
+      const cotAfectada = updatedCots.find(c => (cotId && c.id === cotId) || (cotNum && c.numero_cot === cotNum));
+      if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+    }
+
+    toast.success(`Pago de $${deltaAbono > 0 ? deltaAbono.toLocaleString('es-CO') : datos.abono.toLocaleString('es-CO')} COP registrado correctamente.`);
   };
 
   // Handler para Actualizar Trazabilidad STL, detalles de OT y Pagos
@@ -1478,18 +1739,20 @@ export const App: React.FC = () => {
       }
     }
 
-    // 5. Asentar en Ledger Central (payments) si se registró un abono
-    if (otActualizada.abono && otActualizada.abono > 0) {
+    // 5. Asentar en Ledger Central (abonos_pagos) SOLO si hubo un incremento real en el abono (delta > 0)
+    const prevOT = ordenes.find(o => o.id === otActualizada.id);
+    const deltaAbonoOT = Math.max(0, (otActualizada.abono || 0) - (prevOT?.abono || 0));
+    if (deltaAbonoOT > 0) {
       CloudSyncService.savePayment({
         id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: otActualizada.abono,
+        monto: deltaAbonoOT,
         metodo_pago: otActualizada.metodo_pago || 'Bre-B',
         comprobante_url: otActualizada.comprobante_pago,
         cotizacion_id: otActualizada.cotizacion_id,
         orden_trabajo_id: otActualizada.id,
         pos_venta_id: otActualizada.pos_venta_id,
         origen_modulo: 'taller',
-        nota: `Abono registrado desde Taller OT ${otActualizada.numero_ot}`
+        nota: `Abono de $${deltaAbonoOT.toLocaleString('es-CO')} registrado desde Taller OT ${otActualizada.numero_ot}`
       });
     }
   };
@@ -1572,25 +1835,37 @@ export const App: React.FC = () => {
 
   return (
     <div className="app-container">
-      {/* Barra de Navegación Superior */}
-      <Navbar 
+      {/* Header Minimalista Mobile-First */}
+      <HeaderMinimal 
+        cloudStatus={cloudSyncStatus}
+        activeOperator={activeOperator}
+        onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
+        onOpenChangePin={() => setShowChangePinModal(true)}
+        onLogout={handleStaffLogout}
+        dailyAlertsCount={pendingOTs}
+      />
+
+      {/* Subpestañas contextuales al Hub activo */}
+      <HubNavigationController 
+        activeHub={activeHub}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
-        onNewQuoteClick={handleNuevaCotizacion} 
-        cloudStatus={cloudSyncStatus}
-        whatsappStatus={whatsappHealthStatus}
-        onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
-        onInstallPwa={handleInstallPwa}
-        isInstallable={isInstallable}
-        onOpenBackupModal={() => setShowBackupModal(true)}
-        onOpenStaffLogin={() => setShowStaffModal(true)}
-        isStaffAuthenticated={isStaffAuthenticated}
-        staffUser={staffUser}
       />
 
       {/* Contenido Principal según Pestaña con Suspense y Lazy Loading */}
       <main className="main-content">
-        <React.Suspense fallback={<TabLoadingSkeleton />}>
+        {!canAccessTab(activeTab) ? (
+          <AccessDeniedView 
+            requiredArea={activeHub}
+            operatorName={activeOperator}
+            onGoBack={() => {
+              setActiveHub('taller');
+              setActiveTab('workflow');
+            }}
+          />
+        ) : (
+        <ErrorBoundary fallbackTitle="Error al cargar la sección activa">
+          <React.Suspense fallback={<TabLoadingSkeleton />}>
           {activeTab === 'cotizador' && (
           <div>
             <CotizadorForm 
@@ -1692,6 +1967,7 @@ export const App: React.FC = () => {
             onEliminarCuentaCobro={handleEliminarCuentaCobro}
             onActualizarOT={handleActualizarOT}
             onCrearCuentaCobro={handleCrearCuentaCobro}
+            onRegistrarPagoConsolidado={handleRegistrarPagoConsolidado}
             onNavigateTab={setActiveTab}
           />
         )}
@@ -1747,6 +2023,14 @@ export const App: React.FC = () => {
               handleAgregarPieza(pieza);
             }}
             onNavigateToCotizador={() => setActiveTab('cotizador')}
+            onRefreshStock={async () => {
+              const freshStock = await CloudSyncService.fetchProductosStock();
+              if (freshStock !== null) {
+                setProductosStock(freshStock);
+                StorageService.saveProductosStock(freshStock);
+              }
+              return freshStock;
+            }}
           />
         )}
 
@@ -1756,6 +2040,7 @@ export const App: React.FC = () => {
             ordenes={ordenes}
             cuentas={cuentas}
             resinas={resinas}
+            ventasExpress={ventasExpress}
             whatsappStatus={whatsappHealthStatus}
             onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
           />
@@ -1780,6 +2065,8 @@ export const App: React.FC = () => {
             onEliminarTarea={handleEliminarTarea}
             onCrearSolicitudInsumo={handleCrearSolicitudInsumo}
             onActualizarSolicitudInsumo={handleActualizarSolicitudInsumo}
+            activeOperator={activeOperator}
+            currentUser={currentUser}
           />
         )}
 
@@ -1810,19 +2097,35 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'usuarios' && (
+        {(activeTab === 'usuarios' || (activeTab as string) === 'personal') && (
           <UsuariosManagerView />
         )}
-        </React.Suspense>
+          </React.Suspense>
+        </ErrorBoundary>
+        )}
       </main>
 
-      {/* Barra de Navegación Inferior Mobile-First */}
-      <BottomNav 
-        activeTab={activeTab}
-        setActiveTab={setActiveTab}
-        pendingOTsCount={pendingOTs}
-        draftItemsCount={draftPieces.length}
-        onOpenBackupModal={() => setShowBackupModal(true)}
+      {/* Barra de Navegación Inferior Fija de 4 Hubs con Filtrado RBAC */}
+      <BottomNavBar 
+        activeHub={activeHub}
+        allowedHubs={permisos}
+        onSelectHub={(hub) => {
+          if (!canAccessHub(hub)) {
+            toast.warning(`Acceso restringido: ${activeOperator} no tiene privilegios para el área de ${hub.toUpperCase()}`);
+            return;
+          }
+          setActiveHub(hub);
+          const defaultTabs: Record<HubType, TabType> = {
+            ventas: 'cotizador',
+            taller: 'workflow',
+            finanzas: 'cuentas',
+            gestion: 'tareas',
+          };
+          setActiveTab(defaultTabs[hub]);
+        }}
+        pendingQuotesCount={cotizaciones.filter(c => c.estado === 'Borrador' || c.estado === 'Enviada').length}
+        activeOTsCount={pendingOTs}
+        pendingDebtsCount={cuentas.filter(c => c.saldo_pendiente > 0).length}
       />
 
       {/* Modal de Respaldos y Google Drive */}
@@ -1854,6 +2157,16 @@ export const App: React.FC = () => {
           }}
         />
       </React.Suspense>
+      {/* Modal de Cambio de PIN de Operador */}
+      <CambiarPinModal 
+        isOpen={showChangePinModal}
+        onClose={() => setShowChangePinModal(false)}
+        mode="internal"
+        usuarioId={currentUser.id}
+        usuarioNombre={currentUser.nombre}
+        onCambiarPinInterno={cambiarPin}
+        onRecuperarPin={recuperarPin}
+      />
     </div>
   );
 };

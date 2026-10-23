@@ -774,3 +774,5 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
     </div>
   );
 };
+
+export default CotizacionesList;

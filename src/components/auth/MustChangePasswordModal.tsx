@@ -34,26 +34,26 @@ export const MustChangePasswordModal: React.FC<MustChangePasswordModalProps> = (
       return;
     }
 
-    if (!strength.isValid) {
-      setErrorMessage('La nueva contraseña debe tener mínimo 8 caracteres, al menos 1 mayúscula y 1 número.');
+    if (!strength.isValid || newPassword.trim().length < 4) {
+      setErrorMessage('La nueva clave o PIN debe tener al menos 4 caracteres o dígitos.');
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('Las nuevas contraseñas no coinciden.');
+    if (newPassword.trim() !== confirmPassword.trim()) {
+      setErrorMessage('Las nuevas contraseñas o PINs no coinciden.');
       return;
     }
 
     setLoading(true);
     const res = await WhatsAppOtpService.updatePasswordInSession(
       userEmailOrId,
-      currentPassword,
-      newPassword
+      currentPassword.trim(),
+      newPassword.trim()
     );
     setLoading(false);
 
     if (res.success) {
-      toast.success('¡Contraseña actualizada exitosamente! Acceso concedido.');
+      toast.success('¡Clave o PIN actualizado exitosamente! Acceso concedido.');
       onPasswordChanged();
     } else {
       setErrorMessage(res.message);
@@ -152,15 +152,20 @@ export const MustChangePasswordModal: React.FC<MustChangePasswordModalProps> = (
           </div>
 
           <div>
-            <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Nueva Contraseña Personal
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Nueva Clave o PIN Personal
+              </label>
+              <span style={{ fontSize: '0.68rem', color: '#64748b' }}>
+                PIN numérico o clave alfanumérica
+              </span>
+            </div>
             <div style={{ position: 'relative' }}>
               <input 
                 type={showPassword ? 'text' : 'password'}
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
-                placeholder="Mínimo 8 caracteres, 1 mayúscula y 1 número..."
+                placeholder="PIN (ej: 1234) o clave alfanumérica compleja..."
                 style={{
                   width: '100%',
                   padding: '12px 42px 12px 14px',
@@ -194,28 +199,30 @@ export const MustChangePasswordModal: React.FC<MustChangePasswordModalProps> = (
             {newPassword && (
               <div style={{ marginTop: '8px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', color: strength.color, marginBottom: '4px' }}>
-                  <span>Seguridad: {strength.label}</span>
-                  <span>{strength.isValid ? '✓ Válida' : 'Faltan requisitos'}</span>
+                  <span>{strength.isPin ? 'Tipo: PIN Numérico' : `Seguridad: ${strength.label}`}</span>
+                  <span>{strength.isValid ? '✓ Válida para ingresar' : 'Mínimo 4 caracteres'}</span>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', height: '4px' }}>
-                  {[0, 1, 2, 3].map(i => (
-                    <div 
-                      key={i}
-                      style={{
-                        height: '100%',
-                        borderRadius: '2px',
-                        backgroundColor: i < strength.score ? strength.color : 'rgba(255,255,255,0.1)'
-                      }}
-                    />
-                  ))}
-                </div>
+                {!strength.isPin && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '4px', height: '4px' }}>
+                    {[0, 1, 2, 3].map(i => (
+                      <div 
+                        key={i}
+                        style={{
+                          height: '100%',
+                          borderRadius: '2px',
+                          backgroundColor: i < strength.score ? strength.color : 'rgba(255,255,255,0.1)'
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.75rem', fontWeight: 600, color: '#94a3b8', marginBottom: '6px', textTransform: 'uppercase' }}>
-              Confirmar Nueva Contraseña
+              Confirmar Nueva Clave o PIN
             </label>
             <input 
               type={showPassword ? 'text' : 'password'}

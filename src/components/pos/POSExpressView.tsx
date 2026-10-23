@@ -37,6 +37,7 @@ import {
 import { openWhatsApp } from '../../services/whatsappService';
 import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
 import { toast } from '../ui/ToastProvider';
+import { EmailNotificationService } from '../../services/emailNotificationService';
 
 interface POSExpressViewProps {
   ventas: VentaExpress[];
@@ -260,16 +261,28 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       origin: { y: 0.7 }
     });
 
-    // Preguntar si desea enviar comprobante por WhatsApp
+    // Despacho no bloqueante (elimina bloqueo de 10s por window.confirm)
     const detalleOT = nuevaVenta.requiere_ot 
-      ? `\n🛠️ Se programó la Orden de Trabajo (${nuevaVenta.estado_diseno === 'ya_realizado' ? 'Diseño Listo para taller' : 'Requiere Modelado Nuevo por Germán'}).` 
+      ? ` • OT programada (${nuevaVenta.estado_diseno === 'ya_realizado' ? 'Diseño Listo' : 'Modelado por Germán'})` 
       : '';
 
+    toast.success(`Venta ${nuevaVenta.numero_venta} registrada exitosamente`, detalleOT || undefined);
     if (nuevaVenta.cliente_telefono && nuevaVenta.cliente_telefono !== '3000000000') {
       const waUrl = generarWhatsAppComprobantePOS(nuevaVenta, config);
-      if (confirm(`¡Venta ${nuevaVenta.numero_venta} registrada exitosamente!${detalleOT}\n\n¿Deseas enviar el comprobante por WhatsApp a ${nuevaVenta.cliente_nombre}?`)) {
-        openWhatsApp(waUrl);
-      }
+      openWhatsApp(waUrl);
+    }
+
+    // Disparo dual por correo de contingencia si el cliente tiene correo registrado
+    const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === nuevaVenta.cliente_nombre.toLowerCase().trim());
+    if (clienteMatch?.correo) {
+      EmailNotificationService.enviarCorreoAbono(
+        clienteMatch,
+        nuevaVenta.numero_venta,
+        nuevaVenta.abono,
+        nuevaVenta.saldo_pendiente,
+        nuevaVenta.total,
+        nuevaVenta.metodo_pago
+      );
     }
 
     // Reset Form
@@ -1474,3 +1487,5 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     </div>
   );
 };
+
+export default POSExpressView;
