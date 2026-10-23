@@ -958,8 +958,9 @@ BEGIN
 END;
 $$;
 
--- 6.3. vista_balance_taller (Vista Canónica de Balances Financieros)
-CREATE OR REPLACE VIEW public.vista_balance_taller AS
+-- 6.3. vista_balance_taller (Vista Canónica de Balances Financieros con Security Invoker)
+CREATE OR REPLACE VIEW public.vista_balance_taller 
+WITH (security_invoker = true) AS
 SELECT
   COALESCE(SUM(monto), 0) AS total_ingresos_recaudados,
   COALESCE(SUM(CASE WHEN metodo_pago = 'NEQUI' THEN monto ELSE 0 END), 0) AS recaudado_nequi,
