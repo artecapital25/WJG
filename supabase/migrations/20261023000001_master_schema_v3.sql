@@ -69,8 +69,9 @@ CREATE TABLE IF NOT EXISTS public.usuarios_taller (
     cedula VARCHAR(30) UNIQUE,
     nombre VARCHAR(100) NOT NULL,
     rol public.rol_taller NOT NULL DEFAULT 'OPERADOR_GENERAL',
-    pin_hash VARCHAR(255) NOT NULL,
-    pin_acceso VARCHAR(10) DEFAULT '1234',
+    pin_hash VARCHAR(255),
+    password_hash VARCHAR(255),
+    pin_acceso TEXT DEFAULT '1234',
     telefono VARCHAR(30) UNIQUE NOT NULL,
     telefono_notificaciones VARCHAR(30),
     email VARCHAR(150) UNIQUE NOT NULL,
@@ -86,7 +87,10 @@ CREATE TABLE IF NOT EXISTS public.usuarios_taller (
 
 -- Asegurar columnas si ya existía la tabla
 ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS cedula VARCHAR(30);
-ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS pin_acceso VARCHAR(10) DEFAULT '1234';
+ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS pin_acceso TEXT DEFAULT '1234';
+ALTER TABLE public.usuarios_taller ALTER COLUMN pin_acceso TYPE TEXT;
+ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS password_hash VARCHAR(255);
+ALTER TABLE public.usuarios_taller ALTER COLUMN pin_hash DROP NOT NULL;
 ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS permisos_areas JSONB DEFAULT '["taller"]'::jsonb;
 ALTER TABLE public.usuarios_taller ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE;
 
