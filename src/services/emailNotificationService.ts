@@ -68,12 +68,33 @@ export const EmailNotificationService = {
         return { success: false, error: 'Correo de destinatario inválido o no suministrado' };
       }
 
-      // Circuit Breaker: si la Edge Function no está expresamente habilitada en .env, registrar directamente
-      // en la tabla registro_notificaciones sin arrojar errores rojos de CORS / net::ERR_FAILED en la consola
-      const isEdgeFunctionEnabled = Boolean((import.meta as any).env?.VITE_ENABLE_EDGE_EMAIL === 'true');
-
+      // 1. Despacho prioritario vía Google Apps Script Webhook (wjgeeks3d@gmail.com)
+      const googleScriptUrl = (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL;
       let functionInvokedOk = false;
-      if (isEdgeFunctionEnabled) {
+
+      if (googleScriptUrl && googleScriptUrl.startsWith('https://script.google.com/')) {
+        try {
+          await fetch(googleScriptUrl, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: {
+              'Content-Type': 'text/plain;charset=utf-8'
+            },
+            body: JSON.stringify({
+              action: 'send_email',
+              ...payload,
+              remitente: LINEA_CENTRAL_EMPRESA.correo
+            })
+          });
+          functionInvokedOk = true;
+        } catch (gasErr) {
+          console.warn('[EmailNotification] Fallo al despachar por Google Apps Script:', gasErr);
+        }
+      }
+
+      // 2. Despacho alternativo vía Edge Function si está explícitamente habilitada
+      const isEdgeFunctionEnabled = Boolean((import.meta as any).env?.VITE_ENABLE_EDGE_EMAIL === 'true');
+      if (!functionInvokedOk && isEdgeFunctionEnabled) {
         try {
           const { error } = await supabase.functions.invoke('send-transactional-email', {
             body: {
@@ -90,17 +111,13 @@ export const EmailNotificationService = {
         }
       }
 
-      if (functionInvokedOk) {
-        return { success: true };
-      }
-
-      // Registro canónico en Supabase: tabla registro_notificaciones con remitente oficial wjgeeks3d@gmail.com
+      // 3. Registro canónico en Supabase: tabla registro_notificaciones para trazabilidad
       try {
         await supabase.from('registro_notificaciones').insert([{
           tipo_canal: 'CORREO',
           destinatario: payload.destinatario_correo,
           mensaje_resumen: `Correo ${payload.tipo}: ${payload.asunto || 'Notificación'} para ${payload.destinatario_nombre}`,
-          estado_envio: 'EN_COLA',
+          estado_envio: functionInvokedOk ? 'ENVIADO' : 'EN_COLA',
           created_at: new Date().toISOString()
         }]);
       } catch (_) {
@@ -112,6 +129,28 @@ export const EmailNotificationService = {
       console.info('[EmailNotification] Notificación procesada en modo contingencia.');
       return { success: true };
     }
+  },
+
+  /**
+   * Envía un correo de prueba de conectividad y mensajería
+   */
+  async enviarCorreoPrueba(correoDestino: string, nombreDestino: string = 'Germán'): Promise<{ success: boolean; error?: string }> {
+    const payload: TransactionalEmailPayload = {
+      tipo: 'alerta_equipo',
+      destinatario_correo: correoDestino.replace(/\.,com$/i, '.com').trim(),
+      destinatario_nombre: nombreDestino,
+      asunto: '🚀 Prueba de Mensajería Transaccional - WJGEEKS 3D PRO',
+      datos: {
+        numero_doc: 'TEST-001',
+        total: 85000,
+        abono: 45000,
+        saldo_pendiente: 40000,
+        metodo_pago: 'Bre-B (0090778625)',
+        item_nombre: 'Figura Articulada Dragón Mech 3D (Resina 8K)'
+      }
+    };
+
+    return this.enviarCorreoTransaccional(payload);
   },
 
   /**

@@ -1,32 +1,37 @@
 /**
  * ============================================================================
- * WJGEEKS 3D PRO - GOOGLE APPS SCRIPT DATABASE SYNC
+ * WJGEEKS 3D PRO - GOOGLE APPS SCRIPT DATABASE SYNC & EMAIL DISPATCHER
  * ============================================================================
  * 
- * Este script convierte tu Google Spreadsheet en una base de datos visual
- * sincronizada en tiempo real con la aplicación WJGEEKS 3D PRO.
+ * Este script cumple una doble función esencial para WJGEEKS 3D:
+ * 1. Envío de Correos Transaccionales Automáticos desde wjgeeks3d@gmail.com
+ *    (Cotizaciones, Abonos, Notificaciones de Pieza Terminada y Alertas).
+ * 2. Sincronización en tiempo real de la base de datos con Google Sheets.
  * 
- * INSTRUCCIONES DE INSTALACIÓN (3 PASOS):
- * 1. En Google Drive, crea una Hoja de Cálculo nueva llamada "WJGEEKS 3D - Base de Datos".
- * 2. En el menú superior de la hoja, ve a: Extensiones > Apps Script.
- * 3. Borra todo el código que aparezca y pega TODO este archivo.
- * 4. Haz clic en "Guardar" (icono de disquete).
- * 5. Haz clic en "Implementar" (botón azul arriba a la derecha) > "Nueva implementación".
- *    - Tipo: Aplicación web
- *    - Descripción: WJGEEKS Sync API
- *    - Ejecutar como: Yo (tu correo de Google)
- *    - Quién tiene acceso: Cualquiera (Anyone)
- * 6. Copia la "URL de la aplicación web" generada (termina en /exec) y pégala
- *    en la ventana de Google Sheets de WJGEEKS 3D.
+ * INSTRUCCIONES DE ACTUALIZACIÓN / INSTALACIÓN:
+ * 1. Ve a https://script.google.com y abre el proyecto de WJGEEKS 3D.
+ * 2. Borra el código anterior y pega TODO este archivo.
+ * 3. Haz clic en "Guardar" (icono de disquete).
+ * 4. Para autorizar el envío de correos por primera vez:
+ *    - En el menú superior de funciones, selecciona "testEnviarCorreoPrueba".
+ *    - Haz clic en "Ejecutar" (Run).
+ *    - Google te pedirá "Revisar permisos" > Selecciona wjgeeks3d@gmail.com >
+ *      Opciones avanzadas > "Ir a WJGEEKS Sync (no seguro)" > Permitir.
+ *    - ¡Eso enviará de inmediato el correo de prueba a german.951026@gmail.com!
+ * 5. Haz clic en "Implementar" (botón azul arriba a la derecha) > "Administrar implementaciones".
+ *    - Haz clic en el icono del lápiz (Editar).
+ *    - En "Versión", selecciona "Nueva versión".
+ *    - Haz clic en "Implementar".
  * ============================================================================
  */
 
 function doGet(e) {
   return ContentService.createTextOutput(JSON.stringify({
     status: "ok",
-    app: "WJGEEKS 3D PRO Sync API",
-    version: "2.0",
-    message: "Google Apps Script activo y listo para recibir sincronizaciones.",
+    app: "WJGEEKS 3D PRO Sync & Mail API",
+    version: "3.0",
+    message: "Google Apps Script activo y listo para despachar correos y sincronizaciones.",
+    emailSender: "wjgeeks3d@gmail.com",
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
 }
@@ -42,7 +47,34 @@ function doPost(e) {
     }
 
     var data = JSON.parse(contents);
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
+
+    // =========================================================
+    // ENRUTADOR 1: DESPACHO DE CORREO TRANSACCIONAL
+    // =========================================================
+    if (data.action === "send_email" || data.destinatario_correo || data.tipo === "correo" || data.tipo === "prueba") {
+      var emailResult = enviarCorreoTransaccionalGAS(data);
+      return ContentService.createTextOutput(JSON.stringify(emailResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // =========================================================
+    // ENRUTADOR 2: SINCRONIZACIÓN DE GOOGLE SHEETS
+    // =========================================================
+    var ss = null;
+    try {
+      ss = SpreadsheetApp.getActiveSpreadsheet();
+    } catch (eSs) {
+      ss = null;
+    }
+
+    if (!ss) {
+      return ContentService.createTextOutput(JSON.stringify({
+        status: "warning",
+        message: "Petición procesada, pero no hay una hoja de cálculo vinculada a este script para sincronización de tablas.",
+        recibido: Object.keys(data)
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
+
     var timezone = Session.getScriptTimeZone() || "GMT-5";
     var fechaActual = Utilities.formatDate(new Date(), timezone, "yyyy-MM-dd HH:mm:ss");
 
@@ -96,6 +128,198 @@ function doPost(e) {
       stack: error.stack
     })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// =============================================================
+// FUNCIÓN CENTRAL: MOTOR DE CORREO TRANSACCIONAL WJGEEKS 3D
+// =============================================================
+function enviarCorreoTransaccionalGAS(data) {
+  var destinatario = data.destinatario_correo || data.to || "";
+  destinatario = destinatario.replace(/\.,com$/i, ".com").replace(/,\s*com$/i, ".com").trim();
+
+  if (!destinatario || destinatario.indexOf("@") === -1) {
+    return {
+      status: "error",
+      message: "Correo destinatario inválido: " + destinatario
+    };
+  }
+
+  var nombre = data.destinatario_nombre || "Cliente WJGEEKS";
+  var tipo = (data.tipo || "notificacion").toLowerCase();
+  var asunto = data.asunto || ("WJGEEKS 3D PRO - Notificación Oficial (" + tipo.toUpperCase() + ")");
+  var trackingUrl = data.tracking_url || "https://wjg-lyart.vercel.app/";
+  var datos = data.datos || {};
+
+  var numeroDoc = datos.numero_doc || "DOC-001";
+  var total = typeof datos.total === "number" ? "$" + datos.total.toLocaleString("es-CO") + " COP" : "";
+  var abono = typeof datos.abono === "number" ? "$" + datos.abono.toLocaleString("es-CO") + " COP" : "";
+  var saldo = typeof datos.saldo_pendiente === "number" ? "$" + datos.saldo_pendiente.toLocaleString("es-CO") + " COP" : "";
+  var metodoPago = datos.metodo_pago || "Bre-B / Nequi";
+  var itemNombre = datos.item_nombre || "Prototipo / Pieza Impresión 3D";
+
+  // Generación de Plantilla HTML Responsiva de Alto Impacto
+  var htmlBody = `
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>${asunto}</title>
+    </head>
+    <body style="margin: 0; padding: 0; background-color: #0b0f19; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f8fafc;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0b0f19; padding: 24px 12px;">
+        <tr>
+          <td align="center">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0" style="max-width: 600px; background-color: #111827; border: 1px solid #1f2937; border-radius: 16px; overflow: hidden; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);">
+              
+              <!-- HEADER CON GRADIENTE CYBERPUNK -->
+              <tr>
+                <td style="padding: 28px 24px; text-align: center; background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0369a1 100%); border-bottom: 2px solid #38bdf8;">
+                  <h1 style="margin: 0; font-size: 26px; font-weight: 900; letter-spacing: 2px; color: #38bdf8; text-transform: uppercase;">
+                    WJGEEKS <span style="color: #a855f7;">3D PRO</span>
+                  </h1>
+                  <p style="margin: 6px 0 0 0; font-size: 13px; color: #94a3b8; letter-spacing: 1px; text-transform: uppercase;">
+                    Taller de Impresión 3D, Resina 8K & Prototipado Avanzado
+                  </p>
+                </td>
+              </tr>
+
+              <!-- CONTENIDO PRINCIPAL -->
+              <tr>
+                <td style="padding: 32px 28px;">
+                  <div style="display: inline-block; padding: 4px 12px; background: rgba(56, 189, 248, 0.15); border: 1px solid #38bdf8; border-radius: 20px; font-size: 11px; font-weight: bold; color: #38bdf8; text-transform: uppercase; margin-bottom: 16px;">
+                    ${tipo === 'prueba' ? '⚡ PRUEBA DE CONEXIÓN' : (tipo === 'cotizacion' ? '💼 COTIZACIÓN FORMAL' : (tipo === 'abono' ? '💳 COMPROBANTE DE PAGO' : '🎉 PIEZA FINALIZADA'))}
+                  </div>
+
+                  <h2 style="margin: 0 0 12px 0; font-size: 20px; color: #ffffff;">
+                    Hola, <span style="color: #38bdf8;">${nombre}</span> 👋
+                  </h2>
+
+                  <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">
+                    ${tipo === 'prueba' 
+                      ? 'Este es un correo de prueba enviado automáticamente a través del canal oficial de mensajería de <strong>WJGEEKS 3D PRO</strong> desde <code>wjgeeks3d@gmail.com</code>.' 
+                      : (tipo === 'cotizacion' 
+                        ? 'Adjuntamos los detalles de tu cotización formal. Tu proyecto ha sido calculado con los parámetros óptimos de precisión y resistencia.' 
+                        : (tipo === 'abono'
+                          ? 'Hemos recibido y validado tu abono satisfactoriamente en el libro mayor contable.'
+                          : '¡Grandes noticias! Tu modelo 3D ha completado con éxito la impresión, lavado y post-curado UV.'))}
+                  </p>
+
+                  <!-- TARJETA DE DETALLES DEL DOCUMENTO -->
+                  <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #0f172a; border: 1px solid #1e293b; border-radius: 12px; margin-bottom: 24px; overflow: hidden;">
+                    <tr>
+                      <td style="padding: 16px; border-bottom: 1px solid #1e293b;">
+                        <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; font-weight: bold;">Referencia / Documento</span>
+                        <span style="font-size: 16px; font-weight: bold; color: #f8fafc;">${numeroDoc}</span>
+                      </td>
+                    </tr>
+                    ${itemNombre ? `
+                    <tr>
+                      <td style="padding: 16px; border-bottom: 1px solid #1e293b;">
+                        <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; font-weight: bold;">Ítem / Proyecto</span>
+                        <span style="font-size: 14px; color: #e2e8f0;">${itemNombre}</span>
+                      </td>
+                    </tr>` : ''}
+                    ${total ? `
+                    <tr>
+                      <td style="padding: 16px; border-bottom: 1px solid #1e293b;">
+                        <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; font-weight: bold;">Valor Total</span>
+                        <span style="font-size: 18px; font-weight: 800; color: #38bdf8;">${total}</span>
+                      </td>
+                    </tr>` : ''}
+                    ${abono ? `
+                    <tr>
+                      <td style="padding: 16px; border-bottom: 1px solid #1e293b;">
+                        <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; font-weight: bold;">Abonado / Pagado (${metodoPago})</span>
+                        <span style="font-size: 16px; font-weight: bold; color: #4ade80;">${abono}</span>
+                      </td>
+                    </tr>` : ''}
+                    ${saldo ? `
+                    <tr>
+                      <td style="padding: 16px;">
+                        <span style="font-size: 12px; color: #64748b; text-transform: uppercase; display: block; font-weight: bold;">Saldo Remanente</span>
+                        <span style="font-size: 16px; font-weight: bold; color: #f87171;">${saldo}</span>
+                      </td>
+                    </tr>` : ''}
+                  </table>
+
+                  <!-- BOTÓN DE ACCIÓN / SEGUIMIENTO -->
+                  <div style="text-align: center; margin: 32px 0;">
+                    <a href="${trackingUrl}" target="_blank" style="display: inline-block; padding: 14px 32px; background: linear-gradient(135deg, #0284c7 0%, #2563eb 100%); color: #ffffff; text-decoration: none; font-size: 14px; font-weight: bold; border-radius: 8px; box-shadow: 0 4px 14px rgba(37, 99, 235, 0.4); text-transform: uppercase; letter-spacing: 1px;">
+                      👉 Acceder a WJGEEKS 3D en Vivo
+                    </a>
+                  </div>
+
+                  <p style="margin: 0; font-size: 12px; color: #64748b; text-align: center;">
+                    Si tienes dudas sobre este mensaje, puedes responder directamente a este correo o contactar a nuestra línea oficial de atención.
+                  </p>
+                </td>
+              </tr>
+
+              <!-- FOOTER CORPORATIVO -->
+              <tr>
+                <td style="padding: 24px; background-color: #0b0f19; border-top: 1px solid #1f2937; text-align: center;">
+                  <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: bold; color: #94a3b8;">
+                    WJGEEKS 3D - Taller y Producción
+                  </p>
+                  <p style="margin: 0 0 12px 0; font-size: 12px; color: #64748b;">
+                    📱 WhatsApp Oficial: <a href="https://wa.me/573202796115" style="color: #38bdf8; text-decoration: none;">+57 320 2796115</a> | 📷 Instagram: <a href="https://instagram.com/WJGEEKS3D" style="color: #a855f7; text-decoration: none;">@WJGEEKS3D</a><br>
+                    ✉️ Correo: <a href="mailto:wjgeeks3d@gmail.com" style="color: #94a3b8; text-decoration: none;">wjgeeks3d@gmail.com</a> | 🇨🇴 Bogotá, Colombia
+                  </p>
+                  <p style="margin: 0; font-size: 10px; color: #475569;">
+                    © ${new Date().getFullYear()} WJGEEKS 3D. Sistema de Producción & Taller.
+                  </p>
+                </td>
+              </tr>
+
+            </table>
+          </td>
+        </tr>
+      </table>
+    </body>
+    </html>
+  `;
+
+  // Despacho del Correo mediante MailApp nativo de Google Workspace / Gmail
+  MailApp.sendEmail({
+    to: destinatario,
+    subject: asunto,
+    htmlBody: htmlBody,
+    name: "WJGEEKS 3D - Taller & Prototipado"
+  });
+
+  return {
+    status: "success",
+    action: "send_email",
+    destinatario: destinatario,
+    asunto: asunto,
+    message: "Correo enviado exitosamente vía Gmail desde wjgeeks3d@gmail.com",
+    timestamp: new Date().toISOString()
+  };
+}
+
+// =============================================================
+// FUNCIÓN DE PRUEBA RÁPIDA DESDE EL EDITOR DE GOOGLE APPS SCRIPT
+// =============================================================
+function testEnviarCorreoPrueba() {
+  var resultado = enviarCorreoTransaccionalGAS({
+    action: "send_email",
+    destinatario_correo: "german.951026@gmail.com",
+    destinatario_nombre: "Germán",
+    asunto: "🚀 Prueba de Mensajería Transaccional - WJGEEKS 3D PRO",
+    tipo: "prueba",
+    datos: {
+      numero_doc: "TEST-001",
+      item_nombre: "Figura Articulada Dragón Mech 3D (Resina 8K)",
+      total: 85000,
+      abono: 45000,
+      saldo_pendiente: 40000,
+      metodo_pago: "Bre-B (0090778625)"
+    }
+  });
+
+  Logger.log("Resultado del envío de prueba: " + JSON.stringify(resultado));
+  return resultado;
 }
 
 // -------------------------------------------------------------
@@ -207,38 +431,39 @@ function actualizarCotizaciones(ss, cotizaciones) {
 }
 
 // -------------------------------------------------------------
-// 3. ÓRDENES DE TRABAJO (OTs)
+// 3. ÓRDENES DE TRABAJO (OT)
 // -------------------------------------------------------------
 function actualizarOrdenesTrabajo(ss, ordenes) {
   var headers = [
-    "ID OT", "Código OT", "Cliente", "Pieza / Proyecto", "Estado Taller", 
-    "Prioridad", "Fecha Ingreso", "Fecha Entrega", "Total ($)", "Abono ($)", 
-    "Saldo Pendiente ($)", "Máquina", "Notas Técnicas"
+    "ID OT", "Número OT", "Cliente", "Teléfono", "Pieza / Proyecto", 
+    "Estado Producción", "Estado Pago", "Abono ($)", "Saldo Pendiente ($)", 
+    "Total Cobrado ($)", "Impresora", "Resina", "Prioridad", "Fecha Compromiso"
   ];
-  var sheet = getOrCreateSheet(ss, "⚙️ ORDENES_TRABAJO", headers, "#34d399");
+  var sheet = getOrCreateSheet(ss, "🏭 ORDENES_TRABAJO", headers, "#34d399");
 
   if (ordenes.length === 0) return;
 
   var rows = ordenes.map(function(o) {
     return [
       o.id || "",
-      o.codigo || o.numero || "",
-      o.clienteNombre || o.cliente?.nombre || "",
-      o.nombrePieza || o.descripcion || "",
+      o.numero_ot || "",
+      o.cliente_nombre || "",
+      o.cliente_telefono || "",
+      o.item_nombre || "",
       o.estado || "pendiente",
-      o.prioridad || "normal",
-      o.fechaCreacion || o.fecha || "",
-      o.fechaEntrega || "",
-      o.total || 0,
+      o.estado_pago || "pendiente",
       o.abono || 0,
-      (o.total || 0) - (o.abono || 0),
-      o.maquinaAsignada || o.maquina || "No asignada",
-      o.notas || ""
+      o.saldo_pendiente || 0,
+      o.precio_cobrado || 0,
+      o.impresora_asignada || "General",
+      o.resina_usada || "Estándar",
+      o.prioridad || "normal",
+      o.fecha_compromiso || ""
     ];
   });
 
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  sheet.getRange(2, 9, rows.length, 3).setNumberFormat("$#,##0");
+  sheet.getRange(2, 8, rows.length, 3).setNumberFormat("$#,##0");
   autoFitColumns(sheet, headers.length);
 }
 
@@ -247,35 +472,30 @@ function actualizarOrdenesTrabajo(ss, ordenes) {
 // -------------------------------------------------------------
 function actualizarVentasPOS(ss, ventas) {
   var headers = [
-    "ID Venta", "Fecha y Hora", "Cliente", "Detalle de Productos", 
-    "Método de Pago", "Subtotal ($)", "Descuento ($)", "Total Pagado ($)", 
-    "Estado Pago", "Referencia / Notas"
+    "ID Venta", "Fecha", "Cliente", "Teléfono", "Total Venta ($)", 
+    "Método Pago", "Cant. Productos", "Productos Vendidos", "Vendedor"
   ];
-  var sheet = getOrCreateSheet(ss, "⚡ VENTAS_POS", headers, "#fbbf24");
+  var sheet = getOrCreateSheet(ss, "⚡ VENTAS_POS_EXPRESS", headers, "#f59e0b");
 
   if (ventas.length === 0) return;
 
   var rows = ventas.map(function(v) {
-    var itemsDesc = (v.items || []).map(function(it) { 
-      return (it.nombre || 'Item') + " x" + (it.cantidad || 1) + " ($" + (it.precioUnitario || 0) + ")"; 
-    }).join(" | ");
-
+    var itemsSummary = (v.items || []).map(function(i) { return (i.nombre || i.nombre_item) + " (x" + i.cantidad + ")"; }).join(", ");
     return [
       v.id || "",
       v.fecha || "",
-      v.clienteNombre || "Cliente Mostrador",
-      itemsDesc || v.descripcion || "Venta de mostrador",
-      v.metodoPago || "Efectivo",
-      v.subtotal || v.total || 0,
-      v.descuento || 0,
+      v.cliente_nombre || "Cliente Mostrador",
+      v.cliente_telefono || "",
       v.total || 0,
-      v.estadoPago || "completado",
-      v.notas || v.referencia || ""
+      v.metodo_pago || "Efectivo",
+      (v.items || []).length,
+      itemsSummary,
+      v.vendedor_nombre || "Taller WJ"
     ];
   });
 
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  sheet.getRange(2, 6, rows.length, 3).setNumberFormat("$#,##0");
+  sheet.getRange(2, 5, rows.length, 1).setNumberFormat("$#,##0");
   autoFitColumns(sheet, headers.length);
 }
 
@@ -283,23 +503,17 @@ function actualizarVentasPOS(ss, ventas) {
 // 5. CLIENTES
 // -------------------------------------------------------------
 function actualizarClientes(ss, clientes) {
-  var headers = [
-    "ID Cliente", "Nombre Completo", "Teléfono / WhatsApp", 
-    "Email", "Ciudad", "Dirección", "Tipo Cliente", "Notas"
-  ];
-  var sheet = getOrCreateSheet(ss, "👥 CLIENTES", headers, "#60a5fa");
+  var headers = ["Nombre", "Teléfono", "Correo", "Dirección / Ciudad", "Notas"];
+  var sheet = getOrCreateSheet(ss, "👥 CLIENTES", headers, "#a78bfa");
 
   if (clientes.length === 0) return;
 
   var rows = clientes.map(function(c) {
     return [
-      c.id || "",
       c.nombre || "",
       c.telefono || "",
-      c.email || "",
-      c.ciudad || "",
+      c.correo || "",
       c.direccion || "",
-      c.tipo || "Particular",
       c.notas || ""
     ];
   });
@@ -311,32 +525,30 @@ function actualizarClientes(ss, clientes) {
 // -------------------------------------------------------------
 // 6. PRODUCTOS EN STOCK
 // -------------------------------------------------------------
-function actualizarProductosStock(ss, productos) {
+function actualizarProductosStock(ss, stock) {
   var headers = [
-    "ID", "Nombre de Figura / Producto", "Categoría", "Stock Actual", 
-    "Stock Mínimo", "Precio Venta ($)", "Costo Estimado ($)", "Dimensiones", "Estado"
+    "ID", "Nombre del Producto", "Categoría", "Stock Actual", 
+    "Precio Venta ($)", "Precio Costo ($)", "Ubicación", "Estado"
   ];
-  var sheet = getOrCreateSheet(ss, "📦 STOCK_PRODUCTOS", headers, "#f472b6");
+  var sheet = getOrCreateSheet(ss, "📦 STOCK_INVENTARIO", headers, "#38bdf8");
 
-  if (productos.length === 0) return;
+  if (stock.length === 0) return;
 
-  var rows = productos.map(function(p) {
-    var estado = (p.stock || 0) <= 0 ? "Agotado" : (p.stock || 0) <= (p.stockMinimo || 1) ? "Stock Bajo" : "Disponible";
+  var rows = stock.map(function(p) {
     return [
       p.id || "",
       p.nombre || "",
-      p.categoria || "Figuras",
-      p.stock || 0,
-      p.stockMinimo || 1,
-      p.precioVenta || 0,
-      p.costo || 0,
-      p.dimensiones || "",
-      estado
+      p.categoria || "general",
+      p.stock !== undefined ? p.stock : 0,
+      p.precio_venta || 0,
+      p.precio_costo || 0,
+      p.ubicacion || "Vitrina Principal",
+      (p.stock || 0) > 0 ? "Disponible" : "Agotado"
     ];
   });
 
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
-  sheet.getRange(2, 6, rows.length, 2).setNumberFormat("$#,##0");
+  sheet.getRange(2, 5, rows.length, 2).setNumberFormat("$#,##0");
   autoFitColumns(sheet, headers.length);
 }
 
@@ -345,36 +557,34 @@ function actualizarProductosStock(ss, productos) {
 // -------------------------------------------------------------
 function actualizarMaterialesEInsumos(ss, resinas, insumos) {
   var headers = [
-    "Tipo Material", "ID", "Nombre / Referencia", "Marca / Rubro", 
-    "Costo Unitario ($)", "Unidad Medida", "Costo por Gramo/ML ($)", "Notas"
+    "Tipo", "Nombre", "Marca / Color", "Cantidad / Capacidad", 
+    "Precio Compra ($)", "Unidad", "Costo x Gramo / Unidad ($)"
   ];
-  var sheet = getOrCreateSheet(ss, "🧪 RESINAS_E_INSUMOS", headers, "#a78bfa");
+  var sheet = getOrCreateSheet(ss, "🧪 RESINAS_E_INSUMOS", headers, "#ec4899");
 
   var rows = [];
 
-  resinas.forEach(function(r) {
+  (resinas || []).forEach(function(r) {
     rows.push([
       "Resina 3D",
-      r.id || "",
       r.nombre || "",
-      r.marca || "",
-      r.costoPorKg || r.costo || 0,
-      "Kg / Litro",
-      r.costoPorGramo || ((r.costoPorKg || 0) / 1000),
-      "Densidad: " + (r.densidad || 1.1) + " g/cm³"
+      r.color || "Gris",
+      (r.peso_kg || 1) + " kg (" + (r.gramos_totales || 1000) + "g)",
+      r.costo_total || 0,
+      "Gramos",
+      r.costo_por_gramo || 0
     ]);
   });
 
-  insumos.forEach(function(i) {
+  (insumos || []).forEach(function(i) {
     rows.push([
-      "Insumo / Pintura",
-      i.id || "",
+      "Insumo Taller",
       i.nombre || "",
-      i.categoria || i.rubro || "Consumible",
-      i.costoUnitario || i.costo || 0,
-      i.unidad || "Unidad",
-      0,
-      i.descripcion || ""
+      i.categoria || "Acabado",
+      i.unidades_por_paquete || 1,
+      i.costo_paquete || 0,
+      i.unidad_medida || "unidad",
+      i.costo_unitario || 0
     ]);
   });
 
