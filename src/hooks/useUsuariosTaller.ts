@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { UsuarioTaller, UsuarioTallerInput } from '../types/usuarios.types';
+import { UsuarioTaller, UsuarioTallerInput, parseDispositivoInfo } from '../types/usuarios.types';
 import { toast } from '../components/ui/ToastProvider';
 import { AuthSecurityService } from '../services/authSecurityService';
 
@@ -107,7 +107,8 @@ export function useUsuariosTaller() {
         // Normalizar permisos_areas a Array de strings
         const normalized: UsuarioTaller[] = data.map(item => ({
           ...item,
-          permisos_areas: Array.isArray(item.permisos_areas) ? item.permisos_areas : ['taller']
+          permisos_areas: Array.isArray(item.permisos_areas) ? item.permisos_areas : ['taller'],
+          dispositivo_info: parseDispositivoInfo(item.dispositivo_info)
         }));
         persistCache(normalized);
       } else {
@@ -542,6 +543,28 @@ export function useUsuariosTaller() {
     }
   };
 
+  const marcarDispositivoSeguro = async (usuarioId: string, fingerprint: string) => {
+    const ok = await AuthSecurityService.toggleDeviceTrust(usuarioId, fingerprint, true);
+    if (ok) {
+      toast.success('Dispositivo marcado como seguro y de confianza.');
+      await fetchUsuarios();
+    } else {
+      toast.error('No se pudo actualizar el estado de confianza del dispositivo.');
+    }
+    return ok;
+  };
+
+  const revocarDispositivoSeguro = async (usuarioId: string, fingerprint: string) => {
+    const ok = await AuthSecurityService.toggleDeviceTrust(usuarioId, fingerprint, false);
+    if (ok) {
+      toast.warning('Dispositivo revocado. Requerirá nueva verificación.');
+      await fetchUsuarios();
+    } else {
+      toast.error('No se pudo revocar el dispositivo.');
+    }
+    return ok;
+  };
+
   return {
     usuarios,
     isLoading,
@@ -553,6 +576,8 @@ export function useUsuariosTaller() {
     updateUsuario,
     toggleActivo,
     cambiarPin,
-    recuperarPin
+    recuperarPin,
+    marcarDispositivoSeguro,
+    revocarDispositivoSeguro
   };
 }

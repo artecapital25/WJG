@@ -1,7 +1,5 @@
-/**
- * Servicio de Seguridad de Autenticación, Dispositivos de Confianza
- * y Verificación de Credenciales (Sin secretos en texto plano)
- */
+import { DispositivoConexion, DispositivoInfoConsolidado, parseDispositivoInfo } from '../types/usuarios.types';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const TRUSTED_DEVICE_KEY = 'wjg_trusted_device_session';
 const TRUSTED_DEVICE_EXPIRY_DAYS = 30;
@@ -17,7 +15,7 @@ export class AuthSecurityService {
   /**
    * Genera un fingerprint seguro y no intrusivo del dispositivo
    */
-  private static getDeviceFingerprint(): string {
+  public static getDeviceFingerprint(): string {
     if (typeof window === 'undefined') return 'server';
     const nav = window.navigator;
     const screen = window.screen;
@@ -29,6 +27,214 @@ export class AuthSecurityService {
       hash |= 0;
     }
     return Math.abs(hash).toString(36);
+  }
+
+  /**
+   * Detecta metadatos del dispositivo actual (SO, Navegador, Tipo, Huella y Seguridad)
+   */
+  public static detectCurrentDeviceInfo(isTrustedExplicitly: boolean = false): DispositivoConexion {
+    if (typeof window === 'undefined') {
+      return {
+        id: 'server-mock',
+        nombre: 'Servidor',
+        tipo: 'escritorio',
+        navegador: 'Node.js',
+        so: 'Server',
+        fecha_conexion: new Date().toISOString(),
+        es_seguro: true,
+        fingerprint: 'server'
+      };
+    }
+
+    const nav = window.navigator;
+    const ua = nav.userAgent || '';
+    const screen = window.screen;
+
+    // 1. Tipo de Dispositivo
+    let tipo: 'escritorio' | 'movil' | 'tablet' = 'escritorio';
+    if (/iPad|tablet|PlayBook/i.test(ua) || (screen.width >= 600 && screen.width <= 1024 && /touch/i.test(ua))) {
+      tipo = 'tablet';
+    } else if (/Mobi|Android|iPhone|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)) {
+      tipo = 'movil';
+    }
+
+    // 2. Sistema Operativo
+    let so = 'Desconocido';
+    if (/Windows NT 10.0/i.test(ua)) so = 'Windows 10/11';
+    else if (/Windows/i.test(ua)) so = 'Windows';
+    else if (/Android ([0-9.]+)/i.test(ua)) so = `Android ${RegExp.$1 || ''}`.trim();
+    else if (/iPhone OS ([0-9_]+)/i.test(ua)) so = `iOS ${RegExp.$1.replace(/_/g, '.') || ''}`.trim();
+    else if (/Mac OS X/i.test(ua)) so = 'macOS';
+    else if (/Linux/i.test(ua)) so = 'Linux';
+
+    // 3. Navegador
+    let navegador = 'Navegador Web';
+    if (/Edg\/([0-9.]+)/i.test(ua)) navegador = `Edge ${RegExp.$1.split('.')[0]}`;
+    else if (/Chrome\/([0-9.]+)/i.test(ua)) navegador = `Chrome ${RegExp.$1.split('.')[0]}`;
+    else if (/Safari\/([0-9.]+)/i.test(ua) && !/Chrome/i.test(ua)) navegador = 'Safari';
+    else if (/Firefox\/([0-9.]+)/i.test(ua)) navegador = `Firefox ${RegExp.$1.split('.')[0]}`;
+
+    const fingerprint = this.getDeviceFingerprint();
+    const trustedCheck = this.checkTrustedDevice();
+    const es_seguro = isTrustedExplicitly || (trustedCheck.isTrusted && trustedCheck.staffUser !== null);
+
+    const tipoLabel = tipo === 'movil' ? 'Celular' : tipo === 'tablet' ? 'Tablet' : 'PC';
+    const nombre = `${so} (${navegador}) • ${tipoLabel}`;
+
+    return {
+      id: fingerprint,
+      nombre,
+      tipo,
+      navegador,
+      so,
+      resolucion: `${screen.width}x${screen.height}`,
+      fecha_conexion: new Date().toISOString(),
+      es_seguro,
+      fingerprint
+    };
+  }
+
+  /**
+   * Registra y persiste la conexión del usuario en Supabase y caché local,
+   * identificando si es el dispositivo seguro registrado o uno nuevo.
+   */
+  public static async recordUserConnection(
+    userId: string,
+    isRememberChecked: boolean = false
+  ): Promise<DispositivoInfoConsolidado> {
+    const currentDevice = this.detectCurrentDeviceInfo(isRememberChecked);
+    const ahoraIso = new Date().toISOString();
+
+    // Obtener caché previo para revisar historial
+    let existingConsolidado: DispositivoInfoConsolidado | null = null;
+    let cachedUsers: any[] = [];
+    try {
+      cachedUsers = JSON.parse(localStorage.getItem('wjg_usuarios_taller_cache') || '[]');
+      const user = cachedUsers.find(u => u.id === userId);
+      if (user && user.dispositivo_info) {
+        existingConsolidado = parseDispositivoInfo(user.dispositivo_info);
+      }
+    } catch {}
+
+    const historialPrevio = existingConsolidado?.historial_dispositivos || [];
+    const indexExistente = historialPrevio.findIndex(d => d.id === currentDevice.id || d.fingerprint === currentDevice.fingerprint);
+
+    let esNuevo = false;
+    let nuevoHistorial: DispositivoConexion[] = [];
+
+    if (indexExistente >= 0) {
+      // Dispositivo ya conocido previamente
+      const prev = historialPrevio[indexExistente];
+      const actualizado: DispositivoConexion = {
+        ...prev,
+        ...currentDevice,
+        fecha_conexion: ahoraIso,
+        // Si antes era seguro o ahora marcaron recordar, es seguro
+        es_seguro: prev.es_seguro || isRememberChecked || currentDevice.es_seguro,
+        es_nuevo: false
+      };
+      nuevoHistorial = [
+        actualizado,
+        ...historialPrevio.filter((_, i) => i !== indexExistente)
+      ];
+      currentDevice.es_seguro = actualizado.es_seguro;
+      currentDevice.es_nuevo = false;
+    } else {
+      // ¡Nuevo dispositivo detectado!
+      esNuevo = !isRememberChecked && !currentDevice.es_seguro;
+      currentDevice.es_nuevo = esNuevo;
+      nuevoHistorial = [currentDevice, ...historialPrevio].slice(0, 10); // Conservar últimos 10
+    }
+
+    const consolidadoFinal: DispositivoInfoConsolidado = {
+      ultimo_dispositivo: currentDevice,
+      historial_dispositivos: nuevoHistorial
+    };
+
+    // Actualizar caché local inmediatamente
+    try {
+      const updatedCache = cachedUsers.map(u => {
+        if (u.id === userId) {
+          return {
+            ...u,
+            ultimo_acceso: ahoraIso,
+            dispositivo_info: consolidadoFinal
+          };
+        }
+        return u;
+      });
+      localStorage.setItem('wjg_usuarios_taller_cache', JSON.stringify(updatedCache));
+    } catch {}
+
+    // Actualizar en Supabase si está disponible
+    if (isSupabaseConfigured && supabase) {
+      try {
+        await supabase
+          .from('usuarios_taller')
+          .update({
+            ultimo_acceso: ahoraIso,
+            dispositivo_info: JSON.stringify(consolidadoFinal)
+          })
+          .eq('id', userId);
+      } catch (err) {
+        console.warn('No se pudo sincronizar dispositivo_info en Supabase:', err);
+      }
+    }
+
+    return consolidadoFinal;
+  }
+
+  /**
+   * Permite al Administrador marcar o revocar un dispositivo como de confianza
+   */
+  public static async toggleDeviceTrust(
+    usuarioId: string,
+    deviceFingerprint: string,
+    makeTrusted: boolean
+  ): Promise<boolean> {
+    try {
+      const cachedUsers: any[] = JSON.parse(localStorage.getItem('wjg_usuarios_taller_cache') || '[]');
+      const user = cachedUsers.find(u => u.id === usuarioId);
+      if (!user) return false;
+
+      const consolidado = parseDispositivoInfo(user.dispositivo_info);
+      if (!consolidado) return false;
+
+      const updatedHistorial = consolidado.historial_dispositivos.map(d => {
+        if (d.id === deviceFingerprint || d.fingerprint === deviceFingerprint) {
+          return { ...d, es_seguro: makeTrusted, es_nuevo: false };
+        }
+        return d;
+      });
+
+      const updatedUltimo = consolidado.ultimo_dispositivo.id === deviceFingerprint
+        ? { ...consolidado.ultimo_dispositivo, es_seguro: makeTrusted, es_nuevo: false }
+        : consolidado.ultimo_dispositivo;
+
+      const nuevoConsolidado: DispositivoInfoConsolidado = {
+        ultimo_dispositivo: updatedUltimo,
+        historial_dispositivos: updatedHistorial
+      };
+
+      // Guardar en cache
+      const updatedCache = cachedUsers.map(u => u.id === usuarioId ? { ...u, dispositivo_info: nuevoConsolidado } : u);
+      localStorage.setItem('wjg_usuarios_taller_cache', JSON.stringify(updatedCache));
+
+      // Guardar en Supabase
+      if (isSupabaseConfigured && supabase) {
+        await supabase
+          .from('usuarios_taller')
+          .update({
+            dispositivo_info: JSON.stringify(nuevoConsolidado)
+          })
+          .eq('id', usuarioId);
+      }
+
+      return true;
+    } catch (e) {
+      console.error('Error al cambiar confianza del dispositivo:', e);
+      return false;
+    }
   }
 
   /**

@@ -12,6 +12,82 @@ export type RolOperativoTaller =
   | 'VENTAS_POS' 
   | string;
 
+export interface DispositivoConexion {
+  id: string; // fingerprint único
+  nombre: string; // ej: "Windows 10/11 (Chrome) • PC"
+  tipo: 'escritorio' | 'movil' | 'tablet';
+  navegador: string;
+  so: string;
+  resolucion?: string;
+  fecha_conexion: string; // ISO
+  es_seguro: boolean; // ¿Registrado de confianza?
+  fingerprint: string;
+  es_nuevo?: boolean;
+}
+
+export interface DispositivoInfoConsolidado {
+  ultimo_dispositivo: DispositivoConexion;
+  historial_dispositivos: DispositivoConexion[];
+}
+
+export function parseDispositivoInfo(raw: any): DispositivoInfoConsolidado | null {
+  if (!raw) return null;
+  let parsed: any;
+  if (typeof raw === 'string') {
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      // Cadena simple en texto plano (ej: legacy "Chrome en Android - Celular Juan")
+      const isMobile = /m[oó]vil|celular|android|iphone/i.test(trimmed);
+      const dev: DispositivoConexion = {
+        id: 'dev-legacy-str',
+        nombre: trimmed,
+        tipo: isMobile ? 'movil' : 'escritorio',
+        navegador: 'Navegador Web',
+        so: 'Desconocido',
+        fecha_conexion: new Date().toISOString(),
+        es_seguro: true,
+        fingerprint: 'legacy-str'
+      };
+      return {
+        ultimo_dispositivo: dev,
+        historial_dispositivos: [dev]
+      };
+    }
+  } else {
+    parsed = raw;
+  }
+
+  if (parsed && parsed.ultimo_dispositivo) {
+    return {
+      ultimo_dispositivo: parsed.ultimo_dispositivo,
+      historial_dispositivos: Array.isArray(parsed.historial_dispositivos) ? parsed.historial_dispositivos : [parsed.ultimo_dispositivo]
+    };
+  }
+
+  // Compatibilidad con objeto simple anterior
+  if (parsed && (parsed.tipo || parsed.navegador || parsed.nombre)) {
+    const dev: DispositivoConexion = {
+      id: parsed.id || parsed.fingerprint || 'dev-legacy',
+      nombre: parsed.nombre || `${parsed.tipo === 'movil' ? 'Dispositivo Móvil' : 'PC'} (${parsed.navegador || 'Web'})`,
+      tipo: parsed.tipo || 'escritorio',
+      navegador: parsed.navegador || 'Navegador Web',
+      so: parsed.so || 'Desconocido',
+      fecha_conexion: parsed.fecha || new Date().toISOString(),
+      es_seguro: Boolean(parsed.es_seguro ?? true),
+      fingerprint: parsed.fingerprint || 'legacy'
+    };
+    return {
+      ultimo_dispositivo: dev,
+      historial_dispositivos: [dev]
+    };
+  }
+
+  return null;
+}
+
 export interface UsuarioTaller {
   id: string;
   nombre: string;
@@ -27,11 +103,7 @@ export interface UsuarioTaller {
   activo: boolean;
   must_change_password?: boolean;
   ultimo_acceso?: string | null;
-  dispositivo_info?: {
-    tipo?: 'movil' | 'escritorio';
-    navegador?: string;
-    fecha?: string;
-  } | null;
+  dispositivo_info?: DispositivoInfoConsolidado | any;
   created_at?: string;
 }
 

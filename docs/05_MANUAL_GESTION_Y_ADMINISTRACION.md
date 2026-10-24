@@ -70,6 +70,30 @@ Anteriormente, la cabecera permitía alternar de usuario haciendo clic sobre el 
 2. Se implementó un botón explícito de **Cerrar Sesión (`LogOut`)** que purga la sesión activa en `StaffAuthGuard.tsx`.
 3. Se blindó la consulta de Supabase con validación de UUID canónico (`isUUID()`), resolviendo el error de tipos de Postgres en dispositivos móviles.
 
+### 2.4. Auditoría de Última Conexión y Detección de Dispositivos Seguros vs Nuevos
+Para proteger el acceso a las finanzas, cartera y órdenes de trabajo, el sistema cuenta con un motor de auditoría continua de sesiones y huella digital de hardware:
+
+```mermaid
+flowchart LR
+    A["Login Colaborador (PIN / Clave)"] --> B["Detección Hardware:\nSO + Navegador + Pantalla"]
+    B --> C{"¿Coincide con Dispositivo Seguro\no 'Recordar' Marcado?"}
+    C -- SÍ --> D["Badge Verde: 🛡️ Dispositivo Seguro\n(Acceso Confiable)"]
+    C -- NO --> E["Badge Ámbar: ⚠️ Nuevo Dispositivo\n(Alerta al Administrador)"]
+    D --> F["Actualización en Supabase:\nultimo_acceso + dispositivo_info"]
+    E --> F
+    F --> G["Tarjeta de Colaborador\nen PersonalView.tsx"]
+```
+
+* **Semáforo de Conexión en Tiempo Real:** Cada tarjeta de colaborador muestra el tiempo transcurrido desde su última sesión (`Ahora mismo`, `Hace X min`, `Hace X horas`, `Ayer` o fecha exacta) con indicador pulsante verde para colaboradores activos.
+* **Huella Digital de Hardware:** El servicio [`src/services/authSecurityService.ts`](file:///d:/WJG/src/services/authSecurityService.ts) recopila datos no invasivos del cliente (Sistema Operativo, versión de navegador, resolución de pantalla y tipo de terminal: *PC, Celular o Tablet*).
+* **Clasificación Automática de Dispositivos:**
+  * **Dispositivo Seguro (🛡️):** Equipos previamente autorizados en el taller o marcados como de confianza por el Administrador.
+  * **Nuevo Dispositivo (⚠️):** Cualquier conexión originada desde un navegador, celular o tablet no reconocido previamente, alertando al administrador en el panel.
+* **Modal de Gestión de Dispositivos ([`ModalDispositivosUsuario.tsx`](file:///d:/WJG/src/components/personal/ModalDispositivosUsuario.tsx)):**
+  * Despliega la lista completa de dispositivos registrados (hasta 10 por colaborador).
+  * Muestra fecha exacta de acceso, huella digital única (`fingerprint`), sistema operativo y resolución.
+  * **Acciones Directas:** El Administrador puede **Marcar como Seguro** un nuevo terminal o **Revocar Confianza** de forma instantánea, invalidando sesiones sospechosas tanto en la memoria local como en Supabase.
+
 ---
 
 ## 3. Tareas de Equipo y Bitácora de Turnos (`TeamTasksView.tsx`)

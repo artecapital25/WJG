@@ -150,7 +150,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               localStorage.setItem('wjg_usuarios_taller_cache', JSON.stringify(currentCache));
             } catch {}
 
-            finalizeLogin(userRec.nombre);
+            finalizeLogin(userRec.nombre, userRec);
             return;
           }
         }
@@ -212,7 +212,7 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
               (localTarget.pin_hash && localTarget.pin_hash === enteredHash) ||
               (await AuthSecurityService.verifyEmergencyPin(enteredPassword))
             ) {
-              finalizeLogin(localTarget.nombre);
+              finalizeLogin(localTarget.nombre, localTarget);
               return;
             }
           }
@@ -237,13 +237,31 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
     }
   };
 
-  const finalizeLogin = (label: string) => {
+  const finalizeLogin = async (label: string, userObj?: any) => {
     if (rememberDevice) {
       AuthSecurityService.saveTrustedDevice(label);
     } else {
       sessionStorage.setItem('wjg_admin_unlocked', 'true');
       localStorage.setItem('wjg_staff_user', label);
     }
+
+    // Registrar última conexión e historial de dispositivo (seguro vs nuevo)
+    if (userObj?.id) {
+      try {
+        await AuthSecurityService.recordUserConnection(userObj.id, rememberDevice);
+      } catch (e) {
+        console.warn('Error registrando conexión de dispositivo:', e);
+      }
+    } else {
+      try {
+        const cached: any[] = JSON.parse(localStorage.getItem('wjg_usuarios_taller_cache') || '[]');
+        const found = cached.find(u => u.nombre && u.nombre.toLowerCase() === label.toLowerCase());
+        if (found?.id) {
+          await AuthSecurityService.recordUserConnection(found.id, rememberDevice);
+        }
+      } catch {}
+    }
+
     toast.success(`Acceso Autorizado • Sesión activa como ${label}`);
     onLoginSuccess(label);
   };

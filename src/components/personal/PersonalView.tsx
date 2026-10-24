@@ -4,11 +4,12 @@ import {
   KeyRound, RefreshCw, Power, MessageSquare, Edit3, 
   AlertCircle, Check, CheckCircle2, Lock, Sparkles, Send,
   Hash, Mail, Phone, ShoppingBag, Box, TrendingUp, Settings,
-  Eye, EyeOff
+  Eye, EyeOff, Laptop, Tablet, Clock, AlertTriangle, Fingerprint
 } from 'lucide-react';
 import { useUsuariosTaller } from '../../hooks/useUsuariosTaller';
-import { UsuarioTaller, UsuarioTallerInput, HubAreaPermission, HUB_PERMISSIONS_CONFIG } from '../../types/usuarios.types';
+import { UsuarioTaller, UsuarioTallerInput, HubAreaPermission, HUB_PERMISSIONS_CONFIG, parseDispositivoInfo } from '../../types/usuarios.types';
 import { CambiarPinModal } from '../auth/CambiarPinModal';
+import { ModalDispositivosUsuario } from './ModalDispositivosUsuario';
 import { toast } from '../ui/ToastProvider';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
 
@@ -31,7 +32,9 @@ export const PersonalView: React.FC = () => {
     updateUsuario,
     toggleActivo,
     cambiarPin,
-    recuperarPin
+    recuperarPin,
+    marcarDispositivoSeguro,
+    revocarDispositivoSeguro
   } = useUsuariosTaller();
 
   // Modales
@@ -40,6 +43,9 @@ export const PersonalView: React.FC = () => {
 
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinTargetUser, setPinTargetUser] = useState<UsuarioTaller | null>(null);
+
+  const [showDispositivosModal, setShowDispositivosModal] = useState(false);
+  const [dispositivosTargetUser, setDispositivosTargetUser] = useState<UsuarioTaller | null>(null);
 
   // Formulario
   const [nombre, setNombre] = useState('');
@@ -239,6 +245,42 @@ export const PersonalView: React.FC = () => {
     return { id: rolStr, label: rolStr, badgeColor: '#38bdf8' };
   };
 
+  const formatUltimaConexion = (iso?: string | null) => {
+    if (!iso) {
+      return { texto: 'Sin conexiones registradas', color: '#64748b', enLinea: false };
+    }
+    try {
+      const fecha = new Date(iso);
+      const ahora = new Date();
+      const diffMin = Math.round((ahora.getTime() - fecha.getTime()) / (1000 * 60));
+
+      if (diffMin <= 15) {
+        return { texto: 'En línea ahora', color: '#34d399', enLinea: true };
+      }
+      if (diffMin < 60) {
+        return { texto: `Hace ${diffMin} min`, color: '#38bdf8', enLinea: false };
+      }
+
+      const diffHoras = Math.round(diffMin / 60);
+      if (diffHoras < 24 && fecha.getDate() === ahora.getDate()) {
+        const horaStr = fecha.toLocaleTimeString('es-CO', { hour: '2-digit', minute: '2-digit', hour12: true });
+        return { texto: `Hoy ${horaStr}`, color: '#fbbf24', enLinea: false };
+      }
+
+      if (diffHoras < 48) {
+        return { texto: 'Ayer', color: '#cbd5e1', enLinea: false };
+      }
+
+      return {
+        texto: fecha.toLocaleDateString('es-CO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true }),
+        color: '#94a3b8',
+        enLinea: false
+      };
+    } catch {
+      return { texto: String(iso), color: '#94a3b8', enLinea: false };
+    }
+  };
+
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px 16px', color: '#f8fafc', paddingBottom: '90px' }}>
       {/* Header Principal */}
@@ -358,6 +400,8 @@ export const PersonalView: React.FC = () => {
           {usuarios.map(u => {
             const roleObj = getRoleBadge(u.rol);
             const userAreas = u.permisos_areas || ['taller'];
+            const dispositivoData = parseDispositivoInfo(u.dispositivo_info);
+            const conexionInfo = formatUltimaConexion(u.ultimo_acceso);
 
             return (
               <div 
@@ -479,6 +523,122 @@ export const PersonalView: React.FC = () => {
                           {u.email}
                         </span>
                       </div>
+                    )}
+                  </div>
+
+                  {/* Espacio de Última Conexión y Dispositivo Registrado */}
+                  <div style={{
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(255, 255, 255, 0.06)',
+                    padding: '10px 12px',
+                    marginBottom: '14px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '6px'
+                  }}>
+                    {/* Fila 1: Última Conexión */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8', fontSize: '0.74rem' }}>
+                        <Clock size={13} color="var(--brand-cyan)" />
+                        <span>Última Conexión:</span>
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                        {conexionInfo.enLinea && (
+                          <span style={{
+                            width: '7px',
+                            height: '7px',
+                            borderRadius: '50%',
+                            backgroundColor: '#34d399',
+                            boxShadow: '0 0 6px #34d399',
+                            display: 'inline-block'
+                          }} />
+                        )}
+                        <span style={{ fontSize: '0.74rem', fontWeight: 700, color: conexionInfo.color }}>
+                          {conexionInfo.texto}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Fila 2: Dispositivo Registrado (Seguro vs Nuevo) */}
+                    {dispositivoData ? (
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: '4px', borderTop: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#cbd5e1', fontSize: '0.74rem', maxWidth: '190px' }}>
+                          {dispositivoData.ultimo_dispositivo.tipo === 'movil' ? (
+                            <Smartphone size={13} color="#38bdf8" />
+                          ) : dispositivoData.ultimo_dispositivo.tipo === 'tablet' ? (
+                            <Tablet size={13} color="#a855f7" />
+                          ) : (
+                            <Laptop size={13} color="#38bdf8" />
+                          )}
+                          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={dispositivoData.ultimo_dispositivo.nombre}>
+                            {dispositivoData.ultimo_dispositivo.nombre}
+                          </span>
+                        </div>
+
+                        {dispositivoData.ultimo_dispositivo.es_seguro ? (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: 'rgba(16, 185, 129, 0.18)',
+                            color: '#34d399',
+                            border: '1px solid rgba(16, 185, 129, 0.35)',
+                            fontSize: '0.67rem',
+                            fontWeight: 800
+                          }}>
+                            <ShieldCheck size={11} /> Seguro
+                          </span>
+                        ) : (
+                          <span style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            padding: '2px 6px',
+                            borderRadius: '4px',
+                            backgroundColor: 'rgba(245, 158, 11, 0.18)',
+                            color: '#fbbf24',
+                            border: '1px solid rgba(245, 158, 11, 0.35)',
+                            fontSize: '0.67rem',
+                            fontWeight: 800
+                          }}>
+                            <AlertTriangle size={11} /> Nuevo
+                          </span>
+                        )}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', fontStyle: 'italic', paddingTop: '2px' }}>
+                        Sin dispositivos registrados
+                      </div>
+                    )}
+
+                    {/* Enlace para ver historial de dispositivos */}
+                    {dispositivoData && dispositivoData.historial_dispositivos.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDispositivosTargetUser(u);
+                          setShowDispositivosModal(true);
+                        }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: '#38bdf8',
+                          fontSize: '0.71rem',
+                          cursor: 'pointer',
+                          padding: '2px 0 0',
+                          textAlign: 'left',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          textDecoration: 'underline'
+                        }}
+                      >
+                        <Laptop size={11} />
+                        <span>Ver {dispositivoData.historial_dispositivos.length} dispositivo(s) registrados</span>
+                      </button>
                     )}
                   </div>
 
@@ -918,6 +1078,20 @@ export const PersonalView: React.FC = () => {
           onCambiarPinInterno={cambiarPin}
           onRecuperarPin={recuperarPin}
           onSuccess={() => fetchUsuarios()}
+        />
+      )}
+
+      {/* Modal de Gestión de Dispositivos Conectados */}
+      {dispositivosTargetUser && (
+        <ModalDispositivosUsuario
+          isOpen={showDispositivosModal}
+          onClose={() => {
+            setShowDispositivosModal(false);
+            setDispositivosTargetUser(null);
+          }}
+          usuario={dispositivosTargetUser}
+          onMarcarSeguro={marcarDispositivoSeguro}
+          onRevocarSeguro={revocarDispositivoSeguro}
         />
       )}
     </div>
