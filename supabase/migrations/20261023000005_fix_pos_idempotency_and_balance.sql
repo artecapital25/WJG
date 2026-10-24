@@ -39,3 +39,7 @@ FROM public.abonos_pagos;
 
 ALTER VIEW public.vista_balance_taller SET (security_invoker = true);
 GRANT SELECT ON public.vista_balance_taller TO anon, authenticated, service_role;
+
+-- 3. Asegurar correo corporativo oficial wjgeeks3d@gmail.com en configuración
+ALTER TABLE public.configuracion_taller ADD COLUMN IF NOT EXISTS correo TEXT DEFAULT 'wjgeeks3d@gmail.com';
+UPDATE public.configuracion_taller SET correo = 'wjgeeks3d@gmail.com' WHERE correo IS NULL OR correo = '';

@@ -59,6 +59,7 @@ export interface ConfiguracionTaller {
   margen_merma_resina: number;
   telefono_contacto: string;
   telefono_contacto2: string;
+  correo?: string;
   instagram: string;
   nequi: string;
   bre_b?: string;
@@ -963,6 +964,7 @@ export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "margen_merma_resina": 1.4,
   "telefono_contacto": "3202796115",
   "telefono_contacto2": "3217273025",
+  "correo": "wjgeeks3d@gmail.com",
   "instagram": "@WJGEEKS3D",
   "nequi": "3202796115",
   "bre_b": "0090778625",

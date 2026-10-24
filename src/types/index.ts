@@ -98,6 +98,7 @@ export interface ConfiguracionTaller {
   margen_merma_resina: number;
   telefono_contacto: string;
   telefono_contacto2: string;
+  correo?: string;
   instagram: string;
   nequi: string;
   bre_b?: string; // Bre-B Llave Única: 0090778625

@@ -254,6 +254,18 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
       .reduce((sum, p) => sum + p.total, 0);
   }, [pedidosFiltrados]);
 
+  const recaudoCotizaciones = useMemo(() => {
+    return pedidosFiltrados
+      .filter(p => p.origen === 'COTIZACION')
+      .reduce((sum, p) => sum + p.abono, 0);
+  }, [pedidosFiltrados]);
+
+  const recaudoPOS = useMemo(() => {
+    return pedidosFiltrados
+      .filter(p => p.origen === 'POS')
+      .reduce((sum, p) => sum + p.abono, 0);
+  }, [pedidosFiltrados]);
+
   // Exportar a Excel (.xls estructurado con HTML/XML)
   const handleExportExcel = () => {
     const filename = `Balance_Contable_Unificado_WJGEEKS_${selectedMonth}_${Date.now()}.xls`;
@@ -605,11 +617,15 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
               </span>
             )}
           </div>
-          <div style={{ fontSize: '1.45rem', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-display)' }}>
+          <div style={{ fontSize: '1.65rem', fontWeight: 800, color: '#fff', fontFamily: 'var(--font-display)' }}>
             ${totalAbonado.toLocaleString('es-CO')}
           </div>
           <div style={{ fontSize: '0.75rem', color: '#f87171', marginTop: '4px' }}>
             Saldo por cobrar en taller & POS: <strong>${totalSaldoPendiente.toLocaleString('es-CO')}</strong>
+          </div>
+          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <span>Recaudo Cotizaciones: <strong style={{ color: '#38bdf8' }}>${recaudoCotizaciones.toLocaleString('es-CO')}</strong></span>
+            <span>Recaudo Ventas POS: <strong style={{ color: '#fbbf24' }}>${recaudoPOS.toLocaleString('es-CO')}</strong></span>
           </div>
           {balanceTaller && (
             <div style={{ marginTop: '8px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '0.70rem', color: '#94a3b8', display: 'flex', gap: '8px', flexWrap: 'wrap' }}>

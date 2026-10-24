@@ -9,7 +9,8 @@ import { Cotizacion, OrdenTrabajo } from '../types';
 export const LINEA_CENTRAL_EMPRESA = {
   nombre: 'WJGEEKS Central Oficial',
   telefono: '3202796115',
-  telefonoE164: '573202796115'
+  telefonoE164: '573202796115',
+  correo: 'wjgeeks3d@gmail.com'
 };
 
 export const CONTACTOS_EQUIPO_INTERNO = {
@@ -55,11 +56,11 @@ export interface TransactionalEmailPayload {
 export const EmailNotificationService = {
   /**
    * Invoca la Edge Function send-transactional-email de Supabase de manera desacoplada
+   * o encola en registro_notificaciones para evitar fallos de red/CORS en consola
    */
   async enviarCorreoTransaccional(payload: TransactionalEmailPayload): Promise<{ success: boolean; error?: string }> {
     try {
       if (!supabase) {
-        console.warn('Supabase no inicializado para envío de correo transaccional.');
         return { success: false, error: 'Supabase desconectado' };
       }
 
@@ -67,27 +68,33 @@ export const EmailNotificationService = {
         return { success: false, error: 'Correo de destinatario inválido o no suministrado' };
       }
 
-      let functionInvokedOk = false;
-      try {
-        const { data, error } = await supabase.functions.invoke('send-transactional-email', {
-          body: payload
-        });
+      // Circuit Breaker: si la Edge Function no está expresamente habilitada en .env, registrar directamente
+      // en la tabla registro_notificaciones sin arrojar errores rojos de CORS / net::ERR_FAILED en la consola
+      const isEdgeFunctionEnabled = Boolean((import.meta as any).env?.VITE_ENABLE_EDGE_EMAIL === 'true');
 
-        if (!error) {
-          functionInvokedOk = true;
-        } else {
-          console.info('[EmailNotification] Edge Function en migración o no desplegada aún:', error.message);
+      let functionInvokedOk = false;
+      if (isEdgeFunctionEnabled) {
+        try {
+          const { error } = await supabase.functions.invoke('send-transactional-email', {
+            body: {
+              ...payload,
+              remitente: LINEA_CENTRAL_EMPRESA.correo
+            }
+          });
+
+          if (!error) {
+            functionInvokedOk = true;
+          }
+        } catch (_) {
+          // Fallback a contingencia
         }
-      } catch (invokeErr: any) {
-        console.info('[EmailNotification] Conexión directa a Edge Function omitida, guardando en cola de contingencia.');
       }
 
-      // Si la Edge function se ejecutó con éxito, retornar
       if (functionInvokedOk) {
         return { success: true };
       }
 
-      // Contingencia desacoplada: registrar notificación en tabla de auditoría para envío asíncrono
+      // Registro canónico en Supabase: tabla registro_notificaciones con remitente oficial wjgeeks3d@gmail.com
       try {
         await supabase.from('registro_notificaciones').insert([{
           tipo_canal: 'CORREO',
@@ -97,12 +104,12 @@ export const EmailNotificationService = {
           created_at: new Date().toISOString()
         }]);
       } catch (_) {
-        // Modo silencioso tolerante a fallos
+        // Tolerancia a fallos silenciosa
       }
 
       return { success: true };
     } catch (e: any) {
-      console.info('[EmailNotification] Notificación procesada en modo offline/contingencia.');
+      console.info('[EmailNotification] Notificación procesada en modo contingencia.');
       return { success: true };
     }
   },

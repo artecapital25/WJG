@@ -352,14 +352,8 @@ export const App: React.FC = () => {
         }
 
         if (cloudVentas !== null) {
-          // Conciliación Automática de Ventas Express contra el Ledger Canónico (abonos_pagos)
-          const localVentas = StorageService.getVentasExpress();
-          // Unir evitando pérdida de ventas creadas localmente
-          const mergedVentasMap = new Map<string, VentaExpress>();
-          localVentas.forEach(lv => mergedVentasMap.set(lv.id, lv));
-          cloudVentas.forEach(cv => mergedVentasMap.set(cv.id, cv));
-
-          const reconciledVentas = Array.from(mergedVentasMap.values()).map(v => {
+          // Conciliación Canónica de Ventas Express contra el Ledger Inmutable (abonos_pagos)
+          const reconciledVentas = cloudVentas.map(v => {
             const pagosDeVenta = pagosLedger.filter(p => 
               (p.pos_venta_id && (p.pos_venta_id === v.id || p.pos_venta_id === v.numero_venta)) ||
               (v.ot_id && p.orden_trabajo_id === v.ot_id) ||
