@@ -57,7 +57,12 @@ import {
   TareaEquipo,
   SolicitudInsumo
 } from './types';
-import type { ItemDeudaConsolidado } from './components/cuentasCobro/CuentasCobroList';
+import { 
+  type ItemDeudaConsolidado,
+  otMatchesVenta,
+  otMatchesCuenta,
+  ventaMatchesCuenta
+} from './components/cuentasCobro/cuentasCobroUtils';
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 
@@ -286,7 +291,7 @@ export const App: React.FC = () => {
     // 2. Traer datos frescos de Supabase en segundo plano como Fuente Única de la Verdad (Single Source of Truth)
     const syncCloudData = async () => {
       try {
-        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes, cloudStock] = await Promise.all([
+        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes, cloudStock, cloudPayments] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
           CloudSyncService.fetchOrdenes(),
@@ -294,8 +299,11 @@ export const App: React.FC = () => {
           CloudSyncService.fetchCuentas(),
           CloudSyncService.fetchTareasEquipo(),
           CloudSyncService.fetchSolicitudesInsumos(),
-          CloudSyncService.fetchProductosStock()
+          CloudSyncService.fetchProductosStock(),
+          CloudSyncService.fetchPayments()
         ]);
+
+        const pagosLedger = cloudPayments || [];
 
         if (cloudCots !== null) {
           setCotizaciones(cloudCots);
@@ -308,18 +316,116 @@ export const App: React.FC = () => {
         }
 
         if (cloudOTs !== null) {
-          setOrdenes(cloudOTs);
-          StorageService.saveOrdenes(cloudOTs);
+          // Conciliación Automática de Órdenes de Trabajo contra el Ledger Canónico (abonos_pagos)
+          const reconciledOTs = cloudOTs.map(ot => {
+            const pagosDeOT = pagosLedger.filter(p => 
+              (p.orden_trabajo_id && (p.orden_trabajo_id === ot.id || p.orden_trabajo_id === ot.numero_ot)) ||
+              (ot.pos_venta_id && p.pos_venta_id === ot.pos_venta_id) ||
+              (p.nota && (p.nota.includes(ot.numero_ot) || (ot.pos_venta_id && p.nota.includes(ot.pos_venta_id))))
+            );
+            const sumPagos = pagosDeOT.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+            const totalRef = ot.precio_cobrado || (ot.abono || 0) + (ot.saldo_pendiente || 0);
+
+            if (sumPagos > 0 && totalRef > 0) {
+              if (sumPagos >= totalRef) {
+                return {
+                  ...ot,
+                  abono: totalRef,
+                  saldo_pendiente: 0,
+                  estado_pago: 'Pagado Total' as EstadoPago
+                };
+              } else if (sumPagos > (ot.abono || 0)) {
+                const nuevoSaldo = Math.max(0, totalRef - sumPagos);
+                return {
+                  ...ot,
+                  abono: sumPagos,
+                  saldo_pendiente: nuevoSaldo,
+                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
+                };
+              }
+            }
+            return ot;
+          });
+
+          setOrdenes(reconciledOTs);
+          StorageService.saveOrdenes(reconciledOTs);
         }
 
         if (cloudVentas !== null) {
-          setVentasExpress(cloudVentas);
-          StorageService.saveVentasExpress(cloudVentas);
+          // Conciliación Automática de Ventas Express contra el Ledger Canónico (abonos_pagos)
+          const localVentas = StorageService.getVentasExpress();
+          // Unir evitando pérdida de ventas creadas localmente
+          const mergedVentasMap = new Map<string, VentaExpress>();
+          localVentas.forEach(lv => mergedVentasMap.set(lv.id, lv));
+          cloudVentas.forEach(cv => mergedVentasMap.set(cv.id, cv));
+
+          const reconciledVentas = Array.from(mergedVentasMap.values()).map(v => {
+            const pagosDeVenta = pagosLedger.filter(p => 
+              (p.pos_venta_id && (p.pos_venta_id === v.id || p.pos_venta_id === v.numero_venta)) ||
+              (v.ot_id && p.orden_trabajo_id === v.ot_id) ||
+              (v.ot_numero && p.orden_trabajo_id === v.ot_numero) ||
+              (p.nota && (p.nota.includes(v.numero_venta) || p.nota.includes(v.id)))
+            );
+            const sumPagos = pagosDeVenta.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+
+            if (sumPagos > 0 && v.total > 0) {
+              if (sumPagos >= v.total) {
+                return {
+                  ...v,
+                  abono: v.total,
+                  saldo_pendiente: 0,
+                  estado_pago: 'Pagado Total' as any
+                };
+              } else if (sumPagos > (v.abono || 0)) {
+                const nuevoSaldo = Math.max(0, v.total - sumPagos);
+                return {
+                  ...v,
+                  abono: sumPagos,
+                  saldo_pendiente: nuevoSaldo,
+                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as any
+                };
+              }
+            }
+            return v;
+          });
+
+          setVentasExpress(reconciledVentas);
+          StorageService.saveVentasExpress(reconciledVentas);
         }
 
         if (cloudCCs !== null) {
-          setCuentas(cloudCCs);
-          StorageService.saveCuentas(cloudCCs);
+          // Conciliación Automática de Cuentas de Cobro contra el Ledger Canónico (abonos_pagos)
+          const reconciledCCs = cloudCCs.map(cc => {
+            const pagosDeCC = pagosLedger.filter(p => 
+              (p.cuenta_cobro_id && p.cuenta_cobro_id === cc.id) ||
+              (cc.cotizacion_numero && p.nota && p.nota.includes(cc.cotizacion_numero)) ||
+              (p.nota && p.nota.includes(cc.numero_cc))
+            );
+            const sumPagos = pagosDeCC.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+
+            if (sumPagos > 0 && cc.total > 0) {
+              if (sumPagos >= cc.total) {
+                return {
+                  ...cc,
+                  abono: cc.total,
+                  saldo_pendiente: 0,
+                  estado_pago: 'Pagado Total' as EstadoPago
+                };
+              } else if (sumPagos > (cc.abono || 0)) {
+                const nuevoSaldo = Math.max(0, cc.total - sumPagos);
+                return {
+                  ...cc,
+                  abono: sumPagos,
+                  saldo_pendiente: nuevoSaldo,
+                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
+                };
+              }
+            }
+            return cc;
+          });
+
+          setCuentas(reconciledCCs);
+          StorageService.saveCuentas(reconciledCCs);
         }
 
         if (cloudTareas !== null) {
@@ -1269,7 +1375,7 @@ export const App: React.FC = () => {
         monto: Number(ventaFinal.abono),
         metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
         pos_venta_id: ventaFinal.id,
-        orden_trabajo_id: ventaFinal.ot_id || undefined,
+        orden_trabajo_id: ventaFinal.ot_numero || ventaFinal.ot_id || undefined,
         origen_modulo: 'pos',
         nota: `Abono inicial de $${Number(ventaFinal.abono).toLocaleString('es-CO')} en Venta ${ventaFinal.numero_venta} (${ventaFinal.nombre_producto})`
       });
@@ -1386,6 +1492,7 @@ export const App: React.FC = () => {
         monto: deltaAbonoVenta,
         metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
         pos_venta_id: ventaFinal.id,
+        orden_trabajo_id: ventaFinal.ot_numero || ventaFinal.ot_id || undefined,
         origen_modulo: 'pos',
         nota: `Abono de $${deltaAbonoVenta.toLocaleString('es-CO')} registrado en POS Express ${ventaFinal.numero_venta}`
       });
@@ -1527,7 +1634,33 @@ export const App: React.FC = () => {
     item: ItemDeudaConsolidado,
     datos: DatosPagoRegistro
   ) => {
-    const deltaAbono = Math.max(0, datos.abono - (item.abono || 0));
+    // 0. Encontrar y vincular bidireccionalmente todas las entidades relacionadas
+    const targetVenta = item.rawVenta || ventasExpress.find(v => 
+      (item.rawOT && otMatchesVenta(item.rawOT, v)) ||
+      (item.rawCuenta && ventaMatchesCuenta(v, item.rawCuenta)) ||
+      (v.id === item.id.replace(/^pos-/, '') || v.numero_venta === item.codigo)
+    );
+
+    const targetOT = item.rawOT || ordenes.find(o => 
+      (targetVenta && otMatchesVenta(o, targetVenta)) ||
+      (item.rawCuenta && otMatchesCuenta(o, item.rawCuenta)) ||
+      (o.id === item.id.replace(/^ot-/, '') || o.numero_ot === item.codigo)
+    );
+
+    const targetCuenta = item.rawCuenta || cuentas.find(c => 
+      (targetOT && otMatchesCuenta(targetOT, c)) ||
+      (targetVenta && ventaMatchesCuenta(targetVenta, c)) ||
+      (c.id === item.id.replace(/^cc-/, '') || c.numero_cc === item.codigo)
+    );
+
+    // Si el usuario liquidó completamente o el saldo es 0, asegurar 100% pagado sin remanente
+    const isTotalmentePagado = datos.saldo_pendiente <= 0 || datos.estado_pago === 'Pagado Total';
+    const abonoFinal = isTotalmentePagado ? item.total : datos.abono;
+    const saldoPendienteFinal = isTotalmentePagado ? 0 : Math.max(0, item.total - abonoFinal);
+    const estadoPagoFinal: EstadoPago = isTotalmentePagado ? 'Pagado Total' : (abonoFinal > 0 ? 'Abono Parcial' : 'Pendiente');
+
+    const prevAbonoItem = item.abono || targetOT?.abono || targetVenta?.abono || targetCuenta?.abono || 0;
+    const deltaAbono = Math.max(0, abonoFinal - prevAbonoItem);
 
     // 1. Asentar en Ledger Inmutable Core V3 (abonos_pagos) EXACTAMENTE UNA VEZ si hubo incremento real
     if (deltaAbono > 0) {
@@ -1536,30 +1669,29 @@ export const App: React.FC = () => {
         monto: deltaAbono,
         metodo_pago: datos.metodo_pago || 'Bre-B',
         comprobante_url: datos.comprobante_pago,
-        cotizacion_id: item.rawOT?.cotizacion_id || item.rawCuenta?.cotizacion_id || (item.rawVenta ? item.rawVenta.id : undefined),
-        cuenta_cobro_id: item.rawCuenta?.id,
-        orden_trabajo_id: item.rawOT?.id,
-        pos_venta_id: item.rawVenta?.id,
+        cotizacion_id: targetOT?.cotizacion_id || targetCuenta?.cotizacion_id || targetVenta?.id,
+        cuenta_cobro_id: targetCuenta?.id,
+        orden_trabajo_id: targetOT?.id || targetOT?.numero_ot,
+        pos_venta_id: targetVenta?.id,
         origen_modulo: 'cuenta_cobro',
-        nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} recibido en Cobranzas para ${item.codigo} (${datos.metodo_pago})`
+        nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} recibido en Cobranzas para ${item.codigo} (${datos.metodo_pago || 'Bre-B'})`
       });
     }
 
     // 2. Sincronizar en la Orden de Trabajo de taller (si existe o coincide)
-    if (item.rawOT) {
-      const isTotalmentePagado = datos.saldo_pendiente <= 0;
-      const nuevoEstado = (isTotalmentePagado && (item.rawOT.estado === 'Control de Calidad' || item.rawOT.estado === 'Pintura y Armado' || item.rawOT.estado === 'Listo para Entrega'))
+    if (targetOT) {
+      const nuevoEstadoOT = (isTotalmentePagado && (targetOT.estado === 'Control de Calidad' || targetOT.estado === 'Pintura y Armado' || targetOT.estado === 'Listo para Entrega'))
         ? 'Listo para Entrega'
-        : item.rawOT.estado;
+        : targetOT.estado;
 
       const updatedOT: OrdenTrabajo = {
-        ...item.rawOT,
-        estado_pago: datos.estado_pago,
-        abono: datos.abono,
-        saldo_pendiente: datos.saldo_pendiente,
-        metodo_pago: datos.metodo_pago,
-        comprobante_pago: datos.comprobante_pago,
-        estado: nuevoEstado
+        ...targetOT,
+        estado_pago: estadoPagoFinal,
+        abono: abonoFinal,
+        saldo_pendiente: saldoPendienteFinal,
+        metodo_pago: datos.metodo_pago || targetOT.metodo_pago,
+        comprobante_pago: datos.comprobante_pago || targetOT.comprobante_pago,
+        estado: nuevoEstadoOT
       };
       const updatedOTs = ordenes.map(o => o.id === updatedOT.id ? updatedOT : o);
       setOrdenes(updatedOTs);
@@ -1568,14 +1700,14 @@ export const App: React.FC = () => {
     }
 
     // 3. Sincronizar en la Cuenta de Cobro formal (si existe o coincide)
-    if (item.rawCuenta) {
+    if (targetCuenta) {
       const updatedCC: CuentaCobro = {
-        ...item.rawCuenta,
-        estado_pago: datos.estado_pago,
-        abono: datos.abono,
-        saldo_pendiente: datos.saldo_pendiente,
-        metodo_pago: datos.metodo_pago,
-        comprobante_url: datos.comprobante_pago
+        ...targetCuenta,
+        estado_pago: estadoPagoFinal,
+        abono: abonoFinal,
+        saldo_pendiente: saldoPendienteFinal,
+        metodo_pago: datos.metodo_pago || targetCuenta.metodo_pago,
+        comprobante_url: datos.comprobante_pago || targetCuenta.comprobante_url
       };
       const updatedCCs = cuentas.map(c => c.id === updatedCC.id ? updatedCC : c);
       setCuentas(updatedCCs);
@@ -1584,13 +1716,13 @@ export const App: React.FC = () => {
     }
 
     // 4. Sincronizar en la Venta Express de POS (si existe o coincide)
-    if (item.rawVenta) {
+    if (targetVenta) {
       const updatedVenta: VentaExpress = {
-        ...item.rawVenta,
-        estado_pago: datos.estado_pago as any,
-        abono: datos.abono,
-        saldo_pendiente: datos.saldo_pendiente,
-        metodo_pago: datos.metodo_pago
+        ...targetVenta,
+        estado_pago: estadoPagoFinal as any,
+        abono: abonoFinal,
+        saldo_pendiente: saldoPendienteFinal,
+        metodo_pago: datos.metodo_pago || targetVenta.metodo_pago
       };
       const updatedVentas = ventasExpress.map(v => v.id === updatedVenta.id ? updatedVenta : v);
       setVentasExpress(updatedVentas);
@@ -1599,18 +1731,18 @@ export const App: React.FC = () => {
     }
 
     // 5. Sincronizar en Cotización vinculada si existe
-    const cotId = item.rawOT?.cotizacion_id || item.rawCuenta?.cotizacion_id;
-    const cotNum = item.rawOT?.cotizacion_numero || item.rawCuenta?.cotizacion_numero;
+    const cotId = targetOT?.cotizacion_id || targetCuenta?.cotizacion_id;
+    const cotNum = targetOT?.cotizacion_numero || targetCuenta?.cotizacion_numero;
     if (cotId || cotNum) {
       const updatedCots = cotizaciones.map(c => {
         if ((cotId && c.id === cotId) || (cotNum && c.numero_cot === cotNum)) {
           return {
             ...c,
-            abono: datos.abono,
-            saldo_pendiente: datos.saldo_pendiente,
-            estado_pago: datos.estado_pago,
-            metodo_pago: datos.metodo_pago,
-            comprobante_pago: datos.comprobante_pago
+            abono: abonoFinal,
+            saldo_pendiente: saldoPendienteFinal,
+            estado_pago: estadoPagoFinal,
+            metodo_pago: datos.metodo_pago || c.metodo_pago,
+            comprobante_pago: datos.comprobante_pago || c.comprobante_pago
           };
         }
         return c;
@@ -1621,7 +1753,7 @@ export const App: React.FC = () => {
       if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
     }
 
-    toast.success(`Pago de $${deltaAbono > 0 ? deltaAbono.toLocaleString('es-CO') : datos.abono.toLocaleString('es-CO')} COP registrado correctamente.`);
+    toast.success(`Pago de $${deltaAbono > 0 ? deltaAbono.toLocaleString('es-CO') : abonoFinal.toLocaleString('es-CO')} COP registrado correctamente.`);
   };
 
   // Handler para Actualizar Trazabilidad STL, detalles de OT y Pagos

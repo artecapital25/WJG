@@ -50,12 +50,26 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   esAprobacionCotizacion = false,
   onConfirmarPago
 }) => {
+  // Detección de historial previo
+  const abonoPrevioExistente = Math.max(0, pagoActual?.abono || 0);
+  const tieneAbonoPrevio = abonoPrevioExistente > 0 && abonoPrevioExistente < montoTotal;
+  const saldoRestantePrevio = Math.max(0, montoTotal - abonoPrevioExistente);
+
   // Inicialización inteligente: si ya tiene abono/pago se respeta, si es nueva aprobación sugerimos 50% anticipo
   const [tipoPago, setTipoPago] = useState<EstadoPago>(() => {
     if (pagoActual?.estado_pago) return pagoActual.estado_pago;
     if (pagoActual?.abono && pagoActual.abono >= montoTotal) return 'Pagado Total';
     if (pagoActual?.abono && pagoActual.abono > 0) return 'Abono Parcial';
     return esAprobacionCotizacion ? 'Abono Parcial' : 'Pendiente';
+  });
+
+  // Modo de ingreso cuando ya hay un abono registrado: 'incremental' (dinero recibido hoy) o 'acumulado'
+  const [modoIngreso, setModoIngreso] = useState<'incremental' | 'acumulado'>(() => {
+    return tieneAbonoPrevio ? 'incremental' : 'acumulado';
+  });
+
+  const [montoIncremental, setMontoIncremental] = useState<number>(() => {
+    return tieneAbonoPrevio ? saldoRestantePrevio : 0;
   });
 
   const [montoAbono, setMontoAbono] = useState<number>(() => {
@@ -86,6 +100,13 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   // Reaccionar cuando cambian las props de entrada
   useEffect(() => {
     if (isOpen) {
+      const prevAbono = Math.max(0, pagoActual?.abono || 0);
+      const prevTiene = prevAbono > 0 && prevAbono < montoTotal;
+      const prevSaldo = Math.max(0, montoTotal - prevAbono);
+
+      setModoIngreso(prevTiene ? 'incremental' : 'acumulado');
+      setMontoIncremental(prevSaldo);
+
       if (pagoActual?.estado_pago) {
         setTipoPago(pagoActual.estado_pago);
         setMontoAbono(pagoActual.abono ?? (pagoActual.estado_pago === 'Pagado Total' ? montoTotal : 0));
@@ -122,9 +143,17 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   } else if (tipoPago === 'Pendiente') {
     abonoEfectivo = 0;
   } else {
-    abonoEfectivo = Math.min(montoTotal, Math.max(0, montoAbono));
+    if (tieneAbonoPrevio && modoIngreso === 'incremental') {
+      abonoEfectivo = Math.min(montoTotal, abonoPrevioExistente + Math.max(0, montoIncremental));
+    } else {
+      abonoEfectivo = Math.min(montoTotal, Math.max(0, montoAbono));
+    }
   }
+
   const saldoPendiente = Math.max(0, montoTotal - abonoEfectivo);
+  const estadoPagoFinal: EstadoPago = (saldoPendiente <= 0 && montoTotal > 0) 
+    ? 'Pagado Total' 
+    : (abonoEfectivo > 0 ? 'Abono Parcial' : 'Pendiente');
 
   // Manejador de botones rápidos de porcentaje
   const handleSetPorcentaje = (pct: number) => {
@@ -137,19 +166,22 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
     setTipoPago(tipo);
     if (tipo === 'Pagado Total') {
       setMontoAbono(montoTotal);
+      setMontoIncremental(saldoRestantePrevio);
     } else if (tipo === 'Pendiente') {
       setMontoAbono(0);
+      setMontoIncremental(0);
     } else if (montoAbono === 0 || montoAbono >= montoTotal) {
       setMontoAbono(Math.round(montoTotal * 0.5));
+      setMontoIncremental(Math.round(saldoRestantePrevio * 0.5));
     }
   };
 
   const handleConfirmar = (accion: 'aprobar_y_taller' | 'solo_guardar') => {
     const payload: DatosPagoRegistro = {
-      estado_pago: tipoPago,
+      estado_pago: estadoPagoFinal,
       abono: abonoEfectivo,
       saldo_pendiente: saldoPendiente,
-      metodo_pago: tipoPago === 'Pendiente' ? undefined : metodoPago,
+      metodo_pago: estadoPagoFinal === 'Pendiente' ? undefined : metodoPago,
       comprobante_pago: comprobante.trim() || undefined
     };
     onConfirmarPago(payload, accion);
@@ -259,6 +291,63 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
           </div>
         </div>
 
+        {/* Banner Informativo si ya cuenta con abono previo */}
+        {tieneAbonoPrevio && (
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(6, 182, 212, 0.12) 0%, rgba(16, 185, 129, 0.12) 100%)',
+            border: '1px solid rgba(6, 182, 212, 0.35)',
+            borderRadius: '12px',
+            padding: '12px 14px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+              <div>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Abono previo registrado:
+                </span>
+                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#38bdf8' }}>
+                  ${abonoPrevioExistente.toLocaleString('es-CO')} COP
+                </div>
+              </div>
+
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>
+                  Saldo pendiente actual:
+                </span>
+                <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#fbbf24' }}>
+                  ${saldoRestantePrevio.toLocaleString('es-CO')} COP
+                </div>
+              </div>
+            </div>
+
+            {/* Botón de 1-clic para liquidar el 100% del saldo restante */}
+            <button
+              type="button"
+              onClick={() => handleSelectTipo('Pagado Total')}
+              style={{
+                background: tipoPago === 'Pagado Total' ? 'rgba(16, 185, 129, 0.35)' : 'rgba(16, 185, 129, 0.18)',
+                border: '1.5px solid #10b981',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                color: '#6ee7b7',
+                fontWeight: 800,
+                fontSize: '0.82rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              <CheckCircle2 size={16} />
+              <span>✨ Liquidar Saldo Completo de ${saldoRestantePrevio.toLocaleString('es-CO')} COP (100% Pagado)</span>
+            </button>
+          </div>
+        )}
+
         {/* Selector de los 3 Estados de Pago */}
         <div>
           <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: '8px' }}>
@@ -338,7 +427,7 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
                 Abono Parcial
               </span>
               <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
-                Anticipo para iniciar
+                {tieneAbonoPrevio ? 'Registrar nuevo abono' : 'Anticipo para iniciar'}
               </span>
             </button>
 
@@ -391,86 +480,237 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
             padding: '14px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px'
+            gap: '12px'
           }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fbbf24' }}>
-                Monto del Abono / Anticipo
-              </span>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                Selección rápida:
-              </span>
-            </div>
+            {/* Si ya tiene abono previo, ofrecer toggle entre "Dinero recibido hoy" o "Abono total acumulado" */}
+            {tieneAbonoPrevio ? (
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fbbf24' }}>
+                    ¿Cómo deseas ingresar este pago?
+                  </span>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <button
+                      type="button"
+                      onClick={() => setModoIngreso('incremental')}
+                      style={{
+                        background: modoIngreso === 'incremental' ? 'rgba(245, 158, 11, 0.25)' : 'transparent',
+                        border: `1px solid ${modoIngreso === 'incremental' ? '#f59e0b' : 'var(--border-subtle)'}`,
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: modoIngreso === 'incremental' ? 700 : 500,
+                        color: modoIngreso === 'incremental' ? '#fbbf24' : 'var(--text-muted)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      💵 Dinero recibido hoy
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setModoIngreso('acumulado')}
+                      style={{
+                        background: modoIngreso === 'acumulado' ? 'rgba(245, 158, 11, 0.25)' : 'transparent',
+                        border: `1px solid ${modoIngreso === 'acumulado' ? '#f59e0b' : 'var(--border-subtle)'}`,
+                        borderRadius: '6px',
+                        padding: '3px 8px',
+                        fontSize: '0.72rem',
+                        fontWeight: modoIngreso === 'acumulado' ? 700 : 500,
+                        color: modoIngreso === 'acumulado' ? '#fbbf24' : 'var(--text-muted)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      📊 Abono total acumulado
+                    </button>
+                  </div>
+                </div>
 
-            {/* Chips de porcentaje rápido */}
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleSetPorcentaje(50)}
-                style={{
-                  background: montoAbono === Math.round(montoTotal * 0.5) ? 'rgba(245, 158, 11, 0.25)' : undefined,
-                  borderColor: montoAbono === Math.round(montoTotal * 0.5) ? '#f59e0b' : undefined,
-                  color: montoAbono === Math.round(montoTotal * 0.5) ? '#fbbf24' : undefined,
-                  fontWeight: 700,
-                  fontSize: '0.76rem'
-                }}
-              >
-                ⭐ 50% ($ {Math.round(montoTotal * 0.5).toLocaleString('es-CO')})
-              </button>
+                {modoIngreso === 'incremental' ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                        Monto que el cliente está pagando <strong>HOY</strong>:
+                      </span>
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setMontoIncremental(saldoRestantePrevio)}
+                          style={{ fontSize: '0.72rem', padding: '3px 8px', color: '#6ee7b7' }}
+                        >
+                          Pagar saldo completo (${saldoRestantePrevio.toLocaleString('es-CO')})
+                        </button>
+                        {saldoRestantePrevio > 10000 && (
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => setMontoIncremental(Math.round(saldoRestantePrevio / 2))}
+                            style={{ fontSize: '0.72rem', padding: '3px 8px' }}
+                          >
+                            50% (${Math.round(saldoRestantePrevio / 2).toLocaleString('es-CO')})
+                          </button>
+                        )}
+                      </div>
+                    </div>
 
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleSetPorcentaje(30)}
-                style={{
-                  background: montoAbono === Math.round(montoTotal * 0.3) ? 'rgba(245, 158, 11, 0.25)' : undefined,
-                  borderColor: montoAbono === Math.round(montoTotal * 0.3) ? '#f59e0b' : undefined,
-                  color: montoAbono === Math.round(montoTotal * 0.3) ? '#fbbf24' : undefined,
-                  fontSize: '0.76rem'
-                }}
-              >
-                30% ($ {Math.round(montoTotal * 0.3).toLocaleString('es-CO')})
-              </button>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: 800 }}>
+                        +$
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={saldoRestantePrevio}
+                        step="1000"
+                        value={montoIncremental}
+                        onChange={(e) => setMontoIncremental(parseFloat(e.target.value) || 0)}
+                        className="form-input"
+                        style={{
+                          paddingLeft: '32px',
+                          fontSize: '1.1rem',
+                          fontWeight: 800,
+                          color: '#fbbf24',
+                          borderColor: 'rgba(245, 158, 11, 0.6)'
+                        }}
+                        placeholder={`Ej: ${saldoRestantePrevio}`}
+                      />
+                    </div>
 
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => handleSetPorcentaje(70)}
-                style={{
-                  background: montoAbono === Math.round(montoTotal * 0.7) ? 'rgba(245, 158, 11, 0.25)' : undefined,
-                  borderColor: montoAbono === Math.round(montoTotal * 0.7) ? '#f59e0b' : undefined,
-                  color: montoAbono === Math.round(montoTotal * 0.7) ? '#fbbf24' : undefined,
-                  fontSize: '0.76rem'
-                }}
-              >
-                70% ($ {Math.round(montoTotal * 0.7).toLocaleString('es-CO')})
-              </button>
-            </div>
+                    <div style={{
+                      background: 'rgba(0,0,0,0.25)',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      fontSize: '0.78rem',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '4px'
+                    }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Abonado antes + recibido hoy:</span>
+                        <span style={{ fontWeight: 700, color: '#38bdf8' }}>
+                          ${abonoPrevioExistente.toLocaleString('es-CO')} + ${Math.max(0, montoIncremental).toLocaleString('es-CO')} = ${abonoEfectivo.toLocaleString('es-CO')} COP
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: 'var(--text-muted)' }}>Saldo final restante:</span>
+                        <span style={{ fontWeight: 800, color: saldoPendiente <= 0 ? '#34d399' : '#f87171' }}>
+                          ${saldoPendiente.toLocaleString('es-CO')} COP {saldoPendiente <= 0 && '✨ (¡Liquidado 100%!)'}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <label style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                      Monto total acumulado que habrá abonado:
+                    </label>
+                    <div style={{ position: 'relative' }}>
+                      <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: 800 }}>
+                        $
+                      </span>
+                      <input
+                        type="number"
+                        min="0"
+                        max={montoTotal}
+                        step="1000"
+                        value={montoAbono}
+                        onChange={(e) => setMontoAbono(parseFloat(e.target.value) || 0)}
+                        className="form-input"
+                        style={{
+                          paddingLeft: '28px',
+                          fontSize: '1.05rem',
+                          fontWeight: 700,
+                          color: '#fbbf24',
+                          borderColor: 'rgba(245, 158, 11, 0.5)'
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Flujo inicial (sin abono previo)
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fbbf24' }}>
+                    Monto del Abono / Anticipo
+                  </span>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    Selección rápida:
+                  </span>
+                </div>
 
-            {/* Input manual del valor */}
-            <div style={{ position: 'relative' }}>
-              <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: 800 }}>
-                $
-              </span>
-              <input
-                type="number"
-                min="0"
-                max={montoTotal}
-                step="1000"
-                value={montoAbono}
-                onChange={(e) => setMontoAbono(parseFloat(e.target.value) || 0)}
-                className="form-input"
-                style={{
-                  paddingLeft: '28px',
-                  fontSize: '1.05rem',
-                  fontWeight: 700,
-                  color: '#fbbf24',
-                  borderColor: 'rgba(245, 158, 11, 0.5)'
-                }}
-                placeholder="Ingresa el valor recibido"
-              />
-            </div>
+                {/* Chips de porcentaje rápido */}
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleSetPorcentaje(50)}
+                    style={{
+                      background: montoAbono === Math.round(montoTotal * 0.5) ? 'rgba(245, 158, 11, 0.25)' : undefined,
+                      borderColor: montoAbono === Math.round(montoTotal * 0.5) ? '#f59e0b' : undefined,
+                      color: montoAbono === Math.round(montoTotal * 0.5) ? '#fbbf24' : undefined,
+                      fontWeight: 700,
+                      fontSize: '0.76rem'
+                    }}
+                  >
+                    ⭐ 50% ($ {Math.round(montoTotal * 0.5).toLocaleString('es-CO')})
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleSetPorcentaje(30)}
+                    style={{
+                      background: montoAbono === Math.round(montoTotal * 0.3) ? 'rgba(245, 158, 11, 0.25)' : undefined,
+                      borderColor: montoAbono === Math.round(montoTotal * 0.3) ? '#f59e0b' : undefined,
+                      color: montoAbono === Math.round(montoTotal * 0.3) ? '#fbbf24' : undefined,
+                      fontSize: '0.76rem'
+                    }}
+                  >
+                    30% ($ {Math.round(montoTotal * 0.3).toLocaleString('es-CO')})
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleSetPorcentaje(70)}
+                    style={{
+                      background: montoAbono === Math.round(montoTotal * 0.7) ? 'rgba(245, 158, 11, 0.25)' : undefined,
+                      borderColor: montoAbono === Math.round(montoTotal * 0.7) ? '#f59e0b' : undefined,
+                      color: montoAbono === Math.round(montoTotal * 0.7) ? '#fbbf24' : undefined,
+                      fontSize: '0.76rem'
+                    }}
+                  >
+                    70% ($ {Math.round(montoTotal * 0.7).toLocaleString('es-CO')})
+                  </button>
+                </div>
+
+                {/* Input manual del valor */}
+                <div style={{ position: 'relative' }}>
+                  <span style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: 800 }}>
+                    $
+                  </span>
+                  <input
+                    type="number"
+                    min="0"
+                    max={montoTotal}
+                    step="1000"
+                    value={montoAbono}
+                    onChange={(e) => setMontoAbono(parseFloat(e.target.value) || 0)}
+                    className="form-input"
+                    style={{
+                      paddingLeft: '28px',
+                      fontSize: '1.05rem',
+                      fontWeight: 700,
+                      color: '#fbbf24',
+                      borderColor: 'rgba(245, 158, 11, 0.5)'
+                    }}
+                    placeholder="Ingresa el valor recibido"
+                  />
+                </div>
+              </>
+            )}
 
             {/* Resumen de Saldo */}
             <div style={{
@@ -482,8 +722,8 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
               fontSize: '0.85rem'
             }}>
               <span style={{ color: 'var(--text-muted)' }}>Saldo restante por cobrar:</span>
-              <span style={{ fontWeight: 800, color: '#f87171', fontSize: '0.98rem' }}>
-                ${saldoPendiente.toLocaleString('es-CO')} COP
+              <span style={{ fontWeight: 800, color: saldoPendiente <= 0 ? '#34d399' : '#f87171', fontSize: '0.98rem' }}>
+                ${saldoPendiente.toLocaleString('es-CO')} COP {saldoPendiente <= 0 && '✨'}
               </span>
             </div>
           </div>

@@ -480,11 +480,14 @@ export const CloudSyncService = {
         numero_ot: ot.numero_ot,
         cliente_nombre: ot.cliente_nombre || 'Cliente',
         cliente_telefono: ot.cliente_telefono || 'Sin teléfono',
+        item_nombre: ot.item_nombre || null,
         item_descripcion: ot.item_nombre || 'Pieza 3D',
         cantidad: Number(ot.cantidad) || 1,
         total_ot: totalOtCalc,
         total_abonado: totalAbonadoCalc,
         estado_actual: estadoDb,
+        estado_pago: ot.estado_pago || (saldoCalc <= 0 ? 'Pagado Total' : (totalAbonadoCalc > 0 ? 'Abono Parcial' : 'Pendiente')),
+        pos_venta_id: ot.pos_venta_id || null,
         stl_url: ot.stl_url || null,
         cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null
       };
@@ -1242,6 +1245,20 @@ export const CloudSyncService = {
         }
       }
 
+      // Si aún no tenemos otUuid pero sí posVentaId, intentar resolver la OT por pos_venta_id
+      if (!otUuid && posVentaId) {
+        try {
+          const { data: otRow } = await supabase!
+            .from('ordenes_trabajo')
+            .select('id')
+            .eq('pos_venta_id', posVentaId)
+            .maybeSingle();
+          if (otRow?.id && UUID_REGEX.test(otRow.id)) {
+            otUuid = otRow.id;
+          }
+        } catch (_) {}
+      }
+
       const cuentaReceptora = metodoFinal === 'NEQUI' 
         ? 'Nequi 3217273025 (Juan)' 
         : 'Bre-B 0090778625 (Germán)';
@@ -1407,6 +1424,7 @@ export const CloudSyncService = {
       let query = supabase!.from('abonos_pagos').select('*').order('created_at', { ascending: false });
       if (filtro?.cotizacion_id) query = query.eq('cotizacion_id', filtro.cotizacion_id);
       if (filtro?.orden_trabajo_id) query = query.eq('orden_trabajo_id', filtro.orden_trabajo_id);
+      if (filtro?.pos_venta_id) query = query.eq('pos_venta_id', filtro.pos_venta_id);
       const { data, error } = await query;
       if (error) throw error;
       return (data || []).map((row: any) => ({
@@ -1418,7 +1436,9 @@ export const CloudSyncService = {
         nota: row.nota || row.notas || undefined,
         cotizacion_id: row.cotizacion_id || undefined,
         orden_trabajo_id: row.orden_trabajo_id || undefined,
-        origen_modulo: 'taller',
+        pos_venta_id: row.pos_venta_id || undefined,
+        cuenta_cobro_id: row.cuenta_cobro_id || undefined,
+        origen_modulo: row.pos_venta_id ? 'pos' : (row.cuenta_cobro_id ? 'cuenta_cobro' : 'taller'),
         registrado_por: row.registrado_por_nombre || 'Equipo WJGEEKS',
         fecha_pago: row.created_at,
         created_at: row.created_at
