@@ -132,6 +132,35 @@ PROD-002,"Figura Nezuko Chibi 7cm","Coleccionable en resina curada con base",in 
 
 Este archivo se sube directamente al *Commerce Manager* de Meta para habilitar las tiendas en Instagram y catálogos interactivos dentro del chat de WhatsApp de la empresa.
 
+### 4.3. Estudio Creativo de Imágenes IA con Gemini & Nano Banana (`NanoBananaStudio.tsx`)
+Para evitar el uso de programas de edición externos, el taller cuenta con su propio generador visual asistido por inteligencia artificial en [`src/components/marketing/NanoBananaStudio.tsx`](file:///d:/WJG/src/components/marketing/NanoBananaStudio.tsx) y [`src/services/imageGenerationService.ts`](file:///d:/WJG/src/services/imageGenerationService.ts):
+
+* **Formatos y Relaciones de Aspecto Especializadas:**
+  * **Instagram Post Cuadrado ($1:1$, $1080 \times 1080\text{ px}$):** Feed clásico de Instagram, Facebook y Catálogo WhatsApp.
+  * **Instagram Retrato ($4:5$, $1080 \times 1350\text{ px}$):** Máxima ocupación vertical de pantalla en el feed de Instagram.
+  * **Story / Reel / Estados ($9:16$, $1080 \times 1920\text{ px}$):** Pantalla vertical completa para Stories, TikTok y Estados de WhatsApp.
+  * **WhatsApp Catálogo & POS ($1:1$, $800 \times 800\text{ px}$):** Miniatura rápida para el catálogo de WhatsApp Business y POS Express.
+  * **Banner Horizontal ($16:9$, $1920 \times 1080\text{ px}$):** Portadas de Facebook y cabeceras web.
+
+* **5 Presets de Estilo Visual para Manufactura 3D:**
+  1. 📸 **Estudio Comercial 8K:** Fondo degradado, iluminación softbox triple, peana acrílica y macro detalle f/2.8.
+  2. ⚡ **Diorama Épico Anime/Gamer:** Efectos de energía y aura, partículas de neón, base rocosa y contraste cinemático.
+  3. 🎨 **Detrás de Cámaras en Taller:** Tapete verde de corte, aerógrafo metálico, frascos de acrílico y luz de trabajo.
+  4. 💎 **Resina Translúcida & Cyberpunk:** Resina UV cristalina con iluminación LED posterior magenta y cian.
+  5. 🏆 **Vitrina de Coleccionista:** Exhibición en peana grabada con iluminación cenital focal de museo.
+
+* **Estudio Canvas de Superposición de Marca (Branding Overlay):**
+  * Sello de agua oficial "WJGEEKS 3D PRO" con gradiente cian.
+  * Badge de Precio Oficial en COP (ej: `$100.000 COP`).
+  * Tag de Medida y Resina 8K (ej: `📏 10 cm | Resina 8K`).
+  * Teléfono oficial de pedidos de WhatsApp (`+57 320 279 6115`).
+
+* **Flujo de Acciones Directas:**
+  * **Descargar HD:** Exporta la imagen en alta definición con el nombre del personaje listo para publicación.
+  * **Copiar al Portapapeles:** Copia un blob `image/png` para pegar con `Ctrl+V` directamente en WhatsApp Web o Instagram Web.
+  * **Compartir en WhatsApp con Copy:** Redacta y abre WhatsApp con el copy comercial preconfigurado para despacho inmediato.
+  * **Foto en Stock POS:** Asigna la imagen generada como foto de portada en el catálogo de productos de POS Express.
+
 ---
 
 ## 5. Hub de Herramientas y Repositorios 3D (`ToolsHubView.tsx`)

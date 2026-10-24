@@ -16,19 +16,22 @@ import {
   Eye,
   CheckCircle2,
   ArrowRight,
-  Send
+  Send,
+  Wand2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ProductoStock, TarifaTamano, ConfiguracionTaller } from '../../types';
 import { openWhatsApp } from '../../services/whatsappService';
+import { NanoBananaStudio } from './NanoBananaStudio';
 
 interface MarketingHubViewProps {
   productosStock: ProductoStock[];
   tarifasTamanos: TarifaTamano[];
   config: ConfiguracionTaller;
+  onUpdateProductoStock?: (prod: ProductoStock) => void;
 }
 
-type MarketingTab = 'copys' | 'meta-catalog' | 'difusiones';
+type MarketingTab = 'copys' | 'nano-banana' | 'meta-catalog' | 'difusiones';
 
 interface CopyTemplate {
   id: string;
@@ -154,7 +157,8 @@ https://wa.me/${tel}?text=${encodeURIComponent(`¡Hola WJGEEKS! Quiero cotizar u
 export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
   productosStock,
   tarifasTamanos,
-  config
+  config,
+  onUpdateProductoStock
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<MarketingTab>('copys');
 
@@ -424,6 +428,37 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
         >
           <Sparkles size={16} />
           <span>Generador de Copys Redes</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('nano-banana')}
+          style={{
+            padding: '10px 18px',
+            borderRadius: '10px',
+            border: activeSubTab === 'nano-banana' ? '1px solid rgba(56, 189, 248, 0.45)' : '1px solid transparent',
+            background: activeSubTab === 'nano-banana' ? 'rgba(56, 189, 248, 0.18)' : 'transparent',
+            color: activeSubTab === 'nano-banana' ? '#38bdf8' : '#94a3b8',
+            fontWeight: 700,
+            fontSize: '0.88rem',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          <Wand2 size={16} color="#38bdf8" />
+          <span>🎨 Estudio IA Nano Banana</span>
+          <span style={{
+            fontSize: '0.68rem',
+            fontWeight: 800,
+            padding: '2px 6px',
+            borderRadius: '6px',
+            background: 'linear-gradient(135deg, #0ea5e9, #38bdf8)',
+            color: '#000'
+          }}>
+            Nuevo
+          </span>
         </button>
 
         <button
@@ -776,6 +811,26 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
               </button>
             </div>
 
+            <button
+              type="button"
+              onClick={() => setActiveSubTab('nano-banana')}
+              className="btn btn-cyan"
+              style={{
+                width: '100%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontWeight: 800,
+                padding: '12px',
+                background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.35))',
+                border: '1px solid #38bdf8'
+              }}
+            >
+              <Wand2 size={16} />
+              <span>🎨 Crear Imagen para este Post con Nano Banana</span>
+            </button>
+
             <div style={{
               background: 'rgba(56, 189, 248, 0.06)',
               border: '1px solid rgba(56, 189, 248, 0.2)',
@@ -791,7 +846,18 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
         </div>
       )}
 
-      {/* CONTENIDO 2: EXPORTADOR CATÁLOGO META / INSTAGRAM */}
+      {/* CONTENIDO 2: ESTUDIO IA NANO BANANA (IMÁGENES PARA INSTAGRAM & WHATSAPP) */}
+      {activeSubTab === 'nano-banana' && (
+        <NanoBananaStudio
+          productosStock={productosStock}
+          tarifasTamanos={tarifasTamanos}
+          config={config}
+          onUpdateProductoStock={onUpdateProductoStock}
+          initialProducto={itemType === 'stock' ? productosStock.find(p => p.id === selectedStockId) : null}
+        />
+      )}
+
+      {/* CONTENIDO 3: EXPORTADOR CATÁLOGO META / INSTAGRAM */}
       {activeSubTab === 'meta-catalog' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Tarjetas de Métricas de Catálogo */}
