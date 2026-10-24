@@ -50,3 +50,4 @@ __pycache__/
 # Backups con datos sensibles de clientes
 backups/
 *.backup.json
+supabase/.temp/

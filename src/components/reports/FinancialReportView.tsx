@@ -120,11 +120,29 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
       });
     });
 
-    // Mapear Ventas Express / POS
+    // Mapear Ventas Express / POS (con reconciliación cruzada de OT)
     ventasExpress.forEach(v => {
+      // Buscar si tiene OT vinculada para sincronizar los abonos más recientes
+      const otAsoc = ordenes.find(o => 
+        (v.ot_id && (o.id === v.ot_id || o.numero_ot === v.ot_id)) ||
+        (v.ot_numero && (o.numero_ot === v.ot_numero || o.id === v.ot_numero)) ||
+        (o.pos_venta_id && o.pos_venta_id === v.id)
+      );
+
       const total = Number(v.total) || 0;
-      const abono = Number(v.abono) || 0;
-      const saldo = v.saldo_pendiente !== undefined ? Number(v.saldo_pendiente) : Math.max(0, total - abono);
+      let abono = Number(v.abono) || 0;
+      let saldo = v.saldo_pendiente !== undefined ? Number(v.saldo_pendiente) : Math.max(0, total - abono);
+
+      if (otAsoc) {
+        if (otAsoc.abono !== undefined && Number(otAsoc.abono) > abono) {
+          abono = Number(otAsoc.abono);
+          saldo = Math.max(0, total - abono);
+        }
+        if (otAsoc.estado_pago === 'Pagado Total') {
+          abono = total;
+          saldo = 0;
+        }
+      }
 
       // Costo estimado de stock o producción rápida (~45% del PVP si es figura o material)
       const costoEstimado = Math.round(total * 0.45);
@@ -133,7 +151,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         id: `pos-${v.id}`,
         origen: 'POS',
         numeroDoc: v.numero_venta || 'POS-S/N',
-        otAsociada: v.ot_numero,
+        otAsociada: v.ot_numero || otAsoc?.numero_ot,
         fecha: v.fecha_venta ? v.fecha_venta.slice(0, 10) : new Date().toISOString().slice(0, 10),
         clienteNombre: v.cliente_nombre || 'Cliente Mostrador',
         clienteTelefono: v.cliente_telefono || '',
@@ -141,7 +159,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         total,
         abono,
         saldo,
-        estadoPago: v.estado_pago || (saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
+        estadoPago: saldo <= 0 ? 'Pagado Total' : (v.estado_pago || (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
         estadoComercial: saldo <= 0 ? 'Completada / Entregada' : (abono > 0 ? 'Abono Registrado' : 'Pendiente'),
         metodoPago: v.metodo_pago || 'Bre-B',
         costoEstimado,

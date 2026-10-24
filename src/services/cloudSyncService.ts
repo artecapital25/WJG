@@ -178,7 +178,7 @@ export const CloudSyncService = {
           numero_cot: row.numero_cot,
           cliente: clienteMapeado,
           vendedor: row.vendedor_nombre || 'Equipo WJGEEKS',
-          fecha: row.fecha || new Date().toISOString().slice(0, 10),
+          fecha: row.fecha_emision || row.fecha || new Date().toISOString().slice(0, 10),
           estado: row.estado as any,
           items: itemsMapeados,
           subtotal: Number(row.subtotal) || 0,
@@ -380,23 +380,33 @@ export const CloudSyncService = {
         }
       }
 
-      // 5.2 Upsert de la cotización por numero_cot
+      const normalizarEstadoCotizacion = (estado?: string): string => {
+        if (!estado) return 'BORRADOR';
+        const e = estado.toUpperCase().trim();
+        if (e.includes('APROB') || e.includes('FACTUR') || e.includes('ACEPT')) return 'APROBADA';
+        if (e.includes('CANCEL') || e.includes('RECHAZ')) return 'CANCELADA';
+        if (e.includes('EXPIR')) return 'EXPIRADA';
+        if (e.includes('ENVIAD')) return 'ENVIADA';
+        return 'BORRADOR';
+      };
+
+      // 5.2 Upsert de la cotización por numero_cot con columnas canónicas
       const { data: cotData, error: cotErr } = await supabase!
         .from('cotizaciones')
         .upsert({
           numero_cot: cot.numero_cot,
           cliente_id: clienteId,
-          vendedor_nombre: cot.vendedor || 'Equipo WJGEEKS',
-          fecha: cot.fecha || new Date().toISOString().slice(0, 10),
-          estado: cot.estado,
-          subtotal: cot.subtotal,
+          cliente_nombre: cot.cliente?.nombre || 'Cliente General',
+          cliente_telefono: cot.cliente?.telefono || '3000000000',
+          fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
+          estado: normalizarEstadoCotizacion(cot.estado),
+          subtotal: Number(cot.subtotal) || 0,
           iva_porcentaje: cot.iva_porcentaje || 0,
           descuento_porcentaje: cot.descuento_porcentaje || 0,
-          total: cot.total,
-          tiempo_entrega_estimado: cot.tiempo_entrega_estimado,
-          notas: cot.notas,
-          abono: cot.abono ?? 0,
-          saldo_pendiente: cot.saldo_pendiente ?? cot.total,
+          total: Number(cot.total) || 0,
+          tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '3 a 5 días hábiles',
+          notas: cot.notas || null,
+          abono: Number(cot.abono) || 0,
           estado_pago: cot.estado_pago || 'Pendiente',
           metodo_pago: cot.metodo_pago || 'Bre-B',
           comprobante_pago: cot.comprobante_pago || null
@@ -742,50 +752,10 @@ export const CloudSyncService = {
     }
   },
 
-  // 11. Guardar o Actualizar una Venta Express en Supabase (Transaccional vía RPC con Fallback)
+  // 11. Guardar o Actualizar una Venta Express en Supabase (Persistencia Canónica Directa)
   async saveVentaExpress(venta: VentaExpress): Promise<{ success: boolean; data?: any; error?: string }> {
     if (!this.isAvailable()) return { success: false, error: 'Supabase no está configurado o sin conexión.' };
 
-    // Intento 1: Procedimiento Transaccional Atómico (ACID) en PostgreSQL
-    try {
-      const { data: rpcData, error: rpcErr } = await supabase!.rpc('rpc_registrar_venta_pos_atomica', {
-        p_id: venta.id,
-        p_numero_venta: venta.numero_venta,
-        p_nombre_producto: venta.nombre_producto,
-        p_cliente_nombre: venta.cliente_nombre,
-        p_cliente_telefono: venta.cliente_telefono || null,
-        p_total: venta.total,
-        p_abono: venta.abono,
-        p_metodo_pago: venta.metodo_pago || 'Nequi',
-        p_fecha_prometida_pago: venta.fecha_prometida_pago || null,
-        p_notas: venta.notas || null,
-        p_creado_por: venta.creado_por || 'Equipo WJGEEKS',
-        p_foto_url: venta.foto_url || null,
-        p_requiere_ot: Boolean(venta.requiere_ot),
-        p_estado_diseno: venta.estado_diseno || null,
-        p_enlace_diseno: venta.enlace_diseno || null,
-        p_notas_diseno: venta.notas_diseno || null,
-        p_producto_stock_id: venta.producto_stock_id || null,
-        p_descontar_stock: Boolean(venta.descontar_stock),
-        p_cantidad_vendida: venta.cantidad_vendida || 1
-      });
-
-      if (!rpcErr && rpcData?.success) {
-        return { success: true, data: rpcData };
-      }
-      if (rpcErr && !rpcErr.message.includes('function') && !rpcErr.message.includes('does not exist')) {
-        const isDbSchemaError = rpcErr.message.includes('type uuid') || rpcErr.message.includes('column') || rpcErr.message.includes('syntax') || rpcErr.message.includes('is of type');
-        if (!isDbSchemaError) {
-          console.warn('RPC POS falló con error de negocio:', rpcErr.message);
-          return { success: false, error: rpcErr.message };
-        }
-        console.warn('RPC POS avisó discrepancia de tipo en base de datos, ejecutando fallback directo:', rpcErr.message);
-      }
-    } catch (e: any) {
-      console.warn('RPC POS no disponible o en migración, usando fallback directo:', e?.message || e);
-    }
-
-    // Intento 2: Fallback directo a tabla (si el RPC aún no fue migrado en DB)
     try {
       const payload = {
         id: venta.id,
@@ -1185,12 +1155,12 @@ export const CloudSyncService = {
         return false;
       }
 
-      // Prevención de doble clic y cobros duplicados en intervalo menor a 60 segundos
-      const dedupKey = `${payment.orden_trabajo_id || payment.cotizacion_id || payment.cuenta_cobro_id || 'ot'}_${montoNum}_${(payment.referencia_pago || '').trim().toLowerCase()}`;
+      // Prevención de doble clic y cobros duplicados en intervalo menor a 5 segundos (antirrebote óptimo)
+      const dedupKey = `${payment.orden_trabajo_id || payment.cotizacion_id || payment.cuenta_cobro_id || payment.pos_venta_id || 'ot'}_${montoNum}_${(payment.referencia_pago || '').trim().toLowerCase()}`;
       const lastSaved = recentPaymentsCache.get(dedupKey);
       const now = Date.now();
-      if (lastSaved && (now - lastSaved) < 60000) {
-        const segRestantes = Math.round((60000 - (now - lastSaved)) / 1000);
+      if (lastSaved && (now - lastSaved) < 5000) {
+        const segRestantes = Math.round((5000 - (now - lastSaved)) / 1000);
         console.warn(`[Anti-Double-Click] Cobro idéntico prevenido: ${dedupKey} (${segRestantes}s restantes antes de reintento).`);
         return false;
       }
@@ -1199,7 +1169,7 @@ export const CloudSyncService = {
       // Limpieza periódica de llaves antiguas en caché
       if (recentPaymentsCache.size > 200) {
         for (const [key, ts] of recentPaymentsCache.entries()) {
-          if (now - ts > 60000) recentPaymentsCache.delete(key);
+          if (now - ts > 10000) recentPaymentsCache.delete(key);
         }
       }
 
