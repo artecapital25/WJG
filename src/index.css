@@ -162,6 +162,270 @@ body {
   }
 }
 
+/* =========================================================
+   HEADER MINIMALISTA ULTRA-RESPONSIVO (MÓVIL & ESCRITORIO)
+   ========================================================= */
+
+.header-minimal {
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  background-color: rgba(10, 15, 29, 0.95);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  min-width: 0;
+}
+
+.header-brand-logo {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.header-brand-title {
+  font-size: 1.05rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+  white-space: nowrap;
+}
+
+.header-brand-badge {
+  margin-left: 5px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background-color: rgba(56, 189, 248, 0.15);
+  color: #38bdf8;
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+
+.header-right-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.header-status-pill {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.header-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  box-shadow: 0 0 6px currentColor;
+  flex-shrink: 0;
+}
+
+.header-status-text {
+  display: inline;
+}
+
+.header-daily-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border-radius: 9999px;
+  background-color: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #fbbf24;
+  cursor: pointer;
+  font-size: 0.72rem;
+  font-weight: 700;
+  flex-shrink: 0;
+  transition: all 0.15s ease;
+}
+
+.header-daily-btn:hover {
+  background-color: rgba(245, 158, 11, 0.25);
+}
+
+.header-daily-text {
+  display: inline;
+}
+
+.header-user-cluster {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.header-user-badge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 9999px;
+  background-color: rgba(99, 102, 241, 0.18);
+  border: 1px solid rgba(99, 102, 241, 0.35);
+  color: #a5b4fc;
+  font-size: 0.75rem;
+  font-weight: 700;
+  user-select: none;
+  max-width: 130px;
+  flex-shrink: 0;
+}
+
+.header-user-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: inline-block;
+}
+
+.header-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+}
+
+.header-action-btn-key {
+  background-color: rgba(56, 189, 248, 0.15);
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  color: #38bdf8;
+}
+
+.header-action-btn-key:hover,
+.header-action-btn-key:active {
+  background-color: rgba(56, 189, 248, 0.28);
+  border-color: rgba(56, 189, 248, 0.6);
+  transform: translateY(-1px);
+}
+
+.header-action-btn-logout {
+  background-color: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  color: #f87171;
+}
+
+.header-action-btn-logout:hover,
+.header-action-btn-logout:active {
+  background-color: rgba(239, 68, 68, 0.28);
+  border-color: rgba(239, 68, 68, 0.6);
+  transform: translateY(-1px);
+}
+
+/* Reglas específicas para pantallas móviles (iPhone, Android) */
+@media (max-width: 640px) {
+  .header-minimal {
+    padding: 0 8px;
+    height: 52px;
+  }
+
+  .header-brand-logo {
+    width: 24px;
+    height: 24px;
+  }
+
+  .header-brand-title {
+    font-size: 0.94rem;
+  }
+
+  .header-brand-badge {
+    display: none;
+  }
+
+  .header-right-actions {
+    gap: 4px;
+  }
+
+  .header-status-pill {
+    padding: 4px 6px;
+    gap: 0;
+  }
+
+  .header-status-text {
+    display: none;
+  }
+
+  .header-daily-btn {
+    padding: 4px 6px;
+    gap: 2px;
+  }
+
+  .header-daily-text {
+    display: none;
+  }
+
+  .header-user-cluster {
+    gap: 4px;
+  }
+
+  .header-user-badge {
+    padding: 3px 6px;
+    max-width: 82px;
+    font-size: 0.72rem;
+  }
+
+  .header-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+}
+
+/* Para pantallas ultracompactas (ej: iPhone SE, 320px-375px) */
+@media (max-width: 380px) {
+  .header-minimal {
+    padding: 0 6px;
+  }
+
+  .header-brand-title {
+    font-size: 0.88rem;
+  }
+
+  .header-user-badge {
+    max-width: 62px;
+    font-size: 0.7rem;
+    padding: 2px 5px;
+    gap: 3px;
+  }
+
+  .header-action-btn {
+    width: 26px;
+    height: 26px;
+  }
+}
+
+
 
 /* Bottom Navigation Bar para Celulares y Escritorio */
 .bottom-nav {

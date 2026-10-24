@@ -20,77 +20,48 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   onLogout,
   dailyAlertsCount = 0,
 }) => {
+  const displayName = React.useMemo(() => {
+    if (!activeOperator) return 'Operador';
+    const clean = activeOperator.trim();
+    if (clean === 'ADMIN_COBRANZAS') return 'Admin';
+    if (clean === 'IMPRESION_MANTENIMIENTO') return 'Impresión';
+    if (clean === 'PINTURA_ACABADOS') return 'Acabados';
+    if (clean === 'VENTAS_POS') return 'Ventas';
+    return clean;
+  }, [activeOperator]);
+
   return (
-    <header 
-      style={{
-        height: '56px',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        padding: '0 16px',
-        backgroundColor: 'rgba(10, 15, 29, 0.95)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
-        position: 'sticky',
-        top: 0,
-        zIndex: 50,
-      }}
-    >
+    <header className="header-minimal">
       {/* Brand Identity */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+      <div className="header-brand">
         <img 
           src="/wjg_logo_vector.svg" 
           alt="WJGEEKS Logo" 
-          style={{ width: '28px', height: '28px', objectFit: 'contain' }}
+          className="header-brand-logo"
         />
-        <div style={{ lineHeight: 1.1 }}>
-          <span style={{ fontSize: '1.05rem', fontWeight: 800, letterSpacing: '-0.02em', color: '#fff' }}>
+        <div style={{ lineHeight: 1.1, display: 'flex', alignItems: 'center' }}>
+          <span className="header-brand-title">
             WJGEEKS
           </span>
-          <span 
-            style={{ 
-              marginLeft: '5px',
-              fontSize: '0.65rem', 
-              fontWeight: 800, 
-              padding: '2px 5px', 
-              borderRadius: '4px',
-              backgroundColor: 'rgba(56, 189, 248, 0.15)',
-              color: '#38bdf8',
-              border: '1px solid rgba(56, 189, 248, 0.3)'
-            }}
-          >
+          <span className="header-brand-badge">
             3D PRO
           </span>
         </div>
       </div>
 
-      {/* Discretos Indicadores de Estado (Cero Botones de Navegación) */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      {/* Discretos Indicadores y Controles de Sesión */}
+      <div className="header-right-actions">
         {/* Supabase Health Indicator */}
         <div
+          className="header-status-pill"
           title={cloudStatus === 'connected' ? 'Base de datos Supabase Online en vivo' : 'Modo Local'}
           style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px',
-            fontSize: '0.72rem',
-            fontWeight: 600,
-            padding: '3px 8px',
-            borderRadius: '9999px',
             backgroundColor: cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
             color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24',
             border: `1px solid ${cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
           }}
         >
-          <span 
-            style={{ 
-              width: '6px', 
-              height: '6px', 
-              borderRadius: '50%', 
-              backgroundColor: 'currentColor',
-              boxShadow: '0 0 6px currentColor'
-            }} 
-          />
+          <span className="header-status-dot" />
           <span className="header-status-text">
             {cloudStatus === 'connected' ? 'Online' : 'Local'}
           </span>
@@ -101,33 +72,27 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
           <button
             onClick={onOpenDailyBriefing}
             type="button"
-            title="Ver resumen diario y alertas operativas"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '4px',
-              padding: '4px 8px',
-              borderRadius: '9999px',
-              backgroundColor: 'rgba(245, 158, 11, 0.15)',
-              border: '1px solid rgba(245, 158, 11, 0.35)',
-              color: '#fbbf24',
-              cursor: 'pointer',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-            }}
+            className="header-daily-btn"
+            title="Ver resumen diario y alertas operativas (7AM)"
+            aria-label="Resumen diario 7AM"
           >
-            <Sun size={12} color="#f59e0b" />
-            <span>7AM</span>
+            <Sun size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
+            <span className="header-daily-text">7AM</span>
             {dailyAlertsCount > 0 && (
               <span 
                 style={{
                   backgroundColor: '#ef4444',
-                  color: '#fff',
+                  color: '#ffffff',
                   borderRadius: '9999px',
                   padding: '0 5px',
                   fontSize: '0.65rem',
                   fontWeight: 800,
-                  marginLeft: '2px'
+                  marginLeft: '2px',
+                  lineHeight: '14px',
+                  height: '14px',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
                 }}
               >
                 {dailyAlertsCount}
@@ -137,26 +102,16 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
         )}
 
         {/* Active Operator Avatar & Gestión de Sesión */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-          {/* Badge del Operador Autenticado (Informativo, requiere credenciales para cambiar) */}
+        <div className="header-user-cluster">
+          {/* Badge del Operador Autenticado */}
           <div
+            className="header-user-badge"
             title={`Sesión activa: ${activeOperator}`}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '3px 8px',
-              borderRadius: '9999px',
-              backgroundColor: 'rgba(99, 102, 241, 0.18)',
-              border: '1px solid rgba(99, 102, 241, 0.35)',
-              color: '#a5b4fc',
-              fontSize: '0.75rem',
-              fontWeight: 700,
-              userSelect: 'none',
-            }}
           >
-            <ShieldCheck size={13} color="#818cf8" />
-            <span>{activeOperator}</span>
+            <ShieldCheck size={13} color="#818cf8" style={{ flexShrink: 0 }} />
+            <span className="header-user-name">
+              {displayName}
+            </span>
           </div>
 
           {/* Botón para cambiar PIN / Contraseña */}
@@ -164,50 +119,24 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
             <button
               type="button"
               onClick={onOpenChangePin}
-              title={`Cambiar clave o PIN de ${activeOperator}`}
+              className="header-action-btn header-action-btn-key"
+              title={`Cambiar clave o PIN (${activeOperator})`}
               aria-label="Cambiar clave o PIN"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(56, 189, 248, 0.12)',
-                border: '1px solid rgba(56, 189, 248, 0.3)',
-                color: '#38bdf8',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'all 0.15s ease'
-              }}
             >
-              <KeyRound size={12} />
+              <KeyRound size={13} />
             </button>
           )}
 
-          {/* Botón para cerrar sesión o cambiar de usuario (solicita credenciales al ingresar) */}
+          {/* Botón para cerrar sesión */}
           {onLogout && (
             <button
               type="button"
               onClick={onLogout}
-              title={`Cerrar sesión de ${activeOperator} / Cambiar usuario`}
+              className="header-action-btn header-action-btn-logout"
+              title={`Cerrar sesión de ${activeOperator}`}
               aria-label="Cerrar sesión"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                backgroundColor: 'rgba(239, 68, 68, 0.12)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#f87171',
-                cursor: 'pointer',
-                padding: 0,
-                transition: 'all 0.15s ease'
-              }}
             >
-              <LogOut size={12} />
+              <LogOut size={13} />
             </button>
           )}
         </div>
