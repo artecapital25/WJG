@@ -27,6 +27,7 @@ const BackupDriveModal = React.lazy(() => import('./components/backup/BackupDriv
 const CalendarOperationalView = React.lazy(() => import('./components/calendar/CalendarOperationalView').then(m => ({ default: m.CalendarOperationalView })));
 const UsuariosManagerView = React.lazy(() => import('./components/admin/UsuariosManagerView').then(m => ({ default: m.UsuariosManagerView })));
 const DailyBriefingModal = React.lazy(() => import('./components/admin/DailyBriefingModal').then(m => ({ default: m.DailyBriefingModal })));
+const WhatsAppConnectModal = React.lazy(() => import('./components/whatsapp/WhatsAppConnectModal').then(m => ({ default: m.WhatsAppConnectModal })));
 import { AuthSecurityService } from './services/authSecurityService';
 import { WhatsAppNotificationService } from './services/whatsappNotificationService';
 import { useUsuariosTaller } from './hooks/useUsuariosTaller';
@@ -122,6 +123,7 @@ export const App: React.FC = () => {
 
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showDailyBriefingModal, setShowDailyBriefingModal] = useState(false);
+  const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [whatsappHealthStatus, setWhatsappHealthStatus] = useState<'operativo' | 'alerta_critica' | 'desconocido'>('operativo');
 
   // Monitor periódico de salud de WhatsApp (+57 320 2796115)
@@ -2033,6 +2035,7 @@ export const App: React.FC = () => {
         activeOperator={activeOperator}
         onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
         onOpenBackup={() => setShowBackupModal(true)}
+        onOpenWhatsAppConnect={() => setShowWhatsAppModal(true)}
         onOpenChangePin={() => setShowChangePinModal(true)}
         onLogout={handleStaffLogout}
         dailyAlertsCount={pendingOTs}
@@ -2359,6 +2362,14 @@ export const App: React.FC = () => {
           onSuccessDispatch={() => {
             toast.success('Daily Briefing despachado por WhatsApp a Germán y Wendy');
           }}
+        />
+      </React.Suspense>
+
+      {/* Modal de Conexión de WhatsApp y Correo Oficial */}
+      <React.Suspense fallback={null}>
+        <WhatsAppConnectModal 
+          isOpen={showWhatsAppModal}
+          onClose={() => setShowWhatsAppModal(false)}
         />
       </React.Suspense>
       {/* Modal de Cambio de PIN de Operador */}

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut, Database } from 'lucide-react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare } from 'lucide-react';
 
 interface HeaderMinimalProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
@@ -7,6 +7,7 @@ interface HeaderMinimalProps {
   onSelectOperator?: (operator: string) => void;
   onOpenDailyBriefing?: () => void;
   onOpenBackup?: () => void;
+  onOpenWhatsAppConnect?: () => void;
   onOpenChangePin?: () => void;
   onLogout?: () => void;
   dailyAlertsCount?: number;
@@ -18,6 +19,7 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   onSelectOperator,
   onOpenDailyBriefing,
   onOpenBackup,
+  onOpenWhatsAppConnect,
   onOpenChangePin,
   onLogout,
   dailyAlertsCount = 0,
@@ -89,6 +91,28 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
             <Database size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
             <span className="header-daily-text" style={{ color: '#38bdf8', fontWeight: 700 }}>
               Backup
+            </span>
+          </button>
+        )}
+
+        {/* Botón WhatsApp & Correo Oficial */}
+        {onOpenWhatsAppConnect && (
+          <button
+            onClick={onOpenWhatsAppConnect}
+            type="button"
+            className="header-daily-btn"
+            title="Conexión WhatsApp Oficial (+57 320 2796115) y Correo (wjgeeks3d@gmail.com)"
+            aria-label="WhatsApp y Correo Oficial"
+            style={{
+              backgroundColor: 'rgba(34, 197, 94, 0.12)',
+              color: '#4ade80',
+              border: '1px solid rgba(34, 197, 94, 0.3)',
+              cursor: 'pointer'
+            }}
+          >
+            <MessageSquare size={13} color="#4ade80" style={{ flexShrink: 0 }} />
+            <span className="header-daily-text" style={{ color: '#4ade80', fontWeight: 700 }}>
+              WhatsApp
             </span>
           </button>
         )}

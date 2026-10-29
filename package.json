@@ -8,6 +8,7 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "backup": "node scripts/backup_to_drive.cjs",
+    "wa:gateway": "node scripts/whatsapp_gateway_server.cjs",
     "test": "vitest run",
     "test:watch": "vitest"
   },

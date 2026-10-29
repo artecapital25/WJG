@@ -9,11 +9,12 @@ import {
 } from '../types';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 import { formatWhatsAppPhone, openWhatsApp } from './whatsappService';
+import { WhatsAppGatewayService } from './whatsappGatewayService';
 
 export interface WhatsAppNotificationPayload {
   destinatarioTelefono: string;
   destinatarioNombre?: string;
-  tipo: 'alerta_cobranza' | 'alerta_tarea_asignada' | 'alerta_ot_estado' | 'sos_insumo' | 'recordatorio_vencimiento' | 'daily_briefing' | 'healthcheck_alert';
+  tipo: 'alerta_cobranza' | 'alerta_tarea_asignada' | 'alerta_ot_estado' | 'sos_insumo' | 'recordatorio_vencimiento' | 'daily_briefing' | 'healthcheck_alert' | 'alerta_equipo';
   contenido: string;
   entidadTipo?: string;
   entidadId?: string;
@@ -118,7 +119,7 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
   public static async registrarAuditoriaEnvio(
     payload: WhatsAppNotificationPayload,
     estado: 'enviado' | 'pendiente' | 'fallido' = 'enviado',
-    proveedor: 'web_direct' | 'whatsapp_cloud_api' = 'web_direct',
+    proveedor: 'web_direct' | 'whatsapp_cloud_api' | 'whatsapp_qr_gateway' = 'web_direct',
     errorDetalle?: string
   ): Promise<void> {
     try {
@@ -161,12 +162,61 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
   }
 
   /**
-   * Envía la notificación abriendo WhatsApp y auditando la acción
+   * Despacha la notificación de forma 100% automática en segundo plano si el Gateway QR está conectado,
+   * o hace fallback al enlace wa.me si no está activo.
+   */
+  public static async despacharNotificacionAutomatica(
+    targetOrPayload: WhatsAppNotificationPayload | string,
+    messageOrFallbackUrl?: string
+  ): Promise<{ success: boolean; modo: 'gateway_auto' | 'wa_me_fallback'; id?: string; error?: string }> {
+    let payload: WhatsAppNotificationPayload;
+    let urlFallback: string | undefined;
+
+    if (typeof targetOrPayload === 'string') {
+      payload = {
+        destinatarioTelefono: targetOrPayload,
+        contenido: messageOrFallbackUrl || '',
+        tipo: 'alerta_equipo'
+      };
+      urlFallback = `https://wa.me/${formatWhatsAppPhone(targetOrPayload)}?text=${encodeURIComponent(messageOrFallbackUrl || '')}`;
+    } else {
+      payload = targetOrPayload;
+      urlFallback = messageOrFallbackUrl;
+    }
+
+    const fallbackUrl = urlFallback || `https://wa.me/${formatWhatsAppPhone(payload.destinatarioTelefono)}?text=${encodeURIComponent(payload.contenido)}`;
+    
+    try {
+      const sendRes = await WhatsAppGatewayService.sendTextMessage(payload.destinatarioTelefono, payload.contenido);
+      if (sendRes.success) {
+        await this.registrarAuditoriaEnvio(payload, 'enviado', 'whatsapp_qr_gateway');
+        return { success: true, modo: 'gateway_auto', id: sendRes.id };
+      }
+    } catch (_) {}
+
+    // Fallback asistido si el gateway no responde
+    await this.registrarAuditoriaEnvio(payload, 'pendiente', 'web_direct');
+    if (typeof window !== 'undefined') {
+      window.open(fallbackUrl, '_blank', 'noopener,noreferrer');
+    }
+    return { success: false, modo: 'wa_me_fallback', error: 'Gateway no disponible; enlace abierto en WhatsApp.' };
+  }
+
+  /**
+   * Envía la notificación: intenta despacho automático vía Gateway QR y si está desconectado abre WhatsApp
    */
   public static async enviarYAuditar(
     url: string,
     payload: WhatsAppNotificationPayload
   ): Promise<void> {
+    const config = WhatsAppGatewayService.getConfig();
+    if (config.autoSendEnabled) {
+      const autoRes = await this.despacharNotificacionAutomatica(payload, url);
+      if (autoRes.success && autoRes.modo === 'gateway_auto') {
+        return;
+      }
+    }
+
     openWhatsApp(url);
     await this.registrarAuditoriaEnvio(payload, 'enviado', 'web_direct');
   }
@@ -382,6 +432,7 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
       mensaje: 'Daily Briefing registrado y despachado con éxito en modo seguro.' 
     };
   }
+
 
   /**
    * Genera el enlace directo para enviar el Daily Briefing por WhatsApp Web / App

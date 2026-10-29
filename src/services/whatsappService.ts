@@ -112,8 +112,47 @@ Por favor envíanos tu comprobante para coordinar el despacho inmediato. ¡Mucha
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 
-export function openWhatsApp(url: string) {
-  window.open(url, '_blank', 'noopener,noreferrer');
+export async function openWhatsApp(
+  url: string, 
+  explicitPhone?: string, 
+  explicitMsg?: string
+): Promise<boolean> {
+  let targetPhone = explicitPhone;
+  let targetMsg = explicitMsg;
+
+  if (!targetPhone || !targetMsg) {
+    try {
+      const match = url.match(/wa\.me\/([0-9+]+)(\?text=(.*))?/);
+      if (match) {
+        targetPhone = match[1];
+        if (match[3]) {
+          targetMsg = decodeURIComponent(match[3]);
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Si el envío automático está habilitado, intentar despachar en segundo plano
+  if (targetPhone && targetMsg) {
+    try {
+      const { WhatsAppGatewayService } = await import('./whatsappGatewayService');
+      const cfg = WhatsAppGatewayService.getConfig();
+      if (cfg.autoSendEnabled) {
+        const res = await WhatsAppGatewayService.sendTextMessage(targetPhone, targetMsg);
+        if (res.success) {
+          const { toast } = await import('../components/ui/ToastProvider');
+          toast.success(`WhatsApp despachado automáticamente (+57 320 2796115)`);
+          return true;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Fallback transparente al navegador / app móvil
+  if (typeof window !== 'undefined') {
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+  return false;
 }
 
 export interface MiembroEquipoWJG {

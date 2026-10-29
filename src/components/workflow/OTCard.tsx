@@ -10,6 +10,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../types';
+import { openWhatsApp } from '../../services/whatsappService';
 
 interface OTCardProps {
   ot: OrdenTrabajo;
@@ -118,7 +119,8 @@ export const OTCard: React.FC<OTCardProps> = ({
       alert('No hay teléfono registrado para este aviso.');
       return;
     }
-    window.open(`https://wa.me/${handoff.telefono}?text=${encodeURIComponent(handoff.mensaje)}`, '_blank');
+    const url = `https://wa.me/${handoff.telefono}?text=${encodeURIComponent(handoff.mensaje)}`;
+    openWhatsApp(url, handoff.telefono, handoff.mensaje);
   };
 
   return (
