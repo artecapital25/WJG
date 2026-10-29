@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { ProductoStock, PiezaCotizada } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
 
 interface ProductosStockViewProps {
@@ -807,73 +808,12 @@ ${itemsText}
 
             <form onSubmit={handleSaveProduct}>
               {/* SUBIDA DE FOTO */}
-              <div className="form-group">
-                <label className="form-label">Foto de la Figura o Producto</label>
-                {editingItem.imagen_url ? (
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '12px',
-                    padding: '10px',
-                    background: 'rgba(56, 189, 248, 0.08)',
-                    borderRadius: '8px',
-                    border: '1px solid rgba(56, 189, 248, 0.3)'
-                  }}>
-                    <img
-                      src={editingItem.imagen_url}
-                      alt="Previsualización"
-                      style={{ width: '60px', height: '60px', borderRadius: '6px', objectFit: 'cover' }}
-                    />
-                    <div style={{ flex: 1, fontSize: '0.78rem', color: '#fff' }}>
-                      Foto cargada exitosamente
-                    </div>
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => setEditingItem({ ...editingItem, imagen_url: '' })}
-                      style={{ padding: '5px 8px' }}
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
-                ) : (
-                  <label style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    padding: '20px',
-                    border: '2px dashed var(--border-subtle)',
-                    borderRadius: '10px',
-                    cursor: 'pointer',
-                    background: 'rgba(0, 0, 0, 0.25)',
-                    gap: '8px'
-                  }}>
-                    <Camera size={24} color="var(--brand-cyan)" />
-                    <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#fff' }}>
-                      Tomar Foto o Subir desde Galería / Archivo
-                    </span>
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                      PNG, JPG o WebP (se optimizará automáticamente)
-                    </span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      style={{ display: 'none' }}
-                      onChange={e => {
-                        if (e.target.files && e.target.files[0]) {
-                          handleImageFile(e.target.files[0]);
-                        }
-                      }}
-                    />
-                  </label>
-                )}
-                {isOptimizingImage && (
-                  <div style={{ fontSize: '0.75rem', color: 'var(--brand-cyan)', marginTop: '4px' }}>
-                    Optimizando imagen...
-                  </div>
-                )}
-              </div>
+              <ImageUploadField
+                label="Foto de la Figura o Producto"
+                helperText="Toma foto en el taller con la cámara del celular, sube un archivo o pega un enlace."
+                value={editingItem.imagen_url || ''}
+                onChange={(url) => setEditingItem({ ...editingItem, imagen_url: url })}
+              />
 
               {/* Nombre y Categoría */}
               <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '10px' }}>

@@ -800,24 +800,42 @@ export const CloudSyncService = {
     }
   },
 
-  // Eliminar Venta Express en Supabase (con Reposición Atómica vía RPC y Fallback)
-  async deleteVentaExpress(id: string): Promise<{ success: boolean; error?: string }> {
+  // Eliminar Venta Express en Supabase (con purga estricta de abonos contables y OTs asociadas)
+  async deleteVentaExpress(id: string, numero_venta?: string, ot_id?: string, ot_numero?: string): Promise<{ success: boolean; error?: string }> {
     if (!this.isAvailable()) return { success: false, error: 'Offline' };
 
-    // Intento 1: Cancelación atómica vía RPC (repone inventario automáticamente)
     try {
-      const { data: rpcData, error: rpcErr } = await supabase!.rpc('rpc_cancelar_venta_pos_atomica', {
-        p_venta_id: id
-      });
-      if (!rpcErr && rpcData?.success) {
-        return { success: true };
-      }
-    } catch (e) {
-      // Fallback a delete estándar
-    }
+      // 1. Purgar abonos del Ledger Contable Inmutable (abonos_pagos) asociados a esta venta o su OT
+      try {
+        let abonosQuery = supabase!.from('abonos_pagos').delete();
+        const conds: string[] = [`pos_venta_id.eq.${id}`];
+        if (numero_venta) conds.push(`pos_venta_id.eq.${numero_venta}`);
+        if (ot_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot_id)) {
+          conds.push(`orden_trabajo_id.eq.${ot_id}`);
+        }
+        await abonosQuery.or(conds.join(','));
 
-    // Intento 2: Delete directo
-    try {
+        if (numero_venta) {
+          await supabase!.from('abonos_pagos').delete().ilike('nota', `%${numero_venta}%`);
+        }
+      } catch (eLedger) {
+        console.warn('[deleteVentaExpress] Advertencia limpiando abonos contables:', eLedger);
+      }
+
+      // 2. Purgar u Orden de Trabajo asociada para que no quede huérfana en el taller ni en cobranzas
+      try {
+        let otQuery = supabase!.from('ordenes_trabajo').delete();
+        const otConds: string[] = [`pos_venta_id.eq.${id}`];
+        if (ot_numero) otConds.push(`numero_ot.eq.${ot_numero}`);
+        if (ot_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot_id)) {
+          otConds.push(`id.eq.${ot_id}`);
+        }
+        await otQuery.or(otConds.join(','));
+      } catch (eOT) {
+        console.warn('[deleteVentaExpress] Advertencia limpiando OT asociada:', eOT);
+      }
+
+      // 3. Eliminar la venta de la tabla ventas_express
       const { error } = await supabase!
         .from('ventas_express')
         .delete()
@@ -831,6 +849,77 @@ export const CloudSyncService = {
     } catch (e: any) {
       console.warn('Exception in deleteVentaExpress:', e);
       return { success: false, error: e?.message || 'Error eliminando venta' };
+    }
+  },
+
+  // Eliminar Cotización en Supabase (con purga estricta de abonos en Ledger, ítems y OTs vinculadas)
+  async deleteCotizacion(id: string, numero_cot?: string): Promise<{ success: boolean; error?: string }> {
+    if (!this.isAvailable()) return { success: false, error: 'Offline' };
+
+    try {
+      const isUuid = Boolean(id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id));
+
+      // 1. Purgar abonos contables en abonos_pagos asociados a esta cotización
+      try {
+        let abonoQuery = supabase!.from('abonos_pagos').delete();
+        if (isUuid) {
+          abonoQuery = abonoQuery.eq('cotizacion_id', id);
+        } else if (numero_cot) {
+          abonoQuery = abonoQuery.ilike('nota', `%${numero_cot}%`);
+        }
+        await abonoQuery;
+
+        if (numero_cot) {
+          await supabase!.from('abonos_pagos').delete().ilike('nota', `%${numero_cot}%`);
+        }
+      } catch (eAbono) {
+        console.warn('[deleteCotizacion] Advertencia purgando abonos de cotización:', eAbono);
+      }
+
+      // 2. Eliminar OTs asociadas en ordenes_trabajo
+      try {
+        let otQuery = supabase!.from('ordenes_trabajo').delete();
+        if (isUuid && numero_cot) {
+          otQuery = otQuery.or(`cotizacion_id.eq.${id},cotizacion_numero.eq.${numero_cot}`);
+        } else if (isUuid) {
+          otQuery = otQuery.eq('cotizacion_id', id);
+        } else if (numero_cot) {
+          otQuery = otQuery.eq('cotizacion_numero', numero_cot);
+        }
+        await otQuery;
+      } catch (eOT) {
+        console.warn('[deleteCotizacion] Advertencia eliminando OTs vinculadas:', eOT);
+      }
+
+      // 3. Eliminar piezas / ítems de la cotización
+      try {
+        if (isUuid) {
+          await supabase!.from('cotizacion_items').delete().eq('cotizacion_id', id);
+        }
+      } catch (eItems) {
+        console.warn('[deleteCotizacion] Advertencia eliminando ítems:', eItems);
+      }
+
+      // 4. Eliminar el registro en la tabla cotizaciones
+      let deleteQuery = supabase!.from('cotizaciones').delete();
+      if (isUuid) {
+        deleteQuery = deleteQuery.eq('id', id);
+      } else if (numero_cot) {
+        deleteQuery = deleteQuery.eq('numero_cot', numero_cot);
+      } else {
+        return { success: false, error: 'ID o número de cotización no válido' };
+      }
+
+      const { error } = await deleteQuery;
+      if (error) {
+        console.warn('Error deleting cotizacion in Supabase:', error.message);
+        return { success: false, error: error.message };
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      console.warn('Exception in deleteCotizacion:', e);
+      return { success: false, error: e?.message || 'Error eliminando cotización' };
     }
   },
 
@@ -1113,7 +1202,8 @@ export const CloudSyncService = {
         peso_g: resina.peso_g,
         precio_compra: resina.precio_compra,
         costo_gramo: resina.costo_gramo,
-        velocidad_impresion_mm_h: resina.velocidad_impresion_mm_h
+        velocidad_impresion_mm_h: resina.velocidad_impresion_mm_h,
+        imagen_url: resina.imagen_url || null
       };
       const { error } = await supabase!.from('resinas').upsert(payload, { onConflict: 'id' });
       return !error;
@@ -1136,9 +1226,30 @@ export const CloudSyncService = {
         costo_total: insumo.costo_total,
         costo_unitario: insumo.costo_unitario,
         enlace_compra: insumo.enlace_compra || null,
-        descripcion: insumo.descripcion || null
+        descripcion: insumo.descripcion || null,
+        imagen_url: insumo.imagen_url || null
       };
       const { error } = await supabase!.from('insumos').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.05 Sincronizar Maquinaria en Supabase
+  async saveMaquina(maquina: Maquina): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: maquina.id,
+        nombre: maquina.nombre,
+        tipo: maquina.tipo,
+        consumo_kwh: maquina.consumo_kwh,
+        costo_minuto: maquina.costo_minuto,
+        estado: maquina.estado,
+        imagen_url: maquina.imagen_url || null
+      };
+      const { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
       return !error;
     } catch (e) {
       return false;

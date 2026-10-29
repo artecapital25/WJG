@@ -34,9 +34,12 @@ export interface DeudorConsolidado {
 
 // Helper para vincular de forma estricta una OT a una Cuenta de Cobro y no duplicarla
 export const otMatchesCuenta = (o: OrdenTrabajo, c: CuentaCobro): boolean => {
+  if (c.id === o.id) return true;
+  const numOTFromCC = c.numero_cc?.replace(/^CC-/, 'OT-');
+  if (numOTFromCC && o.numero_ot && numOTFromCC === o.numero_ot) return true;
+  if (c.numero_cc === o.numero_ot) return true;
   if (o.cotizacion_id && c.cotizacion_id && o.cotizacion_id === c.cotizacion_id) return true;
   if (o.cotizacion_numero && c.cotizacion_numero && o.cotizacion_numero === c.cotizacion_numero) return true;
-  if (c.id === o.id || c.numero_cc === o.numero_ot) return true;
   if (c.items_resumen && o.numero_ot && c.items_resumen.includes(o.numero_ot)) return true;
   if (
     o.cliente_nombre && c.cliente?.nombre &&
@@ -60,7 +63,10 @@ export const otMatchesVenta = (o: OrdenTrabajo, v: VentaExpress): boolean => {
     o.cliente_nombre && v.cliente_nombre &&
     o.cliente_nombre.trim().toLowerCase() === v.cliente_nombre.trim().toLowerCase() &&
     o.item_nombre && v.nombre_producto &&
-    o.item_nombre.trim().toLowerCase() === v.nombre_producto.trim().toLowerCase()
+    (
+      o.item_nombre.trim().toLowerCase().includes(v.nombre_producto.trim().toLowerCase()) ||
+      v.nombre_producto.trim().toLowerCase().includes(o.item_nombre.trim().toLowerCase())
+    )
   ) {
     return true;
   }
@@ -69,8 +75,22 @@ export const otMatchesVenta = (o: OrdenTrabajo, v: VentaExpress): boolean => {
 
 // Helper para vincular una Venta Express (POS) a una Cuenta de Cobro
 export const ventaMatchesCuenta = (v: VentaExpress, c: CuentaCobro): boolean => {
+  const numOTFromCC = c.numero_cc?.replace(/^CC-/, 'OT-');
+  if (v.ot_numero && numOTFromCC && v.ot_numero === numOTFromCC) return true;
+  if (v.ot_id && (v.ot_id === c.id || (numOTFromCC && v.ot_id.includes(numOTFromCC)))) return true;
   if (c.cotizacion_id && (c.cotizacion_id === v.id || c.cotizacion_id === v.numero_venta)) return true;
-  if (c.cotizacion_numero && c.cotizacion_numero === v.numero_venta) return true;
+  if (c.cotizacion_numero && (c.cotizacion_numero === v.numero_venta || (v.ot_numero && c.cotizacion_numero === v.ot_numero.replace(/^OT-/, 'COT-')))) return true;
   if (c.items_resumen && v.numero_venta && c.items_resumen.includes(v.numero_venta)) return true;
+  if (
+    c.cliente?.nombre && v.cliente_nombre &&
+    c.cliente.nombre.trim().toLowerCase() === v.cliente_nombre.trim().toLowerCase() &&
+    c.items_resumen && v.nombre_producto &&
+    (
+      c.items_resumen.trim().toLowerCase().includes(v.nombre_producto.trim().toLowerCase()) ||
+      v.nombre_producto.trim().toLowerCase().includes(c.items_resumen.trim().toLowerCase())
+    )
+  ) {
+    return true;
+  }
   return false;
 };

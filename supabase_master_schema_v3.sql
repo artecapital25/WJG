@@ -384,6 +384,7 @@ CREATE TABLE IF NOT EXISTS public.resinas (
     costo_litro NUMERIC(14, 2) NOT NULL DEFAULT 120000,
     stock_ml NUMERIC(10, 2) DEFAULT 1000,
     densidad_g_cm3 NUMERIC(5, 3) DEFAULT 1.12,
+    imagen_url TEXT,
     activo BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -396,6 +397,7 @@ CREATE TABLE IF NOT EXISTS public.insumos (
     costo_unitario NUMERIC(14, 2) NOT NULL DEFAULT 0,
     stock_actual NUMERIC(10, 2) DEFAULT 0,
     unidad VARCHAR(30) DEFAULT 'unidades',
+    imagen_url TEXT,
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 

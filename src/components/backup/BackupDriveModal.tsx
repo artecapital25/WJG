@@ -9,18 +9,20 @@ import {
   X, 
   FolderSync, 
   Cloud, 
-  Share2,
-  Table,
-  FileSpreadsheet,
-  Copy,
-  Check,
-  RefreshCw,
-  Code2,
-  Layers,
-  ChevronDown,
-  ChevronUp,
-  FileJson,
-  Sparkles
+  Share2, 
+  Table, 
+  FileSpreadsheet, 
+  Copy, 
+  Check, 
+  RefreshCw, 
+  Code2, 
+  Layers, 
+  ChevronDown, 
+  ChevronUp, 
+  FileJson, 
+  Sparkles,
+  Clock,
+  HardDrive
 } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 import { GoogleSheetsSyncService, GoogleSheetsConfig } from '../../services/googleSheetsSyncService';
@@ -42,11 +44,13 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
   const [feedbackMsg, setFeedbackMsg] = useState<{ tipo: 'success' | 'info' | 'error'; texto: string } | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSyncingSheets, setIsSyncingSheets] = useState(false);
+  const [isTestingDriveBackup, setIsTestingDriveBackup] = useState(false);
+  const [isSettingTrigger, setIsSettingTrigger] = useState(false);
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [copiedUrl, setCopiedUrl] = useState(false);
 
-  // Configuración de Google Sheets
+  // Configuración de Google Sheets / Apps Script
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => GoogleSheetsSyncService.getConfig());
   const [webAppUrlInput, setWebAppUrlInput] = useState(sheetsConfig.webAppUrl || '');
   const [sheetUrlInput, setSheetUrlInput] = useState(sheetsConfig.sheetUrl || '');
@@ -89,8 +93,82 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
     setSheetsConfig(updated);
     setFeedbackMsg({
       tipo: 'success',
-      texto: 'Configuración de Google Sheets guardada correctamente.'
+      texto: 'Configuración guardada correctamente.'
     });
+  };
+
+  // Ejecutar respaldo autónomo a Google Drive ahora
+  const handleEjecutarDriveBackup = async () => {
+    if (!webAppUrlInput.trim()) {
+      setFeedbackMsg({
+        tipo: 'error',
+        texto: 'Por favor ingresa primero la URL de tu Google Apps Script (/exec).'
+      });
+      return;
+    }
+
+    handleGuardarConfig();
+    setIsTestingDriveBackup(true);
+    setFeedbackMsg(null);
+
+    try {
+      const res = await GoogleSheetsSyncService.triggerNightlyDriveBackup(webAppUrlInput.trim());
+      if (res.success) {
+        setFeedbackMsg({
+          tipo: 'success',
+          texto: '🎉 ' + (res.message || 'Respaldo ejecutado con éxito en la carpeta WJGEEKS_3D_Backups de tu Google Drive.')
+        });
+      } else {
+        setFeedbackMsg({
+          tipo: 'error',
+          texto: '❌ ' + res.message
+        });
+      }
+    } catch (e: any) {
+      setFeedbackMsg({
+        tipo: 'error',
+        texto: 'Error de conexión con Google Apps Script: ' + (e?.message || 'Fallo de red')
+      });
+    } finally {
+      setIsTestingDriveBackup(false);
+    }
+  };
+
+  // Programar disparador nocturno automático a las 3:00 AM
+  const handleConfigurarTriggerNocturno = async () => {
+    if (!webAppUrlInput.trim()) {
+      setFeedbackMsg({
+        tipo: 'error',
+        texto: 'Por favor ingresa primero la URL de tu Google Apps Script (/exec).'
+      });
+      return;
+    }
+
+    handleGuardarConfig();
+    setIsSettingTrigger(true);
+    setFeedbackMsg(null);
+
+    try {
+      const res = await GoogleSheetsSyncService.setupNightlyBackupTrigger(webAppUrlInput.trim());
+      if (res.success) {
+        setFeedbackMsg({
+          tipo: 'success',
+          texto: '⏰ ' + (res.message || '¡Disparador nocturno configurado! Se ejecutará todas las madrugadas a las 3:00 AM automáticamente en Google Drive.')
+        });
+      } else {
+        setFeedbackMsg({
+          tipo: 'error',
+          texto: '❌ ' + res.message
+        });
+      }
+    } catch (e: any) {
+      setFeedbackMsg({
+        tipo: 'error',
+        texto: 'Error configurando disparador nocturno: ' + (e?.message || 'Fallo de red')
+      });
+    } finally {
+      setIsSettingTrigger(false);
+    }
   };
 
   // Sincronizar datos a Google Sheets mediante Apps Script
@@ -103,9 +181,7 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
       return;
     }
 
-    // Auto-guardar la URL si no estaba guardada
     handleGuardarConfig();
-
     setIsSyncingSheets(true);
     setFeedbackMsg(null);
 
@@ -150,7 +226,7 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
     }
   };
 
-  // 1. Guardar en Google Drive / Compartir JSON
+  // 1. Guardar en Google Drive / Compartir JSON (Móviles / PC)
   const handleGuardarEnDriveJson = async () => {
     setIsProcessing(true);
     setFeedbackMsg(null);
@@ -159,12 +235,12 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
       if (res.method === 'share' && res.success) {
         setFeedbackMsg({
           tipo: 'success',
-          texto: '✅ Menú de compartir abierto: selecciona "Guardar en Drive" para subir tu respaldo.'
+          texto: '✅ Menú de compartir abierto: selecciona "Guardar en Drive", WhatsApp o Archivos para guardar tu copia.'
         });
       } else if (res.method === 'download') {
         setFeedbackMsg({
           tipo: 'info',
-          texto: '📥 Archivo descargado en tu equipo. Ahora puedes arrastrarlo a tu carpeta de Google Drive.'
+          texto: `📥 Archivo ${res.fileName} descargado exitosamente. Ahora puedes guardarlo en tu Google Drive.`
         });
       }
     } catch (e: any) {
@@ -178,12 +254,23 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
   };
 
   // 2. Descargar archivo JSON estándar
-  const handleDescargarJson = () => {
-    StorageService.exportBackup();
-    setFeedbackMsg({
-      tipo: 'success',
-      texto: '📥 Copia de seguridad descargada exitosamente en formato JSON.'
-    });
+  const handleDescargarJson = async () => {
+    setIsProcessing(true);
+    setFeedbackMsg(null);
+    try {
+      const fileName = await StorageService.exportBackup();
+      setFeedbackMsg({
+        tipo: 'success',
+        texto: `📥 Copia de seguridad descargada exitosamente: ${fileName}`
+      });
+    } catch (e: any) {
+      setFeedbackMsg({
+        tipo: 'error',
+        texto: 'Error al generar descarga JSON: ' + (e?.message || 'Error')
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 3. Restaurar copia de seguridad JSON
@@ -200,16 +287,19 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
         );
         if (!confirmacion) return;
 
-        const ok = StorageService.importBackup(content);
-        if (ok) {
+        const res = StorageService.importBackup(content);
+        if (res.success) {
+          const statsResumen = Object.entries(res.stats)
+            .map(([k, v]) => `${v} ${k}`)
+            .join(', ');
           setFeedbackMsg({
             tipo: 'success',
-            texto: '🎉 ¡Copia de seguridad restaurada con éxito! La página se recargará para reflejar los datos.'
+            texto: `🎉 ¡Copia de seguridad restaurada con éxito! Se cargaron: ${statsResumen || 'datos'}. La página se actualizará.`
           });
           setTimeout(() => {
             if (onRestoredSuccess) onRestoredSuccess();
             window.location.reload();
-          }, 1500);
+          }, 1800);
         } else {
           setFeedbackMsg({
             tipo: 'error',
@@ -338,8 +428,8 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
               transition: 'all 0.2s'
             }}
           >
-            <Table size={16} />
-            <span>Google Sheets & Apps Script</span>
+            <Clock size={16} />
+            <span>Google Drive Automático (3:00 AM)</span>
           </button>
 
           <button
@@ -361,8 +451,8 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
               transition: 'all 0.2s'
             }}
           >
-            <FileJson size={16} />
-            <span>Respaldo JSON & Archivos</span>
+            <HardDrive size={16} />
+            <span>Respaldo Manual Local (Móvil & PC)</span>
           </button>
         </div>
 
@@ -386,26 +476,154 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
           </div>
         )}
 
-        {/* PESTAÑA 1: GOOGLE SHEETS & APPS SCRIPT */}
+        {/* PESTAÑA 1: GOOGLE DRIVE AUTOMÁTICO & SHEETS */}
         {modalTab === 'sheets' && (
           <div>
-            {/* Banner explicativo */}
+            {/* TARJETA PRINCIPAL: RESPALDO NOCTURNO AUTOMÁTICO EN GOOGLE DRIVE */}
             <div style={{
-              background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.1), rgba(14, 165, 233, 0.1))',
-              border: '1px solid rgba(16, 185, 129, 0.3)',
+              background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.14), rgba(16, 185, 129, 0.14))',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
               borderRadius: '12px',
-              padding: '14px',
-              marginBottom: '16px',
-              fontSize: '0.82rem',
-              color: 'var(--text-main)',
-              lineHeight: 1.5
+              padding: '16px',
+              marginBottom: '16px'
             }}>
-              <div style={{ fontWeight: 800, color: '#34d399', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Sparkles size={16} />
-                <span>Tablas visuales en Google Drive sin pagar servidores</span>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px', marginBottom: '8px' }}>
+                <div style={{ fontWeight: 800, fontSize: '0.92rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={18} color="#38bdf8" />
+                  <span>Respaldo Autónomo en Google Drive (Madrugada 3:00 AM)</span>
+                </div>
+                <div style={{
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  padding: '3px 8px',
+                  borderRadius: '12px',
+                  background: 'rgba(34, 197, 94, 0.2)',
+                  color: '#4ade80',
+                  border: '1px solid rgba(34, 197, 94, 0.4)'
+                }}>
+                  ● 100% en la Nube de Google
+                </div>
               </div>
-              <div>
-                Conecta tu propia <strong>Hoja de Cálculo de Google</strong>. Con un solo clic (o en automático), toda la información de cotizaciones, OTs, ventas POS express y stock se sincroniza en <strong>8 pestañas tabulares</strong> con colores, filtros y totales ejecutivos listos para validar desde tu celular o PC.
+
+              <p style={{ fontSize: '0.79rem', color: '#cbd5e1', lineHeight: 1.5, margin: '0 0 14px 0' }}>
+                Se ejecuta todas las noches en la madrugada (<strong>3:00 AM Colombia</strong>) en los servidores de Google sin necesidad de que tu computador o celular estén encendidos. Guarda automáticamente un archivo JSON con todas las tablas en tu carpeta <strong>WJGEEKS_3D_Backups</strong> de Google Drive y conserva los últimos 30 días.
+              </p>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                <button
+                  type="button"
+                  className="btn btn-primary"
+                  onClick={handleEjecutarDriveBackup}
+                  disabled={isTestingDriveBackup}
+                  style={{
+                    padding: '10px 12px',
+                    fontWeight: 800,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    background: 'linear-gradient(135deg, #0ea5e9, #10b981)'
+                  }}
+                >
+                  <RefreshCw size={15} className={isTestingDriveBackup ? 'animate-spin' : ''} />
+                  <span>{isTestingDriveBackup ? 'Generando en Drive...' : '⚡ Probar / Guardar en Drive Ahora'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={handleConfigurarTriggerNocturno}
+                  disabled={isSettingTrigger}
+                  style={{
+                    padding: '10px 12px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px',
+                    borderColor: 'rgba(56, 189, 248, 0.4)'
+                  }}
+                >
+                  <Clock size={15} color="var(--brand-cyan)" />
+                  <span>{isSettingTrigger ? 'Configurando...' : '⏰ Activar Disparador (3:00 AM)'}</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={() => window.open('https://drive.google.com/drive/my-drive', '_blank')}
+                  style={{
+                    padding: '10px 12px',
+                    fontWeight: 700,
+                    fontSize: '0.82rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <ExternalLink size={15} color="#38bdf8" />
+                  <span>Abrir Carpeta en Drive</span>
+                </button>
+              </div>
+
+              {/* Enlace directo y diagnóstico en vivo */}
+              {webAppUrlInput.trim() && (
+                <div style={{
+                  marginTop: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  flexWrap: 'wrap',
+                  gap: '8px',
+                  paddingTop: '10px',
+                  borderTop: '1px solid rgba(255,255,255,0.08)',
+                  fontSize: '0.76rem',
+                  color: '#94a3b8'
+                }}>
+                  <span>¿Deseas verificar la respuesta del servidor de Google directamente?</span>
+                  <a 
+                    href={webAppUrlInput.trim().includes('?') ? `${webAppUrlInput.trim()}&action=trigger_backup_drive` : `${webAppUrlInput.trim()}?action=trigger_backup_drive`} 
+                    target="_blank" 
+                    rel="noreferrer"
+                    style={{ 
+                      color: '#38bdf8', 
+                      textDecoration: 'none', 
+                      display: 'inline-flex', 
+                      alignItems: 'center', 
+                      gap: '4px',
+                      fontWeight: 700
+                    }}
+                  >
+                    <span>Ejecutar en nueva pestaña</span>
+                    <ExternalLink size={13} />
+                  </a>
+                </div>
+              )}
+
+              {/* Guía de publicación de Nueva Versión */}
+              <div style={{
+                marginTop: '12px',
+                padding: '10px 12px',
+                borderRadius: '8px',
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                fontSize: '0.75rem',
+                color: '#cbd5e1',
+                lineHeight: 1.5
+              }}>
+                <strong style={{ color: '#38bdf8' }}>💡 ¿Probaste en el editor de Apps Script y funcionó, pero desde aquí no?</strong>
+                <p style={{ margin: '4px 0 6px 0' }}>
+                  Cuando pruebas en el editor ejecutas el borrador directo. Para que las peticiones web funcionen, debes publicar la nueva versión en la URL pública:
+                </p>
+                <ol style={{ margin: '0 0 0 16px', padding: 0 }}>
+                  <li>En <code>script.google.com</code> haz clic en <strong>Implementar &gt; Administrar implementaciones</strong>.</li>
+                  <li>Haz clic en el <strong>Lápiz ✏️ (Editar)</strong> de tu implementación activa.</li>
+                  <li>En el selector <strong>Versión</strong>, selecciona <strong>"Nueva versión"</strong> y dale clic al botón azul <strong>Implementar</strong>.</li>
+                  <li><em>(Si en cambio creaste una "Nueva implementación", copia la nueva URL terminada en <code>/exec</code> y pégala aquí abajo).</em></li>
+                </ol>
               </div>
             </div>
 
@@ -684,6 +902,26 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
               </div>
             </div>
 
+            {/* Explicativo de respaldo manual móvil */}
+            <div style={{
+              background: 'rgba(56, 189, 248, 0.08)',
+              border: '1px solid rgba(56, 189, 248, 0.25)',
+              borderRadius: '12px',
+              padding: '12px 14px',
+              marginBottom: '16px',
+              fontSize: '0.8rem',
+              color: 'var(--text-main)',
+              lineHeight: 1.5
+            }}>
+              <div style={{ fontWeight: 800, color: '#38bdf8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <HardDrive size={16} />
+                <span>Respaldo Manual Seguro (Especial para Celulares & PC)</span>
+              </div>
+              <div>
+                Extrae el 100% de la base de datos viva (Órdenes, Abonos, Ventas POS, Cotizaciones, Clientes y Stock). En celular abre el menú nativo para guardar en Drive, WhatsApp o Archivos en un segundo.
+              </div>
+            </div>
+
             {/* BOTONES DE ACCIÓN JSON */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '18px' }}>
               <button
@@ -702,8 +940,8 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
                   background: 'linear-gradient(135deg, #0ea5e9, #10b981)'
                 }}
               >
-                <Share2 size={18} />
-                <span>📱 Guardar Respaldo en Google Drive (Compartir Celular)</span>
+                <Share2 size={18} className={isProcessing ? 'animate-spin' : ''} />
+                <span>{isProcessing ? 'Preparando archivo completo...' : '📱 Guardar / Compartir Respaldo (Celular o Drive)'}</span>
               </button>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
@@ -711,6 +949,7 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
                   type="button"
                   className="btn btn-secondary"
                   onClick={handleDescargarJson}
+                  disabled={isProcessing}
                   style={{
                     fontSize: '0.82rem',
                     fontWeight: 700,

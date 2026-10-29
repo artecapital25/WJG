@@ -19,7 +19,9 @@ import {
   X,
   Cloud,
   CheckCircle2,
-  Sparkles
+  Sparkles,
+  Camera,
+  Eye
 } from 'lucide-react';
 import { 
   Resina, 
@@ -33,6 +35,7 @@ import {
 } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService } from '../../services/cloudSyncService';
+import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
 
 interface CatalogosManagerProps {
@@ -52,6 +55,7 @@ interface CatalogosManagerProps {
   onUpdateProveedores: (pr: Proveedor[]) => void;
   onUpdateConfig: (cfg: ConfiguracionTaller) => void;
   onUpdateTarifasTamanos?: (t: TarifaTamano[]) => void;
+  onOpenBackup?: () => void;
 }
 
 type SubTab = 'resinas' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
@@ -72,7 +76,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   onUpdateClientes,
   onUpdateProveedores,
   onUpdateConfig,
-  onUpdateTarifasTamanos
+  onUpdateTarifasTamanos,
+  onOpenBackup
 }) => {
   const [subTab, setSubTab] = useState<SubTab>('resinas');
   const [searchQuery, setSearchQuery] = useState('');
@@ -80,6 +85,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // Modales de Edición / Creación
   const [modalType, setModalType] = useState<string | null>(null);
   const [itemEnEdicion, setItemEnEdicion] = useState<any>(null);
+  const [zoomModalImg, setZoomModalImg] = useState<{ url: string; title: string } | null>(null);
 
   // Estados de Configuración
   const [tarifaKwh, setTarifaKwh] = useState(config.tarifa_kwh);
@@ -111,7 +117,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // -----------------------------------------------------------------
   const handleOpenModalResina = (res?: Resina) => {
     if (res) {
-      setItemEnEdicion({ ...res, isEdit: true });
+      setItemEnEdicion({ ...res, isEdit: true, imagen_url: res.imagen_url || '' });
     } else {
       setItemEnEdicion({
         id: `res-${Date.now()}`,
@@ -123,6 +129,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         peso_g: 1130,
         precio_compra: 89000,
         velocidad_impresion_mm_h: 20.0,
+        imagen_url: '',
         isEdit: false
       });
     }
@@ -146,7 +153,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       precio_compra: Number(itemEnEdicion.precio_compra),
       costo_gramo: Number(costo_gramo.toFixed(4)),
       velocidad_impresion_mm_h: Number(itemEnEdicion.velocidad_impresion_mm_h),
-      resumen
+      resumen,
+      imagen_url: itemEnEdicion.imagen_url || ''
     };
 
     let updated: Resina[];
@@ -173,7 +181,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // -----------------------------------------------------------------
   const handleOpenModalInsumo = (ins?: Insumo) => {
     if (ins) {
-      setItemEnEdicion({ ...ins, isEdit: true });
+      setItemEnEdicion({ ...ins, isEdit: true, imagen_url: ins.imagen_url || '' });
     } else {
       setItemEnEdicion({
         id: `ins-${Date.now()}`,
@@ -184,6 +192,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         presentacion: 60,
         costo_total: 6000,
         enlace_compra: '',
+        imagen_url: '',
         isEdit: false
       });
     }
@@ -205,7 +214,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       presentacion: Number(itemEnEdicion.presentacion),
       costo_total: Number(itemEnEdicion.costo_total),
       costo_unitario: Number(costo_unitario.toFixed(2)),
-      enlace_compra: itemEnEdicion.enlace_compra
+      enlace_compra: itemEnEdicion.enlace_compra,
+      imagen_url: itemEnEdicion.imagen_url || ''
     };
 
     let updated: Insumo[];
@@ -232,7 +242,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // -----------------------------------------------------------------
   const handleOpenModalMaquina = (maq?: Maquina) => {
     if (maq) {
-      setItemEnEdicion({ ...maq, isEdit: true });
+      setItemEnEdicion({ ...maq, isEdit: true, imagen_url: maq.imagen_url || '' });
     } else {
       setItemEnEdicion({
         id: `maq-${Date.now()}`,
@@ -240,6 +250,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         tipo: 'Impresora 3D',
         consumo_kwh: 0.35,
         estado: 'Disponible',
+        imagen_url: '',
         isEdit: false
       });
     }
@@ -256,7 +267,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       tipo: itemEnEdicion.tipo,
       consumo_kwh: Number(itemEnEdicion.consumo_kwh),
       costo_minuto: Number(costo_minuto.toFixed(4)),
-      estado: itemEnEdicion.estado || 'Disponible'
+      estado: itemEnEdicion.estado || 'Disponible',
+      imagen_url: itemEnEdicion.imagen_url || ''
     };
 
     let updated: Maquina[];
@@ -609,35 +621,84 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {resinas.map(res => (
-              <div key={res.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
-                    {res.tipo} - {res.color}
+              <div key={res.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      {/* Miniatura de Resina */}
+                      {res.imagen_url ? (
+                        <div 
+                          onClick={() => setZoomModalImg({ url: res.imagen_url!, title: `${res.tipo} - ${res.color}` })}
+                          style={{
+                            width: '46px',
+                            height: '46px',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            cursor: 'pointer',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            background: '#050508'
+                          }}
+                          title="Clic para ampliar foto"
+                        >
+                          <img src={res.imagen_url} alt={res.tipo} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      ) : (
+                        <div 
+                          onClick={() => handleOpenModalResina(res)}
+                          style={{
+                            width: '46px',
+                            height: '46px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            background: 'rgba(56, 189, 248, 0.08)',
+                            border: '1px dashed rgba(56, 189, 248, 0.3)',
+                            cursor: 'pointer',
+                            color: 'var(--brand-cyan)'
+                          }}
+                          title="Agregar foto a esta resina"
+                        >
+                          <Camera size={18} />
+                        </div>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {res.tipo}
+                        </div>
+                        <div style={{ fontSize: '0.78rem', color: 'var(--brand-cyan)', fontWeight: 600 }}>
+                          Color: {res.color}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                        onClick={() => handleOpenModalResina(res)}
+                        title="Editar resina y foto"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button 
+                        className="btn btn-danger btn-sm" 
+                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                        onClick={() => handleDeleteResina(res.id)}
+                        title="Eliminar resina"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                      onClick={() => handleOpenModalResina(res)}
-                      title="Editar resina"
-                    >
-                      <Edit3 size={13} />
-                    </button>
-                    <button 
-                      className="btn btn-danger btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                      onClick={() => handleDeleteResina(res.id)}
-                      title="Eliminar resina"
-                    >
-                      <Trash2 size={13} />
-                    </button>
+
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                    Marca: {res.marca} | Densidad: {res.densidad_g_cm3} g/cm³ | Peso: {res.peso_g}g
                   </div>
                 </div>
 
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                  Marca: {res.marca} | Densidad: {res.densidad_g_cm3} g/cm³ | Peso: {res.peso_g}g
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.85rem' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
                     ${res.costo_gramo.toFixed(1)} / g (${res.precio_compra.toLocaleString('es-CO')}/bote)
                   </span>
@@ -666,7 +727,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               type="text" 
               className="form-input" 
               style={{ maxWidth: '240px', padding: '6px 12px', minHeight: '36px' }}
-              placeholder="Buscar insumo..."
+              placeholder="Buscar insumo (pescadores, tornillos, imanes...)..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
@@ -676,41 +737,94 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
             {insumos
               .filter(i => i.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || i.categoria.toLowerCase().includes(searchQuery.toLowerCase()))
               .map(ins => (
-                <div key={ins.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '2px 6px', borderRadius: '4px' }}>
-                      {ins.categoria}
-                    </span>
-                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
-                      {ins.enlace_compra && (
-                        <a href={ins.enlace_compra} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-cyan)', padding: '2px 4px' }}>
-                          <ExternalLink size={14} />
-                        </a>
+                <div key={ins.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                        {ins.categoria}
+                      </span>
+                      <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        {ins.enlace_compra && (
+                          <a href={ins.enlace_compra} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-cyan)', padding: '2px 4px' }} title="Ver enlace de compra">
+                            <ExternalLink size={14} />
+                          </a>
+                        )}
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }}
+                          onClick={() => handleOpenModalInsumo(ins)}
+                          title="Editar insumo y foto"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }}
+                          onClick={() => handleDeleteInsumo(ins.id)}
+                          title="Eliminar insumo"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
+                      {/* Miniatura de Foto del Insumo (pescador, tornillo, imán, etc.) */}
+                      {ins.imagen_url ? (
+                        <div
+                          onClick={() => setZoomModalImg({ url: ins.imagen_url!, title: ins.nombre })}
+                          style={{
+                            width: '54px',
+                            height: '54px',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            cursor: 'pointer',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            background: '#050508'
+                          }}
+                          title="Clic para ampliar foto"
+                        >
+                          <img src={ins.imagen_url} alt={ins.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      ) : (
+                        <div
+                          onClick={() => handleOpenModalInsumo(ins)}
+                          style={{
+                            width: '54px',
+                            height: '54px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px dashed rgba(255, 255, 255, 0.18)',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            gap: '2px'
+                          }}
+                          title="Tomar o agregar foto"
+                        >
+                          <Camera size={16} />
+                          <span style={{ fontSize: '0.62rem' }}>+ Foto</span>
+                        </div>
                       )}
-                      <button 
-                        className="btn btn-secondary btn-sm" 
-                        style={{ padding: '3px 6px', minHeight: 'auto' }}
-                        onClick={() => handleOpenModalInsumo(ins)}
-                      >
-                        <Edit3 size={13} />
-                      </button>
-                      <button 
-                        className="btn btn-danger btn-sm" 
-                        style={{ padding: '3px 6px', minHeight: 'auto' }}
-                        onClick={() => handleDeleteInsumo(ins.id)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+
+                      <div style={{ minWidth: 0, flex: 1 }}>
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc', lineHeight: '1.25' }}>
+                          {ins.nombre}
+                        </div>
+                        <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          Marca: {ins.marca} | Presentación: {ins.presentacion}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', marginTop: '6px' }}>
-                    {ins.nombre}
-                  </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Marca: {ins.marca} | Presentación: {ins.presentacion}
-                  </div>
-                  <div style={{ marginTop: '8px', fontWeight: 700, color: 'var(--accent-success)', fontSize: '0.88rem' }}>
-                    ${ins.costo_unitario.toLocaleString('es-CO')} / unidad (Total: ${ins.costo_total.toLocaleString('es-CO')})
+
+                  <div style={{ marginTop: '10px', fontWeight: 700, color: 'var(--accent-success)', fontSize: '0.88rem', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    ${ins.costo_unitario.toLocaleString('es-CO')} / unidad <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Total: ${ins.costo_total.toLocaleString('es-CO')})</span>
                   </div>
                 </div>
               ))}
@@ -731,33 +845,87 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {maquinas.map(m => (
-              <div key={m.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
-                    {m.nombre}
+              <div key={m.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                      {/* Miniatura de Máquina */}
+                      {m.imagen_url ? (
+                        <div 
+                          onClick={() => setZoomModalImg({ url: m.imagen_url!, title: m.nombre })}
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '8px',
+                            overflow: 'hidden',
+                            flexShrink: 0,
+                            cursor: 'pointer',
+                            border: '1px solid rgba(56, 189, 248, 0.35)',
+                            background: '#050508'
+                          }}
+                          title="Clic para ampliar foto"
+                        >
+                          <img src={m.imagen_url} alt={m.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        </div>
+                      ) : (
+                        <div 
+                          onClick={() => handleOpenModalMaquina(m)}
+                          style={{
+                            width: '48px',
+                            height: '48px',
+                            borderRadius: '8px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            flexShrink: 0,
+                            background: 'rgba(255, 255, 255, 0.03)',
+                            border: '1px dashed rgba(255, 255, 255, 0.18)',
+                            cursor: 'pointer',
+                            color: 'var(--text-muted)',
+                            gap: '2px'
+                          }}
+                          title="Agregar foto a la máquina"
+                        >
+                          <Camera size={16} />
+                          <span style={{ fontSize: '0.62rem' }}>+ Foto</span>
+                        </div>
+                      )}
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
+                          {m.nombre}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: m.estado === 'Disponible' ? 'var(--accent-success)' : m.estado === 'En Uso' ? '#fde047' : '#f87171' }}>
+                          ● {m.estado}
+                        </div>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                      <button 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                        onClick={() => handleOpenModalMaquina(m)}
+                        title="Editar máquina y foto"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button 
+                        className="btn btn-danger btn-sm" 
+                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                        onClick={() => handleDeleteMaquina(m.id)}
+                        title="Eliminar máquina"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                      onClick={() => handleOpenModalMaquina(m)}
-                    >
-                      <Edit3 size={13} />
-                    </button>
-                    <button 
-                      className="btn btn-danger btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                      onClick={() => handleDeleteMaquina(m.id)}
-                    >
-                      <Trash2 size={13} />
-                    </button>
+
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                    Tipo: {m.tipo}
                   </div>
                 </div>
 
-                <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                  Tipo: {m.tipo} | Estado: {m.estado}
-                </div>
-                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
                   <span>Potencia: {m.consumo_kwh} kW/h</span>
                   <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
                     ${m.costo_minuto.toFixed(3)} COP/min
@@ -1008,6 +1176,18 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 <span>Guardar Cambios</span>
               </button>
 
+              {onOpenBackup && (
+                <button 
+                  type="button" 
+                  className="btn btn-primary"
+                  onClick={onOpenBackup}
+                  style={{ background: 'linear-gradient(135deg, #0ea5e9, #10b981)', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                >
+                  <Cloud size={16} />
+                  <span>Base de Datos Google Drive (3:00 AM) & Respaldos</span>
+                </button>
+              )}
+
               <button 
                 type="button" 
                 className="btn btn-secondary"
@@ -1164,6 +1344,12 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
             {/* FORMULARIO RESINA */}
             {modalType === 'resina' && (
               <form onSubmit={handleSaveResina}>
+                <ImageUploadField
+                  label="Fotografía del Bote o Muestra de Resina"
+                  helperText="Sube foto del envase o tómala con la cámara del celular en el taller."
+                  value={itemEnEdicion.imagen_url || ''}
+                  onChange={(url) => setItemEnEdicion({ ...itemEnEdicion, imagen_url: url })}
+                />
                 <div className="form-group">
                   <label className="form-label">Tipo de Resina (Línea)</label>
                   <input 
@@ -1249,6 +1435,12 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
             {/* FORMULARIO INSUMO */}
             {modalType === 'insumo' && (
               <form onSubmit={handleSaveInsumo}>
+                <ImageUploadField
+                  label="Fotografía del Insumo (Pescador, Tornillo, Imán, Empaque, etc.)"
+                  helperText="Toma foto directa del insumo físico con la cámara del celular o sube una imagen."
+                  value={itemEnEdicion.imagen_url || ''}
+                  onChange={(url) => setItemEnEdicion({ ...itemEnEdicion, imagen_url: url })}
+                />
                 <div className="form-group">
                   <label className="form-label">Nombre del Insumo</label>
                   <input 
@@ -1328,6 +1520,12 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
             {/* FORMULARIO MAQUINARIA */}
             {modalType === 'maquina' && (
               <form onSubmit={handleSaveMaquina}>
+                <ImageUploadField
+                  label="Fotografía de la Máquina / Impresora 3D"
+                  helperText="Foto de la máquina en el taller para control visual e inventario."
+                  value={itemEnEdicion.imagen_url || ''}
+                  onChange={(url) => setItemEnEdicion({ ...itemEnEdicion, imagen_url: url })}
+                />
                 <div className="form-group">
                   <label className="form-label">Nombre de la Máquina</label>
                   <input 
@@ -1603,6 +1801,79 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 </div>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ZOOM DE FOTO EN ALTA DEFINICIÓN */}
+      {zoomModalImg && (
+        <div 
+          onClick={() => setZoomModalImg(null)}
+          style={{
+            position: 'fixed',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: 'rgba(0, 0, 0, 0.9)',
+            backdropFilter: 'blur(8px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div 
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              position: 'relative',
+              maxWidth: '90vw',
+              maxHeight: '90vh',
+              background: '#0a0a0f',
+              border: '1px solid rgba(56, 189, 248, 0.4)',
+              borderRadius: '16px',
+              padding: '16px',
+              boxShadow: '0 25px 60px rgba(0,0,0,0.8)',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center'
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => setZoomModalImg(null)}
+              style={{
+                position: 'absolute',
+                top: '12px',
+                right: '12px',
+                background: 'rgba(255, 255, 255, 0.1)',
+                border: 'none',
+                color: '#fff',
+                borderRadius: '50%',
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer'
+              }}
+            >
+              <X size={18} />
+            </button>
+            <div style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--brand-cyan)', marginBottom: '12px' }}>
+              {zoomModalImg.title}
+            </div>
+            <img
+              src={zoomModalImg.url}
+              alt={zoomModalImg.title}
+              style={{
+                maxWidth: '85vw',
+                maxHeight: '75vh',
+                objectFit: 'contain',
+                borderRadius: '8px'
+              }}
+            />
           </div>
         </div>
       )}

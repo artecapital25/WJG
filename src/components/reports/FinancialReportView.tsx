@@ -17,7 +17,8 @@ import {
   Layers,
   RefreshCw,
   Store,
-  FileText
+  FileText,
+  Database
 } from 'lucide-react';
 import { Cotizacion, OrdenTrabajo, CuentaCobro, Resina } from '../../types';
 import { VentaExpress } from '../../types/pos';
@@ -30,6 +31,7 @@ interface FinancialReportViewProps {
   resinas: Resina[];
   ventasExpress?: VentaExpress[];
   onOpenDailyBriefing?: () => void;
+  onOpenBackup?: () => void;
   whatsappStatus?: 'operativo' | 'alerta_critica' | 'desconocido';
 }
 
@@ -60,6 +62,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
   resinas,
   ventasExpress = [],
   onOpenDailyBriefing,
+  onOpenBackup,
   whatsappStatus = 'operativo'
 }) => {
   // Balance financiero canónico directamente desde vista_balance_taller (PostgreSQL)
@@ -165,6 +168,44 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         costoEstimado,
         margenEstimado: Math.max(0, total - costoEstimado),
         gramosResina: v.requiere_ot ? 35 : 0
+      });
+    });
+
+    // Mapear Órdenes de Trabajo de Taller no vinculadas a cotizaciones ni a ventas POS
+    const cotDocNumeros = new Set(cotizaciones.map(c => c.numero_cot));
+    const cotDocIds = new Set(cotizaciones.map(c => c.id));
+    const posDocIds = new Set(ventasExpress.map(v => v.id));
+    const posOtNumeros = new Set(ventasExpress.map(v => v.ot_numero).filter(Boolean));
+    const posOtIds = new Set(ventasExpress.map(v => v.ot_id).filter(Boolean));
+
+    ordenes.forEach(o => {
+      const vieneDeCot = (o.cotizacion_id && cotDocIds.has(o.cotizacion_id)) || (o.cotizacion_numero && cotDocNumeros.has(o.cotizacion_numero));
+      const vieneDePos = (o.pos_venta_id && posDocIds.has(o.pos_venta_id)) || (o.numero_ot && posOtNumeros.has(o.numero_ot)) || (o.id && posOtIds.has(o.id));
+      if (vieneDeCot || vieneDePos) return;
+
+      const total = Number(o.precio_cobrado || (o.abono || 0) + (o.saldo_pendiente || 0)) || 0;
+      const abono = Number(o.abono || 0);
+      const saldo = o.saldo_pendiente !== undefined ? Number(o.saldo_pendiente) : Math.max(0, total - abono);
+      const costoEstimado = Math.round(total * 0.40);
+
+      items.push({
+        id: `ot-${o.id}`,
+        origen: 'COTIZACION',
+        numeroDoc: o.numero_ot || 'OT-S/N',
+        otAsociada: o.numero_ot,
+        fecha: o.fecha_creacion ? o.fecha_creacion.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        clienteNombre: o.cliente_nombre || 'Cliente Taller',
+        clienteTelefono: o.cliente_telefono || '',
+        descripcion: o.item_nombre || 'Orden Directa de Taller',
+        total,
+        abono,
+        saldo,
+        estadoPago: saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente'),
+        estadoComercial: o.estado || 'En Producción',
+        metodoPago: o.metodo_pago || 'Bre-B',
+        costoEstimado,
+        margenEstimado: Math.max(0, total - costoEstimado),
+        gramosResina: 35
       });
     });
 
@@ -463,23 +504,43 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
           </div>
         </div>
 
-        {onOpenDailyBriefing && (
-          <button
-            className="btn btn-primary btn-sm"
-            onClick={onOpenDailyBriefing}
-            style={{
-              background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-              color: '#fff',
-              fontWeight: 700,
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px'
-            }}
-          >
-            <Sun size={15} />
-            <span>Ver Daily Briefing</span>
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          {onOpenBackup && (
+            <button
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenBackup}
+              style={{
+                borderColor: 'rgba(56, 189, 248, 0.4)',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+              title="Copia de Seguridad y Google Drive (3:00 AM)"
+            >
+              <Database size={15} color="#38bdf8" />
+              <span>Respaldos & Drive</span>
+            </button>
+          )}
+
+          {onOpenDailyBriefing && (
+            <button
+              className="btn btn-primary btn-sm"
+              onClick={onOpenDailyBriefing}
+              style={{
+                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                color: '#fff',
+                fontWeight: 700,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px'
+              }}
+            >
+              <Sun size={15} />
+              <span>Ver Daily Briefing</span>
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Barra de Filtros */}

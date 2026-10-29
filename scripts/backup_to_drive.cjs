@@ -41,19 +41,22 @@ async function runBackup() {
   };
 
   const tablas = [
-    'clientes',
-    'cotizaciones',
-    'piezas_cotizacion',
+    'ordenes_trabajo',
+    'abonos_pagos',
     'ventas_express',
-    'cuentas_cobro',
+    'cotizaciones',
+    'cotizacion_items',
+    'piezas_cotizacion',
+    'productos_stock',
+    'clientes',
+    'usuarios_taller',
     'tareas_equipo',
     'solicitudes_insumos',
     'tarifas_tamanos',
     'resinas',
     'maquinas',
     'insumos',
-    'configuracion_taller',
-    'productos_stock'
+    'configuracion_taller'
   ];
 
   if (supabaseUrl && supabaseKey) {

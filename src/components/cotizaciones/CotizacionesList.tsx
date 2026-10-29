@@ -22,7 +22,8 @@ import {
   ShoppingCart,
   ExternalLink,
   CreditCard,
-  DollarSign
+  DollarSign,
+  Trash2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
@@ -39,6 +40,7 @@ interface CotizacionesListProps {
   onEditarCotizacion?: (cot: Cotizacion) => void;
   onAprobarCotizacion: (cot: Cotizacion, datosPago?: DatosPagoRegistro, redirigirTaller?: boolean) => void;
   onActualizarPagoCotizacion?: (cotId: string, datosPago: DatosPagoRegistro) => void;
+  onEliminarCotizacion?: (cotId: string, numeroCot?: string) => void;
   onNuevaCotizacion: () => void;
 }
 
@@ -52,6 +54,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   onEditarCotizacion,
   onAprobarCotizacion,
   onActualizarPagoCotizacion,
+  onEliminarCotizacion,
   onNuevaCotizacion
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
@@ -61,6 +64,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   const [criterioOrden, setCriterioOrden] = useState<TipoOrden>('reciente');
   const [previewModalImg, setPreviewModalImg] = useState<{ url: string; title: string } | null>(null);
   const [cotParaGestionarPago, setCotParaGestionarPago] = useState<{ cot: Cotizacion; esAprobacion: boolean } | null>(null);
+  const [cotParaEliminar, setCotParaEliminar] = useState<Cotizacion | null>(null);
 
   // Función auxiliar para parsear y comparar números de cotización como "25-073"
   const parseCotNumber = (num: string): number => {
@@ -577,6 +581,18 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   </button>
                 )}
 
+                {onEliminarCotizacion && (
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => setCotParaEliminar(cot)}
+                    style={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                    title="Eliminar esta cotización y purgar sus abonos asociados en contabilidad"
+                  >
+                    <Trash2 size={13} />
+                    <span>Eliminar</span>
+                  </button>
+                )}
+
                 {/* Botón Gestión Rápida de Pago / Anticipo */}
                 <button 
                   className="btn btn-secondary btn-sm"
@@ -770,6 +786,80 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
           esAprobacionCotizacion={cotParaGestionarPago.esAprobacion}
           onConfirmarPago={handleConfirmarPagoModal}
         />
+      )}
+
+      {/* Modal de Confirmación para Eliminar Cotización */}
+      {cotParaEliminar && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.85)',
+          backdropFilter: 'blur(5px)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 9999,
+          padding: '16px'
+        }}>
+          <div style={{
+            background: 'var(--bg-card)',
+            border: '1px solid rgba(239, 68, 68, 0.4)',
+            borderRadius: '16px',
+            maxWidth: '480px',
+            width: '100%',
+            padding: '24px',
+            boxShadow: '0 20px 40px rgba(0, 0, 0, 0.6)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#f87171', marginBottom: '14px' }}>
+              <AlertCircle size={24} />
+              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800 }}>¿Eliminar Cotización {cotParaEliminar.numero_cot}?</h3>
+            </div>
+            
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-muted)', lineHeight: '1.5', margin: '0 0 16px' }}>
+              Se removerá la cotización de <strong style={{ color: '#fff' }}>{cotParaEliminar.cliente.nombre}</strong> con valor total de <strong style={{ color: '#fff' }}>${cotParaEliminar.total.toLocaleString('es-CO')} COP</strong>.
+            </p>
+
+            {Number(cotParaEliminar.abono) > 0 && (
+              <div style={{
+                background: 'rgba(239, 68, 68, 0.12)',
+                border: '1px solid rgba(239, 68, 68, 0.35)',
+                borderRadius: '8px',
+                padding: '12px',
+                marginBottom: '16px',
+                fontSize: '0.82rem',
+                color: '#fca5a5'
+              }}>
+                ⚠️ <strong>Aviso Contable:</strong> Esta cotización cuenta con un abono registrado de <strong>${Number(cotParaEliminar.abono).toLocaleString('es-CO')} COP</strong>. Al eliminarla, este abono será purgado de los registros contables y del balance general para mantener consistencia.
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => setCotParaEliminar(null)}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm"
+                style={{ background: '#ef4444', color: '#fff', borderColor: '#ef4444', fontWeight: 700 }}
+                onClick={() => {
+                  if (onEliminarCotizacion) {
+                    onEliminarCotizacion(cotParaEliminar.id, cotParaEliminar.numero_cot);
+                  }
+                  setCotParaEliminar(null);
+                }}
+              >
+                Sí, Eliminar Definitivamente
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

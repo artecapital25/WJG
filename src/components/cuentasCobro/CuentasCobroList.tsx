@@ -393,24 +393,30 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
       matchedCuentaIds.add(c.id);
 
       const d = getOrCreateDeudor(c.cliente?.nombre || 'Cliente', c.cliente?.telefono);
-      const matchingOT = ordenes.find(o => !matchedOTIds.has(o.id) && otMatchesCuenta(o, c));
-      if (matchingOT) matchedOTIds.add(matchingOT.id);
+      // Encontrar TODAS las OTs coincidentes para agruparlas y que una segunda OT no sume deuda
+      const matchingOTs = ordenes.filter(o => !matchedOTIds.has(o.id) && otMatchesCuenta(o, c));
+      matchingOTs.forEach(o => matchedOTIds.add(o.id));
+      const primaryOT = matchingOTs[0];
 
-      const matchingVenta = ventasExpress.find(v => !matchedVentaIds.has(v.id) && ventaMatchesCuenta(v, c));
-      if (matchingVenta) matchedVentaIds.add(matchingVenta.id);
+      const matchingVentas = ventasExpress.filter(v => !matchedVentaIds.has(v.id) && ventaMatchesCuenta(v, c));
+      matchingVentas.forEach(v => matchedVentaIds.add(v.id));
+      const primaryVenta = matchingVentas[0];
+
+      const otCodigos = matchingOTs.map(o => o.numero_ot).join(' / ');
+      const codigoConsolidado = otCodigos ? `${c.numero_cc} • ${otCodigos}` : c.numero_cc;
 
       d.items.push({
         id: `cc-${c.id}`,
         tipo: 'cuenta',
-        codigo: matchingOT ? `${c.numero_cc} • ${matchingOT.numero_ot}` : c.numero_cc,
-        descripcion: c.items_resumen || (matchingOT ? matchingOT.item_nombre : 'Figura / Pedido 3D'),
+        codigo: codigoConsolidado,
+        descripcion: c.items_resumen || (primaryOT ? primaryOT.item_nombre : 'Figura / Pedido 3D'),
         total: c.total,
         abono: c.abono,
         saldo: c.saldo_pendiente,
-        estado_taller: matchingOT?.estado,
+        estado_taller: primaryOT?.estado,
         rawCuenta: c,
-        rawOT: matchingOT,
-        rawVenta: matchingVenta,
+        rawOT: primaryOT,
+        rawVenta: primaryVenta,
         cliente_nombre: d.cliente_nombre,
         cliente_telefono: d.cliente_telefono
       });
@@ -425,13 +431,18 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
       const d = getOrCreateDeudor(v.cliente_nombre, v.cliente_telefono);
       const alerta = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
 
-      const matchingOT = ordenes.find(o => !matchedOTIds.has(o.id) && otMatchesVenta(o, v));
-      if (matchingOT) matchedOTIds.add(matchingOT.id);
+      // Encontrar TODAS las OTs coincidentes para agruparlas (si se generó una segunda OT, no suma doble)
+      const matchingOTs = ordenes.filter(o => !matchedOTIds.has(o.id) && otMatchesVenta(o, v));
+      matchingOTs.forEach(o => matchedOTIds.add(o.id));
+      const primaryOT = matchingOTs[0];
+
+      const otCodigos = matchingOTs.map(o => o.numero_ot).join(' / ');
+      const codigoConsolidado = otCodigos ? `${v.numero_venta} • ${otCodigos}` : v.numero_venta;
 
       d.items.push({
         id: `pos-${v.id}`,
         tipo: 'pos',
-        codigo: matchingOT ? `${v.numero_venta} • ${matchingOT.numero_ot}` : v.numero_venta,
+        codigo: codigoConsolidado,
         descripcion: v.nombre_producto,
         total: v.total,
         abono: v.abono,
@@ -440,9 +451,9 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
         alerta_texto: alerta.texto,
         alerta_color: alerta.color,
         alerta_bg: alerta.badgeBg,
-        estado_taller: matchingOT?.estado,
+        estado_taller: primaryOT?.estado,
         rawVenta: v,
-        rawOT: matchingOT,
+        rawOT: primaryOT,
         cliente_nombre: d.cliente_nombre,
         cliente_telefono: d.cliente_telefono
       });

@@ -1,11 +1,12 @@
 import React from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut } from 'lucide-react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database } from 'lucide-react';
 
 interface HeaderMinimalProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
   activeOperator?: string;
   onSelectOperator?: (operator: string) => void;
   onOpenDailyBriefing?: () => void;
+  onOpenBackup?: () => void;
   onOpenChangePin?: () => void;
   onLogout?: () => void;
   dailyAlertsCount?: number;
@@ -16,6 +17,7 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   activeOperator = 'Juan',
   onSelectOperator,
   onOpenDailyBriefing,
+  onOpenBackup,
   onOpenChangePin,
   onLogout,
   dailyAlertsCount = 0,
@@ -51,14 +53,16 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
 
       {/* Discretos Indicadores y Controles de Sesión */}
       <div className="header-right-actions">
-        {/* Supabase Health Indicator */}
+        {/* Supabase Health Indicator / Acceso a Respaldos */}
         <div
           className="header-status-pill"
-          title={cloudStatus === 'connected' ? 'Base de datos Supabase Online en vivo' : 'Modo Local'}
+          onClick={onOpenBackup}
+          title={cloudStatus === 'connected' ? 'Base de datos Supabase Online en vivo (Clic para Respaldos y Drive)' : 'Modo Local (Clic para Respaldos y Drive)'}
           style={{
             backgroundColor: cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
             color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24',
-            border: `1px solid ${cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`
+            border: `1px solid ${cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
+            cursor: onOpenBackup ? 'pointer' : 'default'
           }}
         >
           <span className="header-status-dot" />
@@ -66,6 +70,28 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
             {cloudStatus === 'connected' ? 'Online' : 'Local'}
           </span>
         </div>
+
+        {/* Botón Respaldos & Google Drive */}
+        {onOpenBackup && (
+          <button
+            onClick={onOpenBackup}
+            type="button"
+            className="header-daily-btn"
+            title="Respaldos en Google Drive (3:00 AM) y Copia de Seguridad Local"
+            aria-label="Respaldos y Google Drive"
+            style={{
+              backgroundColor: 'rgba(56, 189, 248, 0.12)',
+              color: '#38bdf8',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              cursor: 'pointer'
+            }}
+          >
+            <Database size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
+            <span className="header-daily-text" style={{ color: '#38bdf8', fontWeight: 700 }}>
+              Backup
+            </span>
+          </button>
+        )}
 
         {/* Chip Daily 7am */}
         {onOpenDailyBriefing && (

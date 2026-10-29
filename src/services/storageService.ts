@@ -27,7 +27,7 @@ import {
   PRODUCTOS_STOCK_INICIALES
 } from '../data/initialData';
 import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
-import { isSupabaseConfigured } from './supabaseClient';
+import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const PROVEEDORES_INICIALES: Proveedor[] = [
   { id: 'prov-1', nombre: 'Anycubic Oficial Colombia', contacto: 'Soporte Ventas', telefono: '3150001122', rubro: 'Resinas y Maquinaria 3D', enlace_web: 'https://anycubic.com' },
@@ -379,72 +379,182 @@ export const StorageService = {
     };
   },
 
-  // Export full backup
-  exportBackup: () => {
-    const backup = StorageService.getBackupData();
+  // Obtiene el respaldo completo extrayendo datos en vivo desde Supabase si está disponible
+  getFullBackupDataAsync: async () => {
+    const local = StorageService.getBackupData();
+    const backup: any = {
+      ...local,
+      version: '3.1',
+      empresa: 'WJGEEKS 3D PRO',
+      timestamp: new Date().toISOString(),
+      fecha_legible: new Date().toLocaleString('es-CO'),
+      tablas: {
+        resinas: local.resinas,
+        insumos: local.insumos,
+        maquinas: local.maquinas,
+        personal: local.personal,
+        configuracion_taller: local.config,
+        tarifas_tamanos: local.tarifas_tamanos,
+        herramientas: local.herramientas,
+        cuentas_cobro: local.cuentas,
+        clientes: local.clientes,
+        cotizaciones: local.cotizaciones,
+        ordenes_trabajo: local.ordenes,
+        productos_stock: local.productos_stock,
+        ventas_express: local.ventas_express,
+        tareas_equipo: local.tareas,
+        solicitudes_insumos: local.solicitudes_insumos,
+        abonos_pagos: []
+      }
+    };
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const tablasConsultar = [
+          'ordenes_trabajo',
+          'abonos_pagos',
+          'ventas_express',
+          'cotizaciones',
+          'cotizacion_items',
+          'piezas_cotizacion',
+          'productos_stock',
+          'clientes',
+          'usuarios_taller',
+          'tareas_equipo',
+          'solicitudes_insumos',
+          'configuracion_taller',
+          'tarifas_tamanos',
+          'resinas',
+          'maquinas',
+          'insumos'
+        ];
+
+        await Promise.all(
+          tablasConsultar.map(async (tbl) => {
+            try {
+              const { data, error } = await supabase!.from(tbl).select('*');
+              if (!error && data && data.length > 0) {
+                backup.tablas[tbl] = data;
+              }
+            } catch (_) {}
+          })
+        );
+
+        if (backup.tablas.clientes?.length) backup.clientes = backup.tablas.clientes;
+        if (backup.tablas.ordenes_trabajo?.length) backup.ordenes = backup.tablas.ordenes_trabajo;
+        if (backup.tablas.ventas_express?.length) backup.ventas_express = backup.tablas.ventas_express;
+        if (backup.tablas.cotizaciones?.length) backup.cotizaciones = backup.tablas.cotizaciones;
+        if (backup.tablas.productos_stock?.length) backup.productos_stock = backup.tablas.productos_stock;
+        if (backup.tablas.tareas_equipo?.length) backup.tareas = backup.tablas.tareas_equipo;
+        if (backup.tablas.solicitudes_insumos?.length) backup.solicitudes_insumos = backup.tablas.solicitudes_insumos;
+        if (backup.tablas.abonos_pagos?.length) backup.abonos_pagos = backup.tablas.abonos_pagos;
+      } catch (err) {
+        console.warn('Aviso extrayendo datos para respaldo de Supabase:', err);
+      }
+    }
+
+    return backup;
+  },
+
+  // Exportar archivo JSON completo (Manual PC / Celular)
+  exportBackup: async (): Promise<string> => {
+    const backup = await StorageService.getFullBackupDataAsync();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
+    const fileName = `WJGEEKS_Backup_${dateStr}_${timeStr}.json`;
     const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `WJGEEKS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = fileName;
     a.click();
     URL.revokeObjectURL(url);
+    return fileName;
   },
 
-  // Export to Google Drive (via Web Share API on mobile or direct download + link on PC)
-  exportBackupToDriveOrShare: async (): Promise<{ success: boolean; method: 'share' | 'download'; aborted?: boolean }> => {
-    const backup = StorageService.getBackupData();
+  // Exportar hacia Google Drive o Compartir en Celular (Web Share API nativo Android/iOS)
+  exportBackupToDriveOrShare: async (): Promise<{ success: boolean; method: 'share' | 'download'; fileName: string; aborted?: boolean }> => {
+    const backup = await StorageService.getFullBackupDataAsync();
+    const dateStr = new Date().toISOString().slice(0, 10);
+    const timeStr = new Date().toTimeString().slice(0, 8).replace(/:/g, '-');
+    const fileName = `WJGEEKS_Backup_${dateStr}_${timeStr}.json`;
     const jsonStr = JSON.stringify(backup, null, 2);
-    const fileName = `WJGEEKS_Backup_${new Date().toISOString().slice(0, 10)}.json`;
 
-    // Si el navegador soporta compartir archivos nativamente (Android / iOS)
+    // En celulares (Android / iOS): abrir menú de compartir nativo
     if (typeof navigator !== 'undefined' && navigator.canShare) {
       try {
         const file = new File([jsonStr], fileName, { type: 'application/json' });
         if (navigator.canShare({ files: [file] })) {
           await navigator.share({
             title: 'Copia de Seguridad WJGEEKS 3D',
-            text: 'Respaldo oficial de base de datos WJGEEKS 3D PRO para guardar en Google Drive.',
+            text: 'Respaldo de base de datos WJGEEKS 3D PRO para guardar en Google Drive.',
             files: [file]
           });
-          return { success: true, method: 'share' };
+          return { success: true, method: 'share', fileName };
         }
       } catch (err: any) {
         if (err.name === 'AbortError') {
-          return { success: false, method: 'share', aborted: true };
+          return { success: false, method: 'share', fileName, aborted: true };
         }
-        console.warn('Web Share API falló, procediendo con descarga estándar:', err);
+        console.warn('Web Share falló, procediendo con descarga estándar:', err);
       }
     }
 
-    // Descarga estándar como fallback
-    StorageService.exportBackup();
-    return { success: true, method: 'download' };
+    // Descarga estándar como fallback en PC o navegadores sin share
+    const blob = new Blob([jsonStr], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
+    return { success: true, method: 'download', fileName };
   },
 
-  // Import full backup
-  importBackup: (jsonData: string) => {
+  // Restaurar copia de seguridad desde archivo JSON (soporta V2 plano y V3 con tablas)
+  importBackup: (jsonData: string): { success: boolean; stats: Record<string, number> } => {
     try {
       const data = JSON.parse(jsonData);
-      if (data.resinas) StorageService.saveResinas(data.resinas);
-      if (data.insumos) StorageService.saveInsumos(data.insumos);
-      if (data.maquinas) StorageService.saveMaquinas(data.maquinas);
-      if (data.personal) StorageService.savePersonal(data.personal);
-      if (data.clientes) StorageService.saveClientes(data.clientes);
-      if (data.config) StorageService.saveConfig(data.config);
-      if (data.cotizaciones) StorageService.saveCotizaciones(data.cotizaciones);
-      if (data.ordenes) StorageService.saveOrdenes(data.ordenes);
-      if (data.cuentas) StorageService.saveCuentas(data.cuentas);
-      if (data.tarifas_tamanos) StorageService.saveTarifasTamanos(data.tarifas_tamanos);
-      if (data.productos_stock) StorageService.saveProductosStock(data.productos_stock);
-      if (data.ventas_express) StorageService.saveVentasExpress(data.ventas_express);
-      if (data.tareas) StorageService.saveTareas(data.tareas);
-      if (data.solicitudes_insumos) StorageService.saveSolicitudesInsumos(data.solicitudes_insumos);
-      if (data.herramientas) StorageService.saveHerramientas(data.herramientas);
-      return true;
+      const tablas = data.tablas || {};
+
+      const resinas = data.resinas || tablas.resinas;
+      const insumos = data.insumos || tablas.insumos;
+      const maquinas = data.maquinas || tablas.maquinas;
+      const personal = data.personal || tablas.personal || tablas.usuarios_taller;
+      const clientes = data.clientes || tablas.clientes;
+      const config = data.config || tablas.configuracion_taller;
+      const cotizaciones = data.cotizaciones || tablas.cotizaciones;
+      const ordenes = data.ordenes || tablas.ordenes_trabajo;
+      const cuentas = data.cuentas || tablas.cuentas_cobro;
+      const tarifas = data.tarifas_tamanos || tablas.tarifas_tamanos;
+      const stock = data.productos_stock || tablas.productos_stock;
+      const ventas = data.ventas_express || tablas.ventas_express;
+      const tareas = data.tareas || tablas.tareas_equipo;
+      const solicitudes = data.solicitudes_insumos || tablas.solicitudes_insumos;
+      const herramientas = data.herramientas || tablas.herramientas;
+
+      const stats: Record<string, number> = {};
+
+      if (Array.isArray(resinas)) { StorageService.saveResinas(resinas); stats.resinas = resinas.length; }
+      if (Array.isArray(insumos)) { StorageService.saveInsumos(insumos); stats.insumos = insumos.length; }
+      if (Array.isArray(maquinas)) { StorageService.saveMaquinas(maquinas); stats.maquinas = maquinas.length; }
+      if (Array.isArray(personal)) { StorageService.savePersonal(personal); stats.personal = personal.length; }
+      if (Array.isArray(clientes)) { StorageService.saveClientes(clientes); stats.clientes = clientes.length; }
+      if (config && typeof config === 'object') { StorageService.saveConfig(config); stats.config = 1; }
+      if (Array.isArray(cotizaciones)) { StorageService.saveCotizaciones(cotizaciones); stats.cotizaciones = cotizaciones.length; }
+      if (Array.isArray(ordenes)) { StorageService.saveOrdenes(ordenes); stats.ordenes = ordenes.length; }
+      if (Array.isArray(cuentas)) { StorageService.saveCuentas(cuentas); stats.cuentas = cuentas.length; }
+      if (Array.isArray(tarifas)) { StorageService.saveTarifasTamanos(tarifas); stats.tarifas = tarifas.length; }
+      if (Array.isArray(stock)) { StorageService.saveProductosStock(stock); stats.stock = stock.length; }
+      if (Array.isArray(ventas)) { StorageService.saveVentasExpress(ventas); stats.ventas = ventas.length; }
+      if (Array.isArray(tareas)) { StorageService.saveTareas(tareas); stats.tareas = tareas.length; }
+      if (Array.isArray(solicitudes)) { StorageService.saveSolicitudesInsumos(solicitudes); stats.solicitudes = solicitudes.length; }
+      if (Array.isArray(herramientas)) { StorageService.saveHerramientas(herramientas); stats.herramientas = herramientas.length; }
+
+      return { success: true, stats };
     } catch (e) {
       console.error('Error importing backup:', e);
-      return false;
+      return { success: false, stats: {} };
     }
   }
 };

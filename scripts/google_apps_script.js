@@ -26,11 +26,22 @@
  */
 
 function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "";
+  if (action === "trigger_backup_drive" || action === "backup_now") {
+    var backupResult = ejecutarBackupDiarioDrive(null);
+    return ContentService.createTextOutput(JSON.stringify(backupResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (action === "setup_backup_trigger") {
+    var triggerResult = configurarTriggerBackupNocturno();
+    return ContentService.createTextOutput(JSON.stringify(triggerResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   return ContentService.createTextOutput(JSON.stringify({
     status: "ok",
     app: "WJGEEKS 3D PRO Sync & Mail API",
-    version: "3.0",
-    message: "Google Apps Script activo y listo para despachar correos y sincronizaciones.",
+    version: "3.1",
+    message: "Google Apps Script activo y listo para despachar correos, respaldos y sincronizaciones.",
     emailSender: "wjgeeks3d@gmail.com",
     timestamp: new Date().toISOString()
   })).setMimeType(ContentService.MimeType.JSON);
@@ -54,6 +65,21 @@ function doPost(e) {
     if (data.action === "send_email" || data.destinatario_correo || data.tipo === "correo" || data.tipo === "prueba") {
       var emailResult = enviarCorreoTransaccionalGAS(data);
       return ContentService.createTextOutput(JSON.stringify(emailResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // =========================================================
+    // ENRUTADOR 1.5: RESPALDO AUTOMÁTICO EN GOOGLE DRIVE
+    // =========================================================
+    if (data.action === "trigger_backup_drive" || data.action === "backup_now") {
+      var backupResult = ejecutarBackupDiarioDrive(data.backupData || null);
+      return ContentService.createTextOutput(JSON.stringify(backupResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === "setup_backup_trigger") {
+      var triggerResult = configurarTriggerBackupNocturno();
+      return ContentService.createTextOutput(JSON.stringify(triggerResult))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -622,4 +648,167 @@ function actualizarHerramientas(ss, herramientas) {
 
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   autoFitColumns(sheet, headers.length);
+}
+
+// =============================================================
+// 9. MOTOR DE RESPALDO AUTOMÁTICO EN GOOGLE DRIVE (MADRUGADA)
+// =============================================================
+
+var SUPABASE_CONFIG = {
+  url: "https://brjzpbqxjakihpsbkqfh.supabase.co",
+  anonKey: "sb_publishable_vbV0_7HeqzEVKZuvcuM0EQ_y6fa9ooh"
+};
+
+/**
+ * Ejecuta el respaldo de todas las tablas de Supabase en Google Drive.
+ * Puede invocarse manualmente o ejecutarse cada madrugada a las 3:00 AM.
+ */
+function ejecutarBackupDiarioDrive(customBackupData) {
+  var timezone = Session.getScriptTimeZone() || "GMT-5";
+  var now = new Date();
+  var fechaStr = Utilities.formatDate(now, timezone, "yyyy-MM-dd");
+  var horaStr = Utilities.formatDate(now, timezone, "HH-mm");
+  var fechaLegible = Utilities.formatDate(now, timezone, "yyyy-MM-dd HH:mm:ss");
+
+  var folder = getOrCreateDriveFolder("WJGEEKS_3D_Backups");
+
+  var backup = customBackupData;
+
+  // Si no se proporcionaron datos directos del frontend, extraerlos en vivo desde Supabase REST API
+  if (!backup || !backup.tablas) {
+    backup = {
+      version: "3.1",
+      empresa: "WJGEEKS 3D PRO",
+      tipo: "respaldo_automatico_nube",
+      timestamp: now.toISOString(),
+      fecha_legible: fechaLegible,
+      tablas: {}
+    };
+
+    var tablasV3 = [
+      "ordenes_trabajo",
+      "abonos_pagos",
+      "ventas_express",
+      "cotizaciones",
+      "cotizacion_items",
+      "piezas_cotizacion",
+      "productos_stock",
+      "clientes",
+      "usuarios_taller",
+      "tareas_equipo",
+      "solicitudes_insumos",
+      "configuracion_taller",
+      "tarifas_tamanos",
+      "resinas",
+      "maquinas",
+      "insumos"
+    ];
+
+    tablasV3.forEach(function(tabla) {
+      try {
+        var res = UrlFetchApp.fetch(SUPABASE_CONFIG.url + "/rest/v1/" + tabla + "?select=*", {
+          method: "get",
+          headers: {
+            "apikey": SUPABASE_CONFIG.anonKey,
+            "Authorization": "Bearer " + SUPABASE_CONFIG.anonKey
+          },
+          muteHttpExceptions: true
+        });
+
+        if (res.getResponseCode() === 200) {
+          var rows = JSON.parse(res.getContentText());
+          backup.tablas[tabla] = rows;
+        } else {
+          backup.tablas[tabla] = [];
+        }
+      } catch (err) {
+        backup.tablas[tabla] = [];
+      }
+    });
+  }
+
+  // Guardar archivo JSON estructurado en Google Drive
+  var filename = "WJGEEKS_Backup_" + fechaStr + "_" + horaStr + ".json";
+  var jsonContent = JSON.stringify(backup, null, 2);
+  var file = folder.createFile(filename, jsonContent, MimeType.PLAIN_TEXT);
+
+  // Mantener limpios los respaldos antiguos (máximo los últimos 30 archivos)
+  limpiarBackupsAntiguos(folder, 30);
+
+  return {
+    success: true,
+    message: "Respaldo generado y guardado en Google Drive correctamente.",
+    archivo: {
+      id: file.getId(),
+      nombre: filename,
+      url: file.getUrl(),
+      tamano_kb: (jsonContent.length / 1024).toFixed(1)
+    },
+    carpeta_url: folder.getUrl(),
+    fecha: fechaLegible
+  };
+}
+
+/**
+ * Busca o crea una carpeta en la raíz de Google Drive
+ */
+function getOrCreateDriveFolder(folderName) {
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return DriveApp.createFolder(folderName);
+}
+
+/**
+ * Limita el historial de copias de seguridad en Drive a un número máximo
+ */
+function limpiarBackupsAntiguos(folder, maxArchivos) {
+  try {
+    var files = [];
+    var fileIter = folder.getFiles();
+    while (fileIter.hasNext()) {
+      files.push(fileIter.next());
+    }
+    // Ordenar descendente por fecha de creación
+    files.sort(function(a, b) {
+      return b.getDateCreated().getTime() - a.getDateCreated().getTime();
+    });
+
+    if (files.length > maxArchivos) {
+      for (var i = maxArchivos; i < files.length; i++) {
+        files[i].setTrashed(true);
+      }
+    }
+  } catch (e) {
+    // Silencioso
+  }
+}
+
+/**
+ * Configura el disparador automático diario a las 3:00 AM (Madrugada Colombia GMT-5)
+ * Ejecutar una única vez desde el editor de Google Apps Script.
+ */
+function configurarTriggerBackupNocturno() {
+  // Eliminar triggers duplicados previos para esta función
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "ejecutarBackupDiarioDrive") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+
+  // Crear nuevo trigger diario a las 3 AM
+  var newTrigger = ScriptApp.newTrigger("ejecutarBackupDiarioDrive")
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .nearMinute(0)
+    .create();
+
+  return {
+    success: true,
+    message: "Disparador nocturno configurado con éxito. Se ejecutará automáticamente todos los días a las 3:00 AM (Madrugada).",
+    triggerId: newTrigger.getUniqueId()
+  };
 }

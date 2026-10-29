@@ -44,6 +44,7 @@ export interface Resina {
   costo_gramo: number;
   velocidad_impresion_mm_h: number;
   resumen: string;
+  imagen_url?: string;
 }
 
 export interface Insumo {
@@ -57,6 +58,7 @@ export interface Insumo {
   costo_unitario: number;
   enlace_compra?: string;
   descripcion?: string;
+  imagen_url?: string;
 }
 
 export interface Maquina {
@@ -66,6 +68,7 @@ export interface Maquina {
   consumo_kwh: number;
   costo_minuto: number;
   estado: string;
+  imagen_url?: string;
 }
 
 export interface Personal {

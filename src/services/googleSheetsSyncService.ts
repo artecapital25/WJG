@@ -11,8 +11,10 @@ export interface GoogleSheetsConfig {
 
 const STORAGE_KEY = 'wjg_google_sheets_config';
 
+const ENV_APPS_SCRIPT_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL) || '';
+
 const DEFAULT_CONFIG: GoogleSheetsConfig = {
-  webAppUrl: '',
+  webAppUrl: ENV_APPS_SCRIPT_URL,
   sheetUrl: '',
   autoSync: false,
   lastSync: null,
@@ -25,7 +27,11 @@ export const GoogleSheetsSyncService = {
     try {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
-        return { ...DEFAULT_CONFIG, ...JSON.parse(saved) };
+        const parsed = JSON.parse(saved);
+        if (!parsed.webAppUrl && ENV_APPS_SCRIPT_URL) {
+          parsed.webAppUrl = ENV_APPS_SCRIPT_URL;
+        }
+        return { ...DEFAULT_CONFIG, ...parsed };
       }
     } catch (e) {
       console.warn('Error reading Google Sheets config:', e);
@@ -62,7 +68,12 @@ export const GoogleSheetsSyncService = {
       };
     }
 
-    const payload = StorageService.getBackupData();
+    let payload: any;
+    try {
+      payload = await StorageService.getFullBackupDataAsync();
+    } catch (_) {
+      payload = StorageService.getBackupData();
+    }
     const jsonBody = JSON.stringify(payload);
 
     try {
@@ -141,6 +152,164 @@ export const GoogleSheetsSyncService = {
     }
   },
 
+  // Dispara el respaldo autónomo en Google Drive
+  triggerNightlyDriveBackup: async (customUrl?: string): Promise<{ success: boolean; message: string; data?: any }> => {
+    const config = GoogleSheetsSyncService.getConfig();
+    const targetUrl = (customUrl || config.webAppUrl || '').trim();
+
+    if (!targetUrl) {
+      return {
+        success: false,
+        message: 'Falta configurar la URL de Google Apps Script.'
+      };
+    }
+
+    const urlWithParam = targetUrl.includes('?') 
+      ? `${targetUrl}&action=trigger_backup_drive` 
+      : `${targetUrl}?action=trigger_backup_drive`;
+
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'trigger_backup_drive' })
+      });
+
+      if (response.ok) {
+        let json: any = null;
+        try { json = await response.json(); } catch (_) {}
+        
+        if (json && (json.success === true || json.status === 'success')) {
+          return {
+            success: true,
+            message: json.message || 'Respaldo ejecutado exitosamente en Google Drive.',
+            data: json
+          };
+        } else if (json && json.status === 'warning') {
+          return {
+            success: false,
+            message: '⚠️ ' + (json.message || 'La URL actual responde pero tiene una versión antigua. En script.google.com ve a: Administrar implementaciones > Editar > selecciona "Nueva versión" e Implementar.'),
+            data: json
+          };
+        } else if (json && (json.status === 'error' || json.success === false)) {
+          return {
+            success: false,
+            message: '❌ Google Apps Script reportó un error: ' + (json.message || 'Desconocido'),
+            data: json
+          };
+        }
+      }
+    } catch (e: any) {
+      // Intento 2 vía GET
+      try {
+        const getRes = await fetch(urlWithParam, { method: 'GET' });
+        if (getRes.ok) {
+          const json = await getRes.json();
+          if (json && (json.success === true || json.status === 'success')) {
+            return {
+              success: true,
+              message: json.message || 'Respaldo ejecutado exitosamente en Google Drive.',
+              data: json
+            };
+          }
+        }
+      } catch (_) {}
+
+      // Fallback ciego vía mode: 'no-cors' para evitar bloqueos del navegador
+      try {
+        await fetch(targetUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'trigger_backup_drive' })
+        });
+        return {
+          success: true,
+          message: 'Petición enviada a Google Apps Script para guardar el respaldo en Drive. Si no aparece el archivo, recuerda publicar "Nueva versión" en Implementaciones.'
+        };
+      } catch (err: any) {
+        return { success: false, message: 'Error al contactar Google Drive: ' + err.message };
+      }
+    }
+    return { 
+      success: false, 
+      message: 'No se pudo completar el respaldo. Asegúrate de actualizar la implementación a "Nueva versión" en Google Apps Script.' 
+    };
+  },
+
+  // Configura el disparador diario en Google Apps Script para las 3:00 AM
+  setupNightlyBackupTrigger: async (customUrl?: string): Promise<{ success: boolean; message: string; data?: any }> => {
+    const config = GoogleSheetsSyncService.getConfig();
+    const targetUrl = (customUrl || config.webAppUrl || '').trim();
+
+    if (!targetUrl) {
+      return {
+        success: false,
+        message: 'Falta configurar la URL de Google Apps Script.'
+      };
+    }
+
+    const urlWithParam = targetUrl.includes('?') 
+      ? `${targetUrl}&action=setup_backup_trigger` 
+      : `${targetUrl}?action=setup_backup_trigger`;
+
+    try {
+      const response = await fetch(targetUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: 'setup_backup_trigger' })
+      });
+
+      if (response.ok) {
+        let json: any = null;
+        try { json = await response.json(); } catch (_) {}
+        if (json && (json.success === true || json.status === 'success')) {
+          return {
+            success: true,
+            message: json.message || 'Disparador nocturno configurado para ejecutarse a las 3:00 AM todos los días.',
+            data: json
+          };
+        } else if (json && json.status === 'warning') {
+          return {
+            success: false,
+            message: '⚠️ ' + (json.message || 'La URL actual responde pero tiene una versión previa. Publica "Nueva versión" en Administrar implementaciones.'),
+            data: json
+          };
+        }
+      }
+    } catch (e: any) {
+      try {
+        const getRes = await fetch(urlWithParam, { method: 'GET' });
+        if (getRes.ok) {
+          const json = await getRes.json();
+          if (json && (json.success === true || json.status === 'success')) {
+            return {
+              success: true,
+              message: json.message || 'Disparador configurado correctamente a las 3:00 AM.',
+              data: json
+            };
+          }
+        }
+      } catch (_) {}
+
+      try {
+        await fetch(targetUrl, {
+          method: 'POST',
+          mode: 'no-cors',
+          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+          body: JSON.stringify({ action: 'setup_backup_trigger' })
+        });
+        return {
+          success: true,
+          message: 'Petición enviada a Google Apps Script para activar el disparador a las 3:00 AM.'
+        };
+      } catch (err: any) {
+        return { success: false, message: 'Error al programar disparador: ' + err.message };
+      }
+    }
+    return { success: false, message: 'No se pudo configurar el disparador. Verifica que la versión esté actualizada en Apps Script.' };
+  },
+
   getAppsScriptCode: (): string => {
     return `/**
  * ============================================================================
@@ -161,10 +330,22 @@ export const GoogleSheetsSyncService = {
  */
 
 function doGet(e) {
+  var action = (e && e.parameter && e.parameter.action) ? e.parameter.action : "";
+  if (action === "trigger_backup_drive" || action === "backup_now") {
+    var backupResult = ejecutarBackupDiarioDrive(null);
+    return ContentService.createTextOutput(JSON.stringify(backupResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  if (action === "setup_backup_trigger") {
+    var triggerResult = configurarTriggerBackupNocturno();
+    return ContentService.createTextOutput(JSON.stringify(triggerResult))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   return ContentService.createTextOutput(JSON.stringify({
     status: "ok",
     app: "WJGEEKS 3D PRO Sync API",
-    message: "Google Apps Script activo y listo."
+    version: "3.1",
+    message: "Google Apps Script activo y listo para respaldos y sincronizaciones."
   })).setMimeType(ContentService.MimeType.JSON);
 }
 
@@ -177,6 +358,20 @@ function doPost(e) {
     }
 
     var data = JSON.parse(contents);
+
+    // Enrutador de Respaldo Automático en Google Drive
+    if (data.action === "trigger_backup_drive" || data.action === "backup_now") {
+      var backupResult = ejecutarBackupDiarioDrive(data.backupData || null);
+      return ContentService.createTextOutput(JSON.stringify(backupResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    if (data.action === "setup_backup_trigger") {
+      var triggerResult = configurarTriggerBackupNocturno();
+      return ContentService.createTextOutput(JSON.stringify(triggerResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var tz = Session.getScriptTimeZone() || "GMT-5";
     var fecha = Utilities.formatDate(new Date(), tz, "yyyy-MM-dd HH:mm:ss");
@@ -353,6 +548,115 @@ function actualizarHerramientas(ss, herrs) {
   });
   sheet.getRange(2, 1, rows.length, headers.length).setValues(rows);
   autoFitColumns(sheet, headers.length);
+}
+
+// -------------------------------------------------------------
+// 9. MOTOR DE RESPALDO AUTOMÁTICO EN GOOGLE DRIVE (MADRUGADA)
+// -------------------------------------------------------------
+var SUPABASE_CONFIG = {
+  url: "https://brjzpbqxjakihpsbkqfh.supabase.co",
+  anonKey: "sb_publishable_vbV0_7HeqzEVKZuvcuM0EQ_y6fa9ooh"
+};
+
+function ejecutarBackupDiarioDrive(customBackupData) {
+  var timezone = Session.getScriptTimeZone() || "GMT-5";
+  var now = new Date();
+  var fechaStr = Utilities.formatDate(now, timezone, "yyyy-MM-dd");
+  var horaStr = Utilities.formatDate(now, timezone, "HH-mm");
+  var fechaLegible = Utilities.formatDate(now, timezone, "yyyy-MM-dd HH:mm:ss");
+
+  var folder = getOrCreateDriveFolder("WJGEEKS_3D_Backups");
+  var backup = customBackupData;
+
+  if (!backup || !backup.tablas) {
+    backup = {
+      version: "3.1",
+      empresa: "WJGEEKS 3D PRO",
+      tipo: "respaldo_automatico_nube",
+      timestamp: now.toISOString(),
+      fecha_legible: fechaLegible,
+      tablas: {}
+    };
+
+    var tablasV3 = [
+      "ordenes_trabajo", "abonos_pagos", "ventas_express", "cotizaciones",
+      "cotizacion_items", "piezas_cotizacion", "productos_stock", "clientes",
+      "usuarios_taller", "tareas_equipo", "solicitudes_insumos", "configuracion_taller",
+      "tarifas_tamanos", "resinas", "maquinas", "insumos"
+    ];
+
+    tablasV3.forEach(function(tabla) {
+      try {
+        var res = UrlFetchApp.fetch(SUPABASE_CONFIG.url + "/rest/v1/" + tabla + "?select=*", {
+          method: "get",
+          headers: {
+            "apikey": SUPABASE_CONFIG.anonKey,
+            "Authorization": "Bearer " + SUPABASE_CONFIG.anonKey
+          },
+          muteHttpExceptions: true
+        });
+        if (res.getResponseCode() === 200) {
+          backup.tablas[tabla] = JSON.parse(res.getContentText());
+        } else {
+          backup.tablas[tabla] = [];
+        }
+      } catch (e) {
+        backup.tablas[tabla] = [];
+      }
+    });
+  }
+
+  var filename = "WJGEEKS_Backup_" + fechaStr + "_" + horaStr + ".json";
+  var jsonContent = JSON.stringify(backup, null, 2);
+  var file = folder.createFile(filename, jsonContent, MimeType.PLAIN_TEXT);
+
+  limpiarBackupsAntiguos(folder, 30);
+
+  return {
+    success: true,
+    message: "Respaldo nocturno generado en Google Drive correctamente.",
+    archivo: { id: file.getId(), nombre: filename, url: file.getUrl() },
+    fecha: fechaLegible
+  };
+}
+
+function getOrCreateDriveFolder(folderName) {
+  var folders = DriveApp.getFoldersByName(folderName);
+  if (folders.hasNext()) return folders.next();
+  return DriveApp.createFolder(folderName);
+}
+
+function limpiarBackupsAntiguos(folder, maxArchivos) {
+  try {
+    var files = [];
+    var it = folder.getFiles();
+    while (it.hasNext()) files.push(it.next());
+    files.sort(function(a, b) { return b.getDateCreated().getTime() - a.getDateCreated().getTime(); });
+    if (files.length > maxArchivos) {
+      for (var i = maxArchivos; i < files.length; i++) files[i].setTrashed(true);
+    }
+  } catch (_) {}
+}
+
+function configurarTriggerBackupNocturno() {
+  var triggers = ScriptApp.getProjectTriggers();
+  for (var i = 0; i < triggers.length; i++) {
+    if (triggers[i].getHandlerFunction() === "ejecutarBackupDiarioDrive") {
+      ScriptApp.deleteTrigger(triggers[i]);
+    }
+  }
+  var newTrigger = ScriptApp.newTrigger("ejecutarBackupDiarioDrive")
+    .timeBased()
+    .everyDays(1)
+    .atHour(3)
+    .nearMinute(0)
+    .create();
+
+  return {
+    success: true,
+    message: "Disparador nocturno configurado para las 3:00 AM todos los días.",
+    triggerId: newTrigger.getUniqueId()
+  };
 }`;
   }
 };

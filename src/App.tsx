@@ -1502,8 +1502,9 @@ export const App: React.FC = () => {
   };
 
   const handleEliminarVentaExpress = (ventaId: string) => {
-    // Si la venta descontó stock físico, reponerlo al inventario
     const ventaAEliminar = ventasExpress.find(v => v.id === ventaId);
+
+    // 1. Si la venta descontó stock físico, reponerlo al inventario
     if (ventaAEliminar?.descontar_stock && ventaAEliminar.producto_stock_id) {
       const cantDevuelta = ventaAEliminar.cantidad_vendida || 1;
       const updatedStock = productosStock.map(p => {
@@ -1520,15 +1521,80 @@ export const App: React.FC = () => {
       }
     }
 
+    // 2. Si la venta tenía OT asociada, removerla de las listas locales para que no quede huérfana
+    const updatedOTs = ordenes.filter(o => 
+      o.pos_venta_id !== ventaId && 
+      (!ventaAEliminar?.ot_id || o.id !== ventaAEliminar.ot_id) &&
+      (!ventaAEliminar?.ot_numero || o.numero_ot !== ventaAEliminar.ot_numero)
+    );
+    if (updatedOTs.length !== ordenes.length) {
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+    }
+
+    const updatedCCs = cuentas.filter(c => 
+      (!ventaAEliminar?.ot_id || c.id !== ventaAEliminar.ot_id) &&
+      (!ventaAEliminar?.ot_numero || c.numero_cc !== `CC-${ventaAEliminar.ot_numero.replace(/^OT-/, '')}`)
+    );
+    if (updatedCCs.length !== cuentas.length) {
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+    }
+
+    // 3. Eliminar de la lista de ventas
     const updated = ventasExpress.filter(v => v.id !== ventaId);
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
 
-    CloudSyncService.deleteVentaExpress(ventaId).then(res => {
+    // 4. Purgar en Supabase (venta, OT asociada y abonos en abonos_pagos)
+    CloudSyncService.deleteVentaExpress(
+      ventaId, 
+      ventaAEliminar?.numero_venta, 
+      ventaAEliminar?.ot_id, 
+      ventaAEliminar?.ot_numero
+    ).then(res => {
       if (res && !res.success && res.error) {
         toast.warning(`Venta eliminada localmente. Pendiente en nube: ${res.error}`);
       } else {
-        toast.success('Venta eliminada e inventario repuesto.');
+        toast.success('Venta, OT vinculada y abonos contables eliminados correctamente.');
+      }
+    });
+  };
+
+  const handleEliminarCotizacion = (cotId: string, numeroCot?: string) => {
+    const cotAEliminar = cotizaciones.find(c => c.id === cotId || (numeroCot && c.numero_cot === numeroCot));
+
+    // 1. Remover de cotizaciones
+    const updatedCots = cotizaciones.filter(c => c.id !== cotId && (!numeroCot || c.numero_cot !== numeroCot));
+    setCotizaciones(updatedCots);
+    StorageService.saveCotizaciones(updatedCots);
+
+    // 2. Si tenía OTs generadas en taller, removerlas para no dejar órdenes huérfanas
+    const numCotRef = numeroCot || cotAEliminar?.numero_cot;
+    const updatedOTs = ordenes.filter(o => 
+      o.cotizacion_id !== cotId && 
+      (!numCotRef || o.cotizacion_numero !== numCotRef)
+    );
+    if (updatedOTs.length !== ordenes.length) {
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+    }
+
+    const updatedCCs = cuentas.filter(c => 
+      c.cotizacion_id !== cotId && 
+      (!numCotRef || c.cotizacion_numero !== numCotRef)
+    );
+    if (updatedCCs.length !== cuentas.length) {
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+    }
+
+    // 3. Purgar en Supabase (cotización, ítems, abonos contables en abonos_pagos y OTs)
+    CloudSyncService.deleteCotizacion(cotId, numCotRef).then(res => {
+      if (res && !res.success && res.error) {
+        toast.warning(`Cotización eliminada localmente. Pendiente en nube: ${res.error}`);
+      } else {
+        toast.success(`Cotización ${numCotRef || ''} y registros contables eliminados correctamente.`);
       }
     });
   };
@@ -1966,6 +2032,7 @@ export const App: React.FC = () => {
         cloudStatus={cloudSyncStatus}
         activeOperator={activeOperator}
         onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
+        onOpenBackup={() => setShowBackupModal(true)}
         onOpenChangePin={() => setShowChangePinModal(true)}
         onLogout={handleStaffLogout}
         dailyAlertsCount={pendingOTs}
@@ -2061,6 +2128,7 @@ export const App: React.FC = () => {
             onEditarCotizacion={handleEditarCotizacion}
             onAprobarCotizacion={handleAprobarCotizacion}
             onActualizarPagoCotizacion={handleActualizarPagoCotizacion}
+            onEliminarCotizacion={handleEliminarCotizacion}
             onNuevaCotizacion={handleNuevaCotizacion}
           />
         )}
@@ -2118,12 +2186,17 @@ export const App: React.FC = () => {
               StorageService.saveInsumos(i); 
               i.forEach(ins => CloudSyncService.saveInsumo(ins));
             }}
-            onUpdateMaquinas={m => { setMaquinas(m); StorageService.saveMaquinas(m); }}
+            onUpdateMaquinas={m => { 
+              setMaquinas(m); 
+              StorageService.saveMaquinas(m); 
+              m.forEach(maq => CloudSyncService.saveMaquina(maq));
+            }}
             onUpdatePersonal={p => { setPersonal(p); StorageService.savePersonal(p); }}
             onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
             onUpdateProveedores={pr => { setProveedores(pr); StorageService.saveProveedores(pr); }}
             onUpdateConfig={cfg => { setConfig(cfg); StorageService.saveConfig(cfg); }}
             onUpdateTarifasTamanos={t => { setTarifasTamanos(t); StorageService.saveTarifasTamanos(t); }}
+            onOpenBackup={() => setShowBackupModal(true)}
           />
         )}
 
@@ -2169,6 +2242,7 @@ export const App: React.FC = () => {
             ventasExpress={ventasExpress}
             whatsappStatus={whatsappHealthStatus}
             onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
+            onOpenBackup={() => setShowBackupModal(true)}
           />
         )}
 

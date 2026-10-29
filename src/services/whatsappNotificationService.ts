@@ -177,10 +177,62 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
   public static async obtenerSaludWhatsApp(): Promise<WhatsAppHealthStatus> {
     try {
       if (isSupabaseConfigured && supabase) {
-        const { data, error } = await supabase.rpc('fn_whatsapp_healthcheck');
-        if (!error && data) {
-          return data as WhatsAppHealthStatus;
-        }
+        let health: any = null;
+        try {
+          const { data, error } = await supabase.rpc('fn_whatsapp_healthcheck');
+          if (!error && data) {
+            health = data;
+          }
+        } catch (_) {}
+
+        // Consultar de forma directa y canónica la tabla registro_notificaciones
+        // para detectar mensajes estancados en 'PENDIENTE' o 'EN_COLA'
+        try {
+          const { data: stuckRecords, error: stuckErr } = await supabase
+            .from('registro_notificaciones')
+            .select('id, created_at, estado, canal')
+            .in('estado', ['PENDIENTE', 'EN_COLA', 'REINTENTANDO']);
+
+          if (!stuckErr && stuckRecords) {
+            const now = Date.now();
+            const stuckMore15m = stuckRecords.filter((r: any) => {
+              const createdTime = new Date(r.created_at).getTime();
+              return now - createdTime > 15 * 60 * 1000;
+            }).length;
+
+            const pendientesCount = stuckRecords.length;
+
+            if (health) {
+              health.pendientes_cola = Math.max(health.pendientes_cola || 0, pendientesCount);
+              health.estancados_mas_15m = Math.max(health.estancados_mas_15m || 0, stuckMore15m);
+              if (stuckMore15m > 0) {
+                health.status = 'alerta_critica';
+                health.alerta_mensaje = `⚠️ Hay ${stuckMore15m} mensaje(s) estancados en cola sin despachar por más de 15 minutos.`;
+              }
+              return health as WhatsAppHealthStatus;
+            }
+
+            return {
+              status: stuckMore15m > 0 ? 'alerta_critica' : 'operativo',
+              linea_oficial: '+57 320 2796115',
+              linea_oficial_clean: '573202796115',
+              motor_activo: true,
+              total_ultimas_24h: stuckRecords.length,
+              enviados_24h: 0,
+              fallidos_24h: 0,
+              pendientes_cola: pendientesCount,
+              estancados_mas_15m: stuckMore15m,
+              tasa_fallo_pct: stuckMore15m > 0 ? 100 : 0,
+              mensajes_programados_hoy: stuckRecords.length,
+              alerta_mensaje: stuckMore15m > 0 
+                ? `⚠️ Hay ${stuckMore15m} mensaje(s) pendientes por despachar en la cola.`
+                : 'Motor de mensajería en cola activa.',
+              evaluado_at: new Date().toISOString()
+            };
+          }
+        } catch (_) {}
+
+        if (health) return health as WhatsAppHealthStatus;
       }
     } catch (err) {
       console.warn('Error invocando fn_whatsapp_healthcheck RPC:', err);

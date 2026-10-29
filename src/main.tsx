@@ -12,10 +12,37 @@ if ('serviceWorker' in navigator) {
         .register('/sw.js')
         .then((reg) => {
           console.log('✓ WJGEEKS PWA Service Worker activo con alcance:', reg.scope);
+
+          // Verificar si hay actualizaciones cuando el usuario regrese a la app
+          window.addEventListener('focus', () => {
+            reg.update().catch(() => {});
+          });
+
+          // Detectar si se instaló una nueva versión en segundo plano
+          reg.addEventListener('updatefound', () => {
+            const installingWorker = reg.installing;
+            if (installingWorker) {
+              installingWorker.addEventListener('statechange', () => {
+                if (installingWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                  // Notificar al nuevo worker que tome el control inmediatamente
+                  installingWorker.postMessage({ type: 'SKIP_WAITING' });
+                }
+              });
+            }
+          });
         })
         .catch((err) => {
           console.warn('PWA Service Worker note:', err);
         });
+    });
+
+    // Recargar suavemente la aplicación solo cuando un nuevo Service Worker haya tomado el control
+    let isRefreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!isRefreshing) {
+        isRefreshing = true;
+        window.location.reload();
+      }
     });
   } else {
     // En entorno de desarrollo (localhost), desactivar workers previos para evitar desfases de caché en HMR
