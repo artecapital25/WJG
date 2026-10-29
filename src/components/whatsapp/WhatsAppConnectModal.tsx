@@ -419,10 +419,13 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                         style={{ width: '200px', height: '200px', objectFit: 'contain' }}
                       />
                     ) : (
-                      <div style={{ color: '#475569', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem' }}>
-                        <QrCode size={64} color="#94a3b8" />
-                        <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>
-                          Esperando Gateway en {config.gatewayUrl}
+                      <div style={{ color: '#475569', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem', padding: '1rem', textAlign: 'center' }}>
+                        <QrCode size={56} color="#94a3b8" />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
+                          Esperando Gateway ({config.gatewayUrl})
+                        </span>
+                        <span style={{ fontSize: '0.72rem', color: '#64748b', maxWidth: '200px' }}>
+                          Ejecuta en tu terminal <code style={{ backgroundColor: '#f1f5f9', padding: '1px 4px', borderRadius: '4px' }}>npm run wa:gateway</code> para generar el código QR.
                         </span>
                       </div>
                     )}
@@ -704,6 +707,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                     </label>
                     <input
                       type="password"
+                      autoComplete="off"
                       value={config.apiKey || ''}
                       onChange={(e) => setConfig({ ...config, apiKey: e.target.value })}
                       placeholder="Dejar en blanco para servidor local estándar"
@@ -748,6 +752,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                     </label>
                     <input
                       type="password"
+                      autoComplete="off"
                       value={config.metaCloudToken || ''}
                       onChange={(e) => setConfig({ ...config, metaCloudToken: e.target.value })}
                       placeholder="EAAGm..."

@@ -52,6 +52,12 @@ self.addEventListener('fetch', (event) => {
 
   const url = new URL(event.request.url);
 
+  // El Service Worker SOLO debe gestionar recursos del propio origen (archivos de la app)
+  // NUNCA interceptar APIs externas, gateways locales (localhost:3001), Supabase o Google
+  if (url.origin !== self.location.origin) {
+    return;
+  }
+
   // APIs en vivo y webhooks NUNCA se guardan en caché estático
   if (
     url.hostname.includes('supabase.co') ||
@@ -113,6 +119,7 @@ self.addEventListener('fetch', (event) => {
           if (event.request.mode === 'navigate') {
             return caches.match('/index.html');
           }
+          return new Response('', { status: 504, statusText: 'Offline / Network Failed' });
         });
 
       return cachedResponse || fetchPromise;

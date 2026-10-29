@@ -240,10 +240,11 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
         try {
           const { data: stuckRecords, error: stuckErr } = await supabase
             .from('registro_notificaciones')
-            .select('id, created_at, estado, canal')
-            .in('estado', ['PENDIENTE', 'EN_COLA', 'REINTENTANDO']);
+            .select('id, created_at, estado')
+            .in('estado', ['PENDIENTE', 'EN_COLA', 'REINTENTANDO'])
+            .limit(50);
 
-          if (!stuckErr && stuckRecords) {
+          if (!stuckErr && stuckRecords && Array.isArray(stuckRecords)) {
             const now = Date.now();
             const stuckMore15m = stuckRecords.filter((r: any) => {
               const createdTime = new Date(r.created_at).getTime();
