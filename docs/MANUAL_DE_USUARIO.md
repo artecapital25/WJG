@@ -122,8 +122,6 @@ El Calendario Operativo (`CalendarOperationalView`) consolida la agenda técnica
 
 ---
 
----
-
 ## 4. Módulo 2: Motor Gateway de WhatsApp Multi-Device y Mensajería Automática
 
 El sistema cuenta con un motor unificado de mensajería desatendida y bidireccional vinculado a la línea oficial corporativa (**+57 320 2796115**).

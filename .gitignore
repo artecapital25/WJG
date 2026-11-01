@@ -51,3 +51,5 @@ __pycache__/
 backups/
 *.backup.json
 supabase/.temp/
+.tools/
+auth_info_baileys/
