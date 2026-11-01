@@ -9,16 +9,20 @@
     "preview": "vite preview",
     "backup": "node scripts/backup_to_drive.cjs",
     "wa:gateway": "node scripts/whatsapp_gateway_server.cjs",
+    "wa:phone": "powershell -ExecutionPolicy Bypass -File scripts/wa_connect_phone.ps1",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.49.1",
     "@types/three": "^0.186.0",
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "canvas-confetti": "^1.9.4",
     "jspdf": "^3.0.0",
     "jspdf-autotable": "^5.0.2",
     "lucide-react": "^1.16.0",
+    "pino": "^10.4.0",
+    "qrcode": "^1.5.4",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.186.1"

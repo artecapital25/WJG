@@ -1,51 +1,146 @@
 /**
  * ==============================================================================
- * SERVIDOR GATEWAY LOCAL DE WHATSAPP (OPCIÓN A - WJGEEKS 3D PRO)
+ * SERVIDOR GATEWAY REAL DE WHATSAPP CON BAILEYS (WJGEEKS 3D PRO)
  * Línea Oficial: +57 320 2796115
  * Correo Oficial: wjgeeks3d@gmail.com
  * ==============================================================================
- * Servidor HTTP ligero en Node.js (cero dependencias externas requeridas).
- * Expone la API REST que consume la aplicación web de WJGEEKS:
- * - GET  /status -> Verifica salud y vinculación del dispositivo
- * - GET  /qr     -> Devuelve el código QR de vinculación
- * - POST /send   -> Despacha mensajes automáticos en segundo plano
+ * Conecta directamente a la red oficial de WhatsApp mediante el protocolo Multi-Device
+ * usando @whiskeysockets/baileys.
+ * 
+ * - Genera códigos QR criptográficos 100% reales escaneables desde WhatsApp.
+ * - Mantiene la sesión persistente en la carpeta 'auth_info_baileys'.
+ * - Despacha mensajes reales al WhatsApp del cliente final sin intermediarios ni costos.
  * ==============================================================================
  */
 
 const http = require('http');
+const path = require('path');
+const fs = require('fs');
+const QRCode = require('qrcode');
+const pino = require('pino');
+const { 
+  default: makeWASocket, 
+  useMultiFileAuthState, 
+  DisconnectReason, 
+  fetchLatestBaileysVersion,
+  delay
+} = require('@whiskeysockets/baileys');
 
 const PORT = process.env.PORT || 3001;
 const OFFICIAL_PHONE = '+57 320 2796115';
+const AUTH_DIR = path.join(__dirname, '..', 'auth_info_baileys');
 
-// Estado simulado / en memoria
+if (!fs.existsSync(AUTH_DIR)) {
+  fs.mkdirSync(AUTH_DIR, { recursive: true });
+}
+
+let sock = null;
+let rawQrCode = null;
+let base64QrCode = null;
+
 let sessionState = {
   connected: false,
-  status: 'disconnected',
+  status: 'connecting',
   phone: OFFICIAL_PHONE,
   qrCode: null,
   totalSent: 0,
   history: []
 };
 
-// Generador de QR SVG básico para demostración inmediata
-function generateSimpleQrSvg() {
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
-    <rect width="200" height="200" fill="#ffffff"/>
-    <rect x="20" y="20" width="50" height="50" fill="#0f172a"/>
-    <rect x="30" y="30" width="30" height="30" fill="#ffffff"/>
-    <rect x="38" y="38" width="14" height="14" fill="#0f172a"/>
-    <rect x="130" y="20" width="50" height="50" fill="#0f172a"/>
-    <rect x="140" y="30" width="30" height="30" fill="#ffffff"/>
-    <rect x="148" y="38" width="14" height="14" fill="#0f172a"/>
-    <rect x="20" y="130" width="50" height="50" fill="#0f172a"/>
-    <rect x="30" y="140" width="30" height="30" fill="#ffffff"/>
-    <rect x="38" y="148" width="14" height="14" fill="#0f172a"/>
-    <circle cx="100" cy="100" r="15" fill="#22c55e"/>
-    <text x="100" y="105" font-family="Arial" font-size="10" fill="#ffffff" text-anchor="middle" font-weight="bold">WJG</text>
-  </svg>`;
+// Formatear número a formato internacional colombiano si aplica
+function formatToJid(numberStr) {
+  let clean = String(numberStr).replace(/[^0-9]/g, '');
+  if (clean.length === 10 && clean.startsWith('3')) {
+    clean = '57' + clean;
+  }
+  return clean + '@s.whatsapp.net';
 }
 
-const server = http.createServer((req, res) => {
+async function startWhatsAppSocket() {
+  try {
+    const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`[WA-BAILEYS] Versión protocolo WhatsApp: v${version.join('.')} (Última: ${isLatest})`);
+
+    sock = makeWASocket({
+      version,
+      logger: pino({ level: 'silent' }),
+      printQRInTerminal: true, // Imprime también el QR en la terminal para facilidad
+      auth: state,
+      browser: ['WJGEEKS 3D PRO', 'Chrome', '1.0.0'],
+      syncFullHistory: false,
+      generateHighQualityLinkPreview: true
+    });
+
+    sock.ev.on('creds.update', saveCreds);
+
+    sock.ev.on('connection.update', async (update) => {
+      const { connection, lastDisconnect, qr } = update;
+
+      if (qr) {
+        rawQrCode = qr;
+        try {
+          base64QrCode = await QRCode.toDataURL(qr, { margin: 2, scale: 8 });
+          sessionState.qrCode = base64QrCode;
+          sessionState.status = 'qr_ready';
+          sessionState.connected = false;
+          console.log('\n[WA-BAILEYS] 📲 ¡Nuevo Código QR de vinculación generado!');
+          console.log('             Escanea este código desde WhatsApp > Dispositivos Vinculados.');
+        } catch (err) {
+          console.error('[WA-BAILEYS] Error generando DataURL QR:', err.message);
+        }
+      }
+
+      if (connection === 'close') {
+        const statusCode = lastDisconnect?.error?.output?.statusCode;
+        const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+        sessionState.connected = false;
+        sessionState.status = 'disconnected';
+        console.log(`[WA-BAILEYS] ⚠️ Conexión cerrada (Código: ${statusCode}). ¿Reconectar?: ${shouldReconnect}`);
+
+        if (shouldReconnect) {
+          console.log('[WA-BAILEYS] Reintentando conexión en 5 segundos...');
+          setTimeout(startWhatsAppSocket, 5000);
+        } else {
+          console.log('[WA-BAILEYS] ❌ Sesión cerrada por el usuario. Limpiando credenciales para nuevo QR...');
+          try {
+            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
+            fs.mkdirSync(AUTH_DIR, { recursive: true });
+          } catch (_) {}
+          setTimeout(startWhatsAppSocket, 3000);
+        }
+      } else if (connection === 'open') {
+        sessionState.connected = true;
+        sessionState.status = 'connected';
+        sessionState.qrCode = null;
+        rawQrCode = null;
+        base64QrCode = null;
+
+        const connectedJid = sock.user?.id || '';
+        const cleanNumber = connectedJid.split(':')[0] || connectedJid.split('@')[0];
+        if (cleanNumber) {
+          sessionState.phone = `+${cleanNumber}`;
+        }
+
+        console.log('\n======================================================');
+        console.log(`✅ [WA-BAILEYS] ¡WHATSAPP OFICIAL CONECTADO EXITOSAMENTE!`);
+        console.log(`📱 Número:  ${sessionState.phone}`);
+        console.log(`🚀 Listo para despachar notificaciones automáticas reales.`);
+        console.log('======================================================\n');
+      }
+    });
+
+  } catch (err) {
+    console.error('[WA-BAILEYS] Error fatal al iniciar socket:', err);
+    setTimeout(startWhatsAppSocket, 10000);
+  }
+}
+
+// Iniciar Baileys
+startWhatsAppSocket();
+
+// Servidor REST para la Web App de WJGEEKS
+const server = http.createServer(async (req, res) => {
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -70,39 +165,21 @@ const server = http.createServer((req, res) => {
       totalSent: sessionState.totalSent,
       message: sessionState.connected 
         ? `Línea oficial activa: ${sessionState.phone}` 
-        : 'Servidor Gateway activo en puerto ' + PORT
+        : (sessionState.qrCode ? 'Código QR listo para escanear' : 'Conectando con WhatsApp...')
     }));
     return;
   }
 
   // Endpoint: GET /qr
   if (req.method === 'GET' && url.pathname === '/qr') {
-    const svg = generateSimpleQrSvg();
-    const base64Svg = `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`;
-    sessionState.qrCode = base64Svg;
-    sessionState.status = 'qr_ready';
-
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       success: true,
-      qr: base64Svg,
-      message: 'Escanea el código QR desde WhatsApp > Dispositivos vinculados (+57 320 2796115)'
-    }));
-    return;
-  }
-
-  // Endpoint: POST /connect (Vincular / Simular escaneo de sesión)
-  if (req.method === 'POST' && url.pathname === '/connect') {
-    sessionState.connected = true;
-    sessionState.status = 'connected';
-    sessionState.qrCode = null;
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({
-      success: true,
-      connected: true,
-      phone: OFFICIAL_PHONE,
-      message: `¡Sesión vinculada exitosamente con ${OFFICIAL_PHONE}!`
+      connected: sessionState.connected,
+      qr: sessionState.qrCode,
+      message: sessionState.connected
+        ? `WhatsApp ya está conectado con ${sessionState.phone}`
+        : (sessionState.qrCode ? 'Escanea el código QR desde WhatsApp > Dispositivos vinculados' : 'Generando QR criptográfico...')
     }));
     return;
   }
@@ -111,7 +188,7 @@ const server = http.createServer((req, res) => {
   if (req.method === 'POST' && url.pathname === '/send') {
     let body = '';
     req.on('data', chunk => { body += chunk; });
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
         const payload = JSON.parse(body || '{}');
         const target = payload.number || payload.phone || payload.to;
@@ -123,7 +200,19 @@ const server = http.createServer((req, res) => {
           return;
         }
 
-        const messageId = `wjg-msg-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+        if (!sessionState.connected || !sock) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ 
+            success: false, 
+            error: 'WhatsApp Gateway no está vinculado. Escanea el código QR en la aplicación.' 
+          }));
+          return;
+        }
+
+        const targetJid = formatToJid(target);
+        const result = await sock.sendMessage(targetJid, { text });
+        const messageId = result?.key?.id || `wjg-msg-${Date.now()}`;
+
         sessionState.totalSent++;
         sessionState.history.unshift({
           id: messageId,
@@ -133,16 +222,17 @@ const server = http.createServer((req, res) => {
         });
         if (sessionState.history.length > 50) sessionState.history.pop();
 
-        console.log(`\x1b[32m[WA-GATEWAY SUCCESS]\x1b[0m Mensaje despachado a \x1b[36m${target}\x1b[0m:`);
+        console.log(`\x1b[32m[WA-REAL SENT]\x1b[0m Mensaje entregado a \x1b[36m${target}\x1b[0m:`);
         console.log(`  "${text.replace(/\n/g, ' ').substring(0, 80)}..."`);
 
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
           success: true,
           id: messageId,
-          message: 'Mensaje despachado exitosamente por la línea oficial +57 320 2796115'
+          message: `Mensaje despachado exitosamente por la línea oficial ${sessionState.phone}`
         }));
       } catch (err) {
+        console.error('[WA-REAL SEND ERROR]', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }
@@ -155,12 +245,11 @@ const server = http.createServer((req, res) => {
   res.end(JSON.stringify({ error: 'Ruta no encontrada en WhatsApp Gateway' }));
 });
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
   console.log(`\n======================================================`);
-  console.log(`🚀 WJGEEKS 3D - WHATSAPP GATEWAY INICIADO`);
+  console.log(`🚀 WJGEEKS 3D - WHATSAPP GATEWAY REAL INICIADO`);
   console.log(`======================================================`);
   console.log(`📱 Línea Oficial:    ${OFFICIAL_PHONE}`);
-  console.log(`✉️ Correo Oficial:   wjgeeks3d@gmail.com`);
   console.log(`🌐 Servidor REST:    http://localhost:${PORT}`);
   console.log(`⚡ Endpoints:`);
   console.log(`   - GET  http://localhost:${PORT}/status`);

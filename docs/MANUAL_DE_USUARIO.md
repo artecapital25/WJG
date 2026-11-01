@@ -122,12 +122,50 @@ El Calendario Operativo (`CalendarOperationalView`) consolida la agenda técnica
 
 ---
 
-## 4. Módulo 2: Mensajería Desatendida por WhatsApp Business API
+---
 
-El sistema cuenta con un motor asíncrono para notificaciones al cliente y al equipo:
-1. **Cobranzas y Cartera:** Despacho programado a las 7:00 AM para cuentas de cobro con vencimiento en las próximas 48 horas.
-2. **Fin de Fabricación:** Notificación automática al cliente en cuanto la OT alcanza el estado `"Listo para entrega"`, adjuntando foto del producto y balance pendiente.
-3. **Daily Briefing Matutino:** Resumen ejecutivo enviado a Germán y Wendy con los cobros del día, entregas programadas y salud técnica del sistema.
+## 4. Módulo 2: Motor Gateway de WhatsApp Multi-Device y Mensajería Automática
+
+El sistema cuenta con un motor unificado de mensajería desatendida y bidireccional vinculado a la línea oficial corporativa (**+57 320 2796115**).
+
+```mermaid
+flowchart LR
+    A["WJGEEKS 3D PRO<br/>(Web App React)"] -->|"POST /send<br/>GET /qr"| B["WhatsApp Gateway<br/>(Node.js + Baileys)"]
+    B <-->|"Protocolo Multi-Device<br/>(Noise WSS Criptográfico)"| C["WhatsApp Network<br/>(Meta Servers)"]
+    C -->|"Mensaje Automático Entregado"| D["📱 Cliente Final<br/>(WhatsApp)"]
+    B -.->|"Persistencia Sesión"| E[("auth_info_baileys/<br/>(Tokens / Keys)")]
+```
+
+### 4.1. Arquitectura: ¿Por qué el QR anterior no escaneaba y no salían mensajes?
+- **Prototipo Anterior (Mock Demostrativo):** El servidor inicial contenía un generador SVG decorativo estático ("WJG") creado únicamente para validar la interfaz gráfica. Dado que no utilizaba el protocolo de enlace criptográfico de WhatsApp Web, la cámara de WhatsApp lo rechazaba como código no válido y las peticiones `/send` se limitaban a imprimir en consola sin transmisión real.
+- **Implementación Actual (Motor Real Baileys):** Ahora el servidor incorpora `@whiskeysockets/baileys` y `qrcode`. Este motor negocia las claves públicas con los servidores WebSocket de WhatsApp, generando un **código QR criptográfico real de WhatsApp Web**. Al escanearlo, el celular lo registra oficialmente en *Dispositivos Vinculados* y cualquier llamada al endpoint `/send` despacha el mensaje inmediatamente al chat del cliente.
+
+### 4.2. Paso a Paso para Vincular el WhatsApp Oficial
+1. **Iniciar el Servidor Gateway:**
+   - En tu PC: ejecuta `npm run wa:gateway`
+   - O si usas el celular con Termux conectado por USB: ejecuta `npm run wa:phone`
+2. **Abrir el Modal de Conexión en WJGEEKS 3D PRO:**
+   - Haz clic en el botón de WhatsApp (esquina superior derecha de la aplicación).
+   - Verás el código QR real generado por el motor en pantalla.
+3. **Escanear desde el Celular Oficial (+57 320 2796115):**
+   - Abre WhatsApp en el celular.
+   - Ve a **Ajustes (o Menú ⋮) > Dispositivos vinculados > Vincular un dispositivo**.
+   - Apunta la cámara del teléfono hacia el código QR en la pantalla de la PC.
+4. **Confirmación Inmediata:**
+   - El sistema detectará la sesión automáticamente y cambiará al estado **`Conectado`**.
+   - Las credenciales se guardan de forma encriptada y persistente en la carpeta local `auth_info_baileys/`. **No tendrás que volver a escanear el QR** al reiniciar el computador.
+
+### 4.3. Tipos de Notificaciones Despachadas al Cliente Final
+1. **Cobranzas y Cartera:** Alerta matutina automática para cuentas de cobro con saldo pendiente o vencimiento en 48 horas, adjuntando la llave Bre-B (`0090778625`) y cuenta Nequi.
+2. **Fin de Fabricación (Taller):** Notificación automática cuando una Orden de Trabajo pasa al estado `"Listo para entrega"`, con el balance liquidado y resumen de retiro en tienda.
+3. **Comprobante de Abono / Anticipo:** Envío automático del recibo digital tras registrar un abono en el POS o módulo financiero.
+4. **Fallback Automático Asistido:** Si el Gateway no estuviera encendido, el sistema conmuta automáticamente a la API directa (`wa.me`) abriendo el chat con la plantilla redactada para no interrumpir la atención.
+
+### 4.4. Operación con Celular Autónomo (Termux & ADB)
+Si deseas que el servidor funcione desde un teléfono Android secundario para no depender de tener la PC encendida:
+- **Gestión Automatizada por USB:** Ejecuta `npm run wa:phone`. El script detecta el teléfono por ADB, verifica la versión de Node.js en Termux y redirige el puerto `3001` bidireccionalmente.
+- **Acceso por Red Wi-Fi Local:** El celular expone el servicio en su IP interna (`http://192.168.1.9:3001`). En el modal de WJGEEKS > pestaña *Ajustes*, ingresa esta IP para operar de forma inalámbrica.
+- **Mantenimiento en Segundo Plano:** El comando `termux-wake-lock` mantiene el proceso despierto incluso cuando la pantalla del celular se apaga.
 
 ---
 
