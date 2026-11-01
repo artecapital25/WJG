@@ -11,7 +11,10 @@ import {
   Settings2, 
   ExternalLink,
   ShieldCheck,
-  Server
+  Server,
+  KeyRound,
+  RotateCcw,
+  Loader2
 } from 'lucide-react';
 import { WhatsAppGatewayService, WhatsAppGatewayConfig, GatewayStatusResponse } from '../../services/whatsappGatewayService';
 import { EmailNotificationService } from '../../services/emailNotificationService';
@@ -31,6 +34,9 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
     message: 'Consultando estado...'
   });
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [isRequestingPairing, setIsRequestingPairing] = useState(false);
+  const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'qr' | 'settings' | 'test'>('qr');
   
   // Test states
@@ -40,24 +46,95 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
   const [isSendingEmail, setIsSendingEmail] = useState(false);
 
   useEffect(() => {
-    if (isOpen) {
-      refreshStatus();
-    }
-  }, [isOpen]);
+    if (!isOpen) return;
+
+    refreshStatus();
+
+    // Sondeo periódico activo cada 2.0s mientras el modal esté abierto
+    const interval = setInterval(() => {
+      WhatsAppGatewayService.checkStatus().then(res => {
+        setStatus(prev => {
+          // Si el servidor está reconectando o negociando nuevo QR, preservar el QR previo para evitar parpadeos
+          const qrCodeToUse = res.qrCode || (res.connected ? undefined : prev.qrCode);
+          if (
+            prev.connected !== res.connected ||
+            prev.status !== res.status ||
+            prev.qrCode !== qrCodeToUse ||
+            prev.message !== res.message
+          ) {
+            return {
+              ...res,
+              qrCode: qrCodeToUse
+            };
+          }
+          return prev;
+        });
+      }).catch(() => {});
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, [isOpen, config.gatewayUrl]);
 
   const refreshStatus = async () => {
     setIsLoading(true);
     try {
       const res = await WhatsAppGatewayService.checkStatus();
-      setStatus(res);
+      setStatus(prev => ({
+        ...res,
+        qrCode: res.qrCode || (res.connected ? undefined : prev.qrCode)
+      }));
+      if (res.pairingCode) setPairingCode(res.pairingCode);
     } catch (_) {
-      setStatus({
+      setStatus(prev => ({
         connected: false,
         status: 'disconnected',
+        qrCode: prev.qrCode,
         message: 'No fue posible conectar con el servidor gateway.'
-      });
+      }));
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleResetSession = async () => {
+    setIsResetting(true);
+    try {
+      const res = await WhatsAppGatewayService.resetSession();
+      if (res.success) {
+        toast.success(res.message);
+        setStatus(prev => ({
+          ...prev,
+          connected: false,
+          status: 'connecting',
+          qrCode: undefined,
+          message: 'Generando nuevo código QR limpio...'
+        }));
+        setPairingCode(null);
+        setTimeout(refreshStatus, 2500);
+      } else {
+        toast.error(res.message);
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al resetear la sesión');
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  const handleRequestPairingCode = async () => {
+    setIsRequestingPairing(true);
+    try {
+      const res = await WhatsAppGatewayService.requestPairingCode(config.officialPhone);
+      if (res.success && res.code) {
+        setPairingCode(res.code);
+        toast.success(`Código de vinculación generado: ${res.code}`);
+      } else {
+        toast.warning(res.message || 'No fue posible generar el código. Usa el código QR.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Error al solicitar código');
+    } finally {
+      setIsRequestingPairing(false);
     }
   };
 
@@ -401,35 +478,124 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
               ) : (
                 <div style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
                   <div style={{
-                    padding: '1rem',
+                    padding: '1.25rem',
                     backgroundColor: '#ffffff',
-                    borderRadius: '12px',
-                    boxShadow: '0 10px 25px rgba(0, 0, 0, 0.4)',
+                    borderRadius: '16px',
+                    boxShadow: '0 15px 35px rgba(0, 0, 0, 0.45)',
                     marginBottom: '1rem',
                     display: 'flex',
+                    flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    minWidth: '220px',
-                    minHeight: '220px'
+                    minWidth: '240px',
+                    minHeight: '240px',
+                    position: 'relative'
                   }}>
                     {status.qrCode ? (
-                      <img 
-                        src={status.qrCode.startsWith('data:') ? status.qrCode : `data:image/png;base64,${status.qrCode}`} 
-                        alt="Código QR WhatsApp" 
-                        style={{ width: '200px', height: '200px', objectFit: 'contain' }}
-                      />
-                    ) : (
-                      <div style={{ color: '#475569', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.6rem', padding: '1rem', textAlign: 'center' }}>
-                        <QrCode size={56} color="#94a3b8" />
-                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#334155' }}>
-                          Esperando Gateway ({config.gatewayUrl})
+                      <>
+                        <img 
+                          src={status.qrCode.startsWith('data:') ? status.qrCode : `data:image/png;base64,${status.qrCode}`} 
+                          alt="Código QR WhatsApp Oficial" 
+                          style={{ width: '220px', height: '220px', objectFit: 'contain', display: 'block' }}
+                        />
+                        <span style={{ 
+                          fontSize: '0.68rem', 
+                          fontWeight: 700, 
+                          color: '#0f172a', 
+                          marginTop: '0.5rem',
+                          backgroundColor: '#e2e8f0',
+                          padding: '2px 8px',
+                          borderRadius: '9999px'
+                        }}>
+                          ⚡ Protocolo Multi-Device Oficial
                         </span>
-                        <span style={{ fontSize: '0.72rem', color: '#64748b', maxWidth: '200px' }}>
-                          Ejecuta en tu terminal <code style={{ backgroundColor: '#f1f5f9', padding: '1px 4px', borderRadius: '4px' }}>npm run wa:gateway</code> para generar el código QR.
+                      </>
+                    ) : (
+                      <div style={{ color: '#475569', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.75rem', padding: '1rem', textAlign: 'center' }}>
+                        <Loader2 size={42} color="#0284c7" className="animate-spin" />
+                        <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b' }}>
+                          {status.status === 'connecting' ? 'Generando código QR seguro...' : `Esperando Gateway (${config.gatewayUrl})`}
+                        </span>
+                        <span style={{ fontSize: '0.75rem', color: '#64748b', maxWidth: '220px', lineHeight: '1.4' }}>
+                          Asegúrate de ejecutar en la terminal <code style={{ backgroundColor: '#f1f5f9', padding: '2px 5px', borderRadius: '4px', color: '#0f172a' }}>npm run wa:gateway</code>
                         </span>
                       </div>
                     )}
                   </div>
+
+                  {/* Acciones de Reseteo y Código de 8 Dígitos */}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem', justifyContent: 'center', marginBottom: '1rem', width: '100%' }}>
+                    <button
+                      onClick={handleResetSession}
+                      disabled={isResetting}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'rgba(239, 68, 68, 0.12)',
+                        border: '1px solid rgba(239, 68, 68, 0.3)',
+                        borderRadius: '8px',
+                        color: '#fca5a5',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        cursor: isResetting ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <RotateCcw size={13} className={isResetting ? 'animate-spin' : ''} />
+                      {isResetting ? 'Purgando sesión...' : 'Limpiar / Resetear Sesión'}
+                    </button>
+
+                    <button
+                      onClick={handleRequestPairingCode}
+                      disabled={isRequestingPairing}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: 'rgba(56, 189, 248, 0.12)',
+                        border: '1px solid rgba(56, 189, 248, 0.3)',
+                        borderRadius: '8px',
+                        color: '#7dd3fc',
+                        fontSize: '0.75rem',
+                        fontWeight: 600,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        cursor: isRequestingPairing ? 'not-allowed' : 'pointer'
+                      }}
+                    >
+                      <KeyRound size={13} className={isRequestingPairing ? 'animate-spin' : ''} />
+                      {isRequestingPairing ? 'Solicitando...' : 'Vincular por Código de 8 Dígitos'}
+                    </button>
+                  </div>
+
+                  {/* Visualización de Código de Emparejamiento si está activo */}
+                  {pairingCode && (
+                    <div style={{
+                      width: '100%',
+                      padding: '1rem',
+                      marginBottom: '1rem',
+                      backgroundColor: 'rgba(15, 23, 42, 0.9)',
+                      border: '1px solid rgba(56, 189, 248, 0.4)',
+                      borderRadius: '12px',
+                      textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '0.25rem' }}>
+                        Código de vinculación para {config.officialPhone}:
+                      </div>
+                      <div style={{
+                        fontSize: '1.6rem',
+                        fontWeight: 900,
+                        letterSpacing: '4px',
+                        color: '#38bdf8',
+                        fontFamily: 'monospace'
+                      }}>
+                        {pairingCode}
+                      </div>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginTop: '0.4rem' }}>
+                        En WhatsApp ve a <em>Dispositivos vinculados &gt; Vincular con número de teléfono</em> e introduce este código.
+                      </div>
+                    </div>
+                  )}
 
                   <div style={{
                     backgroundColor: 'rgba(30, 41, 59, 0.6)',

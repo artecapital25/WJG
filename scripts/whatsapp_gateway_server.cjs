@@ -8,8 +8,10 @@
  * usando @whiskeysockets/baileys.
  * 
  * - Genera códigos QR criptográficos 100% reales escaneables desde WhatsApp.
+ * - Soporta vinculación por código de 8 dígitos (Pairing Code).
  * - Mantiene la sesión persistente en la carpeta 'auth_info_baileys'.
- * - Despacha mensajes reales al WhatsApp del cliente final sin intermediarios ni costos.
+ * - Endpoint /reset para forzar limpieza limpia si las credenciales se corrompen.
+ * - Encabezados CORS y Private Network Access para comunicación sin bloqueos.
  * ==============================================================================
  */
 
@@ -23,7 +25,7 @@ const {
   useMultiFileAuthState, 
   DisconnectReason, 
   fetchLatestBaileysVersion,
-  delay
+  Browsers
 } = require('@whiskeysockets/baileys');
 
 const PORT = process.env.PORT || 3001;
@@ -37,12 +39,15 @@ if (!fs.existsSync(AUTH_DIR)) {
 let sock = null;
 let rawQrCode = null;
 let base64QrCode = null;
+let pairingCode = null;
+let isReconnecting = false;
 
 let sessionState = {
   connected: false,
   status: 'connecting',
   phone: OFFICIAL_PHONE,
   qrCode: null,
+  pairingCode: null,
   totalSent: 0,
   history: []
 };
@@ -56,20 +61,53 @@ function formatToJid(numberStr) {
   return clean + '@s.whatsapp.net';
 }
 
-async function startWhatsAppSocket() {
+function cleanSessionFolder() {
   try {
+    if (fs.existsSync(AUTH_DIR)) {
+      const files = fs.readdirSync(AUTH_DIR);
+      for (const file of files) {
+        fs.rmSync(path.join(AUTH_DIR, file), { recursive: true, force: true });
+      }
+      console.log('[WA-BAILEYS] 🧹 Carpeta auth_info_baileys purgada exitosamente.');
+    }
+  } catch (err) {
+    console.error('[WA-BAILEYS] Error limpiando carpeta auth_info_baileys:', err.message);
+  }
+}
+
+async function startWhatsAppSocket(forceReset = false) {
+  if (isReconnecting) return;
+  isReconnecting = true;
+
+  if (forceReset) {
+    cleanSessionFolder();
+  }
+
+  try {
+    if (sock) {
+      try { sock.end(undefined); } catch (_) {}
+      sock = null;
+    }
+
     const { state, saveCreds } = await useMultiFileAuthState(AUTH_DIR);
-    const { version, isLatest } = await fetchLatestBaileysVersion();
-    console.log(`[WA-BAILEYS] Versión protocolo WhatsApp: v${version.join('.')} (Última: ${isLatest})`);
+    let version = [2, 3000, 1043857760];
+    try {
+      const v = await fetchLatestBaileysVersion();
+      if (v?.version) version = v.version;
+    } catch (_) {}
+
+    console.log(`[WA-BAILEYS] Inicializando socket WhatsApp Multi-Device (v${version.join('.')})...`);
 
     sock = makeWASocket({
       version,
       logger: pino({ level: 'silent' }),
-      printQRInTerminal: true, // Imprime también el QR en la terminal para facilidad
       auth: state,
-      browser: ['WJGEEKS 3D PRO', 'Chrome', '1.0.0'],
+      browser: Browsers.windows('Desktop'),
       syncFullHistory: false,
-      generateHighQualityLinkPreview: true
+      generateHighQualityLinkPreview: false,
+      connectTimeoutMs: 60000,
+      defaultQueryTimeoutMs: 60000,
+      keepAliveIntervalMs: 25000
     });
 
     sock.ev.on('creds.update', saveCreds);
@@ -80,12 +118,19 @@ async function startWhatsAppSocket() {
       if (qr) {
         rawQrCode = qr;
         try {
-          base64QrCode = await QRCode.toDataURL(qr, { margin: 2, scale: 8 });
+          // Genera el código QR criptográfico real con alta resolución
+          base64QrCode = await QRCode.toDataURL(qr, { 
+            margin: 2, 
+            scale: 8,
+            errorCorrectionLevel: 'M',
+            color: { dark: '#0f172a', light: '#ffffff' }
+          });
           sessionState.qrCode = base64QrCode;
           sessionState.status = 'qr_ready';
           sessionState.connected = false;
-          console.log('\n[WA-BAILEYS] 📲 ¡Nuevo Código QR de vinculación generado!');
-          console.log('             Escanea este código desde WhatsApp > Dispositivos Vinculados.');
+          sessionState.message = 'Código QR listo para escanear';
+          console.log('\n[WA-BAILEYS] 📲 ¡Código QR criptográfico generado correctamente!');
+          console.log('             Listo para escanear desde WhatsApp > Dispositivos Vinculados.');
         } catch (err) {
           console.error('[WA-BAILEYS] Error generando DataURL QR:', err.message);
         }
@@ -95,21 +140,29 @@ async function startWhatsAppSocket() {
         const statusCode = lastDisconnect?.error?.output?.statusCode;
         const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
         sessionState.connected = false;
-        sessionState.status = 'disconnected';
-        console.log(`[WA-BAILEYS] ⚠️ Conexión cerrada (Código: ${statusCode}). ¿Reconectar?: ${shouldReconnect}`);
+        sessionState.status = shouldReconnect ? (sessionState.qrCode ? 'qr_ready' : 'connecting') : 'disconnected';
+        sessionState.message = shouldReconnect 
+          ? (sessionState.qrCode ? 'Código QR listo para escanear' : 'Actualizando conexión con WhatsApp...')
+          : 'Sesión desconectada. Escanea nuevamente el código QR.';
+        
+        // Solo borrar el QR si el usuario cerró sesión explícitamente en el celular (loggedOut)
+        if (!shouldReconnect) {
+          sessionState.qrCode = null;
+          rawQrCode = null;
+          base64QrCode = null;
+        }
 
+        console.log(`[WA-BAILEYS] ⚠️ Conexión cerrada (Código: ${statusCode || 'timeout'}). Reconectando: ${shouldReconnect}`);
+
+        isReconnecting = false;
         if (shouldReconnect) {
-          console.log('[WA-BAILEYS] Reintentando conexión en 5 segundos...');
-          setTimeout(startWhatsAppSocket, 5000);
+          setTimeout(() => startWhatsAppSocket(false), 2000);
         } else {
-          console.log('[WA-BAILEYS] ❌ Sesión cerrada por el usuario. Limpiando credenciales para nuevo QR...');
-          try {
-            fs.rmSync(AUTH_DIR, { recursive: true, force: true });
-            fs.mkdirSync(AUTH_DIR, { recursive: true });
-          } catch (_) {}
-          setTimeout(startWhatsAppSocket, 3000);
+          console.log('[WA-BAILEYS] ❌ Sesión invalidada o cerrada por usuario. Reiniciando con sesión limpia...');
+          setTimeout(() => startWhatsAppSocket(true), 2000);
         }
       } else if (connection === 'open') {
+        isReconnecting = false;
         sessionState.connected = true;
         sessionState.status = 'connected';
         sessionState.qrCode = null;
@@ -125,26 +178,31 @@ async function startWhatsAppSocket() {
         console.log('\n======================================================');
         console.log(`✅ [WA-BAILEYS] ¡WHATSAPP OFICIAL CONECTADO EXITOSAMENTE!`);
         console.log(`📱 Número:  ${sessionState.phone}`);
-        console.log(`🚀 Listo para despachar notificaciones automáticas reales.`);
+        console.log(`🚀 Listo para despachar mensajes en segundo plano.`);
         console.log('======================================================\n');
       }
     });
 
   } catch (err) {
-    console.error('[WA-BAILEYS] Error fatal al iniciar socket:', err);
-    setTimeout(startWhatsAppSocket, 10000);
+    console.error('[WA-BAILEYS] Error al iniciar socket:', err.message);
+    isReconnecting = false;
+    setTimeout(() => startWhatsAppSocket(false), 5000);
+  } finally {
+    isReconnecting = false;
   }
 }
 
-// Iniciar Baileys
-startWhatsAppSocket();
+// Iniciar Baileys al arrancar
+startWhatsAppSocket(false);
 
 // Servidor REST para la Web App de WJGEEKS
 const server = http.createServer(async (req, res) => {
-  // CORS Headers
+  // CORS & Private Network Access Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, apikey, Access-Control-Allow-Private-Network, X-Requested-With');
+  res.setHeader('Access-Control-Allow-Private-Network', 'true');
+  res.setHeader('Access-Control-Max-Age', '86400');
 
   if (req.method === 'OPTIONS') {
     res.writeHead(204);
@@ -159,9 +217,10 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       connected: sessionState.connected,
-      status: sessionState.connected ? 'connected' : (sessionState.qrCode ? 'qr_ready' : 'disconnected'),
+      status: sessionState.connected ? 'connected' : (sessionState.qrCode ? 'qr_ready' : 'connecting'),
       phone: sessionState.phone,
       qr: sessionState.qrCode,
+      pairingCode: sessionState.pairingCode,
       totalSent: sessionState.totalSent,
       message: sessionState.connected 
         ? `Línea oficial activa: ${sessionState.phone}` 
@@ -181,6 +240,58 @@ const server = http.createServer(async (req, res) => {
         ? `WhatsApp ya está conectado con ${sessionState.phone}`
         : (sessionState.qrCode ? 'Escanea el código QR desde WhatsApp > Dispositivos vinculados' : 'Generando QR criptográfico...')
     }));
+    return;
+  }
+
+  // Endpoint: POST /reset (Purga limpia de sesiones corruptas)
+  if (req.method === 'POST' && url.pathname === '/reset') {
+    console.log('[WA-BAILEYS] 🔄 Solicitud de reseteo completo de sesión recibida.');
+    sessionState.connected = false;
+    sessionState.status = 'connecting';
+    sessionState.qrCode = null;
+    sessionState.pairingCode = null;
+    
+    // Inicia nuevo ciclo con purga
+    startWhatsAppSocket(true);
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      success: true,
+      message: 'Sesión reseteada correctamente. Generando nuevo código QR limpio...'
+    }));
+    return;
+  }
+
+  // Endpoint: POST /pair (Vinculación alternativa por código de 8 dígitos)
+  if (req.method === 'POST' && url.pathname === '/pair') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      try {
+        const payload = JSON.parse(body || '{}');
+        const phoneToPair = (payload.phone || payload.number || '573202796115').replace(/[^0-9]/g, '');
+        
+        if (!sock) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Socket no disponible' }));
+          return;
+        }
+
+        const code = await sock.requestPairingCode(phoneToPair);
+        sessionState.pairingCode = code;
+        console.log(`[WA-BAILEYS] 🔢 Código de vinculación generado para ${phoneToPair}: ${code}`);
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          code,
+          message: `Ingresa este código en WhatsApp > Dispositivos vinculados > Vincular con número de teléfono: ${code}`
+        }));
+      } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
     return;
   }
 
@@ -254,6 +365,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`⚡ Endpoints:`);
   console.log(`   - GET  http://localhost:${PORT}/status`);
   console.log(`   - GET  http://localhost:${PORT}/qr`);
+  console.log(`   - POST http://localhost:${PORT}/pair`);
+  console.log(`   - POST http://localhost:${PORT}/reset`);
   console.log(`   - POST http://localhost:${PORT}/send`);
   console.log(`======================================================\n`);
 });

@@ -149,7 +149,7 @@ export async function openWhatsApp(
   }
 
   // Fallback transparente al navegador / app móvil
-  if (typeof window !== 'undefined') {
+  if (typeof window !== 'undefined' && typeof window.open === 'function') {
     window.open(url, '_blank', 'noopener,noreferrer');
   }
   return false;

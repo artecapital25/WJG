@@ -43,6 +43,7 @@ export interface GatewayStatusResponse {
   status: 'connected' | 'connecting' | 'disconnected' | 'qr_ready' | 'error';
   phone?: string;
   qrCode?: string; // Base64 image o raw string
+  pairingCode?: string;
   message?: string;
 }
 
@@ -80,6 +81,89 @@ export const WhatsAppGatewayService = {
       } catch (_) {}
     }
     return updated;
+  },
+
+  /**
+   * Obtiene la lista ordenada de URLs candidatas para contactar el Gateway
+   * garantizando soporte para Vite proxy (/api/wa), localhost y acceso desde red local.
+   */
+  getGatewayCandidates(): string[] {
+    const config = this.getConfig();
+    const primary = (config.gatewayUrl || '').replace(/\/+$/, '');
+    const list: string[] = [];
+
+    if (primary) list.push(primary);
+
+    if (typeof window !== 'undefined') {
+      // Proxy local Vite para resolver CORS y bloqueos de red privada
+      if (!list.includes('/api/wa')) {
+        list.push('/api/wa');
+      }
+      // Si navegamos desde otro dispositivo en la misma red Wi-Fi
+      if (window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+        const lanUrl = `http://${window.location.hostname}:3001`;
+        if (!list.includes(lanUrl)) {
+          list.push(lanUrl);
+        }
+      }
+      if (!list.includes('http://localhost:3001')) {
+        list.push('http://localhost:3001');
+      }
+      if (!list.includes('http://127.0.0.1:3001')) {
+        list.push('http://127.0.0.1:3001');
+      }
+    } else {
+      if (!list.includes('http://localhost:3001')) {
+        list.push('http://localhost:3001');
+      }
+    }
+
+    return list;
+  },
+
+  /**
+   * Ejecuta una petición HTTP al Gateway intentando las URLs candidatas
+   */
+  async requestGateway(
+    endpoint: string,
+    options: RequestInit = {},
+    timeoutMs: number = 4000
+  ): Promise<Response> {
+    const config = this.getConfig();
+    const candidates = this.getGatewayCandidates();
+    const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+    const headers: Record<string, string> = {
+      ...(options.headers as Record<string, string> || {})
+    };
+    if (config.apiKey) {
+      headers['apikey'] = config.apiKey;
+      headers['Authorization'] = `Bearer ${config.apiKey}`;
+    }
+
+    let lastError: any = null;
+    for (const base of candidates) {
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+        const url = `${base}${path}`;
+
+        const res = await fetch(url, {
+          ...options,
+          headers,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+
+        if (res.ok || res.status < 500) {
+          return res;
+        }
+      } catch (err: any) {
+        lastError = err;
+      }
+    }
+
+    throw lastError || new Error('Gateway de WhatsApp no responde en ninguna dirección configurada.');
   },
 
   /**
@@ -132,46 +216,24 @@ export const WhatsAppGatewayService = {
     }
 
     // Modo QR Gateway (Opción A)
-    const url = (config.gatewayUrl || '').replace(/\/+$/, '');
-
-    if (!url) {
-      return {
-        connected: false,
-        status: 'disconnected',
-        message: 'No se ha configurado la URL del Gateway de WhatsApp.'
-      };
-    }
-
     try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      const headers: Record<string, string> = {};
-      if (config.apiKey) headers['apikey'] = config.apiKey;
-      if (config.apiKey) headers['Authorization'] = `Bearer ${config.apiKey}`;
-
-      const res = await fetch(`${url}/status`, {
-        method: 'GET',
-        headers,
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-
+      const res = await this.requestGateway('/status', { method: 'GET' }, 3500);
       if (res.ok) {
         const data = await res.json();
         const isConnected = Boolean(data.connected || data.status === 'connected' || data.state === 'open');
         return {
           connected: isConnected,
-          status: isConnected ? 'connected' : (data.qr ? 'qr_ready' : 'disconnected'),
+          status: isConnected ? 'connected' : (data.qr ? 'qr_ready' : (data.status || 'disconnected')),
           phone: data.phone || data.number || config.officialPhone,
           qrCode: data.qr || data.qrcode || null,
+          pairingCode: data.pairingCode || null,
           message: isConnected 
             ? `Conectado exitosamente con ${data.phone || config.officialPhone}` 
-            : 'Esperando vinculación por código QR.'
+            : (data.qr ? 'Código QR listo para escanear' : (data.message || 'Esperando vinculación...'))
         };
       }
-    } catch (err: any) {
-      // Gateway no responde
+    } catch (_) {
+      // Fallback
     }
 
     return {
@@ -185,14 +247,8 @@ export const WhatsAppGatewayService = {
    * Obtiene el código QR actual para escanear desde WhatsApp > Dispositivos vinculados
    */
   async getQrCode(): Promise<{ success: boolean; qr?: string; message?: string }> {
-    const config = this.getConfig();
-    const url = (config.gatewayUrl || '').replace(/\/+$/, '');
-
     try {
-      const headers: Record<string, string> = {};
-      if (config.apiKey) headers['apikey'] = config.apiKey;
-
-      const res = await fetch(`${url}/qr`, { headers });
+      const res = await this.requestGateway('/qr', { method: 'GET' }, 3500);
       if (res.ok) {
         const data = await res.json();
         return {
@@ -204,11 +260,45 @@ export const WhatsAppGatewayService = {
     } catch (err: any) {
       return {
         success: false,
-        message: 'No fue posible obtener el código QR del servidor gateway.'
+        message: err.message || 'No fue posible obtener el código QR del servidor gateway.'
       };
     }
 
     return { success: false, message: 'Servidor gateway no disponible.' };
+  },
+
+  /**
+   * Solicita el reseteo limpio de la sesión y purga de credenciales corruptas
+   */
+  async resetSession(): Promise<{ success: boolean; message: string }> {
+    try {
+      const res = await this.requestGateway('/reset', { method: 'POST' }, 5000);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Error de conexión al resetear sesión' };
+    }
+    return { success: false, message: 'No se pudo contactar el servidor para resetear la sesión.' };
+  },
+
+  /**
+   * Solicita código de vinculación de 8 dígitos para vincular sin cámara
+   */
+  async requestPairingCode(phone: string): Promise<{ success: boolean; code?: string; message?: string }> {
+    try {
+      const res = await this.requestGateway('/pair', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      }, 7000);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e: any) {
+      return { success: false, message: e.message || 'Error al solicitar código de vinculación' };
+    }
+    return { success: false, message: 'Servidor no respondió a la solicitud de código de vinculación.' };
   },
 
   /**
@@ -268,20 +358,7 @@ export const WhatsAppGatewayService = {
     }
 
     // Modo QR Gateway (Opción A - Celular físico activo)
-    const url = (config.gatewayUrl || '').replace(/\/+$/, '');
-    if (!url) {
-      return { success: false, fallbackUrl, error: 'Falta configurar URL del Gateway.' };
-    }
-
     try {
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json'
-      };
-      if (config.apiKey) {
-        headers['apikey'] = config.apiKey;
-        headers['Authorization'] = `Bearer ${config.apiKey}`;
-      }
-
       const payload = {
         number: cleanPhone,
         phone: cleanPhone,
@@ -290,16 +367,11 @@ export const WhatsAppGatewayService = {
         text: mensaje
       };
 
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 6000);
-
-      const res = await fetch(`${url}/send`, {
+      const res = await this.requestGateway('/send', {
         method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }, 7000);
 
       if (res.ok) {
         const json = await res.json();

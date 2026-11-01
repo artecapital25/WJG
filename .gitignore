@@ -53,3 +53,5 @@ backups/
 supabase/.temp/
 .tools/
 auth_info_baileys/
+test_auth/
+scripts/*standalone.cjs

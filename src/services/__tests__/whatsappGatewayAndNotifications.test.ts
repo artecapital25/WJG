@@ -27,10 +27,12 @@ import { EmailNotificationService, LINEA_CENTRAL_EMPRESA } from '../emailNotific
 describe('WhatsApp Gateway & Notificaciones Automáticas (WJGEEKS 3D PRO)', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    // Limpiar localStorage simulado
-    if (typeof window !== 'undefined') {
-      localStorage.clear();
-    }
+    WhatsAppGatewayService.saveConfig({
+      provider: 'qr_gateway',
+      gatewayUrl: 'http://localhost:3001',
+      autoSendEnabled: true,
+      officialPhone: '+57 320 2796115'
+    });
   });
 
   it('1. Debe inicializarse con la línea oficial +57 320 2796115 y proveedor qr_gateway', () => {
