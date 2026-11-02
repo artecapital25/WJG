@@ -164,6 +164,7 @@ Si deseas que el servidor funcione desde un teléfono Android secundario para no
 - **Gestión Automatizada por USB:** Ejecuta `npm run wa:phone`. El script detecta el teléfono por ADB, verifica la versión de Node.js en Termux y redirige el puerto `3001` bidireccionalmente.
 - **Acceso por Red Wi-Fi Local:** El celular expone el servicio en su IP interna (`http://192.168.1.9:3001`). En el modal de WJGEEKS > pestaña *Ajustes*, ingresa esta IP para operar de forma inalámbrica.
 - **Mantenimiento en Segundo Plano:** El comando `termux-wake-lock` mantiene el proceso despierto incluso cuando la pantalla del celular se apaga.
+- **Manual de Respaldo y Multi-Dispositivo:** Consulta la guía técnica completa en [docs/MANUAL_WHATSAPP_GATEWAY_MOVIL.md](./MANUAL_WHATSAPP_GATEWAY_MOVIL.md) para operar fuera de la red local con túneles Cloudflare y configurar celulares de respaldo.
 
 ---
 

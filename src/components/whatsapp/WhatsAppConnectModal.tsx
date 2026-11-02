@@ -862,8 +862,8 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                         fontSize: '0.85rem'
                       }}
                     />
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>
-                      Servidor local: inicia con <code>npm run wa:gateway</code>
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
+                      💡 <strong>PC Taller:</strong> <code>http://localhost:3001</code> | <strong>Celular Wi-Fi:</strong> <code>http://192.168.1.9:3001</code> | <strong>Acceso Remoto:</strong> Túnel HTTPS Cloudflare
                     </span>
                   </div>
 
