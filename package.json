@@ -10,6 +10,7 @@
     "backup": "node scripts/backup_to_drive.cjs",
     "wa:gateway": "node scripts/whatsapp_gateway_server.cjs",
     "wa:phone": "powershell -ExecutionPolicy Bypass -File scripts/wa_connect_phone.ps1",
+    "wa:tunnel": "powershell -ExecutionPolicy Bypass -File scripts/wa_start_tunnel.ps1",
     "test": "vitest run",
     "test:watch": "vitest"
   },
