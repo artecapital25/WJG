@@ -5,7 +5,7 @@
 
 import { supabase } from './supabaseClient';
 import { Cotizacion, OrdenTrabajo } from '../types';
-import { GoogleSheetsSyncService } from './googleSheetsSyncService';
+import { GoogleSheetsSyncService, OFFICIAL_APPS_SCRIPT_URL } from './googleSheetsSyncService';
 
 export const LINEA_CENTRAL_EMPRESA = {
   nombre: 'WJGEEKS Central Oficial',
@@ -71,7 +71,7 @@ export const EmailNotificationService = {
 
       // 1. Despacho prioritario vía Google Apps Script Webhook (wjgeeks3d@gmail.com)
       const sheetsCfg = GoogleSheetsSyncService.getConfig();
-      const googleScriptUrl = ((import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL || sheetsCfg.webAppUrl || '').trim();
+      const googleScriptUrl = ((import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL || sheetsCfg.webAppUrl || OFFICIAL_APPS_SCRIPT_URL || '').trim();
       let functionInvokedOk = false;
 
       if (googleScriptUrl && googleScriptUrl.startsWith('https://script.google.com/')) {

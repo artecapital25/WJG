@@ -11,12 +11,14 @@ export interface GoogleSheetsConfig {
 
 const STORAGE_KEY = 'wjg_google_sheets_config';
 
-const ENV_APPS_SCRIPT_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL) || '';
+export const OFFICIAL_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwiYbRZGtNtptiO3B5ObJXI7NFGcbzZah6IMGM2wrQCG94FuexsToOce31WMCqSJuOI/exec';
+
+const ENV_APPS_SCRIPT_URL = (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL) || OFFICIAL_APPS_SCRIPT_URL;
 
 const DEFAULT_CONFIG: GoogleSheetsConfig = {
-  webAppUrl: ENV_APPS_SCRIPT_URL,
+  webAppUrl: OFFICIAL_APPS_SCRIPT_URL,
   sheetUrl: '',
-  autoSync: false,
+  autoSync: true,
   lastSync: null,
   lastStatus: null,
   lastMessage: null
@@ -28,8 +30,8 @@ export const GoogleSheetsSyncService = {
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (!parsed.webAppUrl && ENV_APPS_SCRIPT_URL) {
-          parsed.webAppUrl = ENV_APPS_SCRIPT_URL;
+        if (!parsed.webAppUrl || parsed.webAppUrl.trim() === '') {
+          parsed.webAppUrl = OFFICIAL_APPS_SCRIPT_URL;
         }
         return { ...DEFAULT_CONFIG, ...parsed };
       }
