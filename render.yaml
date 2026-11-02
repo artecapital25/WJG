@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: wjgeeks-whatsapp-gateway
+    env: node
+    plan: free
+    region: oregon
+    buildCommand: npm install
+    startCommand: node scripts/whatsapp_gateway_server.cjs
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: 20.18.0
+      - key: PORT
+        value: 3001

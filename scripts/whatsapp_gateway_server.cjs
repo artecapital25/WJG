@@ -212,6 +212,20 @@ const server = http.createServer(async (req, res) => {
 
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+  // Endpoint: GET / o /health (Render & cloud healthchecks)
+  if (req.method === 'GET' && (url.pathname === '/' || url.pathname === '/health')) {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      service: 'WJGEEKS 3D - WhatsApp Gateway Cloud',
+      connected: sessionState.connected,
+      phone: sessionState.phone,
+      totalSent: sessionState.totalSent,
+      timestamp: new Date().toISOString()
+    }));
+    return;
+  }
+
   // Endpoint: GET /status
   if (req.method === 'GET' && url.pathname === '/status') {
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -369,4 +383,16 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`   - POST http://localhost:${PORT}/reset`);
   console.log(`   - POST http://localhost:${PORT}/send`);
   console.log(`======================================================\n`);
+
+  // Render.com Self-Keepalive (Evita que el plan gratuito se suspenda por inactividad)
+  const renderUrl = process.env.RENDER_EXTERNAL_URL;
+  if (renderUrl) {
+    console.log(`[WA-CLOUD] 🌐 Render URL detectada: ${renderUrl}. Activando self-keepalive cada 10 min.`);
+    setInterval(() => {
+      try {
+        const https = require('https');
+        https.get(`${renderUrl}/health`, () => {}).on('error', () => {});
+      } catch (_) {}
+    }, 10 * 60 * 1000);
+  }
 });
