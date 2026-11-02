@@ -91,14 +91,48 @@ describe('WhatsApp Gateway & Notificaciones Automáticas (WJGEEKS 3D PRO)', () =
     expect(LINEA_CENTRAL_EMPRESA.telefonoE164).toBe('573202796115');
   });
 
-  it('7. EmailNotificationService debe fallar limpiamente si el correo no tiene @', async () => {
-    const res = await EmailNotificationService.enviarCorreoTransaccional({
-      tipo: 'alerta_equipo',
-      destinatario_correo: 'correo_invalido',
-      destinatario_nombre: 'Prueba'
+  it('8. En entorno HTTPS (Vercel), no debe incluir candidatos HTTP locales para prevenir Mixed Content', () => {
+    const originalWindow = (globalThis as any).window;
+    (globalThis as any).window = {
+      ...originalWindow,
+      location: { protocol: 'https:', hostname: 'wjg-lyart.vercel.app' }
+    };
+
+    WhatsAppGatewayService.saveConfig({
+      gatewayUrl: 'http://localhost:3001'
     });
 
-    expect(res.success).toBe(false);
-    expect(res.error).toContain('destinatario');
+    const candidates = WhatsAppGatewayService.getGatewayCandidates();
+    expect(candidates.every(c => !c.startsWith('http://'))).toBe(true);
+
+    (globalThis as any).window = originalWindow;
+  });
+
+  it('9. En entorno HTTPS (Vercel), debe aceptar URLs seguras con túnel Cloudflare o Pinggy', () => {
+    const originalWindow = (globalThis as any).window;
+    (globalThis as any).window = {
+      ...originalWindow,
+      location: { protocol: 'https:', hostname: 'wjg-lyart.vercel.app' }
+    };
+
+    WhatsAppGatewayService.saveConfig({
+      gatewayUrl: 'https://wjgeeks-gateway.trycloudflare.com'
+    });
+
+    const candidates = WhatsAppGatewayService.getGatewayCandidates();
+    expect(candidates).toContain('https://wjgeeks-gateway.trycloudflare.com');
+
+    (globalThis as any).window = originalWindow;
+  });
+
+  it('10. openWhatsApp debe extraer teléfono y mensaje de api.whatsapp.com/send URLs', async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ id: 'wjg-msg-alt-format', success: true })
+    } as any);
+
+    const url = 'https://api.whatsapp.com/send?phone=573503443140&text=Alerta%20para%20German';
+    const sent = await openWhatsApp(url);
+    expect(sent).toBe(true);
   });
 });

@@ -14,7 +14,7 @@ import { WhatsAppGatewayService } from './whatsappGatewayService';
 export interface WhatsAppNotificationPayload {
   destinatarioTelefono: string;
   destinatarioNombre?: string;
-  tipo: 'alerta_cobranza' | 'alerta_tarea_asignada' | 'alerta_ot_estado' | 'sos_insumo' | 'recordatorio_vencimiento' | 'daily_briefing' | 'healthcheck_alert' | 'alerta_equipo';
+  tipo: 'alerta_cobranza' | 'alerta_tarea_asignada' | 'alerta_ot_estado' | 'sos_insumo' | 'recordatorio_vencimiento' | 'daily_briefing' | 'healthcheck_alert' | 'alerta_equipo' | 'general';
   contenido: string;
   entidadTipo?: string;
   entidadId?: string;
@@ -122,24 +122,33 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
     proveedor: 'web_direct' | 'whatsapp_cloud_api' | 'whatsapp_qr_gateway' = 'web_direct',
     errorDetalle?: string
   ): Promise<void> {
-    try {
-      // 1. Guardar en Supabase si está disponible
+      // 1. Guardar en Supabase si está disponible en la tabla canónica registro_notificaciones
       if (isSupabaseConfigured && supabase) {
-        await supabase.from('whatsapp_logs').insert({
-          destinatario_telefono: payload.destinatarioTelefono,
-          destinatario_nombre: payload.destinatarioNombre || null,
-          tipo_mensaje: payload.tipo,
-          contenido: payload.contenido,
-          estado,
-          proveedor,
-          entidad_tipo: payload.entidadTipo || null,
-          entidad_id: payload.entidadId || null,
-          error_detalle: errorDetalle || null
-        });
+        try {
+          const idempotency = `walog-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+          const isOtUuid = Boolean(
+            payload.entidadTipo === 'orden_trabajo' &&
+            payload.entidadId &&
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(payload.entidadId)
+          );
+
+          await supabase.from('registro_notificaciones').insert({
+            idempotency_key: idempotency,
+            orden_trabajo_id: isOtUuid ? payload.entidadId : null,
+            destinatario_nombre: payload.destinatarioNombre || 'Cliente WJGEEKS',
+            destinatario_telefono: payload.destinatarioTelefono || '573202796115',
+            rol_destinatario: 'CLIENTE',
+            canal: 'WHATSAPP_CLOUD_API',
+            mensaje_plano: payload.contenido,
+            estado: estado === 'enviado' ? 'ENVIADO' : estado === 'fallido' ? 'FALLIDO' : 'PENDIENTE',
+            enviado_at: estado === 'enviado' ? new Date().toISOString() : null,
+            ultimo_error: errorDetalle || null
+          });
+        } catch (insertErr) {
+          // No romper el flujo si hay restricciones RLS en cliente anónimo
+          console.debug('Nota de auditoría: registro_notificaciones guardado en respaldo local');
+        }
       }
-    } catch (err) {
-      console.warn('⚠️ No se pudo registrar log de WhatsApp en Supabase, guardando en local:', err);
-    }
 
     // 2. Guardar siempre respaldo en localStorage
     if (typeof window !== 'undefined') {
@@ -241,7 +250,7 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
           const { data: stuckRecords, error: stuckErr } = await supabase
             .from('registro_notificaciones')
             .select('id, created_at, estado')
-            .in('estado', ['PENDIENTE', 'EN_COLA', 'REINTENTANDO'])
+            .eq('estado', 'PENDIENTE')
             .limit(50);
 
           if (!stuckErr && stuckRecords && Array.isArray(stuckRecords)) {

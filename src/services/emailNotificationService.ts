@@ -281,13 +281,14 @@ export const EmailNotificationService = {
       );
     }
 
-    // 2. Disparo de WhatsApp
+    // 2. Disparo de WhatsApp unificado mediante openWhatsApp
     if (params.mensajeWhatsAppUrl) {
       whatsappIniciado = true;
       try {
-        window.open(params.mensajeWhatsAppUrl, '_blank', 'noopener,noreferrer');
+        const { openWhatsApp } = await import('./whatsappService');
+        await openWhatsApp(params.mensajeWhatsAppUrl);
       } catch (e) {
-        console.warn('No se pudo abrir ventana de WhatsApp:', e);
+        console.warn('No se pudo despachar WhatsApp:', e);
       }
     }
 

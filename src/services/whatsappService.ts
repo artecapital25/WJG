@@ -122,12 +122,23 @@ export async function openWhatsApp(
 
   if (!targetPhone || !targetMsg) {
     try {
-      const match = url.match(/wa\.me\/([0-9+]+)(\?text=(.*))?/);
-      if (match) {
-        targetPhone = match[1];
-        if (match[3]) {
-          targetMsg = decodeURIComponent(match[3]);
+      // 1. Caso wa.me/12345?text=...
+      const matchWaMe = url.match(/wa\.me\/([0-9+]+)(?:\?text=([^&#]*))?/);
+      if (matchWaMe) {
+        targetPhone = matchWaMe[1]?.replace(/\D/g, '');
+        if (matchWaMe[2]) {
+          targetMsg = decodeURIComponent(matchWaMe[2].replace(/\+/g, '%20'));
         }
+      }
+      // 2. Caso api.whatsapp.com/send?phone=...&text=...
+      if (!targetPhone || !targetMsg) {
+        try {
+          const parsed = new URL(url.startsWith('http') ? url : `https://${url}`);
+          const p = parsed.searchParams.get('phone');
+          const t = parsed.searchParams.get('text');
+          if (p && !targetPhone) targetPhone = p.replace(/\D/g, '');
+          if (t && !targetMsg) targetMsg = t;
+        } catch (_) {}
       }
     } catch (_) {}
   }
@@ -142,6 +153,21 @@ export async function openWhatsApp(
         if (res.success) {
           const { toast } = await import('../components/ui/ToastProvider');
           toast.success(`WhatsApp despachado automáticamente (+57 320 2796115)`);
+
+          // Registrar en auditoría de base de datos
+          try {
+            const { WhatsAppNotificationService } = await import('./whatsappNotificationService');
+            await WhatsAppNotificationService.registrarAuditoriaEnvio(
+              {
+                destinatarioTelefono: targetPhone,
+                contenido: targetMsg,
+                tipo: 'general'
+              },
+              'enviado',
+              'whatsapp_qr_gateway'
+            );
+          } catch (_) {}
+
           return true;
         }
       }

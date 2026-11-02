@@ -154,6 +154,39 @@ Verás en la pantalla del celular:
 | :--- | :--- |
 | **Encender en la PC local** | `npm run wa:gateway` |
 | **Enlazar celular por USB** | `npm run wa:phone` |
+| **Iniciar túnel gratuito Cloudflare** | `powershell -ExecutionPolicy Bypass -File scripts/wa_start_tunnel.ps1` |
+| **Iniciar túnel gratuito Pinggy** | `ssh -p 443 -R0:localhost:3001 a.pinggy.io` |
 | **Mantener Termux despierto** | `termux-wake-lock` en el celular |
 | **Verificar estado en navegador** | `http://localhost:3001/status` |
 | **Resetear sesión corrupta** | Botón *"Limpiar / Resetear Sesión"* en el modal de WhatsApp |
+
+---
+
+## 6. Conexión Remota Gratuita desde Vercel (Cloudflare / Pinggy)
+
+Cuando accedes a WJGEEKS desde el despliegue en Vercel (`https://wjg-lyart.vercel.app/`), el navegador opera bajo **HTTPS**. Para despachar mensajes en segundo plano sin estar en la misma red Wi-Fi o sin errores de seguridad, puedes activar un túnel gratuito:
+
+### Método A: Cloudflare Quick Tunnels (100% Gratuito, Sin Registro)
+1. En tu PC con el servidor encendido o conectado al celular por USB:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts/wa_start_tunnel.ps1 -Provider Cloudflare
+   # O directamente:
+   cloudflared tunnel --url http://127.0.0.1:3001
+   ```
+2. La consola te dará una URL segura similar a:
+   `https://abc-xyz-123.trycloudflare.com`
+3. Copia esa URL, abre **WJGEEKS en Vercel**, ve al modal de WhatsApp > **Ajustes** y pégala en **URL del Gateway**.
+4. ¡Listo! Todo el equipo podrá despachar mensajes automáticos desde cualquier ubicación.
+
+### Método B: Pinggy SSH (Instantáneo, Sin Instalar Nada)
+1. En cualquier consola (Windows PowerShell, CMD o Termux):
+   ```bash
+   ssh -p 443 -R 0:localhost:3001 a.pinggy.io
+   ```
+2. Pinggy te entregará una URL pública segura como:
+   `https://xxxxx.free.pinggy.link`
+3. Pégala en el modal de WhatsApp en Vercel.
+
+> [!TIP]
+> **Envío Asistido de Respaldo:** Si estás en la calle y el túnel está apagado, WJGEEKS abrirá automáticamente WhatsApp Web (`wa.me`) con el mensaje pre-cargado de forma instantánea y sin errores en la consola.
+

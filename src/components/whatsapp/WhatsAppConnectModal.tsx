@@ -845,13 +845,13 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                 <>
                   <div>
                     <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, color: '#cbd5e1', marginBottom: '0.35rem' }}>
-                      URL del Gateway (Servidor Local o Nube):
+                      URL del Gateway (Servidor Local o Túnel Seguro Cloudflare/Pinggy):
                     </label>
                     <input
                       type="text"
                       value={config.gatewayUrl}
                       onChange={(e) => setConfig({ ...config, gatewayUrl: e.target.value })}
-                      placeholder="http://localhost:3001"
+                      placeholder={typeof window !== 'undefined' && window.location?.protocol === 'https:' ? 'https://tu-subdominio.trycloudflare.com' : 'http://localhost:3001'}
                       style={{
                         width: '100%',
                         padding: '0.6rem 0.75rem',
@@ -862,9 +862,40 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                         fontSize: '0.85rem'
                       }}
                     />
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8', display: 'block', marginTop: '4px' }}>
-                      💡 <strong>PC Taller:</strong> <code>http://localhost:3001</code> | <strong>Celular Wi-Fi:</strong> <code>http://192.168.1.9:3001</code> | <strong>Acceso Remoto:</strong> Túnel HTTPS Cloudflare
-                    </span>
+
+                    {/* Guía de Túnel Gratuito Cloudflare / Pinggy */}
+                    <div style={{
+                      marginTop: '0.5rem',
+                      padding: '0.75rem',
+                      backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                      border: '1px solid rgba(56, 189, 248, 0.25)',
+                      borderRadius: '8px',
+                      fontSize: '0.75rem',
+                      color: '#94a3b8'
+                    }}>
+                      <div style={{ fontWeight: 700, color: '#38bdf8', marginBottom: '0.25rem', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        🌐 Opciones de Conexión Gratuitas:
+                      </div>
+                      <div style={{ marginBottom: '0.35rem' }}>
+                        • <strong>Cloudflare Quick Tunnel (Gratis & Estable):</strong> Ejecuta en PC o Termux:
+                        <code style={{ display: 'block', backgroundColor: '#020617', padding: '3px 6px', borderRadius: '4px', color: '#f59e0b', margin: '3px 0' }}>
+                          cloudflared tunnel --url http://127.0.0.1:3001
+                        </code>
+                        Copia la URL <span style={{ color: '#38bdf8' }}>https://xxx.trycloudflare.com</span> y pégala arriba.
+                      </div>
+                      <div>
+                        • <strong>Pinggy SSH (Instantáneo sin descargas):</strong> Ejecuta en cualquier consola con SSH:
+                        <code style={{ display: 'block', backgroundColor: '#020617', padding: '3px 6px', borderRadius: '4px', color: '#34d399', margin: '3px 0' }}>
+                          ssh -p 443 -R0:localhost:3001 a.pinggy.io
+                        </code>
+                        Copia la URL <span style={{ color: '#34d399' }}>https://xxx.free.pinggy.link</span> y pégala arriba.
+                      </div>
+                      {typeof window !== 'undefined' && window.location?.protocol === 'https:' && !config.gatewayUrl?.startsWith('https://') && (
+                        <div style={{ marginTop: '0.4rem', color: '#fbbf24', fontSize: '0.72rem', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '4px 8px', borderRadius: '4px' }}>
+                          ⚠️ <em>Estás en Vercel (HTTPS): Sin un túnel https://, el sistema utilizará el envío asistido por WhatsApp Web de forma transparente.</em>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div>

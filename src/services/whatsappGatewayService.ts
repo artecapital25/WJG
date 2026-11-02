@@ -89,28 +89,45 @@ export const WhatsAppGatewayService = {
    */
   getGatewayCandidates(): string[] {
     const config = this.getConfig();
-    const primary = (config.gatewayUrl || '').replace(/\/+$/, '');
+    const primary = (config.gatewayUrl || '').trim().replace(/\/+$/, '');
     const list: string[] = [];
 
-    if (primary) list.push(primary);
+    const isBrowser = typeof window !== 'undefined';
+    const isHttps = isBrowser && window.location?.protocol === 'https:';
 
-    if (typeof window !== 'undefined') {
-      // Proxy local Vite para resolver CORS y bloqueos de red privada
-      if (!list.includes('/api/wa')) {
-        list.push('/api/wa');
-      }
-      // Si navegamos desde otro dispositivo en la misma red Wi-Fi
-      if (window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-        const lanUrl = `http://${window.location.hostname}:3001`;
-        if (!list.includes(lanUrl)) {
-          list.push(lanUrl);
+    // 1. URL Primaria explícita configurada por el usuario (o túnel Cloudflare/Pinggy)
+    if (primary) {
+      if (isHttps) {
+        // En HTTPS (por ej. Vercel), el navegador bloquea HTTP plano como Mixed Content.
+        // Solo aceptamos URLs que comiencen con https:// o rutas relativas seguras.
+        if (primary.startsWith('https://') || primary.startsWith('/')) {
+          list.push(primary);
         }
+      } else {
+        list.push(primary);
       }
-      if (!list.includes('http://localhost:3001')) {
-        list.push('http://localhost:3001');
-      }
-      if (!list.includes('http://127.0.0.1:3001')) {
-        list.push('http://127.0.0.1:3001');
+    }
+
+    // 2. Fallbacks de red local y desarrollo (SOLO en HTTP local, nunca en HTTPS público)
+    if (isBrowser) {
+      if (!isHttps) {
+        // Proxy local Vite para resolver CORS y bloqueos de red privada
+        if (!list.includes('/api/wa')) {
+          list.push('/api/wa');
+        }
+        // Si navegamos desde otro dispositivo en la misma red Wi-Fi
+        if (window.location?.hostname && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+          const lanUrl = `http://${window.location.hostname}:3001`;
+          if (!list.includes(lanUrl)) {
+            list.push(lanUrl);
+          }
+        }
+        if (!list.includes('http://localhost:3001')) {
+          list.push('http://localhost:3001');
+        }
+        if (!list.includes('http://127.0.0.1:3001')) {
+          list.push('http://127.0.0.1:3001');
+        }
       }
     } else {
       if (!list.includes('http://localhost:3001')) {
@@ -132,6 +149,16 @@ export const WhatsAppGatewayService = {
     const config = this.getConfig();
     const candidates = this.getGatewayCandidates();
     const path = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+
+    const isBrowser = typeof window !== 'undefined';
+    const isHttps = isBrowser && window.location?.protocol === 'https:';
+
+    if (candidates.length === 0) {
+      if (isHttps) {
+        throw new Error('MixedContentPrevented: En Vercel (HTTPS) se requiere configurar una URL con túnel seguro https:// (Cloudflare o Pinggy).');
+      }
+      throw new Error('Gateway de WhatsApp no configurado o no disponible en red local.');
+    }
 
     const headers: Record<string, string> = {
       ...(options.headers as Record<string, string> || {})
@@ -216,6 +243,18 @@ export const WhatsAppGatewayService = {
     }
 
     // Modo QR Gateway (Opción A)
+    const isBrowser = typeof window !== 'undefined';
+    const isHttps = isBrowser && window.location?.protocol === 'https:';
+    const candidates = this.getGatewayCandidates();
+
+    if (isHttps && candidates.length === 0) {
+      return {
+        connected: false,
+        status: 'disconnected',
+        message: 'Vercel opera bajo HTTPS. Configura tu túnel gratuito (Cloudflare o Pinggy) en Ajustes para despacho automático, o usa el envío asistido.'
+      };
+    }
+
     try {
       const res = await this.requestGateway('/status', { method: 'GET' }, 3500);
       if (res.ok) {
@@ -239,7 +278,9 @@ export const WhatsAppGatewayService = {
     return {
       connected: false,
       status: 'disconnected',
-      message: 'Gateway local/nube no responde. Si usas el servidor local, ejecútalo con npm run wa:gateway.'
+      message: isHttps 
+        ? 'Túnel seguro desconectado. Verifica que tu túnel Cloudflare o Pinggy esté activo en el celular o PC.'
+        : 'Gateway local/nube no responde. Si usas el servidor local, ejecútalo con npm run wa:gateway.'
     };
   },
 
