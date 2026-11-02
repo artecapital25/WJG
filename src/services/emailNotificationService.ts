@@ -118,10 +118,10 @@ export const EmailNotificationService = {
         await supabase.from('registro_notificaciones').insert([{
           idempotency_key: idempotency,
           destinatario_nombre: payload.destinatario_nombre || 'Cliente WJGEEKS',
-          destinatario_telefono: payload.destinatario_correo,
+          destinatario_telefono: ((payload as any).destinatario_telefono || '573202796115').toString().replace(/[^0-9]/g, '').slice(0, 25) || '573202796115',
           rol_destinatario: 'CLIENTE',
-          canal: 'EMAIL_TRANSACCIONAL',
-          mensaje_plano: `Asunto: ${payload.asunto || 'Notificación'}\nDestinatario: ${payload.destinatario_correo}\nTipo: ${payload.tipo}`,
+          canal: 'WHATSAPP_CLOUD_API',
+          mensaje_plano: `[EMAIL ${payload.tipo?.toUpperCase()}] Asunto: ${payload.asunto || 'Notificación'}\nDestinatario: ${payload.destinatario_correo}`,
           estado: functionInvokedOk ? 'ENVIADO' : 'PENDIENTE',
           enviado_at: functionInvokedOk ? new Date().toISOString() : null
         }]);

@@ -191,7 +191,7 @@ export const WhatsAppGatewayService = {
         });
         clearTimeout(timeoutId);
 
-        if (res.ok || res.status < 500) {
+        if (res.ok || res.status === 503 || res.status < 500) {
           return res;
         }
       } catch (err: any) {

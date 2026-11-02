@@ -643,6 +643,11 @@ SELECT
     ot.created_at
 FROM public.ordenes_trabajo ot;
 
+-- 4.3. Vista de Compatibilidad: public.piezas_cotizacion (apunta a cotizacion_items)
+CREATE OR REPLACE VIEW public.piezas_cotizacion AS
+SELECT * FROM public.cotizacion_items;
+
+
 
 -- ------------------------------------------------------------------------------
 -- 5. BLINDAJE DE NEGOCIO (TRIGGERS Y REGLAS SQL ACID)

@@ -586,7 +586,7 @@ function ejecutarBackupDiarioDrive(customBackupData) {
 
     var tablasV3 = [
       "ordenes_trabajo", "abonos_pagos", "ventas_express", "cotizaciones",
-      "cotizacion_items", "piezas_cotizacion", "productos_stock", "clientes",
+      "cotizacion_items", "productos_stock", "clientes",
       "usuarios_taller", "tareas_equipo", "solicitudes_insumos", "configuracion_taller",
       "tarifas_tamanos", "resinas", "maquinas", "insumos"
     ];

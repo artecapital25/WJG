@@ -691,7 +691,6 @@ function ejecutarBackupDiarioDrive(customBackupData) {
       "ventas_express",
       "cotizaciones",
       "cotizacion_items",
-      "piezas_cotizacion",
       "productos_stock",
       "clientes",
       "usuarios_taller",

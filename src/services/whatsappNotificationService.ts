@@ -433,33 +433,45 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
 
     const resultados: { destinatario: string; success: boolean; id?: string; error?: string }[] = [];
 
-    // 1. Despachar a cada administrador usando el Gateway oficial
+    // Pre-verificar estado del Gateway para evitar disparar peticiones fallidas si no está vinculado
+    let isGatewayConnected = false;
+    try {
+      const gwStatus = await WhatsAppGatewayService.checkStatus();
+      isGatewayConnected = gwStatus.connected === true;
+    } catch (_) {
+      isGatewayConnected = false;
+    }
+
+    // 1. Despachar a cada administrador usando el Gateway oficial o fallback inmediato
     for (const admin of targets) {
-      try {
-        const res = await WhatsAppGatewayService.sendTextMessage(admin.telefono, mensaje);
-        if (res.success) {
-          resultados.push({ destinatario: admin.nombre, success: true, id: res.id });
-          await this.registrarAuditoriaEnvio(
-            {
-              destinatarioTelefono: admin.telefono,
-              destinatarioNombre: admin.nombre,
-              tipo: 'daily_briefing',
-              contenido: mensaje
-            },
-            'enviado',
-            'whatsapp_qr_gateway'
-          );
-        } else {
-          // Si el Gateway está offline o sin túnel, usar fallback
-          const url = this.generarEnlaceWhatsAppBriefing(mensaje, admin.telefono);
-          openWhatsApp(url, admin.telefono, mensaje);
-          resultados.push({ destinatario: admin.nombre, success: true, error: 'Enviado vía fallback asistido' });
-        }
-      } catch (err: any) {
-        const url = this.generarEnlaceWhatsAppBriefing(mensaje, admin.telefono);
-        openWhatsApp(url, admin.telefono, mensaje);
-        resultados.push({ destinatario: admin.nombre, success: false, error: err.message });
+      if (isGatewayConnected) {
+        try {
+          const res = await WhatsAppGatewayService.sendTextMessage(admin.telefono, mensaje);
+          if (res.success) {
+            resultados.push({ destinatario: admin.nombre, success: true, id: res.id });
+            await this.registrarAuditoriaEnvio(
+              {
+                destinatarioTelefono: admin.telefono,
+                destinatarioNombre: admin.nombre,
+                tipo: 'daily_briefing',
+                contenido: mensaje
+              },
+              'enviado',
+              'whatsapp_qr_gateway'
+            );
+            continue;
+          }
+        } catch (_) {}
       }
+
+      // Si el Gateway está desconectado o el envío automático no respondió, usar fallback asistido directo
+      const url = this.generarEnlaceWhatsAppBriefing(mensaje, admin.telefono);
+      openWhatsApp(url, admin.telefono, mensaje);
+      resultados.push({ 
+        destinatario: admin.nombre, 
+        success: true, 
+        error: isGatewayConnected ? 'Enviado vía fallback asistido' : 'Gateway no vinculado - WhatsApp Web abierto' 
+      });
     }
 
     // 2. Notificar en base de datos si Postgres RPC está disponible

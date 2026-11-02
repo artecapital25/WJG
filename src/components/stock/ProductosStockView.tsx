@@ -546,7 +546,9 @@ ${itemsText}
                   gap: '12px',
                   position: 'relative',
                   overflow: 'hidden',
-                  borderColor: hasStock ? 'var(--border-subtle)' : 'rgba(239, 68, 68, 0.25)'
+                  borderColor: hasStock ? 'var(--border-subtle)' : 'rgba(239, 68, 68, 0.25)',
+                  contentVisibility: 'auto',
+                  containIntrinsicSize: '0 380px'
                 }}
               >
                 {/* CABECERA DE LA TARJETA: FOTO + DATOS BÁSICOS */}
