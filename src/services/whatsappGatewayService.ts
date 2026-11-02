@@ -29,7 +29,7 @@ const STORAGE_KEY_WA_GATEWAY = 'wjg_whatsapp_gateway_config';
 
 const DEFAULT_CONFIG: WhatsAppGatewayConfig = {
   provider: 'qr_gateway',
-  gatewayUrl: (import.meta as any).env?.VITE_WHATSAPP_GATEWAY_URL || 'http://localhost:3001',
+  gatewayUrl: (import.meta as any).env?.VITE_WHATSAPP_GATEWAY_URL || 'https://wjg.onrender.com',
   apiKey: (import.meta as any).env?.VITE_WHATSAPP_GATEWAY_KEY || '',
   instanceName: 'wjgeeks3d',
   autoSendEnabled: true,
@@ -63,7 +63,13 @@ export const WhatsAppGatewayService = {
     try {
       const stored = storage.getItem(STORAGE_KEY_WA_GATEWAY);
       if (stored) {
-        return { ...DEFAULT_CONFIG, ...JSON.parse(stored) };
+        const parsed = JSON.parse(stored);
+        // Si el usuario tenía localhost o vacío o en HTTPS tenía HTTP plano, usar la nube oficial de Render
+        const isHttps = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+        if (!parsed.gatewayUrl || (isHttps && parsed.gatewayUrl.startsWith('http://'))) {
+          parsed.gatewayUrl = 'https://wjg.onrender.com';
+        }
+        return { ...DEFAULT_CONFIG, ...parsed };
       }
     } catch (_) {}
     return DEFAULT_CONFIG;
@@ -95,17 +101,20 @@ export const WhatsAppGatewayService = {
     const isBrowser = typeof window !== 'undefined';
     const isHttps = isBrowser && window.location?.protocol === 'https:';
 
-    // 1. URL Primaria explícita configurada por el usuario (o túnel Cloudflare/Pinggy)
+    // 1. URL Primaria explícita configurada (o Cloud de Render por defecto)
     if (primary) {
       if (isHttps) {
-        // En HTTPS (por ej. Vercel), el navegador bloquea HTTP plano como Mixed Content.
-        // Solo aceptamos URLs que comiencen con https:// o rutas relativas seguras.
         if (primary.startsWith('https://') || primary.startsWith('/')) {
           list.push(primary);
         }
       } else {
         list.push(primary);
       }
+    }
+
+    // 2. Nube 24/7 oficial en Render (Siempre disponible)
+    if (!list.includes('https://wjg.onrender.com')) {
+      list.push('https://wjg.onrender.com');
     }
 
     // 2. Fallbacks de red local y desarrollo (SOLO en HTTP local, nunca en HTTPS público)

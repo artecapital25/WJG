@@ -94,42 +94,51 @@ export const EmailNotificationService = {
         }
       }
 
-      // 2. Despacho alternativo vía Edge Function si está explícitamente habilitada
-      const isEdgeFunctionEnabled = Boolean((import.meta as any).env?.VITE_ENABLE_EDGE_EMAIL === 'true');
-      if (!functionInvokedOk && isEdgeFunctionEnabled) {
+      // 2. Despacho alternativo vía Edge Function de Supabase
+      if (!functionInvokedOk) {
         try {
-          const { error } = await supabase.functions.invoke('send-transactional-email', {
+          const { data, error } = await supabase.functions.invoke('send-transactional-email', {
             body: {
               ...payload,
               remitente: LINEA_CENTRAL_EMPRESA.correo
             }
           });
 
-          if (!error) {
+          if (!error && (data?.success || data?.id)) {
             functionInvokedOk = true;
           }
         } catch (_) {
-          // Fallback a contingencia
+          // Fallback
         }
       }
 
       // 3. Registro canónico en Supabase: tabla registro_notificaciones para trazabilidad
       try {
+        const idempotency = `mail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         await supabase.from('registro_notificaciones').insert([{
-          tipo_canal: 'CORREO',
-          destinatario: payload.destinatario_correo,
-          mensaje_resumen: `Correo ${payload.tipo}: ${payload.asunto || 'Notificación'} para ${payload.destinatario_nombre}`,
-          estado_envio: functionInvokedOk ? 'ENVIADO' : 'EN_COLA',
-          created_at: new Date().toISOString()
+          idempotency_key: idempotency,
+          destinatario_nombre: payload.destinatario_nombre || 'Cliente WJGEEKS',
+          destinatario_telefono: payload.destinatario_correo,
+          rol_destinatario: 'CLIENTE',
+          canal: 'EMAIL_TRANSACCIONAL',
+          mensaje_plano: `Asunto: ${payload.asunto || 'Notificación'}\nDestinatario: ${payload.destinatario_correo}\nTipo: ${payload.tipo}`,
+          estado: functionInvokedOk ? 'ENVIADO' : 'PENDIENTE',
+          enviado_at: functionInvokedOk ? new Date().toISOString() : null
         }]);
-      } catch (_) {
-        // Tolerancia a fallos silenciosa
+      } catch (dbErr) {
+        console.debug('Nota de auditoría: registro_notificaciones correo respaldado');
+      }
+
+      if (!functionInvokedOk) {
+        return {
+          success: false,
+          error: 'No hay un canal de correo activo. Para enviar desde wjgeeks3d@gmail.com, configura la URL de tu Google Apps Script en Ajustes de Drive o habilita Resend en Supabase.'
+        };
       }
 
       return { success: true };
     } catch (e: any) {
-      console.info('[EmailNotification] Notificación procesada en modo contingencia.');
-      return { success: true };
+      return { success: false, error: e.message || 'Error procesando envío de correo' };
     }
   },
 
