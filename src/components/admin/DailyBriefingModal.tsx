@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { WhatsAppHealthStatus, WhatsAppPingResult, DailyBriefingData } from '../../types';
 import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
+import { openWhatsApp } from '../../services/whatsappService';
 
 interface DailyBriefingModalProps {
   isOpen: boolean;
@@ -119,6 +120,10 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
 
   const urlWhatsAppGerman = briefing?.mensaje_whatsapp 
     ? WhatsAppNotificationService.generarEnlaceWhatsAppBriefing(briefing.mensaje_whatsapp, '573503443140')
+    : '#';
+
+  const urlWhatsAppWendy = briefing?.mensaje_whatsapp 
+    ? WhatsAppNotificationService.generarEnlaceWhatsAppBriefing(briefing.mensaje_whatsapp, '573204814702')
     : '#';
 
   const urlWhatsAppJuan = briefing?.mensaje_whatsapp 
@@ -487,23 +492,55 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
           flexWrap: 'wrap',
           gap: '12px'
         }}>
-          <a
-            href={urlWhatsAppGerman}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="btn btn-secondary btn-sm"
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.82rem',
-              color: '#34d399',
-              borderColor: 'rgba(16, 185, 129, 0.3)'
-            }}
-          >
-            <ExternalLink size={14} />
-            <span>Abrir en WhatsApp Web / Móvil</span>
-          </a>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            <button
+              onClick={() => openWhatsApp(urlWhatsAppGerman, '573503443140', briefing?.mensaje_whatsapp)}
+              className="btn btn-secondary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.78rem',
+                color: '#38bdf8',
+                borderColor: 'rgba(56, 189, 248, 0.3)'
+              }}
+            >
+              <ExternalLink size={13} />
+              <span>WhatsApp Germán</span>
+            </button>
+
+            <button
+              onClick={() => openWhatsApp(urlWhatsAppWendy, '573204814702', briefing?.mensaje_whatsapp)}
+              className="btn btn-secondary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.78rem',
+                color: '#ec4899',
+                borderColor: 'rgba(236, 72, 153, 0.3)'
+              }}
+            >
+              <ExternalLink size={13} />
+              <span>WhatsApp Wendy</span>
+            </button>
+
+            <button
+              onClick={() => openWhatsApp(urlWhatsAppJuan, '573217273025', briefing?.mensaje_whatsapp)}
+              className="btn btn-secondary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                fontSize: '0.78rem',
+                color: '#34d399',
+                borderColor: 'rgba(52, 211, 153, 0.3)'
+              }}
+            >
+              <ExternalLink size={13} />
+              <span>WhatsApp Juan</span>
+            </button>
+          </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button

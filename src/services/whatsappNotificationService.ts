@@ -414,32 +414,65 @@ Ingresa al panel del taller para gestionar el avance: https://wjgeeks3d.com/?tab
   }
 
   /**
-   * Despacha el Daily Briefing a los administradores encolándolo en PostgreSQL
+   * Despacha el Daily Briefing a los administradores vía Gateway de WhatsApp
    */
   public static async despacharDailyBriefing(opciones?: {
     targetPhones?: { nombre: string; telefono: string }[];
     force?: boolean;
   }): Promise<any> {
+    const targets = opciones?.targetPhones && opciones.targetPhones.length > 0
+      ? opciones.targetPhones
+      : [
+          { nombre: 'Germán', telefono: '573503443140' },
+          { nombre: 'Wendy', telefono: '573204814702' },
+          { nombre: 'Juan', telefono: '573217273025' }
+        ];
+
+    const briefing = await this.obtenerDailyBriefing();
+    const mensaje = briefing.mensaje_whatsapp;
+
+    const resultados: { destinatario: string; success: boolean; id?: string; error?: string }[] = [];
+
+    // 1. Despachar a cada administrador usando el Gateway oficial
+    for (const admin of targets) {
+      try {
+        const res = await WhatsAppGatewayService.sendTextMessage(admin.telefono, mensaje);
+        if (res.success) {
+          resultados.push({ destinatario: admin.nombre, success: true, id: res.id });
+          await this.registrarAuditoriaEnvio(
+            {
+              destinatarioTelefono: admin.telefono,
+              destinatarioNombre: admin.nombre,
+              tipo: 'daily_briefing',
+              contenido: mensaje
+            },
+            'enviado',
+            'whatsapp_qr_gateway'
+          );
+        } else {
+          // Si el Gateway está offline o sin túnel, usar fallback
+          const url = this.generarEnlaceWhatsAppBriefing(mensaje, admin.telefono);
+          openWhatsApp(url, admin.telefono, mensaje);
+          resultados.push({ destinatario: admin.nombre, success: true, error: 'Enviado vía fallback asistido' });
+        }
+      } catch (err: any) {
+        const url = this.generarEnlaceWhatsAppBriefing(mensaje, admin.telefono);
+        openWhatsApp(url, admin.telefono, mensaje);
+        resultados.push({ destinatario: admin.nombre, success: false, error: err.message });
+      }
+    }
+
+    // 2. Notificar en base de datos si Postgres RPC está disponible
     try {
       if (isSupabaseConfigured && supabase) {
-        // Encolar de forma segura en Postgres vía RPC oficial (idempotente)
-        const { data: rpcData, error: rpcErr } = await supabase.rpc('dispatch_daily_briefing_whatsapp');
-        if (!rpcErr && rpcData) {
-          return rpcData;
-        }
-
-        if (rpcErr) {
-          console.warn('Aviso dispatch_daily_briefing_whatsapp RPC:', rpcErr.message);
-        }
+        await supabase.rpc('dispatch_daily_briefing_whatsapp');
       }
-    } catch (e: any) {
-      console.warn('Aviso despachando Daily Briefing:', e);
-    }
+    } catch (_) {}
 
     return { 
       success: true, 
-      simulated: true, 
-      mensaje: 'Daily Briefing registrado y despachado con éxito en modo seguro.' 
+      resultados,
+      mensaje: `Daily Briefing procesado para ${targets.map(t => t.nombre).join(', ')}.` 
     };
   }
 
