@@ -55,3 +55,5 @@ supabase/.temp/
 auth_info_baileys/
 test_auth/
 scripts/*standalone.cjs
+scratch/
+
