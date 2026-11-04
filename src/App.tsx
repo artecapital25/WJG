@@ -82,6 +82,10 @@ export const App: React.FC = () => {
       if (params.get('ot') || params.get('cot')) {
         return 'seguimiento';
       }
+      const savedTab = localStorage.getItem('wjg_last_active_tab') as TabType;
+      if (savedTab && validTabs.includes(savedTab)) {
+        return savedTab;
+      }
     }
     return 'cotizador';
   });
@@ -120,6 +124,13 @@ export const App: React.FC = () => {
       }
     } else setActiveHub('gestion');
   }, [activeTab, activeHub, canAccessHub]);
+
+  // Permanencia: guardar última pestaña activa en el dispositivo
+  useEffect(() => {
+    if (typeof window !== 'undefined' && activeTab) {
+      localStorage.setItem('wjg_last_active_tab', activeTab);
+    }
+  }, [activeTab]);
 
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showDailyBriefingModal, setShowDailyBriefingModal] = useState(false);
@@ -293,7 +304,24 @@ export const App: React.FC = () => {
     // 2. Traer datos frescos de Supabase en segundo plano como Fuente Única de la Verdad (Single Source of Truth)
     const syncCloudData = async () => {
       try {
-        const [cloudCots, cloudClis, cloudOTs, cloudVentas, cloudCCs, cloudTareas, cloudSolicitudes, cloudStock, cloudPayments] = await Promise.all([
+        const [
+          cloudCots, 
+          cloudClis, 
+          cloudOTs, 
+          cloudVentas, 
+          cloudCCs, 
+          cloudTareas, 
+          cloudSolicitudes, 
+          cloudStock, 
+          cloudPayments, 
+          cloudMaquinas,
+          cloudInsumos,
+          cloudResinas,
+          cloudConfig,
+          cloudPersonal,
+          cloudProveedores,
+          cloudTarifasTamanos
+        ] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
           CloudSyncService.fetchOrdenes(),
@@ -302,7 +330,14 @@ export const App: React.FC = () => {
           CloudSyncService.fetchTareasEquipo(),
           CloudSyncService.fetchSolicitudesInsumos(),
           CloudSyncService.fetchProductosStock(),
-          CloudSyncService.fetchPayments()
+          CloudSyncService.fetchPayments(),
+          CloudSyncService.fetchMaquinas(),
+          CloudSyncService.fetchInsumos(),
+          CloudSyncService.fetchResinas(),
+          CloudSyncService.fetchConfiguracion(),
+          CloudSyncService.fetchTarifasPersonal(),
+          CloudSyncService.fetchProveedores(),
+          CloudSyncService.fetchTarifasTamanos()
         ]);
 
         const pagosLedger = cloudPayments || [];
@@ -434,6 +469,80 @@ export const App: React.FC = () => {
           StorageService.saveSolicitudesInsumos(cloudSolicitudes);
         }
 
+        // Sincronización Bidireccional Inteligente (Smart Merge) para Maquinaria
+        const localMaquinas = StorageService.getMaquinas();
+        const serverMaquinas = cloudMaquinas || [];
+        const serverMaqIds = new Set(serverMaquinas.map(m => m.id));
+        const serverMaqNames = new Set(serverMaquinas.map(m => m.nombre.trim().toLowerCase()));
+
+        // Identificar máquinas creadas localmente por compañeros que aún no estén en Supabase y subirlas
+        const missingMaquinasOnServer = localMaquinas.filter(lm => 
+          !serverMaqIds.has(lm.id) && !serverMaqNames.has(lm.nombre.trim().toLowerCase())
+        );
+        if (missingMaquinasOnServer.length > 0) {
+          missingMaquinasOnServer.forEach(m => CloudSyncService.saveMaquina(m));
+        }
+
+        const finalMaquinas = [...serverMaquinas, ...missingMaquinasOnServer];
+        if (finalMaquinas.length > 0) {
+          setMaquinas(finalMaquinas);
+          StorageService.saveMaquinas(finalMaquinas);
+        }
+
+        // Sincronización Bidireccional Inteligente para Insumos
+        const localInsumos = StorageService.getInsumos();
+        const serverInsumos = cloudInsumos || [];
+        const serverInsNames = new Set(serverInsumos.map(i => i.nombre.trim().toLowerCase()));
+        const missingInsumosOnServer = localInsumos.filter(li => !serverInsNames.has(li.nombre.trim().toLowerCase()));
+        if (missingInsumosOnServer.length > 0) {
+          missingInsumosOnServer.forEach(i => CloudSyncService.saveInsumo(i));
+        }
+        const finalInsumos = [...serverInsumos, ...missingInsumosOnServer];
+        if (finalInsumos.length > 0) {
+          setInsumos(finalInsumos);
+          StorageService.saveInsumos(finalInsumos);
+        }
+
+        // Sincronización Bidireccional Inteligente para Resinas
+        const localResinas = StorageService.getResinas();
+        const serverResinas = cloudResinas || [];
+        const serverResKeys = new Set(serverResinas.map(r => `${r.tipo.trim().toLowerCase()}-${r.color.trim().toLowerCase()}`));
+        const missingResinasOnServer = localResinas.filter(lr => !serverResKeys.has(`${lr.tipo.trim().toLowerCase()}-${lr.color.trim().toLowerCase()}`));
+        if (missingResinasOnServer.length > 0) {
+          missingResinasOnServer.forEach(r => CloudSyncService.saveResina(r));
+        }
+        const finalResinas = [...serverResinas, ...missingResinasOnServer];
+        if (finalResinas.length > 0) {
+          setResinas(finalResinas);
+          StorageService.saveResinas(finalResinas);
+        }
+
+        // Sincronización de Configuración de Taller (Tarifa Eléctrica / Luz, Medios de Pago)
+        if (cloudConfig !== null) {
+          setConfig(cloudConfig);
+          StorageService.saveConfig(cloudConfig);
+        } else {
+          CloudSyncService.saveConfiguracion(config);
+        }
+
+        // Sincronización de Tarifas de Personal
+        if (cloudPersonal !== null && cloudPersonal.length > 0) {
+          setPersonal(cloudPersonal);
+          StorageService.savePersonal(cloudPersonal);
+        }
+
+        // Sincronización de Proveedores
+        if (cloudProveedores !== null && cloudProveedores.length > 0) {
+          setProveedores(cloudProveedores);
+          StorageService.saveProveedores(cloudProveedores);
+        }
+
+        // Sincronización de Tarifas de Tamaños
+        if (cloudTarifasTamanos !== null && cloudTarifasTamanos.length > 0) {
+          setTarifasTamanos(cloudTarifasTamanos);
+          StorageService.saveTarifasTamanos(cloudTarifasTamanos);
+        }
+
         if (cloudStock !== null) {
           setProductosStock(cloudStock);
           StorageService.saveProductosStock(cloudStock);
@@ -512,11 +621,49 @@ export const App: React.FC = () => {
           setProductosStock(freshStock);
           StorageService.saveProductosStock(freshStock);
         }
+      },
+      async () => {
+        // Sincronización en tiempo real de maquinas (ej. Bambulab P2S)
+        const freshMaq = await CloudSyncService.fetchMaquinas();
+        if (freshMaq !== null && freshMaq.length > 0) {
+          setMaquinas(freshMaq);
+          StorageService.saveMaquinas(freshMaq);
+        }
+      },
+      async () => {
+        // Sincronización en tiempo real de todos los catálogos maestros entre colaboradores
+        const [freshMaq, freshIns, freshRes, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+          CloudSyncService.fetchMaquinas(),
+          CloudSyncService.fetchInsumos(),
+          CloudSyncService.fetchResinas(),
+          CloudSyncService.fetchConfiguracion(),
+          CloudSyncService.fetchTarifasPersonal(),
+          CloudSyncService.fetchProveedores(),
+          CloudSyncService.fetchTarifasTamanos()
+        ]);
+        if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
+        if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
+        if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+        if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
+        if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
+        if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
+        if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
       }
     );
 
+    // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible' && CloudSyncService.isAvailable()) {
+        syncCloudData();
+      }
+    };
+    window.addEventListener('visibilitychange', handleVisibilityOrFocus);
+    window.addEventListener('focus', handleVisibilityOrFocus);
+
     return () => {
       if (channel) channel.unsubscribe();
+      window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+      window.removeEventListener('focus', handleVisibilityOrFocus);
     };
   }, []);
 
@@ -2194,11 +2341,45 @@ export const App: React.FC = () => {
               StorageService.saveMaquinas(m); 
               m.forEach(maq => CloudSyncService.saveMaquina(maq));
             }}
-            onUpdatePersonal={p => { setPersonal(p); StorageService.savePersonal(p); }}
+            onUpdatePersonal={p => { 
+              setPersonal(p); 
+              StorageService.savePersonal(p); 
+              p.forEach(per => CloudSyncService.saveTarifaPersonal(per));
+            }}
             onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
-            onUpdateProveedores={pr => { setProveedores(pr); StorageService.saveProveedores(pr); }}
-            onUpdateConfig={cfg => { setConfig(cfg); StorageService.saveConfig(cfg); }}
-            onUpdateTarifasTamanos={t => { setTarifasTamanos(t); StorageService.saveTarifasTamanos(t); }}
+            onUpdateProveedores={pr => { 
+              setProveedores(pr); 
+              StorageService.saveProveedores(pr); 
+              pr.forEach(prov => CloudSyncService.saveProveedor(prov));
+            }}
+            onUpdateConfig={cfg => { 
+              setConfig(cfg); 
+              StorageService.saveConfig(cfg); 
+              CloudSyncService.saveConfiguracion(cfg);
+            }}
+            onUpdateTarifasTamanos={t => { 
+              setTarifasTamanos(t); 
+              StorageService.saveTarifasTamanos(t); 
+              t.forEach(tar => CloudSyncService.saveTarifaTamano(tar));
+            }}
+            onRefreshCatalogos={async () => {
+              const [freshMaq, freshIns, freshRes, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+                CloudSyncService.fetchMaquinas(),
+                CloudSyncService.fetchInsumos(),
+                CloudSyncService.fetchResinas(),
+                CloudSyncService.fetchConfiguracion(),
+                CloudSyncService.fetchTarifasPersonal(),
+                CloudSyncService.fetchProveedores(),
+                CloudSyncService.fetchTarifasTamanos()
+              ]);
+              if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
+              if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
+              if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+              if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
+              if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
+              if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
+              if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+            }}
             onOpenBackup={() => setShowBackupModal(true)}
           />
         )}

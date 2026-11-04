@@ -10,9 +10,11 @@ import {
 import { 
   Resina, 
   Insumo, 
-  Maquina, 
+  Maquina,
+  RepuestoMaquina, 
   Personal, 
-  Cliente, 
+  Cliente,
+  Proveedor, 
   ConfiguracionTaller, 
   Cotizacion, 
   OrdenTrabajo, 
@@ -1236,11 +1238,53 @@ export const CloudSyncService = {
     }
   },
 
+  // 21.04 Traer Maquinaria desde Supabase
+  async fetchMaquinas(): Promise<Maquina[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('maquinas')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching maquinas from Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Maquina => {
+        let repuestosParsed: RepuestoMaquina[] = [];
+        if (row.repuestos) {
+          try {
+            repuestosParsed = typeof row.repuestos === 'string' ? JSON.parse(row.repuestos) : row.repuestos;
+          } catch (_) {
+            repuestosParsed = [];
+          }
+        }
+        return {
+          id: row.id,
+          nombre: row.nombre,
+          tipo: row.tipo || 'Impresora 3D',
+          consumo_kwh: Number(row.consumo_kwh) || 0,
+          costo_minuto: Number(row.costo_minuto) || 0,
+          costo_minuto_energia: row.costo_minuto_energia !== undefined ? Number(row.costo_minuto_energia) : undefined,
+          costo_minuto_repuestos: row.costo_minuto_repuestos !== undefined ? Number(row.costo_minuto_repuestos) : undefined,
+          estado: row.estado || 'Disponible',
+          imagen_url: row.imagen_url || undefined,
+          repuestos: Array.isArray(repuestosParsed) ? repuestosParsed : []
+        };
+      });
+    } catch (e) {
+      console.warn('Exception in fetchMaquinas:', e);
+      return null;
+    }
+  },
+
   // 21.05 Sincronizar Maquinaria en Supabase
   async saveMaquina(maquina: Maquina): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const payload = {
+      const payload: any = {
         id: maquina.id,
         nombre: maquina.nombre,
         tipo: maquina.tipo,
@@ -1249,7 +1293,318 @@ export const CloudSyncService = {
         estado: maquina.estado,
         imagen_url: maquina.imagen_url || null
       };
-      const { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
+      if (maquina.costo_minuto_energia !== undefined) {
+        payload.costo_minuto_energia = maquina.costo_minuto_energia;
+      }
+      if (maquina.costo_minuto_repuestos !== undefined) {
+        payload.costo_minuto_repuestos = maquina.costo_minuto_repuestos;
+      }
+      if (maquina.repuestos) {
+        payload.repuestos = maquina.repuestos;
+      }
+
+      let { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
+      // Si la tabla aún no tiene las columnas adicionales en Supabase, hacer fallback seguro
+      if (error && (error.message?.includes('repuestos') || error.message?.includes('costo_minuto_'))) {
+        delete payload.repuestos;
+        delete payload.costo_minuto_energia;
+        delete payload.costo_minuto_repuestos;
+        const resFallback = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
+        error = resFallback.error;
+      }
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.06 Eliminar Maquinaria en Supabase
+  async deleteMaquina(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('maquinas').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.07 Traer Insumos desde Supabase
+  async fetchInsumos(): Promise<Insumo[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('insumos')
+        .select('*')
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching insumos from Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Insumo => ({
+        id: row.id,
+        codigo: Number(row.codigo_item || row.codigo) || 1,
+        nombre: row.nombre,
+        marca: row.marca || 'Genérico',
+        categoria: row.categoria || 'General',
+        presentacion: Number(row.cantidad_presentacion || row.presentacion) || 1,
+        costo_total: Number(row.costo_total) || 0,
+        costo_unitario: Number(row.costo_unitario) || 0,
+        enlace_compra: row.enlace_compra || '',
+        descripcion: row.descripcion || '',
+        imagen_url: row.imagen_url || ''
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchInsumos:', e);
+      return null;
+    }
+  },
+
+  // 21.08 Eliminar Insumo en Supabase
+  async deleteInsumo(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('insumos').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.09 Traer Resinas desde Supabase
+  async fetchResinas(): Promise<Resina[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('resinas')
+        .select('*')
+        .order('tipo', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching resinas from Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Resina => ({
+        id: row.id,
+        tipo: row.tipo,
+        marca: row.marca || 'Anycubic',
+        color: row.color || 'Gris',
+        volumen_l: Number(row.volumen_l) || 1.0,
+        densidad_g_cm3: Number(row.densidad_g_cm3) || 1.13,
+        peso_g: Number(row.peso_g) || 1130,
+        precio_compra: Number(row.precio_compra) || 89000,
+        costo_gramo: Number(row.costo_gramo) || 78.76,
+        velocidad_impresion_mm_h: Number(row.velocidad_impresion_mm_h) || 20,
+        resumen: row.resumen || `${row.tipo} Color ${row.color}`,
+        imagen_url: row.imagen_url || ''
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchResinas:', e);
+      return null;
+    }
+  },
+
+  // 21.10 Eliminar Resina en Supabase
+  async deleteResina(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('resinas').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.11 Traer Configuración del Taller (Tarifa de Luz, Bancos) desde Supabase
+  async fetchConfiguracion(): Promise<ConfiguracionTaller | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('configuracion_taller')
+        .select('*')
+        .limit(1)
+        .maybeSingle();
+
+      if (error) {
+        console.warn('Error fetching configuracion_taller:', error.message);
+        return null;
+      }
+      if (!data) return null;
+      return {
+        tarifa_kwh: Number(data.tarifa_kwh) || 834,
+        margen_merma_resina: Number(data.margen_merma_resina) || 1.4,
+        telefono_contacto: data.telefono_contacto || '+57 320 2796115',
+        telefono_contacto2: data.telefono_contacto2 || '+57 321 7273025',
+        correo: data.correo || 'wjgeeks3d@gmail.com',
+        instagram: data.instagram || '@wjgeeks3d',
+        nequi: data.nequi || '321 727 3025',
+        bre_b: data.bre_b || '0090778625',
+        daviplata: data.daviplata || '320 279 6115',
+        bancolombia: data.bancolombia || '0090778625',
+        titular_cuenta: data.titular_cuenta || 'Germán / WJGEEKS'
+      };
+    } catch (e) {
+      console.warn('Exception in fetchConfiguracion:', e);
+      return null;
+    }
+  },
+
+  // 21.12 Guardar Configuración del Taller en Supabase
+  async saveConfiguracion(cfg: ConfiguracionTaller): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload: any = {
+        tarifa_kwh: Number(cfg.tarifa_kwh) || 834,
+        margen_merma_resina: Number(cfg.margen_merma_resina) || 1.4,
+        nequi: cfg.nequi || '',
+        bre_b: cfg.bre_b || '',
+        instagram: cfg.instagram || '',
+        telefono_contacto: cfg.telefono_contacto || '',
+        telefono_contacto2: cfg.telefono_contacto2 || '',
+        daviplata: cfg.daviplata || '',
+        bancolombia: cfg.bancolombia || '',
+        titular_cuenta: cfg.titular_cuenta || '',
+        updated_at: new Date().toISOString()
+      };
+
+      const { data: existing } = await supabase!.from('configuracion_taller').select('id').limit(1).maybeSingle();
+      if (existing?.id) {
+        payload.id = existing.id;
+        const { error } = await supabase!.from('configuracion_taller').update(payload).eq('id', existing.id);
+        return !error;
+      } else {
+        const { error } = await supabase!.from('configuracion_taller').insert([payload]);
+        return !error;
+      }
+    } catch (e) {
+      console.warn('Exception saving configuracion_taller:', e);
+      return false;
+    }
+  },
+
+  // 21.13 Traer Tarifas de Personal desde Supabase
+  async fetchTarifasPersonal(): Promise<Personal[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!.from('tarifas_personal').select('*');
+      if (error) return null;
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Personal => ({
+        id: row.id,
+        rol: row.rol,
+        costo_hora: Number(row.costo_hora) || 0,
+        costo_minuto: Number(row.costo_minuto) || 0
+      }));
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // 21.14 Guardar Tarifa de Personal en Supabase
+  async saveTarifaPersonal(p: Personal): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: p.id,
+        rol: p.rol,
+        costo_hora: p.costo_hora,
+        costo_minuto: p.costo_minuto
+      };
+      const { error } = await supabase!.from('tarifas_personal').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.15 Eliminar Tarifa de Personal en Supabase
+  async deleteTarifaPersonal(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('tarifas_personal').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.16 Traer Proveedores desde Supabase
+  async fetchProveedores(): Promise<Proveedor[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!.from('proveedores').select('*').order('nombre', { ascending: true });
+      if (error) return null;
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Proveedor => ({
+        id: row.id,
+        nombre: row.nombre,
+        contacto: row.contacto || '',
+        telefono: row.telefono || '',
+        rubro: row.rubro || 'Insumos 3D',
+        enlace_web: row.enlace_web || ''
+      }));
+    } catch (e) {
+      return null;
+    }
+  },
+
+  // 21.17 Guardar Proveedor en Supabase
+  async saveProveedor(pr: Proveedor): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: pr.id,
+        nombre: pr.nombre,
+        contacto: pr.contacto || null,
+        telefono: pr.telefono || null,
+        rubro: pr.rubro || 'Insumos 3D',
+        enlace_web: pr.enlace_web || null
+      };
+      const { error } = await supabase!.from('proveedores').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.18 Eliminar Proveedor en Supabase
+  async deleteProveedor(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('proveedores').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+
+  // 21.20 Guardar Tarifa por Tamaño en Supabase
+  async saveTarifaTamano(tarifa: TarifaTamano): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const payload = {
+        id: tarifa.id,
+        altura_cm: tarifa.altura_cm,
+        precio_sugerido: tarifa.precio_sugerido,
+        descripcion: tarifa.descripcion || null,
+        tiempo_estimado: tarifa.tiempo_estimado || null
+      };
+      const { error } = await supabase!.from('tarifas_tamanos').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 21.21 Eliminar Tarifa por Tamaño en Supabase
+  async deleteTarifaTamano(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('tarifas_tamanos').delete().eq('id', id);
       return !error;
     } catch (e) {
       return false;
@@ -1539,7 +1894,9 @@ export const CloudSyncService = {
     onTareaChange?: () => void,
     onSolicitudChange?: () => void,
     onPaymentChange?: () => void,
-    onStockChange?: () => void
+    onStockChange?: () => void,
+    onMaquinaChange?: () => void,
+    onCatalogChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
 
@@ -1575,6 +1932,28 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'productos_stock' }, () => {
         if (onStockChange) onStockChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maquinas' }, () => {
+        if (onMaquinaChange) onMaquinaChange();
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'insumos' }, () => {
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'resinas' }, () => {
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracion_taller' }, () => {
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_personal' }, () => {
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'proveedores' }, () => {
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_tamanos' }, () => {
+        if (onCatalogChange) onCatalogChange();
       })
       .subscribe();
 

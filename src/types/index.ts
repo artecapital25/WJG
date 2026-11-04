@@ -61,14 +61,29 @@ export interface Insumo {
   imagen_url?: string;
 }
 
+export interface RepuestoMaquina {
+  id: string;
+  nombre: string;              // Ej: "Pantalla LCD 4K Mono", "Film FEP 2.0", "Boquilla Latón 0.4mm"
+  costo_compra: number;        // Costo de compra del repuesto en COP
+  vida_util_horas: number;     // Horas estimadas de vida útil (ej. 2000)
+  horas_acumuladas?: number;   // Horas trabajadas con este repuesto
+  costo_hora: number;          // Calculado: costo_compra / vida_util_horas
+  costo_minuto: number;        // Calculado: costo_hora / 60
+  activo: boolean;             // Si se cobra en el tarifario actual
+  fecha_instalacion?: string;  // Fecha del último cambio o instalación
+}
+
 export interface Maquina {
   id: string;
   nombre: string;
   tipo: string;
   consumo_kwh: number;
+  costo_minuto_energia?: number;
+  costo_minuto_repuestos?: number;
   costo_minuto: number;
   estado: string;
   imagen_url?: string;
+  repuestos?: RepuestoMaquina[];
 }
 
 export interface Personal {
@@ -118,6 +133,7 @@ export interface MaquinaInvolucrada {
   tiempo_min: number;
   costo_minuto?: number;
   costo_energia?: number;
+  costo_repuestos?: number;
   mostrar_en_cliente?: boolean; // Controla si se visualiza en la cotización/factura PDF y WhatsApp para el cliente
 }
 
@@ -146,6 +162,7 @@ export interface PiezaCotizada {
   tiempo_armado_min: number;
   tiempo_pintura_min: number;
   costo_energia: number;
+  costo_repuestos_maquina?: number;
   costo_resina: number;
   costo_curado: number;
   costo_insumos: number;
@@ -369,5 +386,3 @@ export interface DailyBriefingData {
   acciones_recomendadas?: string[];
   mensaje_whatsapp: string;
 }
-
-

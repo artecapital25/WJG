@@ -42,6 +42,60 @@ export interface ParametrosPiezaInput {
   precioFijadoTarifa?: boolean;
 }
 
+export interface DesgloseTarifaMaquina {
+  costoMinutoEnergia: number;
+  costoMinutoRepuestos: number;
+  costoMinutoTotal: number;
+}
+
+/**
+ * Resuelve y desglosa con exactitud el costo por minuto de una máquina:
+ * 1. Costo por minuto de energía eléctrica = (consumo_kwh * tarifa_kwh) / 60
+ * 2. Costo por minuto de repuestos y amortización de desgaste = suma de repuestos activos (costo / vida_útil_min)
+ * 3. Tarifa total por minuto = energía + repuestos (respetando tarifas históricas si no hay desglose cargado)
+ */
+export function resolverTarifasMaquina(maquina: Maquina, tarifaKwhConfig?: number): DesgloseTarifaMaquina {
+  const tarifaKwh = (tarifaKwhConfig && tarifaKwhConfig > 0) ? tarifaKwhConfig : 834.0;
+  
+  // Consumo eléctrico en kW
+  const consumoKwh = (typeof maquina.consumo_kwh === 'number' && maquina.consumo_kwh > 0)
+    ? maquina.consumo_kwh
+    : 0.05;
+
+  // Costo minuto de energía
+  const costoMinutoEnergia = (consumoKwh * tarifaKwh) / 60;
+
+  // Costo minuto de repuestos y desgaste
+  let costoMinutoRepuestos = 0;
+  if (Array.isArray(maquina.repuestos) && maquina.repuestos.length > 0) {
+    costoMinutoRepuestos = maquina.repuestos
+      .filter(r => r.activo !== false)
+      .reduce((acc, r) => {
+        if (typeof r.costo_minuto === 'number' && r.costo_minuto > 0) return acc + r.costo_minuto;
+        if (r.costo_compra && r.vida_util_horas && r.vida_util_horas > 0) {
+          return acc + (r.costo_compra / (r.vida_util_horas * 60));
+        }
+        return acc;
+      }, 0);
+  } else if (typeof maquina.costo_minuto_repuestos === 'number' && maquina.costo_minuto_repuestos > 0) {
+    costoMinutoRepuestos = maquina.costo_minuto_repuestos;
+  }
+
+  // Costo total por minuto
+  let costoMinutoTotal = costoMinutoEnergia + costoMinutoRepuestos;
+  if (costoMinutoRepuestos === 0 && typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > 0) {
+    costoMinutoTotal = maquina.costo_minuto;
+  } else if (typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > costoMinutoTotal) {
+    costoMinutoTotal = maquina.costo_minuto;
+  }
+
+  return {
+    costoMinutoEnergia,
+    costoMinutoRepuestos,
+    costoMinutoTotal
+  };
+}
+
 export function calcularPieza3D(
   input: ParametrosPiezaInput,
   personal: Personal[],
@@ -76,50 +130,73 @@ export function calcularPieza3D(
     peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
   }
 
-  // 2. Proceso 1: Impresión 3D Principal
+  // 2. Proceso 1: Impresión 3D Principal (Desglose Dinámico Energía + Repuestos)
   const vel = input.resina.velocidad_impresion_mm_h > 0 ? input.resina.velocidad_impresion_mm_h : 20;
   const tiempo_impresion_calc = (esParcial && alto === 0) ? 0 : Math.round((alto / vel) * 60);
   const tiempo_impresion_min = (input.tiempoImpresionManualMin !== undefined && input.tiempoImpresionManualMin > 0)
     ? input.tiempoImpresionManualMin
     : tiempo_impresion_calc;
-  const costo_energia_impresion = tiempo_impresion_min * (input.impresora.costo_minuto || 6.255);
+  
+  const impresoraTarifas = resolverTarifasMaquina(input.impresora, config.tarifa_kwh);
+  const costo_energia_impresion = tiempo_impresion_min * impresoraTarifas.costoMinutoEnergia;
+  const costo_repuestos_impresion = tiempo_impresion_min * impresoraTarifas.costoMinutoRepuestos;
 
   // 3. Proceso 2: Curado Térmico / UV y Químico (Wash & Cure)
   const requiereCurado = input.requiereCurado !== false;
   let tiempo_curado_min = 0;
   let costo_energia_curado = 0;
+  let costo_repuestos_curado = 0;
   let costo_quimico_curado = 0;
+  let curadoTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoTotal: 0 };
+
   if (requiereCurado) {
     tiempo_curado_min = (input.tiempoCuradoMin !== undefined && input.tiempoCuradoMin >= 0)
       ? input.tiempoCuradoMin
       : (peso_estimado_g >= 250 ? 15 : peso_estimado_g <= 50 ? 5 : 10);
-    const costo_minuto_curado = input.estacionCurado ? input.estacionCurado.costo_minuto : 5.004;
-    costo_energia_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * costo_minuto_curado;
+    
+    if (input.estacionCurado) {
+      curadoTarifas = resolverTarifasMaquina(input.estacionCurado, config.tarifa_kwh);
+    } else {
+      curadoTarifas = { costoMinutoEnergia: (0.36 * (config.tarifa_kwh || 834)) / 60, costoMinutoRepuestos: 0, costoMinutoTotal: (0.36 * (config.tarifa_kwh || 834)) / 60 };
+    }
+
+    costo_energia_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * curadoTarifas.costoMinutoEnergia;
+    costo_repuestos_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * curadoTarifas.costoMinutoRepuestos;
     
     // Insumo curado (etanol ~ 10.27 COP por gramo de pieza lavada)
     const costo_unitario_insumo_curado = input.insumoCurado ? input.insumoCurado.costo_unitario : 10.27;
     costo_quimico_curado = peso_estimado_g * costo_unitario_insumo_curado;
   }
-  const costo_curado = costo_energia_curado + costo_quimico_curado;
+  const costo_curado = costo_energia_curado + costo_repuestos_curado + costo_quimico_curado;
 
   // 4. Proceso 3: Pintura y Acabado / Aerografía (Compresor de Pintura)
   let tiempo_compresor_min = 0;
   let costo_energia_compresor = 0;
+  let costo_repuestos_compresor = 0;
+  let compresorTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoTotal: 0 };
+
   if (input.requiereCompresorPintura && input.maquinaPintura) {
     tiempo_compresor_min = (input.tiempoCompresorMin !== undefined && input.tiempoCompresorMin >= 0)
       ? input.tiempoCompresorMin
       : input.tiempoPinturaMin;
-    costo_energia_compresor = tiempo_compresor_min * (input.maquinaPintura.costo_minuto || 5.004);
+    compresorTarifas = resolverTarifasMaquina(input.maquinaPintura, config.tarifa_kwh);
+    costo_energia_compresor = tiempo_compresor_min * compresorTarifas.costoMinutoEnergia;
+    costo_repuestos_compresor = tiempo_compresor_min * compresorTarifas.costoMinutoRepuestos;
   }
 
   // 5. Procesos 4: Máquinas Adicionales Dinámicas (FDM, Láser, Dremel, Hornos, etc.)
   let costo_energia_adicionales = 0;
+  let costo_repuestos_adicionales = 0;
   const maquinasAdicionalesList: MaquinaInvolucrada[] = [];
   if (input.maquinasAdicionales && input.maquinasAdicionales.length > 0) {
     for (const item of input.maquinasAdicionales) {
       if (item.maquina && item.tiempo_min > 0) {
-        const costo_maq = item.tiempo_min * (item.maquina.costo_minuto || 0);
-        costo_energia_adicionales += costo_maq;
+        const adicTarifas = resolverTarifasMaquina(item.maquina, config.tarifa_kwh);
+        const costo_maq_energia = item.tiempo_min * adicTarifas.costoMinutoEnergia;
+        const costo_maq_repuestos = item.tiempo_min * adicTarifas.costoMinutoRepuestos;
+        costo_energia_adicionales += costo_maq_energia;
+        costo_repuestos_adicionales += costo_maq_repuestos;
+
         const procesoSanitizado = (item.proceso || '').trim();
         const esVisibleCliente = Boolean(item.mostrar_en_cliente) && 
           procesoSanitizado !== '' && 
@@ -132,20 +209,29 @@ export function calcularPieza3D(
           tipo: item.maquina.tipo,
           proceso: procesoSanitizado || item.maquina.nombre,
           tiempo_min: item.tiempo_min,
-          costo_minuto: item.maquina.costo_minuto,
-          costo_energia: Math.round(costo_maq),
+          costo_minuto: Number(adicTarifas.costoMinutoTotal.toFixed(4)),
+          costo_energia: Math.round(costo_maq_energia),
+          costo_repuestos: Math.round(costo_maq_repuestos),
           mostrar_en_cliente: esVisibleCliente
         });
       }
     }
   }
 
-  // Costo Total de Energía Eléctrica Consolidada de Todo el Parque de Maquinaria
+  // Costo Total de Energía Eléctrica Consolidada
   const costo_energia_total = Math.round(
     costo_energia_impresion +
     costo_energia_curado +
     costo_energia_compresor +
     costo_energia_adicionales
+  );
+
+  // Costo Total de Desgaste y Repuestos de Maquinaria Consolidado
+  const costo_repuestos_total = Math.round(
+    costo_repuestos_impresion +
+    costo_repuestos_curado +
+    costo_repuestos_compresor +
+    costo_repuestos_adicionales
   );
 
   // Lista detallada de todas las máquinas y procesos involucrados
@@ -156,8 +242,9 @@ export function calcularPieza3D(
       tipo: input.impresora.tipo,
       proceso: 'Impresión 3D',
       tiempo_min: tiempo_impresion_min,
-      costo_minuto: input.impresora.costo_minuto,
-      costo_energia: Math.round(costo_energia_impresion)
+      costo_minuto: Number(impresoraTarifas.costoMinutoTotal.toFixed(4)),
+      costo_energia: Math.round(costo_energia_impresion),
+      costo_repuestos: Math.round(costo_repuestos_impresion)
     }
   ];
 
@@ -168,8 +255,9 @@ export function calcularPieza3D(
       tipo: input.estacionCurado.tipo,
       proceso: 'Lavado y Curado UV',
       tiempo_min: tiempo_curado_min,
-      costo_minuto: input.estacionCurado.costo_minuto,
-      costo_energia: Math.round(costo_energia_curado)
+      costo_minuto: Number(curadoTarifas.costoMinutoTotal.toFixed(4)),
+      costo_energia: Math.round(costo_energia_curado),
+      costo_repuestos: Math.round(costo_repuestos_curado)
     });
   }
 
@@ -180,8 +268,9 @@ export function calcularPieza3D(
       tipo: input.maquinaPintura.tipo,
       proceso: 'Pintura y Aerografía',
       tiempo_min: tiempo_compresor_min,
-      costo_minuto: input.maquinaPintura.costo_minuto,
-      costo_energia: Math.round(costo_energia_compresor)
+      costo_minuto: Number(compresorTarifas.costoMinutoTotal.toFixed(4)),
+      costo_energia: Math.round(costo_energia_compresor),
+      costo_repuestos: Math.round(costo_repuestos_compresor)
     });
   }
 
@@ -222,9 +311,10 @@ export function calcularPieza3D(
   const valorPintura = input.tiempoPinturaMin * tarifaPintor;
   const costo_mano_obra = valorDesarrollo + valorArmado + valorPintura;
 
-  // 9. Costo Base de Producción
+  // 9. Costo Base de Producción (Incluye Energía + Fondo de Repuestos/Desgaste + Materiales + Personal)
   const costo_base_produccion = 
     costo_energia_total +
+    costo_repuestos_total +
     costo_resina +
     costo_quimico_curado +
     costo_insumos +
@@ -255,7 +345,7 @@ export function calcularPieza3D(
     tiempo_entrega = '(7) Días hábiles';
   }
 
-  // 12. Descripción Técnica Detallada (Una sola línea para medidas y material para evitar confusiones de doble espacio)
+  // 12. Descripción Técnica Detallada
   const va_pintado = typeof input.vaPintadoManual === 'boolean'
     ? input.vaPintadoManual
     : (input.tiempoPinturaMin > 0 || input.pinturas.length > 0 || Boolean(input.requiereCompresorPintura));
@@ -315,6 +405,7 @@ export function calcularPieza3D(
     tiempo_armado_min: input.tiempoArmadoMin,
     tiempo_pintura_min: input.tiempoPinturaMin,
     costo_energia: costo_energia_total,
+    costo_repuestos_maquina: costo_repuestos_total,
     costo_resina: Math.round(costo_resina),
     costo_curado: Math.round(costo_curado),
     costo_insumos: Math.round(costo_insumos),

@@ -35,6 +35,9 @@ export interface Maquina {
   tipo: string;
   consumo_kwh: number;
   costo_minuto: number;
+  costo_minuto_energia?: number;
+  costo_minuto_repuestos?: number;
+  repuestos?: any[];
   estado: string;
 }
 
@@ -43,6 +46,9 @@ export interface Personal {
   rol: string;
   costo_hora: number;
   costo_minuto: number;
+  costo_minuto_energia?: number;
+  costo_minuto_repuestos?: number;
+  repuestos?: any[];
 }
 
 export interface Cliente {
@@ -637,6 +643,162 @@ export const INSUMOS_INICIALES: Insumo[] = [
 ];
 
 export const MAQUINAS_INICIALES: Maquina[] = [
+  {
+    "id": "maq-1",
+    "nombre": "Anycubic MONO 4",
+    "tipo": "Impresora 3D Resina",
+    "consumo_kwh": 0.05,
+    "costo_minuto_energia": 0.695,
+    "costo_minuto_repuestos": 5.667,
+    "costo_minuto": 6.362,
+    "estado": "Disponible",
+    "repuestos": [
+      {
+        "id": "rep-mono4-fep",
+        "nombre": "Film FEP / Release Film",
+        "costo_compra": 75000,
+        "vida_util_horas": 300,
+        "costo_hora": 250,
+        "costo_minuto": 4.167,
+        "activo": true
+      },
+      {
+        "id": "rep-mono4-lcd",
+        "nombre": "Pantalla LCD 4K Monocromática",
+        "costo_compra": 180000,
+        "vida_util_horas": 2000,
+        "costo_hora": 90,
+        "costo_minuto": 1.5,
+        "activo": true
+      }
+    ]
+  },
+  {
+    "id": "maq-6",
+    "nombre": "Anycubic Photon Mono X 6Ks",
+    "tipo": "Impresora 3D Resina",
+    "consumo_kwh": 0.06,
+    "costo_minuto_energia": 0.834,
+    "costo_minuto_repuestos": 6.556,
+    "costo_minuto": 7.39,
+    "estado": "Disponible",
+    "repuestos": [
+      {
+        "id": "rep-mono6k-fep",
+        "nombre": "Film FEP Gran Formato",
+        "costo_compra": 85000,
+        "vida_util_horas": 300,
+        "costo_hora": 283.33,
+        "costo_minuto": 4.722,
+        "activo": true
+      },
+      {
+        "id": "rep-mono6k-lcd",
+        "nombre": "Pantalla LCD 6Ks 9.1 pulgadas",
+        "costo_compra": 220000,
+        "vida_util_horas": 2000,
+        "costo_hora": 110,
+        "costo_minuto": 1.833,
+        "activo": true
+      }
+    ]
+  },
+  {
+    "id": "maq-bambu",
+    "nombre": "Bambulab P1S / P2S",
+    "tipo": "Impresora 3D Filamento (FDM)",
+    "consumo_kwh": 0.13,
+    "costo_minuto_energia": 1.807,
+    "costo_minuto_repuestos": 1.917,
+    "costo_minuto": 3.724,
+    "estado": "Disponible",
+    "repuestos": [
+      {
+        "id": "rep-bambu-nozzle",
+        "nombre": "Hotend & Boquilla Endurecida 0.4mm",
+        "costo_compra": 45000,
+        "vida_util_horas": 600,
+        "costo_hora": 75,
+        "costo_minuto": 1.25,
+        "activo": true
+      },
+      {
+        "id": "rep-bambu-bed",
+        "nombre": "Placa Texturada PEI & Lubricación",
+        "costo_compra": 40000,
+        "vida_util_horas": 1000,
+        "costo_hora": 40,
+        "costo_minuto": 0.667,
+        "activo": true
+      }
+    ]
+  },
+  {
+    "id": "maq-4",
+    "nombre": "Anycubic Kobra 2 Neo",
+    "tipo": "Impresora 3D Filamento (FDM)",
+    "consumo_kwh": 0.15,
+    "costo_minuto_energia": 2.085,
+    "costo_minuto_repuestos": 1.333,
+    "costo_minuto": 3.418,
+    "estado": "Disponible",
+    "repuestos": [
+      {
+        "id": "rep-kobra-nozzle",
+        "nombre": "Boquilla Latón 0.4mm",
+        "costo_compra": 25000,
+        "vida_util_horas": 500,
+        "costo_hora": 50,
+        "costo_minuto": 0.833,
+        "activo": true
+      },
+      {
+        "id": "rep-kobra-pei",
+        "nombre": "Cama Magnética & Grasa Ejes",
+        "costo_compra": 30000,
+        "vida_util_horas": 1000,
+        "costo_hora": 30,
+        "costo_minuto": 0.5,
+        "activo": true
+      }
+    ]
+  },
+  {
+    "id": "maq-2",
+    "nombre": "Anycubic Wash y cure 3",
+    "tipo": "Estación de Curado",
+    "consumo_kwh": 0.048,
+    "costo_minuto_energia": 0.667,
+    "costo_minuto_repuestos": 0,
+    "costo_minuto": 0.667,
+    "estado": "Disponible",
+    "repuestos": []
+  },
+  {
+    "id": "maq-3",
+    "nombre": "Compresor Paasche S220R",
+    "tipo": "Aerógrafo / Pintura",
+    "consumo_kwh": 0.15,
+    "costo_minuto_energia": 2.085,
+    "costo_minuto_repuestos": 0,
+    "costo_minuto": 2.085,
+    "estado": "Disponible",
+    "repuestos": []
+  },
+  {
+    "id": "maq-5",
+    "nombre": "Dremel 4000 / Pulidora",
+    "tipo": "Herramienta Eléctrica",
+    "consumo_kwh": 0.13,
+    "costo_minuto_energia": 1.807,
+    "costo_minuto_repuestos": 0,
+    "costo_minuto": 1.807,
+    "estado": "Disponible",
+    "repuestos": []
+  }
+];
+
+const _OLD_CONFIGS: any[] = [
   {
     "id": "maq-1",
     "nombre": "Anycubic MONO 4",

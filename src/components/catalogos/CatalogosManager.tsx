@@ -21,7 +21,8 @@ import {
   CheckCircle2,
   Sparkles,
   Camera,
-  Eye
+  Eye,
+  Zap
 } from 'lucide-react';
 import { 
   Resina, 
@@ -31,7 +32,8 @@ import {
   Cliente, 
   Proveedor,
   ConfiguracionTaller,
-  TarifaTamano 
+  TarifaTamano,
+  RepuestoMaquina
 } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService } from '../../services/cloudSyncService';
@@ -56,6 +58,7 @@ interface CatalogosManagerProps {
   onUpdateConfig: (cfg: ConfiguracionTaller) => void;
   onUpdateTarifasTamanos?: (t: TarifaTamano[]) => void;
   onOpenBackup?: () => void;
+  onRefreshCatalogos?: () => Promise<void>;
 }
 
 type SubTab = 'resinas' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
@@ -77,7 +80,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   onUpdateProveedores,
   onUpdateConfig,
   onUpdateTarifasTamanos,
-  onOpenBackup
+  onOpenBackup,
+  onRefreshCatalogos
 }) => {
   const [subTab, setSubTab] = useState<SubTab>('resinas');
   const [searchQuery, setSearchQuery] = useState('');
@@ -86,6 +90,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   const [modalType, setModalType] = useState<string | null>(null);
   const [itemEnEdicion, setItemEnEdicion] = useState<any>(null);
   const [zoomModalImg, setZoomModalImg] = useState<{ url: string; title: string } | null>(null);
+  const [nuevoRepuesto, setNuevoRepuesto] = useState({ nombre: '', costo_compra: '', vida_util_horas: '' });
+  const [unidadPotencia, setUnidadPotencia] = useState<'W' | 'kW'>('W');
 
   // Estados de Configuración
   const [tarifaKwh, setTarifaKwh] = useState(config.tarifa_kwh);
@@ -173,6 +179,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     if (confirm('¿Eliminar esta resina del catálogo?')) {
       const updated = resinas.filter(r => r.id !== id);
       onUpdateResinas(updated);
+      CloudSyncService.deleteResina(id);
     }
   };
 
@@ -234,6 +241,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     if (confirm('¿Eliminar este insumo del taller?')) {
       const updated = insumos.filter(i => i.id !== id);
       onUpdateInsumos(updated);
+      CloudSyncService.deleteInsumo(id);
     }
   };
 
@@ -242,31 +250,106 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // -----------------------------------------------------------------
   const handleOpenModalMaquina = (maq?: Maquina) => {
     if (maq) {
-      setItemEnEdicion({ ...maq, isEdit: true, imagen_url: maq.imagen_url || '' });
+      setItemEnEdicion({ 
+        ...maq, 
+        isEdit: true, 
+        imagen_url: maq.imagen_url || '',
+        repuestos: Array.isArray(maq.repuestos) ? maq.repuestos.map(r => ({ ...r })) : []
+      });
     } else {
       setItemEnEdicion({
         id: `maq-${Date.now()}`,
-        nombre: 'Anycubic Kobra Neo',
-        tipo: 'Impresora 3D',
-        consumo_kwh: 0.35,
+        nombre: 'Bambulab P1S / P2S',
+        tipo: 'Impresora 3D Filamento (FDM)',
+        consumo_kwh: 0.13,
+        repuestos: [],
         estado: 'Disponible',
         imagen_url: '',
         isEdit: false
       });
     }
+    setNuevoRepuesto({ nombre: '', costo_compra: '', vida_util_horas: '' });
     setModalType('maquina');
+  };
+
+  const handleAddRepuesto = (preset?: { nombre: string; costo_compra: number; vida_util_horas: number }) => {
+    const nombre = preset ? preset.nombre : nuevoRepuesto.nombre.trim();
+    const costo = preset ? preset.costo_compra : Number(nuevoRepuesto.costo_compra);
+    const horas = preset ? preset.vida_util_horas : Number(nuevoRepuesto.vida_util_horas);
+
+    if (!nombre) {
+      toast.error('Indica el nombre del repuesto o componente');
+      return;
+    }
+    if (!costo || costo <= 0) {
+      toast.error('Indica el costo de compra del repuesto');
+      return;
+    }
+    if (!horas || horas <= 0) {
+      toast.error('Indica la vida útil estimada en horas de impresión');
+      return;
+    }
+
+    const costo_hora = Number((costo / horas).toFixed(2));
+    const costo_minuto = Number((costo / (horas * 60)).toFixed(4));
+
+    const item: RepuestoMaquina = {
+      id: `rep-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      nombre,
+      costo_compra: costo,
+      vida_util_horas: horas,
+      costo_hora,
+      costo_minuto,
+      activo: true
+    };
+
+    const currentRepuestos = Array.isArray(itemEnEdicion?.repuestos) ? itemEnEdicion.repuestos : [];
+    setItemEnEdicion({
+      ...itemEnEdicion,
+      repuestos: [...currentRepuestos, item]
+    });
+    setNuevoRepuesto({ nombre: '', costo_compra: '', vida_util_horas: '' });
+    toast.success(`Repuesto "${nombre}" añadido`);
+  };
+
+  const handleRemoveRepuesto = (id: string) => {
+    const currentRepuestos = Array.isArray(itemEnEdicion?.repuestos) ? itemEnEdicion.repuestos : [];
+    setItemEnEdicion({
+      ...itemEnEdicion,
+      repuestos: currentRepuestos.filter((r: RepuestoMaquina) => r.id !== id)
+    });
+  };
+
+  const handleToggleRepuesto = (id: string) => {
+    const currentRepuestos = Array.isArray(itemEnEdicion?.repuestos) ? itemEnEdicion.repuestos : [];
+    setItemEnEdicion({
+      ...itemEnEdicion,
+      repuestos: currentRepuestos.map((r: RepuestoMaquina) => r.id === id ? { ...r, activo: !r.activo } : r)
+    });
   };
 
   const handleSaveMaquina = (e: React.FormEvent) => {
     e.preventDefault();
-    const costo_minuto = (Number(itemEnEdicion.consumo_kwh) * config.tarifa_kwh) / 60;
+    const consumoKwh = Number(itemEnEdicion.consumo_kwh) || 0.05;
+    const tarifa = config.tarifa_kwh || 834.0;
+    const costo_minuto_energia = (consumoKwh * tarifa) / 60;
+
+    const repuestos: RepuestoMaquina[] = Array.isArray(itemEnEdicion.repuestos) ? itemEnEdicion.repuestos : [];
+    const costo_minuto_repuestos = repuestos
+      .filter(r => r.activo !== false)
+      .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+
+    const costo_total_min = costo_minuto_energia + costo_minuto_repuestos;
 
     const maquinaGuardada: Maquina = {
       id: itemEnEdicion.id,
       nombre: itemEnEdicion.nombre,
       tipo: itemEnEdicion.tipo,
-      consumo_kwh: Number(itemEnEdicion.consumo_kwh),
-      costo_minuto: Number(costo_minuto.toFixed(4)),
+      consumo_kwh: consumoKwh,
+      costo_minuto_energia: Number(costo_minuto_energia.toFixed(4)),
+      costo_minuto_repuestos: Number(costo_minuto_repuestos.toFixed(4)),
+      costo_minuto: Number(costo_total_min.toFixed(4)),
+      repuestos,
       estado: itemEnEdicion.estado || 'Disponible',
       imagen_url: itemEnEdicion.imagen_url || ''
     };
@@ -283,10 +366,79 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     setItemEnEdicion(null);
   };
 
+  const handleCalibrarPotencias = () => {
+    if (!confirm('¿Deseas calibrar automáticamente todas las máquinas con sus potencias reales de fábrica (50W para Anycubic Mono 4, 60W para Mono X 6Ks, 130W para Bambulab P1S/P2S)? Esto corregirá el consumo antiguo del Excel (450W) y configurará los repuestos recomendados.')) return;
+
+    const tarifa = config.tarifa_kwh || 834.0;
+    const updated = maquinas.map(m => {
+      let nuevoConsumo = m.consumo_kwh;
+      let nuevosRepuestos = Array.isArray(m.repuestos) && m.repuestos.length > 0 ? [...m.repuestos] : [];
+
+      const nom = m.nombre.toLowerCase();
+      if (nom.includes('mono 4') || nom.includes('mono 2') || nom.includes('photon mono')) {
+        nuevoConsumo = 0.05; // 50W
+        if (nuevosRepuestos.length === 0) {
+          nuevosRepuestos = [
+            { id: `rep-${m.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true },
+            { id: `rep-${m.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true }
+          ];
+        }
+      } else if (nom.includes('6k') || nom.includes('mono x')) {
+        nuevoConsumo = 0.06; // 60W
+        if (nuevosRepuestos.length === 0) {
+          nuevosRepuestos = [
+            { id: `rep-${m.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true },
+            { id: `rep-${m.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true }
+          ];
+        }
+      } else if (nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1')) {
+        nuevoConsumo = 0.13; // 130W
+        if (nuevosRepuestos.length === 0) {
+          nuevosRepuestos = [
+            { id: `rep-${m.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true },
+            { id: `rep-${m.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true }
+          ];
+        }
+      } else if (nom.includes('kobra') || nom.includes('ender') || nom.includes('fdm') || nom.includes('filamento')) {
+        nuevoConsumo = 0.15; // 150W
+        if (nuevosRepuestos.length === 0) {
+          nuevosRepuestos = [
+            { id: `rep-${m.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true }
+          ];
+        }
+      } else if (nom.includes('wash') || nom.includes('cure') || nom.includes('curado')) {
+        nuevoConsumo = 0.048; // 48W
+      } else if (nom.includes('compresor') || nom.includes('paasche') || nom.includes('aerograf')) {
+        nuevoConsumo = 0.15; // 150W
+      } else if (nom.includes('dremel') || nom.includes('pulidora')) {
+        nuevoConsumo = 0.13; // 130W
+      }
+
+      const costo_energia_min = (nuevoConsumo * tarifa) / 60;
+      const costo_repuestos_min = nuevosRepuestos
+        .filter(r => r.activo !== false)
+        .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+      const costo_total_min = costo_energia_min + costo_repuestos_min;
+
+      return {
+        ...m,
+        consumo_kwh: nuevoConsumo,
+        costo_minuto_energia: Number(costo_energia_min.toFixed(4)),
+        costo_minuto_repuestos: Number(costo_repuestos_min.toFixed(4)),
+        costo_minuto: Number(costo_total_min.toFixed(4)),
+        repuestos: nuevosRepuestos
+      };
+    });
+
+    onUpdateMaquinas(updated);
+    toast.success('¡Maquinaria calibrada a potencias reales de fábrica con repuestos!');
+  };
+
   const handleDeleteMaquina = (id: string) => {
     if (confirm('¿Eliminar esta máquina del taller?')) {
       const updated = maquinas.filter(m => m.id !== id);
       onUpdateMaquinas(updated);
+      CloudSyncService.deleteMaquina(id);
     }
   };
 
@@ -334,6 +486,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     if (confirm('¿Eliminar este rol de tarifa?')) {
       const updated = personal.filter(p => p.id !== id);
       onUpdatePersonal(updated);
+      CloudSyncService.deleteTarifaPersonal(id);
     }
   };
 
@@ -456,6 +609,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     if (confirm('¿Eliminar este proveedor?')) {
       const updated = proveedores.filter(p => p.id !== id);
       onUpdateProveedores(updated);
+      CloudSyncService.deleteProveedor(id);
     }
   };
 
@@ -508,6 +662,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       if (onUpdateTarifasTamanos) {
         const updated = tarifasTamanos.filter(t => t.id !== id);
         onUpdateTarifasTamanos(updated);
+        CloudSyncService.deleteTarifaTamano(id);
       }
     }
   };
@@ -526,12 +681,40 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       instagram
     };
     onUpdateConfig(updated);
-    toast.success('Configuración del taller guardada exitosamente');
+    
+    // Recalcular en cascada las tarifas de maquinaria ante el cambio de tarifa eléctrica
+    const newTarifa = Number(tarifaKwh) || 834.0;
+    if (maquinas && maquinas.length > 0) {
+      const updatedMaquinas = maquinas.map(m => {
+        const consumo = typeof m.consumo_kwh === 'number' && m.consumo_kwh > 0 ? m.consumo_kwh : 0.05;
+        const costo_energia_min = (consumo * newTarifa) / 60;
+        const repuestos = Array.isArray(m.repuestos) ? m.repuestos : [];
+        const costo_repuestos_min = repuestos
+          .filter(r => r.activo !== false)
+          .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+        
+        let costo_total_min = costo_energia_min + costo_repuestos_min;
+        if (costo_repuestos_min === 0 && typeof m.costo_minuto === 'number' && m.costo_minuto > 0) {
+          costo_total_min = m.costo_minuto;
+        }
+
+        return {
+          ...m,
+          costo_minuto_energia: Number(costo_energia_min.toFixed(4)),
+          costo_minuto_repuestos: Number(costo_repuestos_min.toFixed(4)),
+          costo_minuto: Number(costo_total_min.toFixed(4)),
+          repuestos
+        };
+      });
+      onUpdateMaquinas(updatedMaquinas);
+    }
+
+    toast.success('Configuración guardada y tarifas de maquinaria actualizadas en cascada');
   };
 
   return (
     <div>
-      <div className="section-header">
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 className="section-title">
             <Settings size={22} color="var(--brand-cyan)" />
@@ -539,6 +722,22 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </h2>
           <p className="section-subtitle">Edita, agrega o elimina resinas, insumos, maquinaria, tarifas, clientes y proveedores</p>
         </div>
+        {onRefreshCatalogos && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={async () => {
+              toast.info('Sincronizando catálogos con la nube...');
+              await onRefreshCatalogos();
+              toast.success('¡Catálogos sincronizados con la nube (Supabase)!');
+            }}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--brand-cyan)', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+            title="Trae las impresoras, insumos y tarifas creadas por compañeros desde Supabase"
+          >
+            <Cloud size={15} />
+            <span>Sincronizar Catálogos Ahora</span>
+          </button>
+        )}
       </div>
 
       {/* Navegación Touch */}
@@ -836,103 +1035,339 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       {subTab === 'maquinaria' && (
         <div className="glass-card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Maquinaria & Equipos</h3>
-            <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalMaquina()}>
-              <Plus size={14} />
-              <span>Agregar Máquina</span>
-            </button>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Wrench size={18} color="var(--brand-cyan)" />
+                Maquinaria & Equipos de Producción
+              </h3>
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                Tarifas por minuto calculadas según potencia real en Watts y amortización de repuestos
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm" 
+                onClick={handleCalibrarPotencias}
+                title="Ajusta todas las máquinas a sus consumos reales de fabricante (50W resina, 130W Bambulab) y activa los repuestos recomendados"
+                style={{ borderColor: 'rgba(56, 189, 248, 0.4)', color: 'var(--brand-cyan)' }}
+              >
+                <Zap size={14} />
+                <span>Calibrar Potencias Reales (50W / 130W)</span>
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalMaquina()}>
+                <Plus size={14} />
+                <span>Agregar Máquina</span>
+              </button>
+            </div>
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {maquinas.map(m => (
-              <div key={m.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
-                      {/* Miniatura de Máquina */}
-                      {m.imagen_url ? (
-                        <div 
-                          onClick={() => setZoomModalImg({ url: m.imagen_url!, title: m.nombre })}
-                          style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '8px',
-                            overflow: 'hidden',
-                            flexShrink: 0,
-                            cursor: 'pointer',
-                            border: '1px solid rgba(56, 189, 248, 0.35)',
-                            background: '#050508'
-                          }}
-                          title="Clic para ampliar foto"
-                        >
-                          <img src={m.imagen_url} alt={m.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                        </div>
-                      ) : (
-                        <div 
-                          onClick={() => handleOpenModalMaquina(m)}
-                          style={{
-                            width: '48px',
-                            height: '48px',
-                            borderRadius: '8px',
-                            display: 'flex',
-                            flexDirection: 'column',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            flexShrink: 0,
-                            background: 'rgba(255, 255, 255, 0.03)',
-                            border: '1px dashed rgba(255, 255, 255, 0.18)',
-                            cursor: 'pointer',
-                            color: 'var(--text-muted)',
-                            gap: '2px'
-                          }}
-                          title="Agregar foto a la máquina"
-                        >
-                          <Camera size={16} />
-                          <span style={{ fontSize: '0.62rem' }}>+ Foto</span>
-                        </div>
-                      )}
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
-                          {m.nombre}
-                        </div>
-                        <div style={{ fontSize: '0.75rem', color: m.estado === 'Disponible' ? 'var(--accent-success)' : m.estado === 'En Uso' ? '#fde047' : '#f87171' }}>
-                          ● {m.estado}
+            {maquinas.map(m => {
+              const watts = Math.round((m.consumo_kwh || 0.05) * 1000);
+              const costoEnergiaMin = m.costo_minuto_energia !== undefined ? m.costo_minuto_energia : (m.consumo_kwh * (config.tarifa_kwh || 834)) / 60;
+              const repuestosActivos = Array.isArray(m.repuestos) ? m.repuestos.filter(r => r.activo !== false) : [];
+              const costoRepuestosMin = m.costo_minuto_repuestos !== undefined ? m.costo_minuto_repuestos : repuestosActivos.reduce((s, r) => s + (Number(r.costo_minuto) || 0), 0);
+              const costoTotalMin = m.costo_minuto;
+              const esConsumoInflado = m.consumo_kwh >= 0.35 && (m.tipo.toLowerCase().includes('resina') || m.nombre.toLowerCase().includes('mono'));
+
+              return (
+                <div 
+                  key={m.id} 
+                  style={{ 
+                    background: 'rgba(15, 23, 42, 0.45)', 
+                    padding: '16px', 
+                    borderRadius: '12px', 
+                    border: esConsumoInflado ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-subtle)', 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    justifyContent: 'space-between',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}
+                >
+                  <div>
+                    {/* Encabezado */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+                        {m.imagen_url ? (
+                          <div 
+                            onClick={() => setZoomModalImg({ url: m.imagen_url!, title: m.nombre })}
+                            style={{
+                              width: '52px',
+                              height: '52px',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              flexShrink: 0,
+                              cursor: 'pointer',
+                              border: '1px solid rgba(56, 189, 248, 0.35)',
+                              background: '#050508'
+                            }}
+                            title="Clic para ampliar foto"
+                          >
+                            <img src={m.imagen_url} alt={m.nombre} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                          </div>
+                        ) : (
+                          <div 
+                            onClick={() => handleOpenModalMaquina(m)}
+                            style={{
+                              width: '52px',
+                              height: '52px',
+                              borderRadius: '8px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              flexShrink: 0,
+                              background: 'rgba(255, 255, 255, 0.03)',
+                              border: '1px dashed rgba(255, 255, 255, 0.18)',
+                              cursor: 'pointer',
+                              color: 'var(--text-muted)',
+                              gap: '2px'
+                            }}
+                            title="Agregar foto a la máquina"
+                          >
+                            <Camera size={16} />
+                            <span style={{ fontSize: '0.62rem' }}>+ Foto</span>
+                          </div>
+                        )}
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontWeight: 700, fontSize: '0.96rem', color: '#fff', lineHeight: 1.25 }}>
+                            {m.nombre}
+                          </div>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '4px' }}>
+                            <span style={{ fontSize: '0.72rem', color: m.estado === 'Disponible' ? 'var(--accent-success)' : m.estado === 'En Uso' ? '#fde047' : '#f87171', fontWeight: 600 }}>
+                              ● {m.estado}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.05)', padding: '1px 6px', borderRadius: '4px' }}>
+                              {m.tipo}
+                            </span>
+                          </div>
                         </div>
                       </div>
+
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                          onClick={() => handleOpenModalMaquina(m)}
+                          title="Editar máquina y repuestos"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                          onClick={() => handleDeleteMaquina(m.id)}
+                          title="Eliminar máquina"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                      <button 
-                        className="btn btn-secondary btn-sm" 
-                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                        onClick={() => handleOpenModalMaquina(m)}
-                        title="Editar máquina y foto"
-                      >
-                        <Edit3 size={13} />
-                      </button>
-                      <button 
-                        className="btn btn-danger btn-sm" 
-                        style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                        onClick={() => handleDeleteMaquina(m.id)}
-                        title="Eliminar máquina"
-                      >
-                        <Trash2 size={13} />
-                      </button>
+
+                    {/* Alerta de Consumo Inflado Histórico */}
+                    {esConsumoInflado && (
+                      <div style={{ marginTop: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '6px 10px', borderRadius: '6px', fontSize: '0.72rem', color: '#fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                        <span>⚠️ Potencia ({watts}W) inflada del Excel antiguo.</span>
+                        <button 
+                          type="button" 
+                          className="btn btn-xs btn-cyan" 
+                          style={{ padding: '2px 6px', fontSize: '0.65rem' }}
+                          onClick={handleCalibrarPotencias}
+                        >
+                          Calibrar a 50W
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Bloque 1: Consumo Eléctrico Puro */}
+                    <div style={{ marginTop: '12px', background: 'rgba(56, 189, 248, 0.06)', border: '1px solid rgba(56, 189, 248, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem' }}>
+                        <span style={{ color: '#38bdf8', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Zap size={12} />
+                          Energía Eléctrica
+                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {watts} Watts ({m.consumo_kwh} kW)
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '2px' }}>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f8fafc' }}>
+                          ${costoEnergiaMin.toFixed(2)} COP/min
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                          ${(costoEnergiaMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/h
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Bloque 2: Fondo de Repuestos & Mantenimiento */}
+                    <div style={{ marginTop: '8px', background: 'rgba(245, 158, 11, 0.06)', border: '1px solid rgba(245, 158, 11, 0.18)', borderRadius: '8px', padding: '8px 10px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.74rem' }}>
+                        <span style={{ color: '#f59e0b', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Wrench size={12} />
+                          Fondo Repuestos & Desgaste
+                        </span>
+                        <span style={{ color: 'var(--text-muted)' }}>
+                          {repuestosActivos.length} componente(s)
+                        </span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '2px' }}>
+                        <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f59e0b' }}>
+                          {costoRepuestosMin > 0 ? `+$${costoRepuestosMin.toFixed(2)} COP/min` : '$0.00 COP/min'}
+                        </span>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                          ${(costoRepuestosMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/h
+                        </span>
+                      </div>
+                      {repuestosActivos.length > 0 ? (
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', marginTop: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          Piezas: {repuestosActivos.map(r => r.nombre).join(', ')}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginTop: '4px' }}>
+                          Sin repuestos específicos (Cobro solo energía)
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-                    Tipo: {m.tipo}
+                  {/* Bloque 3: Tarifa Total Consolidada */}
+                  <div style={{ marginTop: '12px', paddingTop: '10px', borderTop: '1px dashed rgba(255,255,255,0.12)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                        Tarifa Total Taller
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                        ${(costoTotalMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/hora
+                      </span>
+                    </div>
+                    <div style={{ textAlign: 'right' }}>
+                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
+                        ${costoTotalMin.toFixed(3)}
+                      </span>
+                      <span style={{ fontSize: '0.72rem', color: 'var(--brand-cyan)', marginLeft: '3px' }}>
+                        COP/min
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* GUÍA TÉCNICA VISUAL DE TARIFAS Y POTENCIAS */}
+          <div style={{ marginTop: '24px', background: 'rgba(15, 23, 42, 0.65)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '12px', padding: '18px 20px', boxShadow: '0 4px 16px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '8px', borderRadius: '8px', display: 'flex' }}>
+                <Sparkles size={20} />
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.02rem', color: '#f8fafc' }}>
+                  ¿Cómo se calcula la tarifa por minuto de cada máquina y por qué es importante?
+                </h3>
+                <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                  Metodología de costos de taller: Energía eléctrica real + fondo de reposición de componentes
+                </span>
+              </div>
+            </div>
+
+            <div style={{ fontSize: '0.84rem', color: '#cbd5e1', lineHeight: '1.6' }}>
+              <p style={{ margin: '0 0 10px 0' }}>
+                La <strong>Tarifa por Minuto</strong> es el cobro técnico aplicado por cada minuto que una máquina está operando en un pedido. Para que el precio al cliente sea justo y el taller no pierda dinero, se divide en <strong>dos componentes transparentes</strong>:
+              </p>
+              
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '12px', marginBottom: '14px' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #38bdf8' }}>
+                  <div style={{ color: '#38bdf8', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Zap size={14} /> 1. Consumo Eléctrico Puro
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Calculado con la potencia real en Watts de la máquina y la tarifa del recibo (actualmente <strong>${config.tarifa_kwh || 834} COP/kWh</strong>).<br/>
+                    <em>Fórmula:</em> (Watts ÷ 1000) × Tarifa kWh ÷ 60 min.<br/>
+                    <em>Ejemplo:</em> 50 Watts = <strong>$0.70 COP/min</strong> ($41.70 COP/hora).
                   </div>
                 </div>
 
-                <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                  <span>Potencia: {m.consumo_kwh} kW/h</span>
-                  <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
-                    ${m.costo_minuto.toFixed(3)} COP/min
-                  </span>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '8px', borderLeft: '4px solid #f59e0b' }}>
+                  <div style={{ color: '#f59e0b', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Wrench size={14} /> 2. Fondo de Repuestos & Mantenimiento
+                  </div>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                    Recupera el desgaste de piezas que deben reemplazarse periódicamente (Film FEP, pantalla LCD mono, boquillas, placas PEI).<br/>
+                    <em>Fórmula:</em> (Costo del repuesto) ÷ (Horas vida útil × 60 min).<br/>
+                    <em>Ejemplo:</em> FEP ($75k/300h = $4.17/min) + LCD ($180k/2000h = $1.50/min).
+                  </div>
                 </div>
               </div>
-            ))}
+
+              <div style={{ background: 'rgba(239, 68, 68, 0.08)', border: '1px solid rgba(239, 68, 68, 0.25)', padding: '10px 14px', borderRadius: '8px', marginBottom: '14px' }}>
+                <div style={{ color: '#f87171', fontWeight: 700, fontSize: '0.82rem' }}>
+                  📌 ¿Por qué antes aparecía un costo alto de $6.255/min o más en la Anycubic Mono 4?
+                </div>
+                <div style={{ fontSize: '0.78rem', color: '#e2e8f0', marginTop: '4px' }}>
+                  En el archivo Excel histórico de WJGEEKS, se le asignaba a la impresora de resina un consumo inflado de <strong>0.45 kW (450 Watts)</strong> para que la energía por sí sola cobrara <strong>$6.255 COP/min</strong> y así cubrir la pantalla sin desglosarla. Si hoy se mantenía en 450W y además se le agregaban repuestos, la tarifa saltaba al doble (~$12.00 COP/min). Con la calibración actual, la máquina queda en sus <strong>50 Watts reales</strong> ($0.70/min) y los repuestos suman ~$5.67/min, logrando la tarifa exacta (~$6.36 COP/min) con total claridad contable.
+                </div>
+              </div>
+
+              {/* Tabla de Referencia Típica */}
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', fontSize: '0.78rem', borderCollapse: 'collapse', textAlign: 'left', background: 'rgba(0,0,0,0.25)', borderRadius: '8px' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.1)', color: 'var(--brand-cyan)' }}>
+                      <th style={{ padding: '8px 10px' }}>Equipo / Máquina</th>
+                      <th style={{ padding: '8px 10px' }}>Potencia Real</th>
+                      <th style={{ padding: '8px 10px' }}>Luz / hora</th>
+                      <th style={{ padding: '8px 10px' }}>Luz / min</th>
+                      <th style={{ padding: '8px 10px' }}>Repuestos Amortizados</th>
+                      <th style={{ padding: '8px 10px' }}>Tarifa Total Sugerida</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>Anycubic MONO 4 (Resina 4K)</td>
+                      <td style={{ padding: '8px 10px' }}>50 W (0.05 kW)</td>
+                      <td style={{ padding: '8px 10px' }}>$41.70</td>
+                      <td style={{ padding: '8px 10px', color: '#38bdf8' }}>$0.70/min</td>
+                      <td style={{ padding: '8px 10px', color: '#f59e0b' }}>+$5.67/min (FEP + LCD)</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--brand-cyan)' }}>$6.36 COP/min</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>Anycubic Mono X 6Ks (Resina 6K)</td>
+                      <td style={{ padding: '8px 10px' }}>60 W (0.06 kW)</td>
+                      <td style={{ padding: '8px 10px' }}>$50.04</td>
+                      <td style={{ padding: '8px 10px', color: '#38bdf8' }}>$0.83/min</td>
+                      <td style={{ padding: '8px 10px', color: '#f59e0b' }}>+$6.56/min (FEP 6K + LCD)</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--brand-cyan)' }}>$7.39 COP/min</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>Bambulab P1S / P2S (Filamento FDM)</td>
+                      <td style={{ padding: '8px 10px' }}>130 W (0.13 kW)</td>
+                      <td style={{ padding: '8px 10px' }}>$108.42</td>
+                      <td style={{ padding: '8px 10px', color: '#38bdf8' }}>$1.81/min</td>
+                      <td style={{ padding: '8px 10px', color: '#f59e0b' }}>+$1.92/min (Nozzle + Cama)</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--brand-cyan)' }}>$3.72 COP/min</td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>Anycubic Wash & Cure 3</td>
+                      <td style={{ padding: '8px 10px' }}>48 W (0.048 kW)</td>
+                      <td style={{ padding: '8px 10px' }}>$40.03</td>
+                      <td style={{ padding: '8px 10px', color: '#38bdf8' }}>$0.67/min</td>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>$0 (Sin repuestos)</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--brand-cyan)' }}>$0.67 COP/min</td>
+                    </tr>
+                    <tr>
+                      <td style={{ padding: '8px 10px', fontWeight: 600 }}>Compresor Paasche S220R</td>
+                      <td style={{ padding: '8px 10px' }}>150 W (0.15 kW)</td>
+                      <td style={{ padding: '8px 10px' }}>$125.10</td>
+                      <td style={{ padding: '8px 10px', color: '#38bdf8' }}>$2.09/min</td>
+                      <td style={{ padding: '8px 10px', color: 'var(--text-muted)' }}>$0 (Solo energía)</td>
+                      <td style={{ padding: '8px 10px', fontWeight: 700, color: 'var(--brand-cyan)' }}>$2.09 COP/min</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -1109,12 +1544,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           <form onSubmit={handleGuardarConfig}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '14px' }}>
               <div className="form-group">
-                <label className="form-label">Tarifa de Energía Eléctrica (COP / kWh)</label>
+                <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span>Tarifa de Energía Eléctrica (COP / kWh)</span>
+                  <span style={{ fontSize: '0.72rem', color: '#38bdf8' }}>⚡ Actualiza toda la maquinaria</span>
+                </label>
                 <input 
                   type="number" 
                   className="form-input" 
                   value={tarifaKwh}
                   onChange={e => setTarifaKwh(parseFloat(e.target.value) || 0)}
+                  title="Costo de la energía del taller (ej. $834 COP/kWh)"
                   required
                 />
               </div>
@@ -1560,17 +1999,78 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     </datalist>
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Consumo Eléctrico (kW/h)</label>
-                    <input 
-                      type="number" 
-                      step="0.01"
-                      className="form-input" 
-                      value={itemEnEdicion.consumo_kwh}
-                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, consumo_kwh: parseFloat(e.target.value) || 0.1 })}
-                      required
-                    />
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                      <label className="form-label" style={{ margin: 0 }}>
+                        Potencia / Consumo
+                      </label>
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        <button
+                          type="button"
+                          className={`btn btn-xs ${unidadPotencia === 'W' ? 'btn-cyan' : 'btn-secondary'}`}
+                          style={{ padding: '2px 8px', fontSize: '0.68rem' }}
+                          onClick={() => setUnidadPotencia('W')}
+                        >
+                          Watts (W)
+                        </button>
+                        <button
+                          type="button"
+                          className={`btn btn-xs ${unidadPotencia === 'kW' ? 'btn-cyan' : 'btn-secondary'}`}
+                          style={{ padding: '2px 8px', fontSize: '0.68rem' }}
+                          onClick={() => setUnidadPotencia('kW')}
+                        >
+                          kW
+                        </button>
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <input 
+                        type="number" 
+                        step={unidadPotencia === 'W' ? "1" : "0.001"}
+                        className="form-input" 
+                        value={unidadPotencia === 'W' ? Math.round((Number(itemEnEdicion.consumo_kwh) || 0) * 1000) : itemEnEdicion.consumo_kwh}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const kwh = unidadPotencia === 'W' ? val / 1000 : val;
+                          setItemEnEdicion({ ...itemEnEdicion, consumo_kwh: kwh });
+                        }}
+                        required
+                      />
+                      <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#38bdf8', whiteSpace: 'nowrap' }}>
+                        {unidadPotencia === 'W' ? 'W' : 'kW'}
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '0.7rem', color: '#38bdf8', display: 'block', marginTop: '2px' }}>
+                      ⚡ {Math.round((Number(itemEnEdicion.consumo_kwh) || 0) * 1000)}W = ${(((Number(itemEnEdicion.consumo_kwh) || 0) * (config.tarifa_kwh || 834)) / 60).toFixed(2)}/min luz
+                    </span>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginTop: '4px' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.64rem', padding: '1px 5px' }}
+                        onClick={() => setItemEnEdicion({ ...itemEnEdicion, consumo_kwh: 0.05 })}
+                      >
+                        50W (Resina 4K)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.64rem', padding: '1px 5px' }}
+                        onClick={() => setItemEnEdicion({ ...itemEnEdicion, consumo_kwh: 0.06 })}
+                      >
+                        60W (Resina 6K)
+                      </button>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.64rem', padding: '1px 5px' }}
+                        onClick={() => setItemEnEdicion({ ...itemEnEdicion, consumo_kwh: 0.13 })}
+                      >
+                        130W (Bambulab)
+                      </button>
+                    </div>
                   </div>
                 </div>
+
                 <div className="form-group">
                   <label className="form-label">Estado de la Máquina</label>
                   <select
@@ -1583,6 +2083,197 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     <option value="Mantenimiento">🔴 En Mantenimiento</option>
                   </select>
                 </div>
+
+                {/* MODULO DE REPUESTOS Y MANTENIMIENTO DENTRO DEL MODAL */}
+                {(() => {
+                  const consumoKwh = Number(itemEnEdicion.consumo_kwh) || 0.05;
+                  const tarifa = config.tarifa_kwh || 834.0;
+                  const energiaMin = (consumoKwh * tarifa) / 60;
+                  const repuestosList: RepuestoMaquina[] = Array.isArray(itemEnEdicion.repuestos) ? itemEnEdicion.repuestos : [];
+                  const repuestosMin = repuestosList
+                    .filter(r => r.activo !== false)
+                    .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+                  const totalMin = energiaMin + repuestosMin;
+
+                  return (
+                    <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.35)', padding: '14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '0.9rem', color: '#f59e0b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <Wrench size={15} />
+                            Repuestos, Desgaste y Mantenimiento
+                          </h4>
+                          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            Amortización por horas de vida útil sumada a la tarifa de impresión
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Presets Rápidos */}
+                      <div style={{ marginBottom: '12px' }}>
+                        <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>
+                          PRESETS RÁPIDOS SUGERIDOS:
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                            onClick={() => handleAddRepuesto({ nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300 })}
+                          >
+                            + Film FEP ($75k/300h)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                            onClick={() => handleAddRepuesto({ nombre: 'Pantalla LCD Mono 4K/8K', costo_compra: 180000, vida_util_horas: 2000 })}
+                          >
+                            + Pantalla LCD ($180k/2000h)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                            onClick={() => handleAddRepuesto({ nombre: 'Boquilla / Nozzle Endurecido', costo_compra: 45000, vida_util_horas: 500 })}
+                          >
+                            + Nozzle FDM ($45k/500h)
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                            onClick={() => handleAddRepuesto({ nombre: 'Lubricación & Grasa Eje Z', costo_compra: 20000, vida_util_horas: 200 })}
+                          >
+                            + Grasa Eje Z ($20k/200h)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Lista de Repuestos */}
+                      {repuestosList.length > 0 ? (
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '12px' }}>
+                          {repuestosList.map((r, idx) => (
+                            <div 
+                              key={r.id || idx}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                padding: '8px 10px',
+                                background: r.activo !== false ? 'rgba(255,255,255,0.03)' : 'rgba(255,255,255,0.01)',
+                                border: '1px solid rgba(255,255,255,0.06)',
+                                borderRadius: '6px',
+                                opacity: r.activo !== false ? 1 : 0.5
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                                <input 
+                                  type="checkbox"
+                                  checked={r.activo !== false}
+                                  onChange={() => handleToggleRepuesto(r.id)}
+                                  title="Activar o desactivar este repuesto de la tarifa"
+                                  style={{ accentColor: '#f59e0b', cursor: 'pointer' }}
+                                />
+                                <div>
+                                  <div style={{ fontSize: '0.82rem', fontWeight: 600, color: '#f8fafc' }}>
+                                    {r.nombre}
+                                  </div>
+                                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                                    ${Number(r.costo_compra || 0).toLocaleString('es-CO')} COP / {r.vida_util_horas} horas
+                                  </div>
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                <div style={{ textAlign: 'right' }}>
+                                  <div style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 700 }}>
+                                    +${(Number(r.costo_minuto) || 0).toFixed(2)}/min
+                                  </div>
+                                  <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                                    ${(Number(r.costo_hora) || 0).toLocaleString('es-CO')}/h
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="btn btn-danger btn-sm"
+                                  style={{ padding: '3px 6px', minHeight: 'auto' }}
+                                  onClick={() => handleRemoveRepuesto(r.id)}
+                                  title="Eliminar repuesto"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', fontStyle: 'italic', marginBottom: '10px' }}>
+                          Sin repuestos específicos configurados aún. La máquina cobrará únicamente energía eléctrica pura más cualquier tarifa base configurada.
+                        </div>
+                      )}
+
+                      {/* Mini Formulario */}
+                      <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px', borderRadius: '6px', border: '1px dashed rgba(255,255,255,0.1)' }}>
+                        <div style={{ fontSize: '0.72rem', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '6px' }}>
+                          + Agregar Repuesto Personalizado
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr auto', gap: '6px', alignItems: 'center' }}>
+                          <input 
+                            type="text"
+                            className="form-input"
+                            style={{ fontSize: '0.75rem', padding: '6px 8px' }}
+                            placeholder="Nombre componente..."
+                            value={nuevoRepuesto.nombre}
+                            onChange={e => setNuevoRepuesto({ ...nuevoRepuesto, nombre: e.target.value })}
+                          />
+                          <input 
+                            type="number"
+                            className="form-input"
+                            style={{ fontSize: '0.75rem', padding: '6px 8px' }}
+                            placeholder="Costo COP"
+                            value={nuevoRepuesto.costo_compra}
+                            onChange={e => setNuevoRepuesto({ ...nuevoRepuesto, costo_compra: e.target.value })}
+                          />
+                          <input 
+                            type="number"
+                            className="form-input"
+                            style={{ fontSize: '0.75rem', padding: '6px 8px' }}
+                            placeholder="Horas uso"
+                            value={nuevoRepuesto.vida_util_horas}
+                            onChange={e => setNuevoRepuesto({ ...nuevoRepuesto, vida_util_horas: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ fontSize: '0.75rem', padding: '6px 10px', whiteSpace: 'nowrap' }}
+                            onClick={() => handleAddRepuesto()}
+                          >
+                            <Plus size={12} /> Agregar
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Resumen Total */}
+                      <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(6, 182, 212, 0.08)', borderRadius: '6px', border: '1px solid rgba(6, 182, 212, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            ⚡ Energía: <strong style={{ color: '#38bdf8' }}>${energiaMin.toFixed(2)}/min</strong> + 🛠️ Repuestos: <strong style={{ color: '#f59e0b' }}>${repuestosMin.toFixed(2)}/min</strong>
+                          </div>
+                          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
+                            Tarifa por hora: ${(totalMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/hora
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right' }}>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tarifa Minuto Total:</div>
+                          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
+                            ${totalMin.toFixed(3)} COP/min
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                   <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Máquina</button>
                   <button type="button" className="btn btn-secondary" onClick={() => setModalType(null)}>Cancelar</button>

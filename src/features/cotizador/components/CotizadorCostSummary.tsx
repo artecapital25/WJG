@@ -96,6 +96,17 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
                 {calculoEnVivo.maquinas_involucradas?.length || 1} equipo(s)
               </span>
             </div>
+            {Boolean(calculoEnVivo.costo_repuestos_maquina && calculoEnVivo.costo_repuestos_maquina > 0) && (
+              <div className="metric-item">
+                <div className="metric-label">Repuestos/Desgaste</div>
+                <div className="metric-value" style={{ color: '#f59e0b' }}>
+                  ${(calculoEnVivo.costo_repuestos_maquina || 0).toLocaleString('es-CO')}
+                </div>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                  FEP / Pantalla LCD
+                </span>
+              </div>
+            )}
             <div className="metric-item">
               <div className="metric-label">Costo Taller</div>
               <div className="metric-value">${calculoEnVivo.costo_base_produccion.toLocaleString('es-CO')}</div>

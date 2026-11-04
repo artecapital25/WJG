@@ -283,7 +283,10 @@ export const StorageService = {
       saveItem(STORAGE_KEYS.MAQUINAS, merged);
       return merged;
     }
-    return loaded;
+    return loaded.map(m => ({
+      ...m,
+      repuestos: Array.isArray(m.repuestos) ? m.repuestos : []
+    }));
   },
   saveMaquinas: (items: Maquina[]) => saveItem(STORAGE_KEYS.MAQUINAS, items),
 
