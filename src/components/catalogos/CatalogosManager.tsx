@@ -36,7 +36,7 @@ import {
   RepuestoMaquina
 } from '../../types';
 import { StorageService } from '../../services/storageService';
-import { CloudSyncService } from '../../services/cloudSyncService';
+import { CloudSyncService, ensureValidUuid } from '../../services/cloudSyncService';
 import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
 
@@ -126,7 +126,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       setItemEnEdicion({ ...res, isEdit: true, imagen_url: res.imagen_url || '' });
     } else {
       setItemEnEdicion({
-        id: `res-${Date.now()}`,
+        id: ensureValidUuid(),
         tipo: 'Resina Standar',
         marca: 'Anycubic',
         color: 'Negro',
@@ -177,9 +177,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
   const handleDeleteResina = (id: string) => {
     if (confirm('¿Eliminar esta resina del catálogo?')) {
+      const resinaABorrar = resinas.find(r => r.id !== id);
       const updated = resinas.filter(r => r.id !== id);
       onUpdateResinas(updated);
-      CloudSyncService.deleteResina(id);
+      CloudSyncService.deleteResina(id, resinaABorrar?.tipo);
+      toast.success('Resina eliminada del catálogo');
     }
   };
 
@@ -191,7 +193,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       setItemEnEdicion({ ...ins, isEdit: true, imagen_url: ins.imagen_url || '' });
     } else {
       setItemEnEdicion({
-        id: `ins-${Date.now()}`,
+        id: ensureValidUuid(),
         codigo: insumos.length + 1,
         nombre: '',
         marca: 'Genérico',
@@ -239,9 +241,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
   const handleDeleteInsumo = (id: string) => {
     if (confirm('¿Eliminar este insumo del taller?')) {
+      const insumoABorrar = insumos.find(i => i.id !== id);
       const updated = insumos.filter(i => i.id !== id);
       onUpdateInsumos(updated);
-      CloudSyncService.deleteInsumo(id);
+      CloudSyncService.deleteInsumo(id, insumoABorrar?.nombre);
+      toast.success('Insumo eliminado');
     }
   };
 
@@ -258,7 +262,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       });
     } else {
       setItemEnEdicion({
-        id: `maq-${Date.now()}`,
+        id: ensureValidUuid(),
         nombre: 'Bambulab P1S / P2S',
         tipo: 'Impresora 3D Filamento (FDM)',
         consumo_kwh: 0.13,
@@ -436,9 +440,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
   const handleDeleteMaquina = (id: string) => {
     if (confirm('¿Eliminar esta máquina del taller?')) {
+      const maquinaABorrar = maquinas.find(m => m.id === id);
       const updated = maquinas.filter(m => m.id !== id);
       onUpdateMaquinas(updated);
-      CloudSyncService.deleteMaquina(id);
+      CloudSyncService.deleteMaquina(id, maquinaABorrar?.nombre);
+      toast.success('Máquina eliminada del taller');
     }
   };
 

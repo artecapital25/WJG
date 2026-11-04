@@ -469,52 +469,29 @@ export const App: React.FC = () => {
           StorageService.saveSolicitudesInsumos(cloudSolicitudes);
         }
 
-        // Sincronización Bidireccional Inteligente (Smart Merge) para Maquinaria
-        const localMaquinas = StorageService.getMaquinas();
-        const serverMaquinas = cloudMaquinas || [];
-        const serverMaqIds = new Set(serverMaquinas.map(m => m.id));
-        const serverMaqNames = new Set(serverMaquinas.map(m => m.nombre.trim().toLowerCase()));
-
-        // Identificar máquinas creadas localmente por compañeros que aún no estén en Supabase y subirlas
-        const missingMaquinasOnServer = localMaquinas.filter(lm => 
-          !serverMaqIds.has(lm.id) && !serverMaqNames.has(lm.nombre.trim().toLowerCase())
-        );
-        if (missingMaquinasOnServer.length > 0) {
-          missingMaquinasOnServer.forEach(m => CloudSyncService.saveMaquina(m));
+        // Sincronización Canónica (SSOT): Supabase es la única fuente oficial de verdad
+        if (cloudMaquinas !== null && cloudMaquinas.length > 0) {
+          const localMaquinas = StorageService.getMaquinas();
+          const localMap = new Map(localMaquinas.map(m => [m.id, m]));
+          const mergedMaquinas = cloudMaquinas.map(serverM => {
+            const localM = localMap.get(serverM.id);
+            if (localM && Array.isArray(localM.repuestos) && localM.repuestos.length > 0) {
+              return { ...serverM, repuestos: localM.repuestos };
+            }
+            return serverM;
+          });
+          setMaquinas(mergedMaquinas);
+          StorageService.saveMaquinas(mergedMaquinas);
         }
 
-        const finalMaquinas = [...serverMaquinas, ...missingMaquinasOnServer];
-        if (finalMaquinas.length > 0) {
-          setMaquinas(finalMaquinas);
-          StorageService.saveMaquinas(finalMaquinas);
+        if (cloudInsumos !== null && cloudInsumos.length > 0) {
+          setInsumos(cloudInsumos);
+          StorageService.saveInsumos(cloudInsumos);
         }
 
-        // Sincronización Bidireccional Inteligente para Insumos
-        const localInsumos = StorageService.getInsumos();
-        const serverInsumos = cloudInsumos || [];
-        const serverInsNames = new Set(serverInsumos.map(i => i.nombre.trim().toLowerCase()));
-        const missingInsumosOnServer = localInsumos.filter(li => !serverInsNames.has(li.nombre.trim().toLowerCase()));
-        if (missingInsumosOnServer.length > 0) {
-          missingInsumosOnServer.forEach(i => CloudSyncService.saveInsumo(i));
-        }
-        const finalInsumos = [...serverInsumos, ...missingInsumosOnServer];
-        if (finalInsumos.length > 0) {
-          setInsumos(finalInsumos);
-          StorageService.saveInsumos(finalInsumos);
-        }
-
-        // Sincronización Bidireccional Inteligente para Resinas
-        const localResinas = StorageService.getResinas();
-        const serverResinas = cloudResinas || [];
-        const serverResKeys = new Set(serverResinas.map(r => `${r.tipo.trim().toLowerCase()}-${r.color.trim().toLowerCase()}`));
-        const missingResinasOnServer = localResinas.filter(lr => !serverResKeys.has(`${lr.tipo.trim().toLowerCase()}-${lr.color.trim().toLowerCase()}`));
-        if (missingResinasOnServer.length > 0) {
-          missingResinasOnServer.forEach(r => CloudSyncService.saveResina(r));
-        }
-        const finalResinas = [...serverResinas, ...missingResinasOnServer];
-        if (finalResinas.length > 0) {
-          setResinas(finalResinas);
-          StorageService.saveResinas(finalResinas);
+        if (cloudResinas !== null && cloudResinas.length > 0) {
+          setResinas(cloudResinas);
+          StorageService.saveResinas(cloudResinas);
         }
 
         // Sincronización de Configuración de Taller (Tarifa Eléctrica / Luz, Medios de Pago)
@@ -625,7 +602,7 @@ export const App: React.FC = () => {
       async () => {
         // Sincronización en tiempo real de maquinas (ej. Bambulab P2S)
         const freshMaq = await CloudSyncService.fetchMaquinas();
-        if (freshMaq !== null && freshMaq.length > 0) {
+        if (freshMaq !== null) {
           setMaquinas(freshMaq);
           StorageService.saveMaquinas(freshMaq);
         }
@@ -641,13 +618,13 @@ export const App: React.FC = () => {
           CloudSyncService.fetchProveedores(),
           CloudSyncService.fetchTarifasTamanos()
         ]);
-        if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
-        if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
-        if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
-        if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
-        if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
-        if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
-        if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+        if (freshMaq !== null) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
+        if (freshIns !== null) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
+        if (freshRes !== null) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+        if (freshCfg !== null) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
+        if (freshPer !== null && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
+        if (freshProv !== null && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
+        if (freshTar !== null && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
       }
     );
 

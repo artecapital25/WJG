@@ -30,6 +30,20 @@ import {
 } from '../types';
 
 // Interfaz canónica para el Balance Financiero Consolidado
+export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function ensureValidUuid(id?: string): string {
+  if (id && UUID_REGEX.test(id)) return id;
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 export interface BalanceTaller {
   total_ingresos_recaudados: number;
   recaudado_nequi: number;
@@ -428,29 +442,13 @@ export const CloudSyncService = {
 
         const itemsPayload = cot.items.map(it => ({
           cotizacion_id: cotData.id,
-          nombre_item: it.nombre_item,
-          cantidad: it.cantidad,
-          alto_mm: it.alto_mm || 0,
-          ancho_mm: it.ancho_mm || 0,
-          profundidad_mm: it.profundidad_mm || 0,
-          volumen_cm3: it.volumen_cm3 || 0,
-          peso_estimado_g: it.peso_estimado_g || 0,
-          tiempo_impresion_min: it.tiempo_impresion_min || 0,
-          tiempo_desarrollo_min: it.tiempo_desarrollo_min || 0,
-          tiempo_armado_min: it.tiempo_armado_min || 0,
-          tiempo_pintura_min: it.tiempo_pintura_min || 0,
-          costo_energia: it.costo_energia || 0,
-          costo_resina: it.costo_resina || 0,
-          costo_curado: it.costo_curado || 0,
-          costo_insumos: it.costo_insumos || 0,
-          costo_mano_obra: it.costo_mano_obra || 0,
-          costo_modelo_comprado: it.costo_modelo_comprado || 0,
-          costo_base_produccion: it.costo_base_produccion || 0,
-          margen_ganancia: it.margen_ganancia || 0.4,
-          precio_unitario: it.precio_unitario || 0,
-          precio_total: it.precio_total || 0,
-          descripcion_tecnica: it.descripcion_tecnica || '',
-          imagen_url: it.imagen_url || null
+          nombre_pieza: it.nombre_item || 'Pieza 3D',
+          cantidad: Number(it.cantidad) || 1,
+          precio_unitario: Number(it.precio_unitario) || 0,
+          subtotal: Number(it.precio_total) || 0,
+          tiempo_horas: Number(((it.tiempo_impresion_min || 0) / 60).toFixed(2)),
+          peso_gramos: Number((it.peso_estimado_g || 0).toFixed(2)),
+          tecnologia: 'SLA'
         }));
 
         await supabase!.from('cotizacion_items').insert(itemsPayload);
@@ -1194,17 +1192,19 @@ export const CloudSyncService = {
   async saveResina(resina: Resina): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const validId = ensureValidUuid(resina.id);
+      resina.id = validId;
       const payload = {
-        id: resina.id,
+        id: validId,
         tipo: resina.tipo,
         marca: resina.marca,
         color: resina.color,
-        volumen_l: resina.volumen_l,
-        densidad_g_cm3: resina.densidad_g_cm3,
-        peso_g: resina.peso_g,
-        precio_compra: resina.precio_compra,
-        costo_gramo: resina.costo_gramo,
-        velocidad_impresion_mm_h: resina.velocidad_impresion_mm_h,
+        volumen_l: Number(resina.volumen_l) || 1.0,
+        densidad_g_cm3: Number(resina.densidad_g_cm3) || 1.13,
+        peso_g: Number(resina.peso_g) || 1130,
+        precio_compra: Number(resina.precio_compra) || 89000,
+        costo_gramo: Number(resina.costo_gramo) || 78.76,
+        velocidad_impresion_mm_h: Number(resina.velocidad_impresion_mm_h) || 20,
         imagen_url: resina.imagen_url || null
       };
       const { error } = await supabase!.from('resinas').upsert(payload, { onConflict: 'id' });
@@ -1218,15 +1218,17 @@ export const CloudSyncService = {
   async saveInsumo(insumo: Insumo): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const validId = ensureValidUuid(insumo.id);
+      insumo.id = validId;
       const payload = {
-        id: insumo.id,
-        codigo_item: insumo.codigo,
+        id: validId,
+        codigo_item: Number(insumo.codigo) || 1,
         nombre: insumo.nombre,
         marca: insumo.marca,
         categoria: insumo.categoria,
-        cantidad_presentacion: insumo.presentacion || 1,
-        costo_total: insumo.costo_total,
-        costo_unitario: insumo.costo_unitario,
+        cantidad_presentacion: Number(insumo.presentacion) || 1,
+        costo_total: Number(insumo.costo_total) || 0,
+        costo_unitario: Number(insumo.costo_unitario) || 0,
         enlace_compra: insumo.enlace_compra || null,
         descripcion: insumo.descripcion || null,
         imagen_url: insumo.imagen_url || null
@@ -1238,7 +1240,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.04 Traer Maquinaria desde Supabase
+  // 21.04 Traer Maquinaria desde Supabase (con Repuestos y Desglose por Modelo)
   async fetchMaquinas(): Promise<Maquina[] | null> {
     if (!this.isAvailable()) return null;
     try {
@@ -1261,17 +1263,50 @@ export const CloudSyncService = {
             repuestosParsed = [];
           }
         }
+
+        // Si la máquina no tiene repuestos en Supabase, asignar el tarifario de fábrica según modelo
+        if (!Array.isArray(repuestosParsed) || repuestosParsed.length === 0) {
+          const nom = (row.nombre || '').toLowerCase();
+          if (nom.includes('mono 4') || nom.includes('mono 2') || (nom.includes('resina') && !nom.includes('6k'))) {
+            repuestosParsed = [
+              { id: `rep-${row.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true },
+              { id: `rep-${row.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true }
+            ];
+          } else if (nom.includes('6k') || nom.includes('mono x')) {
+            repuestosParsed = [
+              { id: `rep-${row.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true },
+              { id: `rep-${row.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true }
+            ];
+          } else if (nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1')) {
+            repuestosParsed = [
+              { id: `rep-${row.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true },
+              { id: `rep-${row.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true }
+            ];
+          } else if (nom.includes('kobra') || nom.includes('ender') || nom.includes('fdm') || nom.includes('filamento')) {
+            repuestosParsed = [
+              { id: `rep-${row.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true }
+            ];
+          }
+        }
+
+        const consumo = Number(row.consumo_kwh) || 0.05;
+        const costo_minuto_energia = (consumo * 834.0) / 60;
+        const costo_minuto_repuestos = repuestosParsed
+          .filter(r => r.activo !== false)
+          .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+        const costo_total_min = costo_minuto_energia + costo_minuto_repuestos;
+
         return {
           id: row.id,
           nombre: row.nombre,
           tipo: row.tipo || 'Impresora 3D',
-          consumo_kwh: Number(row.consumo_kwh) || 0,
-          costo_minuto: Number(row.costo_minuto) || 0,
-          costo_minuto_energia: row.costo_minuto_energia !== undefined ? Number(row.costo_minuto_energia) : undefined,
-          costo_minuto_repuestos: row.costo_minuto_repuestos !== undefined ? Number(row.costo_minuto_repuestos) : undefined,
+          consumo_kwh: consumo,
+          costo_minuto: Number(row.costo_minuto) > 0 ? Number(row.costo_minuto) : Number(costo_total_min.toFixed(4)),
+          costo_minuto_energia: Number(costo_minuto_energia.toFixed(4)),
+          costo_minuto_repuestos: Number(costo_minuto_repuestos.toFixed(4)),
           estado: row.estado || 'Disponible',
           imagen_url: row.imagen_url || undefined,
-          repuestos: Array.isArray(repuestosParsed) ? repuestosParsed : []
+          repuestos: repuestosParsed
         };
       });
     } catch (e) {
@@ -1284,46 +1319,42 @@ export const CloudSyncService = {
   async saveMaquina(maquina: Maquina): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const validId = ensureValidUuid(maquina.id);
+      maquina.id = validId;
+
       const payload: any = {
-        id: maquina.id,
+        id: validId,
         nombre: maquina.nombre,
-        tipo: maquina.tipo,
-        consumo_kwh: maquina.consumo_kwh,
-        costo_minuto: maquina.costo_minuto,
-        estado: maquina.estado,
+        tipo: maquina.tipo || 'Impresora 3D',
+        consumo_kwh: Number(maquina.consumo_kwh) || 0.05,
+        costo_minuto: Number(maquina.costo_minuto) || 0,
+        estado: maquina.estado || 'Disponible',
         imagen_url: maquina.imagen_url || null
       };
-      if (maquina.costo_minuto_energia !== undefined) {
-        payload.costo_minuto_energia = maquina.costo_minuto_energia;
-      }
-      if (maquina.costo_minuto_repuestos !== undefined) {
-        payload.costo_minuto_repuestos = maquina.costo_minuto_repuestos;
-      }
-      if (maquina.repuestos) {
-        payload.repuestos = maquina.repuestos;
-      }
 
-      let { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
-      // Si la tabla aún no tiene las columnas adicionales en Supabase, hacer fallback seguro
-      if (error && (error.message?.includes('repuestos') || error.message?.includes('costo_minuto_'))) {
-        delete payload.repuestos;
-        delete payload.costo_minuto_energia;
-        delete payload.costo_minuto_repuestos;
-        const resFallback = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
-        error = resFallback.error;
+      const { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
+      if (error) {
+        console.warn('Error saving maquina in Supabase:', error.message);
+        return false;
       }
-      return !error;
+      return true;
     } catch (e) {
       return false;
     }
   },
 
   // 21.06 Eliminar Maquinaria en Supabase
-  async deleteMaquina(id: string): Promise<boolean> {
+  async deleteMaquina(id: string, nombre?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const { error } = await supabase!.from('maquinas').delete().eq('id', id);
-      return !error;
+      if (UUID_REGEX.test(id)) {
+        const { error } = await supabase!.from('maquinas').delete().eq('id', id);
+        return !error;
+      } else if (nombre) {
+        const { error } = await supabase!.from('maquinas').delete().eq('nombre', nombre);
+        return !error;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -1363,11 +1394,17 @@ export const CloudSyncService = {
   },
 
   // 21.08 Eliminar Insumo en Supabase
-  async deleteInsumo(id: string): Promise<boolean> {
+  async deleteInsumo(id: string, nombre?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const { error } = await supabase!.from('insumos').delete().eq('id', id);
-      return !error;
+      if (UUID_REGEX.test(id)) {
+        const { error } = await supabase!.from('insumos').delete().eq('id', id);
+        return !error;
+      } else if (nombre) {
+        const { error } = await supabase!.from('insumos').delete().eq('nombre', nombre);
+        return !error;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -1408,11 +1445,17 @@ export const CloudSyncService = {
   },
 
   // 21.10 Eliminar Resina en Supabase
-  async deleteResina(id: string): Promise<boolean> {
+  async deleteResina(id: string, resumen?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const { error } = await supabase!.from('resinas').delete().eq('id', id);
-      return !error;
+      if (UUID_REGEX.test(id)) {
+        const { error } = await supabase!.from('resinas').delete().eq('id', id);
+        return !error;
+      } else if (resumen) {
+        const { error } = await supabase!.from('resinas').delete().eq('tipo', resumen);
+        return !error;
+      }
+      return false;
     } catch (e) {
       return false;
     }
@@ -1452,7 +1495,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.12 Guardar Configuración del Taller en Supabase
+  // 21.12 Guardar Configuración del Taller en Supabase (Sin columnas inexistentes)
   async saveConfiguracion(cfg: ConfiguracionTaller): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
@@ -1462,10 +1505,9 @@ export const CloudSyncService = {
         nequi: cfg.nequi || '',
         bre_b: cfg.bre_b || '',
         instagram: cfg.instagram || '',
+        correo: cfg.correo || 'wjgeeks3d@gmail.com',
         telefono_contacto: cfg.telefono_contacto || '',
         telefono_contacto2: cfg.telefono_contacto2 || '',
-        daviplata: cfg.daviplata || '',
-        bancolombia: cfg.bancolombia || '',
         titular_cuenta: cfg.titular_cuenta || '',
         updated_at: new Date().toISOString()
       };
