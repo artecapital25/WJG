@@ -189,6 +189,22 @@ export const CloudSyncService = {
           imagen_url: it.imagen_url || undefined
         }));
 
+        let notasLimpia = row.notas || 'No incluye transporte fuera del perímetro urbano.';
+        let itemsRestaurados: PiezaCotizada[] | null = null;
+        if (row.notas && row.notas.includes('<!-- WJ_ITEMS_SNAPSHOT:')) {
+          try {
+            const start = row.notas.indexOf('<!-- WJ_ITEMS_SNAPSHOT:') + '<!-- WJ_ITEMS_SNAPSHOT:'.length;
+            const end = row.notas.indexOf(':WJ_ITEMS_SNAPSHOT -->');
+            if (end > start) {
+              const encoded = row.notas.substring(start, end);
+              itemsRestaurados = JSON.parse(decodeURIComponent(encoded));
+              notasLimpia = row.notas.replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
+            }
+          } catch (e) {
+            console.warn('Error parseando items_snapshot de notas:', e);
+          }
+        }
+
         return {
           id: row.id,
           numero_cot: row.numero_cot,
@@ -196,13 +212,13 @@ export const CloudSyncService = {
           vendedor: row.vendedor_nombre || 'Equipo WJGEEKS',
           fecha: row.fecha_emision || row.fecha || new Date().toISOString().slice(0, 10),
           estado: row.estado as any,
-          items: itemsMapeados,
+          items: (itemsRestaurados && itemsRestaurados.length > 0) ? itemsRestaurados : itemsMapeados,
           subtotal: Number(row.subtotal) || 0,
           iva_porcentaje: Number(row.iva_porcentaje) || 0,
           descuento_porcentaje: Number(row.descuento_porcentaje) || 0,
           total: Number(row.total) || 0,
           tiempo_entrega_estimado: row.tiempo_entrega_estimado || '(3) Días hábiles',
-          notas: row.notas || 'No incluye transporte fuera del perímetro urbano.',
+          notas: notasLimpia,
           // Sincronización Financiera Unificada
           abono: row.abono !== undefined ? Number(row.abono) : 0,
           saldo_pendiente: row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Number(row.total || 0),
@@ -406,6 +422,13 @@ export const CloudSyncService = {
         return 'BORRADOR';
       };
 
+      // Serializar snapshot de items dentro de notas de forma segura para conservar el 100% de detalles técnicos
+      const snapshotPrefix = '<!-- WJ_ITEMS_SNAPSHOT:';
+      const snapshotSuffix = ':WJ_ITEMS_SNAPSHOT -->';
+      const rawNotas = (cot.notas || '').replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
+      const encodedItems = encodeURIComponent(JSON.stringify(cot.items || []));
+      const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedItems}${snapshotSuffix}`;
+
       // 5.2 Upsert de la cotización por numero_cot con columnas canónicas
       const { data: cotData, error: cotErr } = await supabase!
         .from('cotizaciones')
@@ -421,7 +444,7 @@ export const CloudSyncService = {
           descuento_porcentaje: cot.descuento_porcentaje || 0,
           total: Number(cot.total) || 0,
           tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '3 a 5 días hábiles',
-          notas: cot.notas || null,
+          notas: notasConSnapshot,
           abono: Number(cot.abono) || 0,
           estado_pago: cot.estado_pago || 'Pendiente',
           metodo_pago: cot.metodo_pago || 'Bre-B',

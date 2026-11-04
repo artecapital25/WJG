@@ -23,7 +23,8 @@ import {
   ExternalLink,
   CreditCard,
   DollarSign,
-  Trash2
+  Trash2,
+  Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
@@ -569,29 +570,69 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   <span>Descargar PDF</span>
                 </button>
 
-                {onEditarCotizacion && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => onEditarCotizacion(cot)}
-                    style={{ borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)' }}
-                    title="Modificar esta cotización (corregir datos, agregar piezas o editar valores)"
-                  >
-                    <Edit size={14} />
-                    <span>Modificar</span>
-                  </button>
-                )}
+                {/* Modificar Cotización (Protección: Bloqueado si ya está aprobada o facturada) */}
+                {(() => {
+                  const esAprobada = (cot.estado || '').toLowerCase().includes('aprob') || (cot.estado || '').toLowerCase().includes('factur');
+                  if (esAprobada) {
+                    return (
+                      <button 
+                        disabled
+                        className="btn btn-secondary btn-sm"
+                        style={{ opacity: 0.5, cursor: 'not-allowed', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title="Cotización Aprobada: Valores comerciales pactados bloqueados contra modificación."
+                      >
+                        <Lock size={13} />
+                        <span>Aprobada (Bloqueada)</span>
+                      </button>
+                    );
+                  }
+                  if (onEditarCotizacion) {
+                    return (
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => onEditarCotizacion(cot)}
+                        style={{ borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)' }}
+                        title="Modificar esta cotización en borrador"
+                      >
+                        <Edit size={14} />
+                        <span>Modificar</span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
 
-                {onEliminarCotizacion && (
-                  <button 
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setCotParaEliminar(cot)}
-                    style={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
-                    title="Eliminar esta cotización y purgar sus abonos asociados en contabilidad"
-                  >
-                    <Trash2 size={13} />
-                    <span>Eliminar</span>
-                  </button>
-                )}
+                {/* Eliminar Cotización (Protección: Bloqueado si ya está aprobada o facturada) */}
+                {(() => {
+                  const esAprobada = (cot.estado || '').toLowerCase().includes('aprob') || (cot.estado || '').toLowerCase().includes('factur');
+                  if (esAprobada) {
+                    return (
+                      <button 
+                        disabled
+                        className="btn btn-secondary btn-sm"
+                        style={{ opacity: 0.5, cursor: 'not-allowed', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title="Cotización Aprobada: No se puede eliminar para mantener la trazabilidad contable y legal."
+                      >
+                        <Lock size={13} />
+                        <span>Protegida</span>
+                      </button>
+                    );
+                  }
+                  if (onEliminarCotizacion) {
+                    return (
+                      <button 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setCotParaEliminar(cot)}
+                        style={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
+                        title="Eliminar esta cotización en borrador"
+                      >
+                        <Trash2 size={13} />
+                        <span>Eliminar</span>
+                      </button>
+                    );
+                  }
+                  return null;
+                })()}
 
                 {/* Botón Gestión Rápida de Pago / Anticipo */}
                 <button 

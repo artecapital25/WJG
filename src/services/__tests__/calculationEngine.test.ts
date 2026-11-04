@@ -96,10 +96,8 @@ describe('calculationEngine - calcularPieza3D', () => {
     // Tiempo impresión: (150 / 30) * 60 = 300 min
     expect(resultado.tiempo_impresion_min).toBe(300);
 
-    // Costo energía impresión: 300 * 6.255 = 1876.5
-    // Curado: peso >= 250g -> 15 min * 5.004 = 75.06
-    // Energía total redondeada
-    expect(resultado.costo_energia).toBeGreaterThan(1900);
+    // Costo energía eléctrica pura calculada con potencia real (0.1 kW y 0.08 kW @ $834/kWh)
+    expect(resultado.costo_energia).toBeGreaterThan(400);
 
     // Costo resina: 414 * 117.39 * 1.40 = ~68,039 COP
     expect(resultado.costo_resina).toBeGreaterThan(65000);

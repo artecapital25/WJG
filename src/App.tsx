@@ -692,6 +692,11 @@ export const App: React.FC = () => {
   };
 
   const handleEditarCotizacion = (cot: Cotizacion) => {
+    const esAprobada = (cot.estado || '').toLowerCase().includes('aprob') || (cot.estado || '').toLowerCase().includes('factur');
+    if (esAprobada) {
+      toast.warning(`La cotización ${cot.numero_cot} ya fue aprobada y cuenta con valores comerciales pactados. No puede modificarse.`);
+      return;
+    }
     setEditingCotizacion(cot);
     setDraftPieces([...cot.items]);
     setPieceToEditInCalculator(null);
@@ -1690,6 +1695,15 @@ export const App: React.FC = () => {
   const handleEliminarCotizacion = (cotId: string, numeroCot?: string) => {
     const cotAEliminar = cotizaciones.find(c => c.id === cotId || (numeroCot && c.numero_cot === numeroCot));
 
+    // GUARDIA: Una cotización aprobada o facturada no puede eliminarse por trazabilidad contable
+    if (cotAEliminar) {
+      const esAprobada = (cotAEliminar.estado || '').toLowerCase().includes('aprob') || (cotAEliminar.estado || '').toLowerCase().includes('factur');
+      if (esAprobada) {
+        toast.error(`La cotización ${cotAEliminar.numero_cot} está aprobada/facturada. No puede eliminarse para proteger la trazabilidad contable.`);
+        return;
+      }
+    }
+
     // 1. Remover de cotizaciones
     const updatedCots = cotizaciones.filter(c => c.id !== cotId && (!numeroCot || c.numero_cot !== numeroCot));
     setCotizaciones(updatedCots);
@@ -2212,6 +2226,7 @@ export const App: React.FC = () => {
               resinas={resinas}
               maquinas={maquinas}
               insumos={insumos}
+              personal={personal}
               onCancelarEdicion={handleCancelarEdicion}
               onRemoveItem={handleRemoveDraftPiece}
               onUpdatePiece={handleUpdateDraftPiece}

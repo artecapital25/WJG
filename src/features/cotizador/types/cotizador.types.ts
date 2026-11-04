@@ -74,6 +74,7 @@ export interface CotizacionBuilderProps {
   resinas?: Resina[];
   maquinas?: Maquina[];
   insumos?: Insumo[];
+  personal?: import('../../../types').Personal[];
   onCancelarEdicion?: () => void;
   onRemoveItem: (id: string) => void;
   onUpdatePiece?: (item: PiezaCotizada) => void;

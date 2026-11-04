@@ -15,6 +15,7 @@ import {
   generarNumeroCotSugerido, 
   limpiarNotasObservaciones 
 } from '../utils/pricingCalculator';
+import { calcularPieza3D, ParametrosPiezaInput } from '../../../services/calculationEngine';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../../services/whatsappService';
 import { processAndOptimizeImage } from '../../../services/imageService';
@@ -30,6 +31,8 @@ export function useCotizadorBuilder({
   cotizacionEnEdicion,
   resinas = [],
   maquinas = [],
+  insumos = [],
+  personal = [],
   onCancelarEdicion,
   onRemoveItem,
   onUpdatePiece,
@@ -380,6 +383,104 @@ export function useCotizadorBuilder({
     setShowNewClientModal(false);
   };
 
+  // Recalcular piezas con tarifas vigentes de catálogo cuando el operador lo solicita
+  const handleRecalcularTarifasVigentes = () => {
+    if (items.length === 0 || !onUpdatePiece) {
+      toast.warning('No hay piezas para recalcular.');
+      return;
+    }
+    let cambios = 0;
+    const subtotalPrevio = subtotal;
+
+    items.forEach(it => {
+      const resina = (resinas || []).find(r => r.id === it.resina_id || r.tipo.toLowerCase() === it.resina_nombre?.toLowerCase()) || (resinas || [])[0];
+      const impresora = (maquinas || []).find(m => m.id === it.maquina_id || m.nombre.toLowerCase() === it.maquina_nombre?.toLowerCase()) || (maquinas || [])[0];
+
+      if (!resina || !impresora) return;
+
+      const pinturas = (it.lista_pinturas || []).map(p => {
+        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === p.nombre.toLowerCase()) || {
+          id: 'ins-p', nombre: p.nombre, costo_unitario: p.cantidad_ml > 0 ? p.costo / p.cantidad_ml : 0, categoria: 'Pintura'
+        };
+        return { insumo: ins as any, cantidad_ml: p.cantidad_ml };
+      });
+
+      const accesorios = (it.lista_accesorios || []).map(a => {
+        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === a.nombre.toLowerCase()) || {
+          id: 'ins-a', nombre: a.nombre, costo_unitario: a.cantidad > 0 ? a.costo / a.cantidad : 0, categoria: 'Accesorio'
+        };
+        return { insumo: ins as any, cantidad: a.cantidad };
+      });
+
+      const empaques = (it.lista_empaques || []).map(e => {
+        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === e.nombre.toLowerCase()) || {
+          id: 'ins-e', nombre: e.nombre, costo_unitario: e.cantidad > 0 ? e.costo / e.cantidad : 0, categoria: 'Empaque'
+        };
+        return { insumo: ins as any, cantidad: e.cantidad };
+      });
+
+      const inputRecalc: ParametrosPiezaInput = {
+        nombre_item: it.nombre_item,
+        cantidad: it.cantidad,
+        alto_mm: it.alto_mm,
+        ancho_mm: it.ancho_mm,
+        profundidad_mm: it.profundidad_mm,
+        resina,
+        impresora,
+        tiempoImpresionManualMin: it.tiempo_impresion_min,
+        modoCalculoResina: it.modo_calculo_resina,
+        pesoResinaManualG: it.gramos_resina_manual,
+        tipoEstructura: it.tipo_estructura,
+        porcentajeRelleno: it.porcentaje_relleno,
+        requiereCurado: (it.costo_curado || 0) > 0,
+        tiempoCuradoMin: 10,
+        tiempoDesarrolloMin: it.tiempo_desarrollo_min || 0,
+        tiempoArmadoMin: it.tiempo_armado_min || 0,
+        tiempoPinturaMin: it.tiempo_pintura_min || 0,
+        costoModeloComprado: it.costo_modelo_comprado || 0,
+        margenGanancia: it.margen_ganancia || 0.40,
+        precioUnitarioManual: it.precio_fijado_tarifa ? it.precio_unitario : undefined,
+        precioFijadoTarifa: it.precio_fijado_tarifa,
+        tarifaTamanoAplicada: it.tarifa_tamano_aplicada,
+        accesorios,
+        pinturas,
+        empaques,
+        imagen_url: it.imagen_url,
+        datosPendientes: it.datos_pendientes,
+        maquinasAdicionales: (it.maquinas_involucradas || [])
+          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+          .map(m => {
+            const maqActual = (maquinas || []).find(maq => maq.id === m.maquina_id || maq.nombre.toLowerCase() === m.maquina_nombre.toLowerCase()) || {
+              id: m.maquina_id, nombre: m.maquina_nombre, tipo: m.tipo, consumo_kwh: 0.1, costo_minuto: m.costo_minuto
+            };
+            return {
+              maquina: maqActual as any,
+              proceso: m.proceso,
+              tiempo_min: m.tiempo_min,
+              mostrar_en_cliente: m.mostrar_en_cliente
+            };
+          })
+      };
+
+      const piezaNueva = calcularPieza3D(inputRecalc, personal || [], config);
+      onUpdatePiece({
+        ...piezaNueva,
+        id: it.id
+      });
+      cambios++;
+    });
+
+    const nuevoSubtotal = items.reduce((sum, it) => sum + it.precio_total, 0);
+    const dif = nuevoSubtotal - subtotalPrevio;
+    const difTexto = dif === 0 
+      ? 'Las tarifas vigentes coinciden con la cotización.' 
+      : dif > 0 
+        ? `Ajuste al alza: +$${dif.toLocaleString('es-CO')} COP.` 
+        : `Ajuste a la baja: -$${Math.abs(dif).toLocaleString('es-CO')} COP.`;
+
+    toast.success(`¡${cambios} pieza(s) recalculada(s) con las tarifas vigentes del taller! ${difTexto}`);
+  };
+
   return {
     // Estado General
     clienteId,
@@ -460,6 +561,7 @@ export function useCotizadorBuilder({
     handleFinalizar,
     handleDescargarPDF,
     handleCompartirPDF,
-    handleCrearNuevoCliente
+    handleCrearNuevoCliente,
+    handleRecalcularTarifasVigentes
   };
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, User, Plus, Edit, X } from 'lucide-react';
+import { Tag, User, Plus, Edit, X, RotateCw, Lock } from 'lucide-react';
 import { CotizacionBuilderProps } from '../types/cotizador.types';
 import { useCotizadorBuilder } from '../hooks/useCotizadorBuilder';
 import { CotizadorItemList } from './CotizadorItemList';
@@ -17,8 +17,12 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
       {/* Banner de Modo Edición */}
       {props.cotizacionEnEdicion && (
         <div style={{
-          background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)',
-          border: '1px solid rgba(245, 158, 11, 0.5)',
+          background: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob')
+            ? 'linear-gradient(135deg, rgba(34, 197, 94, 0.15) 0%, rgba(21, 128, 61, 0.25) 100%)'
+            : 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(217, 119, 6, 0.25) 100%)',
+          border: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob')
+            ? '1px solid rgba(34, 197, 94, 0.5)'
+            : '1px solid rgba(245, 158, 11, 0.5)',
           borderRadius: '12px',
           padding: '14px 18px',
           marginBottom: '16px',
@@ -29,24 +33,56 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
           gap: '12px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ background: '#f59e0b', color: '#000', borderRadius: '50%', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              <Edit size={18} />
+            <div style={{ 
+              background: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#22c55e' : '#f59e0b', 
+              color: '#000', 
+              borderRadius: '50%', 
+              width: '34px', 
+              height: '34px', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center' 
+            }}>
+              {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? <Lock size={18} /> : <Edit size={18} />}
             </div>
             <div>
-              <div style={{ fontWeight: 700, color: '#fbbf24', fontSize: '0.98rem' }}>
-                Modo Edición Activo: Cotización N° {props.cotizacionEnEdicion.numero_cot}
+              <div style={{ 
+                fontWeight: 700, 
+                color: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#86efac' : '#fbbf24', 
+                fontSize: '0.98rem' 
+              }}>
+                {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob')
+                  ? `Cotización Aprobada (Valores Protegidos): N° ${props.cotizacionEnEdicion.numero_cot}`
+                  : `Modo Edición Activo: Cotización N° ${props.cotizacionEnEdicion.numero_cot}`
+                }
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
                 Cliente: <strong style={{ color: 'var(--text-main)' }}>{props.cotizacionEnEdicion.cliente?.nombre}</strong>
               </div>
             </div>
           </div>
-          {props.onCancelarEdicion && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={props.onCancelarEdicion} style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}>
-              <X size={14} />
-              <span>Cancelar Edición</span>
-            </button>
-          )}
+          
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            {!(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') && (
+              <button 
+                type="button" 
+                className="btn btn-secondary btn-sm" 
+                onClick={b.handleRecalcularTarifasVigentes}
+                title="Recalcular todas las piezas de este borrador con los precios actuales de resina, maquinaria e insumos del taller"
+                style={{ borderColor: 'rgba(56, 189, 248, 0.45)', color: 'var(--brand-cyan)', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
+              >
+                <RotateCw size={14} />
+                <span>Actualizar a Tarifas Vigentes</span>
+              </button>
+            )}
+
+            {props.onCancelarEdicion && (
+              <button type="button" className="btn btn-secondary btn-sm" onClick={props.onCancelarEdicion} style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}>
+                <X size={14} />
+                <span>Cerrar</span>
+              </button>
+            )}
+          </div>
         </div>
       )}
 

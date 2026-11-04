@@ -176,11 +176,32 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteResina = (id: string) => {
-    if (confirm('¿Eliminar esta resina del catálogo?')) {
-      const resinaABorrar = resinas.find(r => r.id !== id);
+    const resinaABorrar = resinas.find(r => r.id === id);
+    if (!resinaABorrar) return;
+
+    const cotizaciones = StorageService.getCotizaciones();
+    const ordenes = StorageService.getOrdenes();
+    const enUsoEnCotizaciones = cotizaciones.some(c => 
+      c.items?.some(it => it.resina_id === id || it.resina_nombre?.toLowerCase() === resinaABorrar.tipo?.toLowerCase())
+    );
+    const enUsoEnOrdenes = ordenes.some(o => 
+      o.resina_nombre?.toLowerCase() === resinaABorrar.tipo?.toLowerCase()
+    );
+
+    if (enUsoEnCotizaciones || enUsoEnOrdenes) {
+      if (confirm(`La resina "${resinaABorrar.tipo}" está registrada en cotizaciones u órdenes de trabajo. Para proteger el historial de cobros no puede eliminarse físicamente del sistema. ¿Deseas marcarla como Descontinuada/Inactiva para que no se ofrezca en nuevos proyectos?`)) {
+        const updated = resinas.map(r => r.id === id ? { ...r, activo: false } : r);
+        onUpdateResinas(updated);
+        CloudSyncService.saveResina({ ...resinaABorrar, activo: false });
+        toast.success(`Resina "${resinaABorrar.tipo}" marcada como Inactiva/Descontinuada`);
+      }
+      return;
+    }
+
+    if (confirm(`¿Eliminar la resina "${resinaABorrar.tipo}" del catálogo?`)) {
       const updated = resinas.filter(r => r.id !== id);
       onUpdateResinas(updated);
-      CloudSyncService.deleteResina(id, resinaABorrar?.tipo);
+      CloudSyncService.deleteResina(id, resinaABorrar.tipo);
       toast.success('Resina eliminada del catálogo');
     }
   };
@@ -240,11 +261,32 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteInsumo = (id: string) => {
+    const insumoABorrar = insumos.find(i => i.id === id);
+    if (!insumoABorrar) return;
+
+    const cotizaciones = StorageService.getCotizaciones();
+    const enUso = cotizaciones.some(c => 
+      c.items?.some(it => 
+        it.lista_pinturas?.some(p => p.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase()) ||
+        it.lista_accesorios?.some(a => a.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase()) ||
+        it.lista_empaques?.some(e => e.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase())
+      )
+    );
+
+    if (enUso) {
+      if (confirm(`El insumo "${insumoABorrar.nombre}" está registrado en cotizaciones del taller. Para proteger el historial contable no puede eliminarse físicamente. ¿Deseas desactivarlo (stock en 0)?`)) {
+        const updated = insumos.map(i => i.id === id ? { ...i, stock_actual: 0 } : i);
+        onUpdateInsumos(updated);
+        CloudSyncService.saveInsumo({ ...insumoABorrar, stock_actual: 0 });
+        toast.success(`Insumo "${insumoABorrar.nombre}" desactivado con stock 0`);
+      }
+      return;
+    }
+
     if (confirm('¿Eliminar este insumo del taller?')) {
-      const insumoABorrar = insumos.find(i => i.id !== id);
       const updated = insumos.filter(i => i.id !== id);
       onUpdateInsumos(updated);
-      CloudSyncService.deleteInsumo(id, insumoABorrar?.nombre);
+      CloudSyncService.deleteInsumo(id, insumoABorrar.nombre);
       toast.success('Insumo eliminado');
     }
   };
@@ -460,11 +502,29 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteMaquina = (id: string) => {
-    if (confirm('¿Eliminar esta máquina del taller?')) {
-      const maquinaABorrar = maquinas.find(m => m.id === id);
+    const maquinaABorrar = maquinas.find(m => m.id === id);
+    if (!maquinaABorrar) return;
+
+    const cotizaciones = StorageService.getCotizaciones();
+    const ordenes = StorageService.getOrdenes();
+    const enUso = cotizaciones.some(c => 
+      c.items?.some(it => it.maquina_id === id || it.maquina_nombre?.toLowerCase() === maquinaABorrar.nombre?.toLowerCase() || it.maquinas_involucradas?.some(m => m.maquina_id === id))
+    ) || ordenes.some(o => o.maquina_nombre?.toLowerCase() === maquinaABorrar.nombre?.toLowerCase() || o.maquinas_involucradas?.some(m => m.maquina_id === id));
+
+    if (enUso) {
+      if (confirm(`La máquina "${maquinaABorrar.nombre}" está asignada en cotizaciones u órdenes de trabajo. Para proteger la trazabilidad no puede eliminarse físicamente del sistema. ¿Deseas pasarla a estado "Mantenimiento / Fuera de Servicio"?`)) {
+        const updated = maquinas.map(m => m.id === id ? { ...m, estado: 'Mantenimiento' as any } : m);
+        onUpdateMaquinas(updated);
+        CloudSyncService.saveMaquina({ ...maquinaABorrar, estado: 'Mantenimiento' as any });
+        toast.success(`Máquina "${maquinaABorrar.nombre}" pasada a Mantenimiento`);
+      }
+      return;
+    }
+
+    if (confirm(`¿Eliminar la máquina "${maquinaABorrar.nombre}" del taller?`)) {
       const updated = maquinas.filter(m => m.id !== id);
       onUpdateMaquinas(updated);
-      CloudSyncService.deleteMaquina(id, maquinaABorrar?.nombre);
+      CloudSyncService.deleteMaquina(id, maquinaABorrar.nombre);
       toast.success('Máquina eliminada del taller');
     }
   };

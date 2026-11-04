@@ -45,6 +45,7 @@ export interface Resina {
   velocidad_impresion_mm_h: number;
   resumen: string;
   imagen_url?: string;
+  activo?: boolean;
 }
 
 export interface Insumo {
@@ -59,6 +60,8 @@ export interface Insumo {
   enlace_compra?: string;
   descripcion?: string;
   imagen_url?: string;
+  stock_actual?: number;
+  activo?: boolean;
 }
 
 export interface RepuestoMaquina {
