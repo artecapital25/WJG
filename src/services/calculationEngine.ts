@@ -83,16 +83,15 @@ export function resolverTarifasMaquina(maquina: Maquina, tarifaKwhConfig?: numbe
 
   // Costo total por minuto
   let costoMinutoTotal = costoMinutoEnergia + costoMinutoRepuestos;
-  if (costoMinutoRepuestos === 0 && typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > 0) {
-    costoMinutoTotal = maquina.costo_minuto;
-  } else if (typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > costoMinutoTotal) {
+  // Solo si no hay repuestos configurados y existe una tarifa plana previa se usa como fallback
+  if (costoMinutoRepuestos === 0 && (!Array.isArray(maquina.repuestos) || maquina.repuestos.length === 0) && typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > 0) {
     costoMinutoTotal = maquina.costo_minuto;
   }
 
   return {
-    costoMinutoEnergia,
-    costoMinutoRepuestos,
-    costoMinutoTotal
+    costoMinutoEnergia: Number(costoMinutoEnergia.toFixed(4)),
+    costoMinutoRepuestos: Number(costoMinutoRepuestos.toFixed(4)),
+    costoMinutoTotal: Number(costoMinutoTotal.toFixed(4))
   };
 }
 

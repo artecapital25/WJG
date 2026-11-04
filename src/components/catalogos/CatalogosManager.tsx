@@ -371,7 +371,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleCalibrarPotencias = () => {
-    if (!confirm('¿Deseas calibrar automáticamente todas las máquinas con sus potencias reales de fábrica (50W para Anycubic Mono 4, 60W para Mono X 6Ks, 130W para Bambulab P1S/P2S)? Esto corregirá el consumo antiguo del Excel (450W) y configurará los repuestos recomendados.')) return;
+    if (!confirm('¿Deseas calibrar automáticamente todas las máquinas con sus potencias reales de fábrica (50W para Anycubic Mono 4, 60W para Mono X 6Ks, 130W para Bambulab P1S/P2S)? Esto corregirá el consumo antiguo del Excel (450W), limpiará repuestos incompatibles y sincronizará con todos los colaboradores.')) return;
 
     const tarifa = config.tarifa_kwh || 834.0;
     const updated = maquinas.map(m => {
@@ -379,36 +379,52 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       let nuevosRepuestos = Array.isArray(m.repuestos) && m.repuestos.length > 0 ? [...m.repuestos] : [];
 
       const nom = m.nombre.toLowerCase();
+      const tipo = (m.tipo || '').toLowerCase();
+      const esResina = nom.includes('mono') || nom.includes('photon') || tipo.includes('resina');
+      const esFdm = nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1') || nom.includes('kobra') || nom.includes('ender') || tipo.includes('filamento') || tipo.includes('fdm');
+
+      // Limpieza de repuestos incompatibles (ej. quitar boquilla FDM de impresora de resina)
+      if (esResina) {
+        nuevosRepuestos = nuevosRepuestos.filter(r => !/nozzle|boquilla|cama|pei|hotend/i.test(r.nombre));
+      } else if (esFdm) {
+        nuevosRepuestos = nuevosRepuestos.filter(r => !/fep|lcd|pantalla/i.test(r.nombre));
+      }
+
       if (nom.includes('mono 4') || nom.includes('mono 2') || nom.includes('photon mono')) {
         nuevoConsumo = 0.05; // 50W
-        if (nuevosRepuestos.length === 0) {
-          nuevosRepuestos = [
-            { id: `rep-${m.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true },
-            { id: `rep-${m.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true }
-          ];
+        const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
+        const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
+        if (!tieneFep) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true });
+        }
+        if (!tieneLcd) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true });
         }
       } else if (nom.includes('6k') || nom.includes('mono x')) {
         nuevoConsumo = 0.06; // 60W
-        if (nuevosRepuestos.length === 0) {
-          nuevosRepuestos = [
-            { id: `rep-${m.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true },
-            { id: `rep-${m.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true }
-          ];
+        const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
+        const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
+        if (!tieneFep) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true });
+        }
+        if (!tieneLcd) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true });
         }
       } else if (nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1')) {
         nuevoConsumo = 0.13; // 130W
-        if (nuevosRepuestos.length === 0) {
-          nuevosRepuestos = [
-            { id: `rep-${m.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true },
-            { id: `rep-${m.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true }
-          ];
+        const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla|hotend/i.test(r.nombre));
+        const tieneBed = nuevosRepuestos.some(r => /pei|placa|cama/i.test(r.nombre));
+        if (!tieneNozzle) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true });
+        }
+        if (!tieneBed) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true });
         }
       } else if (nom.includes('kobra') || nom.includes('ender') || nom.includes('fdm') || nom.includes('filamento')) {
         nuevoConsumo = 0.15; // 150W
-        if (nuevosRepuestos.length === 0) {
-          nuevosRepuestos = [
-            { id: `rep-${m.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true }
-          ];
+        const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla/i.test(r.nombre));
+        if (!tieneNozzle) {
+          nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true });
         }
       } else if (nom.includes('wash') || nom.includes('cure') || nom.includes('curado')) {
         nuevoConsumo = 0.048; // 48W
@@ -424,7 +440,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
       const costo_total_min = costo_energia_min + costo_repuestos_min;
 
-      return {
+      const maquinaCalibrada: Maquina = {
         ...m,
         consumo_kwh: nuevoConsumo,
         costo_minuto_energia: Number(costo_energia_min.toFixed(4)),
@@ -432,10 +448,15 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         costo_minuto: Number(costo_total_min.toFixed(4)),
         repuestos: nuevosRepuestos
       };
+
+      // Sincronizar con Supabase para replicación universal
+      CloudSyncService.saveMaquina(maquinaCalibrada);
+
+      return maquinaCalibrada;
     });
 
     onUpdateMaquinas(updated);
-    toast.success('¡Maquinaria calibrada a potencias reales de fábrica con repuestos!');
+    toast.success('¡Maquinaria calibrada a potencias reales de fábrica con repuestos filtrados y sincronizados!');
   };
 
   const handleDeleteMaquina = (id: string) => {
@@ -1073,9 +1094,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               const watts = Math.round((m.consumo_kwh || 0.05) * 1000);
               const costoEnergiaMin = m.costo_minuto_energia !== undefined ? m.costo_minuto_energia : (m.consumo_kwh * (config.tarifa_kwh || 834)) / 60;
               const repuestosActivos = Array.isArray(m.repuestos) ? m.repuestos.filter(r => r.activo !== false) : [];
-              const costoRepuestosMin = m.costo_minuto_repuestos !== undefined ? m.costo_minuto_repuestos : repuestosActivos.reduce((s, r) => s + (Number(r.costo_minuto) || 0), 0);
-              const costoTotalMin = m.costo_minuto;
-              const esConsumoInflado = m.consumo_kwh >= 0.35 && (m.tipo.toLowerCase().includes('resina') || m.nombre.toLowerCase().includes('mono'));
+              const costoRepuestosMin = repuestosActivos.reduce((s, r) => s + (Number(r.costo_minuto) || 0), 0);
+              const costoTotalMin = (costoEnergiaMin + costoRepuestosMin) > 0 ? (costoEnergiaMin + costoRepuestosMin) : (m.costo_minuto || 0);
+              
+              const nomLower = m.nombre.toLowerCase();
+              const tipoLower = (m.tipo || '').toLowerCase();
+              const esResinaMaq = nomLower.includes('mono') || nomLower.includes('photon') || tipoLower.includes('resina');
+              const esFdmMaq = nomLower.includes('bambu') || nomLower.includes('p1s') || nomLower.includes('p2s') || nomLower.includes('x1') || nomLower.includes('kobra') || nomLower.includes('ender') || tipoLower.includes('filamento') || tipoLower.includes('fdm');
+              const esConsumoInflado = m.consumo_kwh >= 0.35 && esResinaMaq;
+              const tieneIncompatibles = (
+                esResinaMaq && repuestosActivos.some(r => /nozzle|boquilla|cama|pei|hotend/i.test(r.nombre))
+              ) || (
+                esFdmMaq && repuestosActivos.some(r => /fep|lcd|pantalla/i.test(r.nombre))
+              );
 
               return (
                 <div 
@@ -1084,7 +1115,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     background: 'rgba(15, 23, 42, 0.45)', 
                     padding: '16px', 
                     borderRadius: '12px', 
-                    border: esConsumoInflado ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-subtle)', 
+                    border: (esConsumoInflado || tieneIncompatibles) ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-subtle)', 
                     display: 'flex', 
                     flexDirection: 'column', 
                     justifyContent: 'space-between',
@@ -1171,17 +1202,17 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       </div>
                     </div>
 
-                    {/* Alerta de Consumo Inflado Histórico */}
-                    {esConsumoInflado && (
+                    {/* Alerta de Consumo Inflado o Repuestos Incompatibles */}
+                    {(esConsumoInflado || tieneIncompatibles) && (
                       <div style={{ marginTop: '10px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.3)', padding: '6px 10px', borderRadius: '6px', fontSize: '0.72rem', color: '#fca5a5', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
-                        <span>⚠️ Potencia ({watts}W) inflada del Excel antiguo.</span>
+                        <span>⚠️ {tieneIncompatibles ? 'Repuestos incompatibles detectados' : `Potencia (${watts}W) inflada del Excel`}.</span>
                         <button 
                           type="button" 
                           className="btn btn-xs btn-cyan" 
                           style={{ padding: '2px 6px', fontSize: '0.65rem' }}
                           onClick={handleCalibrarPotencias}
                         >
-                          Calibrar a 50W
+                          Calibrar Taller
                         </button>
                       </div>
                     )}
@@ -1199,10 +1230,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '2px' }}>
                         <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f8fafc' }}>
-                          ${costoEnergiaMin.toFixed(2)} COP/min
+                          ${costoEnergiaMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} COP/min
                         </span>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
-                          ${(costoEnergiaMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/h
+                          ${Math.round(costoEnergiaMin * 60).toLocaleString('es-CO')} COP/h
                         </span>
                       </div>
                     </div>
@@ -1220,10 +1251,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: '2px' }}>
                         <span style={{ fontSize: '0.86rem', fontWeight: 700, color: '#f59e0b' }}>
-                          {costoRepuestosMin > 0 ? `+$${costoRepuestosMin.toFixed(2)} COP/min` : '$0.00 COP/min'}
+                          {costoRepuestosMin > 0 ? `+$${costoRepuestosMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} COP/min` : '$0,00 COP/min'}
                         </span>
                         <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
-                          ${(costoRepuestosMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/h
+                          ${Math.round(costoRepuestosMin * 60).toLocaleString('es-CO')} COP/h
                         </span>
                       </div>
                       {repuestosActivos.length > 0 ? (
@@ -1244,13 +1275,13 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                         Tarifa Total Taller
                       </span>
-                      <span style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
-                        ${(costoTotalMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/hora
+                      <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', fontWeight: 600 }}>
+                        ${Math.round(costoTotalMin * 60).toLocaleString('es-CO')} COP/hora
                       </span>
                     </div>
                     <div style={{ textAlign: 'right' }}>
-                      <span style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
-                        ${costoTotalMin.toFixed(3)}
+                      <span style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
+                        ${costoTotalMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </span>
                       <span style={{ fontSize: '0.72rem', color: 'var(--brand-cyan)', marginLeft: '3px' }}>
                         COP/min
@@ -2101,6 +2132,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
                   const totalMin = energiaMin + repuestosMin;
 
+                  const nomModal = (itemEnEdicion.nombre || '').toLowerCase();
+                  const tipoModal = (itemEnEdicion.tipo || '').toLowerCase();
+                  const esResinaModal = tipoModal.includes('resina') || nomModal.includes('mono') || nomModal.includes('photon');
+                  const esFdmModal = tipoModal.includes('filamento') || tipoModal.includes('fdm') || nomModal.includes('bambu') || nomModal.includes('ender') || nomModal.includes('kobra');
+
                   return (
                     <div style={{ marginTop: '16px', background: 'rgba(0,0,0,0.35)', padding: '14px', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
@@ -2115,44 +2151,88 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                         </div>
                       </div>
 
-                      {/* Presets Rápidos */}
+                      {/* Presets Rápidos Filtrados por Tecnología */}
                       <div style={{ marginBottom: '12px' }}>
                         <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '6px', fontWeight: 600 }}>
-                          PRESETS RÁPIDOS SUGERIDOS:
+                          PRESETS SUGERIDOS ({esResinaModal ? 'TECNOLOGÍA RESINA' : esFdmModal ? 'TECNOLOGÍA FILAMENTO FDM' : 'GENERAL'}):
                         </div>
                         <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                            onClick={() => handleAddRepuesto({ nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300 })}
-                          >
-                            + Film FEP ($75k/300h)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                            onClick={() => handleAddRepuesto({ nombre: 'Pantalla LCD Mono 4K/8K', costo_compra: 180000, vida_util_horas: 2000 })}
-                          >
-                            + Pantalla LCD ($180k/2000h)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                            onClick={() => handleAddRepuesto({ nombre: 'Boquilla / Nozzle Endurecido', costo_compra: 45000, vida_util_horas: 500 })}
-                          >
-                            + Nozzle FDM ($45k/500h)
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ fontSize: '0.7rem', padding: '3px 8px' }}
-                            onClick={() => handleAddRepuesto({ nombre: 'Lubricación & Grasa Eje Z', costo_compra: 20000, vida_util_horas: 200 })}
-                          >
-                            + Grasa Eje Z ($20k/200h)
-                          </button>
+                          {esResinaModal && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300 })}
+                              >
+                                + Film FEP ($75k/300h)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Pantalla LCD Mono 4K/8K', costo_compra: 180000, vida_util_horas: 2000 })}
+                              >
+                                + Pantalla LCD ($180k/2000h)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Lubricación & Grasa Eje Z', costo_compra: 20000, vida_util_horas: 400 })}
+                              >
+                                + Grasa Eje Z ($20k/400h)
+                              </button>
+                            </>
+                          )}
+                          {esFdmModal && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Boquilla / Nozzle Endurecido', costo_compra: 45000, vida_util_horas: 600 })}
+                              >
+                                + Nozzle FDM ($45k/600h)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000 })}
+                              >
+                                + Placa PEI ($40k/1000h)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Lubricación & Grasa Eje Z', costo_compra: 20000, vida_util_horas: 400 })}
+                              >
+                                + Grasa Eje Z ($20k/400h)
+                              </button>
+                            </>
+                          )}
+                          {!esResinaModal && !esFdmModal && (
+                            <>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Lámpara UV / Consumible', costo_compra: 40000, vida_util_horas: 1000 })}
+                              >
+                                + Consumible UV ($40k/1000h)
+                              </button>
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{ fontSize: '0.7rem', padding: '3px 8px' }}
+                                onClick={() => handleAddRepuesto({ nombre: 'Mantenimiento & Filtros', costo_compra: 20000, vida_util_horas: 400 })}
+                              >
+                                + Filtros ($20k/400h)
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
 
@@ -2193,10 +2273,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                                 <div style={{ textAlign: 'right' }}>
                                   <div style={{ fontSize: '0.78rem', color: '#f59e0b', fontWeight: 700 }}>
-                                    +${(Number(r.costo_minuto) || 0).toFixed(2)}/min
+                                    +${(Number(r.costo_minuto) || 0).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/min
                                   </div>
                                   <div style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
-                                    ${(Number(r.costo_hora) || 0).toLocaleString('es-CO')}/h
+                                    ${Math.round((Number(r.costo_hora) || (Number(r.costo_minuto) || 0) * 60)).toLocaleString('es-CO')}/h
                                   </div>
                                 </div>
                                 <button
@@ -2263,16 +2343,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       <div style={{ marginTop: '12px', padding: '10px 12px', background: 'rgba(6, 182, 212, 0.08)', borderRadius: '6px', border: '1px solid rgba(6, 182, 212, 0.25)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
                         <div>
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                            ⚡ Energía: <strong style={{ color: '#38bdf8' }}>${energiaMin.toFixed(2)}/min</strong> + 🛠️ Repuestos: <strong style={{ color: '#f59e0b' }}>${repuestosMin.toFixed(2)}/min</strong>
+                            ⚡ Energía: <strong style={{ color: '#38bdf8' }}>${energiaMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/min</strong> + 🛠️ Repuestos: <strong style={{ color: '#f59e0b' }}>${repuestosMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}/min</strong>
                           </div>
-                          <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)' }}>
-                            Tarifa por hora: ${(totalMin * 60).toLocaleString('es-CO', { maximumFractionDigits: 0 })} COP/hora
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)', marginTop: '2px' }}>
+                            Tarifa por hora: <strong style={{ color: '#f8fafc' }}>${Math.round(totalMin * 60).toLocaleString('es-CO')} COP/hora</strong>
                           </div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Tarifa Minuto Total:</div>
-                          <div style={{ fontSize: '1.05rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
-                            ${totalMin.toFixed(3)} COP/min
+                          <div style={{ fontSize: '1.15rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
+                            ${totalMin.toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} COP/min
                           </div>
                         </div>
                       </div>
