@@ -31,11 +31,13 @@ import { processAndOptimizeImage } from '../../services/imageService';
 import { 
   calcularAlertaCobro, 
   generarConsecutivoPOS, 
+  generarTextoComprobantePOS,
   generarWhatsAppComprobantePOS, 
   generarWhatsAppRecordatorioCobro 
 } from '../../services/posService';
 import { openWhatsApp } from '../../services/whatsappService';
 import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
+import { ModalConfirmacionWhatsApp } from '../common/ModalConfirmacionWhatsApp';
 import { toast } from '../ui/ToastProvider';
 import { EmailNotificationService } from '../../services/emailNotificationService';
 
@@ -115,6 +117,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [ventaParaAbono, setVentaParaAbono] = useState<VentaExpress | null>(null);
   const [montoNuevoAbono, setMontoNuevoAbono] = useState<number>(0);
+  const [ventaParaConfirmarWhatsApp, setVentaParaConfirmarWhatsApp] = useState<VentaExpress | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -239,16 +242,22 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       cantidad_vendida: cantidadVender
     };
 
-    onGuardarVenta(nuevaVenta);
+    // Detener reseteo automático y abrir modal de confirmación con vista previa
+    setVentaParaConfirmarWhatsApp(nuevaVenta);
+  };
+
+  // Ejecución del guardado final y limpieza de estado solo tras validación
+  const ejecutarGuardadoFinalVenta = (ventaAGuardar: VentaExpress) => {
+    onGuardarVenta(ventaAGuardar);
 
     // Si es cliente nuevo y tenemos onCrearCliente, registrarlo
-    const existeCliente = clientes.some(c => c.nombre.toLowerCase() === clienteNombre.trim().toLowerCase());
-    if (!existeCliente && onCrearCliente && clienteNombre.trim()) {
+    const existeCliente = clientes.some(c => c.nombre.toLowerCase() === ventaAGuardar.cliente_nombre.trim().toLowerCase());
+    if (!existeCliente && onCrearCliente && ventaAGuardar.cliente_nombre.trim()) {
       onCrearCliente({
         id: `cli-${Date.now()}`,
         codigo: clientes.length + 1,
-        nombre: clienteNombre.trim(),
-        telefono: clienteTelefono.trim() || '3000000000',
+        nombre: ventaAGuardar.cliente_nombre.trim(),
+        telefono: ventaAGuardar.cliente_telefono.trim() || '3000000000',
         nit_cc: '222222222222',
         correo: ''
       });
@@ -261,31 +270,26 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       origin: { y: 0.7 }
     });
 
-    // Despacho no bloqueante (elimina bloqueo de 10s por window.confirm)
-    const detalleOT = nuevaVenta.requiere_ot 
-      ? ` • OT programada (${nuevaVenta.estado_diseno === 'ya_realizado' ? 'Diseño Listo' : 'Modelado por Germán'})` 
+    const detalleOT = ventaAGuardar.requiere_ot 
+      ? ` • OT programada (${ventaAGuardar.estado_diseno === 'ya_realizado' ? 'Diseño Listo' : 'Modelado por Germán'})` 
       : '';
 
-    toast.success(`Venta ${nuevaVenta.numero_venta} registrada exitosamente`, detalleOT || undefined);
-    if (nuevaVenta.cliente_telefono && nuevaVenta.cliente_telefono !== '3000000000') {
-      const waUrl = generarWhatsAppComprobantePOS(nuevaVenta, config);
-      openWhatsApp(waUrl);
-    }
+    toast.success(`Venta ${ventaAGuardar.numero_venta} registrada exitosamente`, detalleOT || undefined);
 
     // Disparo dual por correo de contingencia si el cliente tiene correo registrado
-    const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === nuevaVenta.cliente_nombre.toLowerCase().trim());
+    const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === ventaAGuardar.cliente_nombre.toLowerCase().trim());
     if (clienteMatch?.correo) {
       EmailNotificationService.enviarCorreoAbono(
         clienteMatch,
-        nuevaVenta.numero_venta,
-        nuevaVenta.abono,
-        nuevaVenta.saldo_pendiente,
-        nuevaVenta.total,
-        nuevaVenta.metodo_pago
+        ventaAGuardar.numero_venta,
+        ventaAGuardar.abono,
+        ventaAGuardar.saldo_pendiente,
+        ventaAGuardar.total,
+        ventaAGuardar.metodo_pago
       );
     }
 
-    // Reset Form
+    // Reset Form SOLO tras confirmación explícita
     setFotoUrl('');
     setProductoStockId('');
     setDescontarStock(true);
@@ -300,6 +304,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     setEstadoDiseno('ya_realizado');
     setEnlaceDiseno('');
     setNotasDiseno('');
+    setVentaParaConfirmarWhatsApp(null);
   };
 
   // Guardar abono en modal
@@ -1483,6 +1488,28 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal de Confirmación y Despacho WhatsApp Corporativo */}
+      {ventaParaConfirmarWhatsApp && (
+        <ModalConfirmacionWhatsApp
+          isOpen={Boolean(ventaParaConfirmarWhatsApp)}
+          onClose={() => setVentaParaConfirmarWhatsApp(null)}
+          titulo={`Confirmar Recibo ${ventaParaConfirmarWhatsApp.numero_venta}`}
+          subtitulo="Valida los datos y el comprobante antes de despachar desde el WhatsApp corporativo."
+          clienteNombre={ventaParaConfirmarWhatsApp.cliente_nombre}
+          clienteTelefono={ventaParaConfirmarWhatsApp.cliente_telefono}
+          mensajeWhatsApp={generarTextoComprobantePOS(ventaParaConfirmarWhatsApp, config)}
+          resumenDetalle={[
+            { etiqueta: 'Figura / Producto', valor: ventaParaConfirmarWhatsApp.nombre_producto },
+            { etiqueta: 'Valor Total', valor: `$${ventaParaConfirmarWhatsApp.total.toLocaleString('es-CO')} COP`, destacado: true },
+            { etiqueta: 'Abono Recibido', valor: `$${ventaParaConfirmarWhatsApp.abono.toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Saldo Pendiente', valor: `$${ventaParaConfirmarWhatsApp.saldo_pendiente.toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Medio de Pago', valor: ventaParaConfirmarWhatsApp.metodo_pago || 'Bre-B' }
+          ]}
+          onConfirmadoExitoso={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
+          onConfirmarSinEnvio={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
+        />
       )}
     </div>
   );

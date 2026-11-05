@@ -10,7 +10,7 @@ export function formatWhatsAppPhone(phone: string): string {
   return clean;
 }
 
-export function generateCotizacionWhatsAppUrl(
+export function generateCotizacionWhatsAppText(
   cotizacion: Cotizacion,
   config: ConfiguracionTaller
 ): string {
@@ -54,8 +54,7 @@ export function generateCotizacionWhatsAppUrl(
     ? lineasNotas.map(l => `• ${l}`).join('\n')
     : '• No incluye transporte fuera del perímetro urbano.\n• Fabricación inicia tras confirmación del 50% de anticipo.';
 
-  const mensaje = 
-`👋 ¡Hola *${cotizacion.cliente.nombre}*!
+  return `👋 ¡Hola *${cotizacion.cliente.nombre}*!
 
 Te compartimos la ${esParcial ? '*cotización preliminar/parcial*' : '*cotización oficial*'} de *WJGEEKS 3D* 🚀:
 
@@ -76,8 +75,14 @@ ${notasFormateadas}
 
 📲 *Contacto:* ${config.telefono_contacto} | Instagram: ${config.instagram}
 ¡Quedamos atentos a tus comentarios! ✨🖨️`;
+}
 
+export function generateCotizacionWhatsAppUrl(
+  cotizacion: Cotizacion,
+  config: ConfiguracionTaller
+): string {
   const phone = formatWhatsAppPhone(cotizacion.cliente.telefono);
+  const mensaje = generateCotizacionWhatsAppText(cotizacion, config);
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 

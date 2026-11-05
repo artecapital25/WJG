@@ -26,7 +26,8 @@ import {
   SolicitudInsumo,
   ProductoStock,
   PaymentRecord,
-  EstadoOT
+  EstadoOT,
+  EstadoCotizacion
 } from '../types';
 
 // Interfaz canónica para el Balance Financiero Consolidado
@@ -205,16 +206,27 @@ export const CloudSyncService = {
           }
         }
 
+        const normalizarEstadoDbParaUI = (dbEstado?: string): EstadoCotizacion => {
+          if (!dbEstado) return 'Borrador';
+          const e = dbEstado.toUpperCase().trim();
+          if (e === 'APROBADA' || e === 'ACEPTADA' || e.includes('APROB') || e.includes('ACEPT')) return 'Aceptada';
+          if (e === 'FACTURADA' || e.includes('FACTUR')) return 'Facturada';
+          if (e === 'ENVIADA' || e.includes('ENVIAD')) return 'Enviada';
+          if (e === 'PARCIAL' || e.includes('PARCIAL')) return 'Parcial';
+          if (e === 'CANCELADA' || e === 'RECHAZADA' || e.includes('RECHAZ')) return 'Rechazada';
+          return 'Borrador';
+        };
+
         return {
           id: row.id,
           numero_cot: row.numero_cot,
           cliente: clienteMapeado,
           vendedor: row.vendedor_nombre || 'Equipo WJGEEKS',
           fecha: row.fecha_emision || row.fecha || new Date().toISOString().slice(0, 10),
-          estado: row.estado as any,
+          estado: normalizarEstadoDbParaUI(row.estado),
           items: (itemsRestaurados && itemsRestaurados.length > 0) ? itemsRestaurados : itemsMapeados,
           subtotal: Number(row.subtotal) || 0,
-          iva_porcentaje: Number(row.iva_porcentaje) || 0,
+          iva_porcentaje: 0,
           descuento_porcentaje: Number(row.descuento_porcentaje) || 0,
           total: Number(row.total) || 0,
           tiempo_entrega_estimado: row.tiempo_entrega_estimado || '(3) Días hábiles',
@@ -440,7 +452,6 @@ export const CloudSyncService = {
           fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
           estado: normalizarEstadoCotizacion(cot.estado),
           subtotal: Number(cot.subtotal) || 0,
-          iva_porcentaje: cot.iva_porcentaje || 0,
           descuento_porcentaje: cot.descuento_porcentaje || 0,
           total: Number(cot.total) || 0,
           tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '3 a 5 días hábiles',

@@ -89,21 +89,18 @@ export function generarConsecutivoPOS(ventasExistentes: VentaExpress[]): string 
   return `POS-${String(siguiente).padStart(3, '0')}`;
 }
 
-export function generarWhatsAppComprobantePOS(
+export function generarTextoComprobantePOS(
   venta: VentaExpress,
   config: ConfiguracionTaller
 ): string {
-  const phone = formatWhatsAppPhone(venta.cliente_telefono);
   const esPagado = venta.saldo_pendiente <= 0;
-
   const alerta = calcularAlertaCobro(venta.fecha_prometida_pago, venta.saldo_pendiente);
 
   const bloqueOT = venta.requiere_ot ? `
 🛠️ *Orden de Trabajo:* ${venta.ot_numero || 'En Proceso'}
 🎨 *Estado de Diseño:* ${venta.estado_diseno === 'requiere_nuevo' ? '⏳ Requiere Modelado Nuevo (Germán)' : '🟢 Diseño Listo (Para Producción)'}` : '';
 
-  const mensaje = 
-`👋 ¡Hola *${venta.cliente_nombre}*! 🎨📦
+  return `👋 ¡Hola *${venta.cliente_nombre}*! 🎨📦
 Te compartimos el comprobante de tu compra en *WJGEEKS 3D*:
 
 🏷️ *Recibo N°:* ${venta.numero_venta}
@@ -121,7 +118,14 @@ ${!esPagado ? `💳 *Medios de Pago Oficiales:*
 • *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos tu soporte una vez realizado el pago. ¡Gracias por apoyar nuestro taller! ✨🚀` : '¡Muchísimas gracias por tu compra! Esperamos que disfrutes tu figura. ✨'}`;
+}
 
+export function generarWhatsAppComprobantePOS(
+  venta: VentaExpress,
+  config: ConfiguracionTaller
+): string {
+  const phone = formatWhatsAppPhone(venta.cliente_telefono);
+  const mensaje = generarTextoComprobantePOS(venta, config);
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 

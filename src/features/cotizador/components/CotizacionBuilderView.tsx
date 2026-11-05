@@ -8,6 +8,8 @@ import { CotizadorTotalsSummary } from './CotizadorTotalsSummary';
 import { ModalEditarPiezaCotizacion } from './ModalEditarPiezaCotizacion';
 import { ModalNuevoClienteRapido } from './ModalNuevoClienteRapido';
 import { ModalLightboxImagen } from './ModalLightboxImagen';
+import { ModalConfirmacionWhatsApp } from '../../../components/common/ModalConfirmacionWhatsApp';
+import { generateCotizacionWhatsAppText } from '../../../services/whatsappService';
 
 export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) => {
   const b = useCotizadorBuilder(props);
@@ -226,6 +228,29 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
         previewImage={b.previewImage}
         onClose={() => b.setPreviewImage(null)}
       />
+
+      {/* Modal de Confirmación y Despacho WhatsApp Corporativo */}
+      {b.cotizacionParaConfirmarWhatsApp && (
+        <ModalConfirmacionWhatsApp
+          isOpen={Boolean(b.cotizacionParaConfirmarWhatsApp)}
+          onClose={() => b.setCotizacionParaConfirmarWhatsApp(null)}
+          titulo={`Confirmar Cotización N° ${b.cotizacionParaConfirmarWhatsApp.numero_cot}`}
+          subtitulo="Valida las piezas y valores antes de despachar desde el WhatsApp corporativo."
+          clienteNombre={b.cotizacionParaConfirmarWhatsApp.cliente.nombre}
+          clienteTelefono={b.cotizacionParaConfirmarWhatsApp.cliente.telefono}
+          mensajeWhatsApp={generateCotizacionWhatsAppText(b.cotizacionParaConfirmarWhatsApp, props.config)}
+          resumenDetalle={[
+            { etiqueta: 'Cliente', valor: b.cotizacionParaConfirmarWhatsApp.cliente.nombre },
+            { etiqueta: 'Piezas Cotizadas', valor: `${b.cotizacionParaConfirmarWhatsApp.items.length} pieza(s)` },
+            { etiqueta: 'Total Cotizado', valor: `$${b.cotizacionParaConfirmarWhatsApp.total.toLocaleString('es-CO')} COP`, destacado: true },
+            { etiqueta: 'Abono Registrado', valor: `$${(b.cotizacionParaConfirmarWhatsApp.abono || 0).toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Saldo Pendiente', valor: `$${(b.cotizacionParaConfirmarWhatsApp.saldo_pendiente || 0).toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Tiempo de Entrega', valor: b.cotizacionParaConfirmarWhatsApp.tiempo_entrega_estimado }
+          ]}
+          onConfirmadoExitoso={() => b.ejecutarGuardadoFinalCotizacion(b.cotizacionParaConfirmarWhatsApp!)}
+          onConfirmarSinEnvio={() => b.ejecutarGuardadoFinalCotizacion(b.cotizacionParaConfirmarWhatsApp!)}
+        />
+      )}
     </div>
   );
 };

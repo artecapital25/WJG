@@ -50,6 +50,7 @@ export function useCotizadorBuilder({
   const [notas, setNotas] = useState<string>('No incluye transporte fuera del perímetro urbano.');
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [cotizacionParaConfirmarWhatsApp, setCotizacionParaConfirmarWhatsApp] = useState<Cotizacion | null>(null);
 
   // Modal para editar pieza/ítem individual con todos sus parámetros
   const [piezaEditando, setPiezaEditando] = useState<PiezaCotizada | null>(null);
@@ -337,6 +338,15 @@ export function useCotizadorBuilder({
       return;
     }
 
+    if (enviarWhatsApp) {
+      setCotizacionParaConfirmarWhatsApp(cotizacionFinal);
+      return;
+    }
+
+    ejecutarGuardadoFinalCotizacion(cotizacionFinal);
+  };
+
+  const ejecutarGuardadoFinalCotizacion = (cotizacionFinal: Cotizacion) => {
     onSaveCotizacion(cotizacionFinal);
 
     confetti({
@@ -345,15 +355,12 @@ export function useCotizadorBuilder({
       origin: { y: 0.6 }
     });
 
-    if (enviarWhatsApp) {
-      const url = generateCotizacionWhatsAppUrl(cotizacionFinal, config);
-      openWhatsApp(url);
-    }
-
     // Disparo dual por correo si el cliente tiene correo registrado
     if (cotizacionFinal.cliente?.correo) {
       EmailNotificationService.enviarCorreoCotizacion(cotizacionFinal);
     }
+
+    setCotizacionParaConfirmarWhatsApp(null);
   };
 
   const handleDescargarPDF = () => {
@@ -562,6 +569,9 @@ export function useCotizadorBuilder({
     handleDescargarPDF,
     handleCompartirPDF,
     handleCrearNuevoCliente,
-    handleRecalcularTarifasVigentes
+    handleRecalcularTarifasVigentes,
+    cotizacionParaConfirmarWhatsApp,
+    setCotizacionParaConfirmarWhatsApp,
+    ejecutarGuardadoFinalCotizacion
   };
 }

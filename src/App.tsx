@@ -343,8 +343,20 @@ export const App: React.FC = () => {
         const pagosLedger = cloudPayments || [];
 
         if (cloudCots !== null) {
-          setCotizaciones(cloudCots);
-          StorageService.saveCotizaciones(cloudCots);
+          setCotizaciones(prev => {
+            const mergedMap = new Map<string, Cotizacion>();
+            cloudCots.forEach(c => mergedMap.set(c.numero_cot, c));
+            prev.forEach(c => {
+              if (!mergedMap.has(c.numero_cot)) {
+                mergedMap.set(c.numero_cot, c);
+              }
+            });
+            const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
+              b.numero_cot.localeCompare(a.numero_cot)
+            );
+            StorageService.saveCotizaciones(mergedList);
+            return mergedList;
+          });
         }
 
         if (cloudClis !== null) {
@@ -539,8 +551,20 @@ export const App: React.FC = () => {
       async () => {
         const freshCots = await CloudSyncService.fetchCotizaciones();
         if (freshCots !== null) {
-          setCotizaciones(freshCots);
-          StorageService.saveCotizaciones(freshCots);
+          setCotizaciones(prev => {
+            const mergedMap = new Map<string, Cotizacion>();
+            freshCots.forEach(c => mergedMap.set(c.numero_cot, c));
+            prev.forEach(c => {
+              if (!mergedMap.has(c.numero_cot)) {
+                mergedMap.set(c.numero_cot, c);
+              }
+            });
+            const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
+              b.numero_cot.localeCompare(a.numero_cot)
+            );
+            StorageService.saveCotizaciones(mergedList);
+            return mergedList;
+          });
         }
       },
       async () => {
@@ -718,12 +742,12 @@ export const App: React.FC = () => {
   };
 
   // Guardar Cotización (nueva o modificada con Reconciliación Transaccional de OTs)
-  const handleSaveCotizacion = (cotizacion: Cotizacion) => {
+  const handleSaveCotizacion = async (cotizacion: Cotizacion) => {
     let updated: Cotizacion[];
     if (editingCotizacion && editingCotizacion.id === cotizacion.id) {
       updated = cotizaciones.map(c => c.id === cotizacion.id ? cotizacion : c);
     } else {
-      updated = [cotizacion, ...cotizaciones];
+      updated = [cotizacion, ...cotizaciones.filter(c => c.id !== cotizacion.id && c.numero_cot !== cotizacion.numero_cot)];
     }
     setCotizaciones(updated);
     StorageService.saveCotizaciones(updated);
@@ -731,14 +755,13 @@ export const App: React.FC = () => {
     setEditingCotizacion(null);
     setActiveTab('cotizaciones');
 
-    // Sincronizar en la nube Supabase en segundo plano con notificación operativa
-    CloudSyncService.saveCotizacion(cotizacion).then(ok => {
-      if (!ok) {
-        toast.warning(`Cotización ${cotizacion.numero_cot} guardada localmente. Sincronización en la nube pendiente.`);
-      } else {
-        toast.success(`Cotización ${cotizacion.numero_cot} guardada y sincronizada.`);
-      }
-    });
+    // Sincronizar en la nube Supabase con notificación operativa
+    const ok = await CloudSyncService.saveCotizacion(cotizacion);
+    if (!ok) {
+      toast.warning(`Cotización ${cotizacion.numero_cot} guardada localmente. Sincronización en la nube pendiente.`);
+    } else {
+      toast.success(`Cotización ${cotizacion.numero_cot} guardada y sincronizada.`);
+    }
 
     // Reconciliación Transaccional con Órdenes de Trabajo (OT) del Taller si la cotización ya tiene OTs
     const currentOrders = StorageService.getOrdenes();
