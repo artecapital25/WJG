@@ -658,6 +658,16 @@ export const App: React.FC = () => {
       }
     );
 
+    // Sincronización Inmediata al Reconectar a Internet: vacía la cola outbox y actualiza la UI
+    const unbindReconnection = CloudSyncService.initReconnectionListener(async () => {
+      await syncCloudData();
+    });
+
+    const handleOutboxFlushed = () => {
+      syncCloudData();
+    };
+    window.addEventListener('wjg:outbox-flushed', handleOutboxFlushed);
+
     // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC
     const handleVisibilityOrFocus = () => {
       if (typeof document !== 'undefined' && document.visibilityState === 'visible' && CloudSyncService.isAvailable()) {
@@ -669,6 +679,8 @@ export const App: React.FC = () => {
 
     return () => {
       if (channel) channel.unsubscribe();
+      unbindReconnection();
+      window.removeEventListener('wjg:outbox-flushed', handleOutboxFlushed);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };

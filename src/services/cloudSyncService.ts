@@ -56,8 +56,126 @@ export interface BalanceTaller {
 // Cache en memoria para prevención de doble clic y cobros duplicados en ventana de 60 segundos
 const recentPaymentsCache = new Map<string, number>();
 
+export interface OutboxSyncTask {
+  id: string;
+  type: 'cotizacion' | 'venta_express' | 'orden' | 'cuenta';
+  payload: any;
+  created_at: number;
+  retries: number;
+}
+
+const OUTBOX_STORAGE_KEY = 'wjg_sync_outbox';
+
 export const CloudSyncService = {
   isAvailable: () => isSupabaseConfigured && supabase !== null,
+
+  // --- GESTIÓN DE COLA OUTBOX Y RESILIENCIA OFFLINE ---
+  getOutboxQueue(): OutboxSyncTask[] {
+    try {
+      if (typeof localStorage === 'undefined') return [];
+      const data = localStorage.getItem(OUTBOX_STORAGE_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.warn('Error reading outbox queue:', e);
+      return [];
+    }
+  },
+
+  enqueueOutboxTask(task: Omit<OutboxSyncTask, 'id' | 'created_at' | 'retries'>): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const queue = this.getOutboxQueue();
+      // Prevenir duplicados de la misma entidad
+      const filtered = queue.filter(item => {
+        if (item.type !== task.type) return true;
+        if (task.type === 'cotizacion') return item.payload?.numero_cot !== task.payload?.numero_cot;
+        if (task.type === 'venta_express') return item.payload?.id !== task.payload?.id;
+        if (task.type === 'orden') return item.payload?.numero_ot !== task.payload?.numero_ot;
+        if (task.type === 'cuenta') return item.payload?.id !== task.payload?.id;
+        return true;
+      });
+
+      const newTask: OutboxSyncTask = {
+        ...task,
+        id: `outbox-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        created_at: Date.now(),
+        retries: 0
+      };
+
+      filtered.push(newTask);
+      localStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(filtered));
+    } catch (e) {
+      console.warn('Error enqueuing outbox task:', e);
+    }
+  },
+
+  dequeueOutboxTask(id: string): void {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      const queue = this.getOutboxQueue();
+      const updated = queue.filter(item => item.id !== id);
+      localStorage.setItem(OUTBOX_STORAGE_KEY, JSON.stringify(updated));
+    } catch (e) {
+      console.warn('Error dequeuing outbox task:', e);
+    }
+  },
+
+  async flushOutboxQueue(): Promise<{ synced: number; remaining: number }> {
+    if (!this.isAvailable()) return { synced: 0, remaining: this.getOutboxQueue().length };
+    const queue = this.getOutboxQueue();
+    if (queue.length === 0) return { synced: 0, remaining: 0 };
+
+    let synced = 0;
+    for (const task of queue) {
+      try {
+        let success = false;
+        if (task.type === 'cotizacion') {
+          success = await this.saveCotizacion(task.payload, true);
+        } else if (task.type === 'venta_express') {
+          const res = await this.saveVentaExpress(task.payload, true);
+          success = Boolean(res.success);
+        } else if (task.type === 'orden') {
+          success = await this.saveOrdenTrabajo(task.payload, true);
+        } else if (task.type === 'cuenta') {
+          success = await this.saveCuentaCobro(task.payload, true);
+        }
+
+        if (success) {
+          this.dequeueOutboxTask(task.id);
+          synced++;
+        }
+      } catch (e) {
+        console.warn(`Error flushing outbox task ${task.id}:`, e);
+      }
+    }
+
+    if (synced > 0 && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wjg:outbox-flushed', { detail: { synced } }));
+    }
+
+    return { synced, remaining: this.getOutboxQueue().length };
+  },
+
+  initReconnectionListener(onSyncedCallback?: () => void): () => void {
+    if (typeof window === 'undefined') return () => {};
+
+    const handleOnline = async () => {
+      console.log('🌐 Conexión detectada. Vaciando cola outbox hacia Supabase...');
+      const conn = await this.checkConnection();
+      if (conn.ok) {
+        const result = await this.flushOutboxQueue();
+        if (result.synced > 0) {
+          if (onSyncedCallback) onSyncedCallback();
+          window.dispatchEvent(new CustomEvent('wjg:cloud-sync-online', { detail: result }));
+        }
+      }
+    };
+
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('online', handleOnline);
+    };
+  },
 
   // 1. Probar conexión en vivo
   async checkConnection(): Promise<{ ok: boolean; message: string }> {
@@ -409,8 +527,11 @@ export const CloudSyncService = {
   },
 
   // 5. Guardar o Actualizar una Cotización en Supabase
-  async saveCotizacion(cot: Cotizacion): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+  async saveCotizacion(cot: Cotizacion, isFlushingQueue: boolean = false): Promise<boolean> {
+    if (!this.isAvailable()) {
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cotizacion', payload: cot });
+      return false;
+    }
     try {
       // 5.1 Asegurar que el cliente exista en la tabla clientes
       let clienteId: string | null = null;
@@ -490,6 +611,7 @@ export const CloudSyncService = {
 
       if (cotErr) {
         console.warn('Error saving cotizacion in Supabase:', cotErr);
+        if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cotizacion', payload: cot });
         return false;
       }
 
@@ -521,13 +643,17 @@ export const CloudSyncService = {
       return true;
     } catch (e) {
       console.warn('Exception in saveCotizacion to cloud:', e);
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cotizacion', payload: cot });
       return false;
     }
   },
 
   // 6. Guardar o Actualizar una Orden de Trabajo (OT) en Supabase (Core V3 Compatible)
-  async saveOrdenTrabajo(ot: OrdenTrabajo): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+  async saveOrdenTrabajo(ot: OrdenTrabajo, isFlushingQueue: boolean = false): Promise<boolean> {
+    if (!this.isAvailable()) {
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'orden', payload: ot });
+      return false;
+    }
     try {
       const totalOtCalc = Number(ot.precio_cobrado || (ot.abono || 0) + (ot.saldo_pendiente || 0) || 0);
       const totalAbonadoCalc = Number(ot.abono || 0);
@@ -600,9 +726,13 @@ export const CloudSyncService = {
         .from('ordenes_trabajo')
         .upsert(payloadLegacy, { onConflict: 'numero_ot' });
 
+      if (errLegacy && !isFlushingQueue) {
+        this.enqueueOutboxTask({ type: 'orden', payload: ot });
+      }
       return !errLegacy;
     } catch (e) {
       console.warn('Exception saving OT to cloud:', e);
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'orden', payload: ot });
       return false;
     }
   },
@@ -635,8 +765,11 @@ export const CloudSyncService = {
   },
 
   // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase (sincronizada en ordenes_trabajo)
-  async saveCuentaCobro(cc: CuentaCobro): Promise<boolean> {
-    if (!this.isAvailable()) return false;
+  async saveCuentaCobro(cc: CuentaCobro, isFlushingQueue: boolean = false): Promise<boolean> {
+    if (!this.isAvailable()) {
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
+      return false;
+    }
     try {
       const numOT = cc.numero_cc.replace(/^CC-/, 'OT-');
       const { error } = await supabase!
@@ -648,9 +781,13 @@ export const CloudSyncService = {
         })
         .eq('numero_ot', numOT);
 
+      if (error && !isFlushingQueue) {
+        this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
+      }
       return !error;
     } catch (e) {
       console.warn('Exception saving CC to cloud:', e);
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
       return false;
     }
   },
@@ -842,8 +979,11 @@ export const CloudSyncService = {
   },
 
   // 11. Guardar o Actualizar una Venta Express en Supabase (Persistencia Canónica Directa)
-  async saveVentaExpress(venta: VentaExpress): Promise<{ success: boolean; data?: any; error?: string }> {
-    if (!this.isAvailable()) return { success: false, error: 'Supabase no está configurado o sin conexión.' };
+  async saveVentaExpress(venta: VentaExpress, isFlushingQueue: boolean = false): Promise<{ success: boolean; data?: any; error?: string }> {
+    if (!this.isAvailable()) {
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'venta_express', payload: venta });
+      return { success: false, error: 'Supabase no está configurado o sin conexión.' };
+    }
 
     try {
       const snapshotPrefix = '<!-- WJ_POS_FISCAL:';
@@ -891,11 +1031,13 @@ export const CloudSyncService = {
 
       if (error) {
         console.warn('Error saving venta_express in Supabase:', error.message);
+        if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'venta_express', payload: venta });
         return { success: false, error: error.message };
       }
       return { success: true };
     } catch (e: any) {
       console.warn('Exception in saveVentaExpress:', e);
+      if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'venta_express', payload: venta });
       return { success: false, error: e?.message || 'Error guardando venta' };
     }
   },
@@ -1583,11 +1725,9 @@ export const CloudSyncService = {
         telefono_contacto2: data.telefono_contacto2 || '+57 321 7273025',
         correo: data.correo || 'wjgeeks3d@gmail.com',
         instagram: data.instagram || '@wjgeeks3d',
-        nequi: data.nequi || '321 727 3025',
+        nequi: data.nequi || '3202796115',
         bre_b: data.bre_b || '0090778625',
-        daviplata: data.daviplata || '320 279 6115',
-        bancolombia: data.bancolombia || '0090778625',
-        titular_cuenta: data.titular_cuenta || 'Germán / WJGEEKS'
+        titular_cuenta: data.titular_cuenta || 'WJGEEKS 3D PRO'
       };
     } catch (e) {
       console.warn('Exception in fetchConfiguracion:', e);

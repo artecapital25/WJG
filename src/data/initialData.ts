@@ -1132,7 +1132,7 @@ export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "bre_b": "0090778625",
   "daviplata": "3217273025",
   "bancolombia": "Ahorros 245-000123-98",
-  "titular_cuenta": "WJGEEKS 3D"
+  "titular_cuenta": "WJGEEKS 3D PRO"
 };
 
 export const TARIFAS_TAMANOS_INICIALES = [

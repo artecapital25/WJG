@@ -610,8 +610,8 @@ export function crearDocPDFCuentaCobro(
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
   doc.text(`- Bre-B (Llave única): ${config.bre_b || '0090778625'}`, 20, finalY + 19);
-  doc.text(`- Nequi: ${config.nequi} (${config.titular_cuenta})`, 20, finalY + 26);
-  doc.text(`- Titular: ${config.titular_cuenta}`, 20, finalY + 33);
+  doc.text(`- Nequi: ${config.nequi || '3202796115'} (${config.titular_cuenta || 'WJGEEKS 3D PRO'})`, 20, finalY + 26);
+  doc.text(`- Titular: ${config.titular_cuenta || 'WJGEEKS 3D PRO'}`, 20, finalY + 33);
   doc.text(`- Régimen Tributario: ${LEYENDA_IVA_CERO}`, 20, finalY + 40);
 
   // Footer

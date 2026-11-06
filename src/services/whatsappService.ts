@@ -128,8 +128,9 @@ ${ivaPct > 0 ? `🏛️ *IVA (${ivaPct}%):* +$${ivaMonto.toLocaleString('es-CO')
 ━━━━━━━━━━━━━━━━━━━━
 
 📲 *Medios de Pago Oficiales:*
-• *Bre-B (Llave única):* ${config.bre_b || '0090778625'}
-• *Nequi:* ${config.nequi} (${config.titular_cuenta})
+• *Bre-B (Llave única):* ${config.bre_b || '0090778625'} (Titular: ${config.titular_cuenta || 'WJGEEKS 3D PRO'})
+• *Nequi:* ${config.nequi || '3202796115'} (Titular: ${config.titular_cuenta || 'WJGEEKS 3D PRO'})
+• *Régimen:* Régimen Simple / No Responsable de IVA
 
 Por favor envíanos tu comprobante para coordinar el despacho inmediato. ¡Muchas gracias por tu compra! ✨🚀`;
 }
