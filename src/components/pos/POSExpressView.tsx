@@ -1,9 +1,12 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useMemo } from 'react';
 import { 
   Camera, 
   UploadCloud, 
   DollarSign, 
   User, 
+  UserPlus,
+  UserCheck,
+  Users,
   Calendar, 
   AlertTriangle, 
   CheckCircle, 
@@ -27,7 +30,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
-import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock } from '../../types';
+import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock, Cotizacion } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { 
   calcularAlertaCobro, 
@@ -44,6 +47,8 @@ import { obtenerBlobURLReciboPOS } from '../../services/pdfService';
 import { LEYENDA_IVA_CERO } from '../../features/cotizador/utils/pricingCalculator';
 import { toast } from '../ui/ToastProvider';
 import { EmailNotificationService } from '../../services/emailNotificationService';
+import { StorageService } from '../../services/storageService';
+import { CatalogoClientesStats, FiltroTipoCliente, coincideBusquedaCliente } from '../../utils/customerClassification';
 
 interface POSExpressViewProps {
   ventas: VentaExpress[];
@@ -51,6 +56,7 @@ interface POSExpressViewProps {
   config: ConfiguracionTaller;
   ordenes?: OrdenTrabajo[];
   productosStock?: ProductoStock[];
+  cotizaciones?: Cotizacion[];
   onGuardarVenta: (nuevaVenta: VentaExpress) => void;
   onActualizarVenta: (ventaActualizada: VentaExpress) => void;
   onEliminarVenta?: (ventaId: string) => void;
@@ -74,6 +80,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   config,
   ordenes = [],
   productosStock = [],
+  cotizaciones = [],
   onGuardarVenta,
   onActualizarVenta,
   onEliminarVenta,
@@ -108,7 +115,30 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
 
   const [notas, setNotas] = useState<string>('');
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
+  const [filtroTipoCliente, setFiltroTipoCliente] = useState<FiltroTipoCliente>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
+
+  // Catálogo consolidado de clientes y métricas de transacciones
+  const clientesStats = useMemo(() => {
+    const listadoCotizaciones = cotizaciones && cotizaciones.length > 0
+      ? cotizaciones
+      : (typeof window !== 'undefined' ? StorageService.getCotizaciones() : []);
+    return new CatalogoClientesStats(listadoCotizaciones, ventas);
+  }, [cotizaciones, ventas]);
+
+  // Conteos para los chips segmentadores por tipo de cliente
+  const conteosTipoCliente = useMemo(() => {
+    let nuevos = 0;
+    let recurrentes = 0;
+    ventas.forEach(v => {
+      if (clientesStats.esClienteNuevo({ nombre: v.cliente_nombre, telefono: v.cliente_telefono })) {
+        nuevos++;
+      } else {
+        recurrentes++;
+      }
+    });
+    return { todos: ventas.length, nuevos, recurrentes };
+  }, [ventas, clientesStats]);
 
   // Validación de Producción (OT) y Estado del Diseño 3D
   const [requiereOT, setRequiereOT] = useState<boolean>(true);
@@ -379,13 +409,21 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     confetti({ particleCount: 50, spread: 50 });
   };
 
-  // Filtrado de ventas recientes
+  // Filtrado de ventas recientes con búsqueda y segmentación por tipo de cliente
   const ventasFiltradas = ventas.filter(v => {
-    const matchBusqueda = v.cliente_nombre.toLowerCase().includes(busqueda.toLowerCase()) ||
+    const matchBusqueda = coincideBusquedaCliente({ nombre: v.cliente_nombre, telefono: v.cliente_telefono }, busqueda) ||
       v.nombre_producto.toLowerCase().includes(busqueda.toLowerCase()) ||
       v.numero_venta.toLowerCase().includes(busqueda.toLowerCase());
 
     if (!matchBusqueda) return false;
+
+    // Filtro por tipo de cliente (Nuevo vs Recurrente)
+    if (filtroTipoCliente === 'nuevos' && !clientesStats.esClienteNuevo({ nombre: v.cliente_nombre, telefono: v.cliente_telefono })) {
+      return false;
+    }
+    if (filtroTipoCliente === 'recurrentes' && !clientesStats.esClienteRecurrente({ nombre: v.cliente_nombre, telefono: v.cliente_telefono })) {
+      return false;
+    }
 
     if (filtroEstado === 'todos') return true;
     if (filtroEstado === 'pendientes') return v.saldo_pendiente > 0;
@@ -1142,6 +1180,54 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </button>
               </div>
             </div>
+
+            {/* Segmentador Rápido por Tipo de Cliente (Nuevos vs Recurrentes) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+              <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <Users size={13} color="var(--brand-cyan)" />
+                CLIENTE:
+              </span>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCliente('todos')}
+                  className={`btn btn-sm ${filtroTipoCliente === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ padding: '3px 10px', fontSize: '0.78rem', borderRadius: '6px' }}
+                >
+                  Todos ({conteosTipoCliente.todos})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCliente('nuevos')}
+                  className={`btn btn-sm ${filtroTipoCliente === 'nuevos' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ 
+                    padding: '3px 10px', 
+                    fontSize: '0.78rem', 
+                    borderRadius: '6px',
+                    borderColor: filtroTipoCliente === 'nuevos' ? undefined : 'rgba(16, 185, 129, 0.4)',
+                    color: filtroTipoCliente === 'nuevos' ? undefined : '#34d399'
+                  }}
+                >
+                  <UserPlus size={12} style={{ marginRight: '4px' }} />
+                  Nuevos ({conteosTipoCliente.nuevos})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFiltroTipoCliente('recurrentes')}
+                  className={`btn btn-sm ${filtroTipoCliente === 'recurrentes' ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ 
+                    padding: '3px 10px', 
+                    fontSize: '0.78rem', 
+                    borderRadius: '6px',
+                    borderColor: filtroTipoCliente === 'recurrentes' ? undefined : 'rgba(59, 130, 246, 0.4)',
+                    color: filtroTipoCliente === 'recurrentes' ? undefined : '#60a5fa'
+                  }}
+                >
+                  <UserCheck size={12} style={{ marginRight: '4px' }} />
+                  Recurrentes ({conteosTipoCliente.recurrentes})
+                </button>
+              </div>
+            </div>
           </div>
 
           {/* Listado de Ventas Express */}
@@ -1199,8 +1285,54 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                               {venta.nombre_producto}
                             </h4>
 
-                            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                              👤 <strong>{venta.cliente_nombre}</strong> • 📱 {venta.cliente_telefono}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '3px', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '0.88rem', color: '#fff', fontWeight: 700 }}>
+                                👤 {venta.cliente_nombre}
+                              </span>
+                              {clientesStats.esClienteNuevo({ nombre: venta.cliente_nombre, telefono: venta.cliente_telefono }) ? (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '1px 7px',
+                                    borderRadius: '9999px',
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    color: '#34d399',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)'
+                                  }}
+                                  title="Primera cotización o compra registrada"
+                                >
+                                  <UserPlus size={10} />
+                                  Nuevo
+                                </span>
+                              ) : (
+                                <span
+                                  style={{
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    fontSize: '0.68rem',
+                                    fontWeight: 700,
+                                    padding: '1px 7px',
+                                    borderRadius: '9999px',
+                                    background: 'rgba(59, 130, 246, 0.15)',
+                                    color: '#60a5fa',
+                                    border: '1px solid rgba(59, 130, 246, 0.35)'
+                                  }}
+                                  title={`Cliente frecuente (${clientesStats.getTransaccionesCount({ nombre: venta.cliente_nombre, telefono: venta.cliente_telefono })} transacciones)`}
+                                >
+                                  <UserCheck size={10} />
+                                  Frecuente
+                                </span>
+                              )}
+                              {venta.cliente_telefono && (
+                                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                                  • 📱 {venta.cliente_telefono}
+                                </span>
+                              )}
                             </div>
 
                             {/* Badge de OT y Estado del Diseño */}

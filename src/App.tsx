@@ -2319,6 +2319,7 @@ export const App: React.FC = () => {
             cotizaciones={cotizaciones}
             config={config}
             ordenes={ordenes}
+            ventas={ventasExpress}
             onUpdateEstado={(id, st) => {
               const u = cotizaciones.map(c => c.id === id ? { ...c, estado: st } : c);
               setCotizaciones(u);
@@ -2339,6 +2340,7 @@ export const App: React.FC = () => {
             config={config}
             ordenes={ordenes}
             productosStock={productosStock}
+            cotizaciones={cotizaciones}
             onGuardarVenta={handleGuardarVentaExpress}
             onActualizarVenta={handleActualizarVentaExpress}
             onEliminarVenta={handleEliminarVentaExpress}

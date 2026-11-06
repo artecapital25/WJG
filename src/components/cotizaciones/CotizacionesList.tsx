@@ -13,6 +13,9 @@ import {
   Filter,
   X,
   User,
+  UserPlus,
+  UserCheck,
+  Users,
   Hash,
   Sparkles,
   Image as ImageIcon,
@@ -28,15 +31,19 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
+import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
+import { StorageService } from '../../services/storageService';
+import { CatalogoClientesStats, FiltroTipoCliente, coincideBusquedaCliente } from '../../utils/customerClassification';
 
 interface CotizacionesListProps {
   cotizaciones: Cotizacion[];
   config: ConfiguracionTaller;
   ordenes?: OrdenTrabajo[];
+  ventas?: VentaExpress[];
   onUpdateEstado: (cotId: string, nuevoEstado: EstadoCotizacion) => void;
   onEditarCotizacion?: (cot: Cotizacion) => void;
   onAprobarCotizacion: (cot: Cotizacion, datosPago?: DatosPagoRegistro, redirigirTaller?: boolean) => void;
@@ -51,6 +58,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   cotizaciones,
   config,
   ordenes = [],
+  ventas = [],
   onUpdateEstado,
   onEditarCotizacion,
   onAprobarCotizacion,
@@ -60,12 +68,35 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [filtroPago, setFiltroPago] = useState<'todos' | 'pendiente' | 'abono' | 'pagado'>('todos');
+  const [filtroTipoCliente, setFiltroTipoCliente] = useState<FiltroTipoCliente>('todos');
   const [busqueda, setBusqueda] = useState<string>('');
   const [clienteSeleccionado, setClienteSeleccionado] = useState<string>('todos');
   const [criterioOrden, setCriterioOrden] = useState<TipoOrden>('reciente');
   const [previewModalImg, setPreviewModalImg] = useState<{ url: string; title: string } | null>(null);
   const [cotParaGestionarPago, setCotParaGestionarPago] = useState<{ cot: Cotizacion; esAprobacion: boolean } | null>(null);
   const [cotParaEliminar, setCotParaEliminar] = useState<Cotizacion | null>(null);
+
+  // Catálogo consolidado de clientes y métricas de transacciones
+  const clientesStats = useMemo(() => {
+    const listadoVentas = ventas && ventas.length > 0 
+      ? ventas 
+      : (typeof window !== 'undefined' ? StorageService.getVentasExpress() : []);
+    return new CatalogoClientesStats(cotizaciones, listadoVentas);
+  }, [cotizaciones, ventas]);
+
+  // Conteos para los chips segmentadores por tipo de cliente
+  const conteosTipoCliente = useMemo(() => {
+    let nuevos = 0;
+    let recurrentes = 0;
+    cotizaciones.forEach(c => {
+      if (clientesStats.esClienteNuevo(c.cliente)) {
+        nuevos++;
+      } else {
+        recurrentes++;
+      }
+    });
+    return { todos: cotizaciones.length, nuevos, recurrentes };
+  }, [cotizaciones, clientesStats]);
 
   // Función auxiliar para parsear y comparar números de cotización como "25-073"
   const parseCotNumber = (num: string): number => {
@@ -113,25 +144,32 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       });
     }
 
-    // 3. Filtro por Cliente
+    // 3. Filtro por Tipo de Cliente (Nuevo vs Recurrente)
+    if (filtroTipoCliente === 'nuevos') {
+      resultado = resultado.filter(c => clientesStats.esClienteNuevo(c.cliente));
+    } else if (filtroTipoCliente === 'recurrentes') {
+      resultado = resultado.filter(c => clientesStats.esClienteRecurrente(c.cliente));
+    }
+
+    // 4. Filtro por Cliente Específico
     if (clienteSeleccionado !== 'todos') {
       resultado = resultado.filter(c => 
         c.cliente?.nombre?.toLowerCase().trim() === clienteSeleccionado.toLowerCase().trim()
       );
     }
 
-    // 4. Filtro por Búsqueda (Número de cotización, cliente o nombre de ítem/pieza)
+    // 5. Filtro por Búsqueda Multicriterio (Número, Cliente [nombre/teléfono/NIT], o Ítem)
     if (busqueda.trim()) {
       const q = busqueda.toLowerCase().trim();
       resultado = resultado.filter(c => {
         const matchNumero = c.numero_cot?.toLowerCase().includes(q);
-        const matchCliente = c.cliente?.nombre?.toLowerCase().includes(q);
+        const matchCliente = coincideBusquedaCliente(c.cliente, q);
         const matchItems = c.items?.some(it => it.nombre_item?.toLowerCase().includes(q));
         return matchNumero || matchCliente || matchItems;
       });
     }
 
-    // 5. Ordenamiento
+    // 6. Ordenamiento
     resultado.sort((a, b) => {
       switch (criterioOrden) {
         case 'reciente': // Más reciente primero (ej: 25-073 a 25-001)
@@ -152,15 +190,16 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
     });
 
     return resultado;
-  }, [cotizaciones, filtroEstado, filtroPago, clienteSeleccionado, busqueda, criterioOrden]);
+  }, [cotizaciones, filtroEstado, filtroPago, filtroTipoCliente, clienteSeleccionado, busqueda, criterioOrden, clientesStats]);
 
-  const hayFiltrosActivos = busqueda.trim() !== '' || clienteSeleccionado !== 'todos' || filtroEstado !== 'todos' || filtroPago !== 'todos';
+  const hayFiltrosActivos = busqueda.trim() !== '' || clienteSeleccionado !== 'todos' || filtroEstado !== 'todos' || filtroPago !== 'todos' || filtroTipoCliente !== 'todos';
 
   const limpiarFiltros = () => {
     setBusqueda('');
     setClienteSeleccionado('todos');
     setFiltroEstado('todos');
     setFiltroPago('todos');
+    setFiltroTipoCliente('todos');
     setCriterioOrden('reciente');
   };
 
@@ -217,18 +256,18 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       <div className="glass-card" style={{ padding: '16px', marginBottom: '16px' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', alignItems: 'center' }}>
           
-          {/* Búsqueda por Número de Cotización o Pieza */}
+          {/* Búsqueda Multicriterio por Cliente, Número o Ítem */}
           <div style={{ position: 'relative' }}>
             <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Hash size={13} color="var(--brand-cyan)" />
-              BUSCAR POR N° O ÍTEM
+              <Search size={13} color="var(--brand-cyan)" />
+              BUSCAR POR CLIENTE, N° O ÍTEM
             </label>
             <div style={{ position: 'relative' }}>
               <input 
                 type="text"
                 className="form-input"
                 style={{ paddingLeft: '34px', paddingRight: busqueda ? '32px' : '12px', minHeight: '40px', fontSize: '0.88rem' }}
-                placeholder="Ej: 25-073, Itachi, Muñeco..."
+                placeholder="Ej: Juan Pérez, 320..., 25-073, Figura..."
                 value={busqueda}
                 onChange={(e) => setBusqueda(e.target.value)}
               />
@@ -305,6 +344,54 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <option value="abono">🟡 Con Abono Parcial</option>
               <option value="pendiente">🔴 Sin Pago / Pendiente</option>
             </select>
+          </div>
+        </div>
+
+        {/* Segmentador Rápido por Tipo de Cliente (Nuevos vs Recurrentes) */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Users size={13} color="var(--brand-cyan)" />
+            TIPO DE CLIENTE:
+          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => setFiltroTipoCliente('todos')}
+              className={`btn btn-sm ${filtroTipoCliente === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ padding: '3px 10px', fontSize: '0.78rem', borderRadius: '6px' }}
+            >
+              Todos ({conteosTipoCliente.todos})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroTipoCliente('nuevos')}
+              className={`btn btn-sm ${filtroTipoCliente === 'nuevos' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ 
+                padding: '3px 10px', 
+                fontSize: '0.78rem', 
+                borderRadius: '6px',
+                borderColor: filtroTipoCliente === 'nuevos' ? undefined : 'rgba(16, 185, 129, 0.4)',
+                color: filtroTipoCliente === 'nuevos' ? undefined : '#34d399'
+              }}
+            >
+              <UserPlus size={12} style={{ marginRight: '4px' }} />
+              Nuevos ({conteosTipoCliente.nuevos})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroTipoCliente('recurrentes')}
+              className={`btn btn-sm ${filtroTipoCliente === 'recurrentes' ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ 
+                padding: '3px 10px', 
+                fontSize: '0.78rem', 
+                borderRadius: '6px',
+                borderColor: filtroTipoCliente === 'recurrentes' ? undefined : 'rgba(59, 130, 246, 0.4)',
+                color: filtroTipoCliente === 'recurrentes' ? undefined : '#60a5fa'
+              }}
+            >
+              <UserCheck size={12} style={{ marginRight: '4px' }} />
+              Recurrentes ({conteosTipoCliente.recurrentes})
+            </button>
           </div>
         </div>
 
@@ -395,8 +482,49 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                       {cot.estado === 'Parcial' ? '🟡 Parcial (Pendiente Slicer)' : cot.estado}
                     </span>
                   </div>
-                  <div style={{ fontSize: '0.98rem', fontWeight: 600, marginTop: '5px' }}>
-                    👤 {cot.cliente.nombre}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
+                    <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>
+                      👤 {cot.cliente.nombre}
+                    </div>
+                    {clientesStats.esClienteNuevo(cot.cliente) ? (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#34d399',
+                          border: '1px solid rgba(16, 185, 129, 0.35)'
+                        }}
+                        title="Primera cotización registrada en el sistema"
+                      >
+                        <UserPlus size={11} />
+                        Cliente Nuevo
+                      </span>
+                    ) : (
+                      <span
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '9999px',
+                          background: 'rgba(59, 130, 246, 0.15)',
+                          color: '#60a5fa',
+                          border: '1px solid rgba(59, 130, 246, 0.35)'
+                        }}
+                        title={`Cliente frecuente (${clientesStats.getTransaccionesCount(cot.cliente)} transacciones)`}
+                      >
+                        <UserCheck size={11} />
+                        Cliente Frecuente
+                      </span>
+                    )}
                   </div>
                   <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '2px' }}>
                     📅 {cot.fecha} | Vendedor: {cot.vendedor} {cot.cliente.telefono && `| 📱 ${cot.cliente.telefono}`}
