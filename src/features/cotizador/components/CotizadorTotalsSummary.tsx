@@ -1,6 +1,7 @@
 import React from 'react';
-import { Save, Send, FileDown, X } from 'lucide-react';
+import { Save, Send, FileDown, X, Clock, Calendar, Check, Plus } from 'lucide-react';
 import { CotizadorTotalsSummaryProps } from '../types/cotizador.types';
+import { NOTAS_RAPIDAS_SUGERIDAS, toggleNotaRapida } from '../../../utils/businessDays';
 
 export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = React.memo(({
   subtotal,
@@ -19,6 +20,11 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
   setVendedorNombre,
   notas,
   setNotas,
+  diasEntrega = 3,
+  fechaEntrega,
+  handleCambiarDiasEntrega,
+  handleCambiarFechaEntrega,
+  tiempoEntregaTexto,
   tieneItemsPendientes,
   esEdicion,
   numeroCotFinal,
@@ -177,14 +183,128 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
         />
       </div>
 
-      {/* Condiciones y Observaciones */}
-      <div className="form-group">
-        <label className="form-label">Condiciones & Observaciones</label>
+      {/* Tiempo Estimado de Fabricación y Entrega (Slider 3 a 30 días hábiles + Calendario) */}
+      <div className="form-group" style={{ 
+        marginBottom: '16px', 
+        background: 'rgba(255, 255, 255, 0.03)', 
+        border: '1px solid rgba(255, 255, 255, 0.08)',
+        borderRadius: '10px',
+        padding: '14px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+          <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Clock size={15} color="var(--brand-cyan)" />
+            <span>Tiempo de Fabricación & Entrega</span>
+          </label>
+          <span style={{ 
+            fontSize: '0.82rem', 
+            fontWeight: 800, 
+            color: 'var(--brand-cyan)', 
+            background: 'rgba(56, 189, 248, 0.12)', 
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            padding: '2px 8px',
+            borderRadius: '6px'
+          }}>
+            {tiempoEntregaTexto || `(${diasEntrega}) Días hábiles`}
+          </span>
+        </div>
+
+        {/* Barra Deslizadora (Slider de 3 a 30 días) */}
+        <div style={{ marginBottom: '10px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
+            <span>⚡ 3 días mín.</span>
+            <span style={{ fontWeight: 700, color: '#fff' }}>{diasEntrega} días hábiles</span>
+            <span>🏭 30 días máx.</span>
+          </div>
+          <input 
+            type="range"
+            min={3}
+            max={30}
+            step={1}
+            value={diasEntrega}
+            onChange={(e) => handleCambiarDiasEntrega && handleCambiarDiasEntrega(parseInt(e.target.value, 10))}
+            style={{ width: '100%', accentColor: 'var(--brand-cyan)', cursor: 'pointer' }}
+          />
+        </div>
+
+        {/* Presets Rápidos */}
+        <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap', marginBottom: '12px' }}>
+          {[3, 5, 8, 15, 20, 30].map((dias) => (
+            <button
+              key={dias}
+              type="button"
+              className={`btn btn-sm ${diasEntrega === dias ? 'btn-primary' : 'btn-secondary'}`}
+              style={{ flex: 1, minWidth: '45px', padding: '3px 0', fontSize: '0.75rem' }}
+              onClick={() => handleCambiarDiasEntrega && handleCambiarDiasEntrega(dias)}
+            >
+              {dias}d
+            </button>
+          ))}
+        </div>
+
+        {/* Selector de Fecha en Calendario */}
+        <div>
+          <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
+            <Calendar size={13} color="var(--brand-purple)" />
+            FECHA ESTIMADA DE ENTREGA (CALENDARIO)
+          </label>
+          <input 
+            type="date"
+            className="form-input"
+            value={fechaEntrega || ''}
+            onChange={(e) => handleCambiarFechaEntrega && handleCambiarFechaEntrega(e.target.value)}
+            style={{ fontSize: '0.85rem' }}
+          />
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '3px', display: 'block' }}>
+            💡 Al mover la barra deslizadora o cambiar la fecha, se sincronizan automáticamente omitiendo domingos.
+          </span>
+        </div>
+      </div>
+
+      {/* Condiciones y Observaciones con Chips de Notas Rápidas */}
+      <div className="form-group" style={{ marginBottom: '14px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <label className="form-label" style={{ margin: 0 }}>Condiciones & Observaciones</label>
+          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>Toca un chip para agregar/quitar</span>
+        </div>
+
+        {/* Chips de Notas Rápidas */}
+        <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          {NOTAS_RAPIDAS_SUGERIDAS.map((item) => {
+            const estaActiva = (notas || '').toLowerCase().includes(item.texto.replace(/^[•\s]+/, '').trim().toLowerCase());
+            return (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => setNotas(toggleNotaRapida(notas || '', item.texto))}
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  border: estaActiva ? '1px solid var(--brand-cyan)' : '1px solid rgba(255,255,255,0.1)',
+                  background: estaActiva ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255,255,255,0.04)',
+                  color: estaActiva ? '#fff' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                {estaActiva ? <Check size={11} color="var(--brand-cyan)" /> : <Plus size={11} />}
+                <span>{item.etiqueta}</span>
+              </button>
+            );
+          })}
+        </div>
+
         <textarea 
           className="form-textarea" 
-          rows={2}
+          rows={3}
           value={notas}
           onChange={e => setNotas(e.target.value)}
+          placeholder="Condiciones comerciales, especificaciones de entrega, etc."
         />
       </div>
 

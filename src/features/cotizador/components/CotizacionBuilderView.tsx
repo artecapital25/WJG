@@ -170,6 +170,11 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             setVendedorNombre={b.setVendedorNombre}
             notas={b.notas}
             setNotas={b.setNotas}
+            diasEntrega={b.diasEntrega}
+            fechaEntrega={b.fechaEntrega}
+            handleCambiarDiasEntrega={b.handleCambiarDiasEntrega}
+            handleCambiarFechaEntrega={b.handleCambiarFechaEntrega}
+            tiempoEntregaTexto={b.tiempoEntregaTexto}
             tieneItemsPendientes={b.tieneItemsPendientes}
             esEdicion={b.esEdicion}
             numeroCotFinal={b.numeroCotFinal}

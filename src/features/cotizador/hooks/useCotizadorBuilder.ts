@@ -15,6 +15,7 @@ import {
   generarNumeroCotSugerido, 
   limpiarNotasObservaciones 
 } from '../utils/pricingCalculator';
+import { calcularFechaEstimada, calcularDiasHabilesEntre, formatearTiempoEntrega } from '../../../utils/businessDays';
 import { calcularPieza3D, ParametrosPiezaInput } from '../../../services/calculationEngine';
 import { generarPDFCotizacion, compartirPDFWhatsApp, obtenerBlobURLCotizacion } from '../../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
@@ -65,6 +66,36 @@ export function useCotizadorBuilder({
     return cotizacionEnEdicion?.notas || draftMeta?.notas || 'No incluye transporte fuera del perímetro urbano.';
   });
 
+  // Tiempo Estimado de Fabricación y Entrega (Slider 3-30 días hábiles + Calendario)
+  const [diasEntrega, setDiasEntrega] = useState<number>(() => {
+    if (cotizacionEnEdicion?.tiempo_entrega_estimado) {
+      const match = cotizacionEnEdicion.tiempo_entrega_estimado.match(/\((\d+)\)/);
+      if (match) return parseInt(match[1], 10) || 3;
+    }
+    return draftMeta?.diasEntrega || 3;
+  });
+
+  const [fechaEntrega, setFechaEntrega] = useState<string>(() => {
+    if (draftMeta?.fechaEntrega) return draftMeta.fechaEntrega;
+    return calcularFechaEstimada(cotizacionEnEdicion ? diasEntrega : (draftMeta?.diasEntrega || 3));
+  });
+
+  const handleCambiarDiasEntrega = (dias: number) => {
+    const d = Math.max(3, Math.min(30, Math.round(dias)));
+    setDiasEntrega(d);
+    setFechaEntrega(calcularFechaEstimada(d));
+  };
+
+  const handleCambiarFechaEntrega = (fechaStr: string) => {
+    setFechaEntrega(fechaStr);
+    const diasCalculados = calcularDiasHabilesEntre(fechaStr);
+    setDiasEntrega(diasCalculados);
+  };
+
+  const tiempoEntregaTexto = useMemo(() => {
+    return formatearTiempoEntrega(diasEntrega, fechaEntrega);
+  }, [diasEntrega, fechaEntrega]);
+
   // Auto-guardado de metadatos de cotización en borrador persistente
   useEffect(() => {
     if (!cotizacionEnEdicion && items.length > 0) {
@@ -73,10 +104,13 @@ export function useCotizadorBuilder({
         vendedor: vendedorNombre,
         descuentoPorcentaje,
         ivaPorcentaje,
-        notas
+        notas,
+        diasEntrega,
+        fechaEntrega,
+        tiempoEntrega: tiempoEntregaTexto
       });
     }
-  }, [clienteId, vendedorNombre, descuentoPorcentaje, ivaPorcentaje, notas, items.length, cotizacionEnEdicion]);
+  }, [clienteId, vendedorNombre, descuentoPorcentaje, ivaPorcentaje, notas, diasEntrega, fechaEntrega, tiempoEntregaTexto, items.length, cotizacionEnEdicion]);
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [cotizacionParaConfirmarWhatsApp, setCotizacionParaConfirmarWhatsApp] = useState<Cotizacion | null>(null);
@@ -366,7 +400,7 @@ export function useCotizadorBuilder({
       descuento_monto: descuentoMonto,
       ahorro_volumen_total: ahorroVolumenTotal,
       total,
-      tiempo_entrega_estimado: items[0]?.tiempo_entrega || '(3) Días hábiles',
+      tiempo_entrega_estimado: tiempoEntregaTexto || items[0]?.tiempo_entrega || '(3) Días hábiles',
       notas: limpiarNotasObservaciones(notas, tipoEstado === 'Parcial'),
       estado_pago: estadoPagoInicial,
       abono: abonoEfectivo,
@@ -565,6 +599,13 @@ export function useCotizadorBuilder({
     setDescuentoPorcentaje,
     notas,
     setNotas,
+    diasEntrega,
+    setDiasEntrega,
+    fechaEntrega,
+    setFechaEntrega,
+    handleCambiarDiasEntrega,
+    handleCambiarFechaEntrega,
+    tiempoEntregaTexto,
     tipoEstado,
     setTipoEstado,
     tieneItemsPendientes,

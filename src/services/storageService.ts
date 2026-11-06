@@ -529,7 +529,16 @@ export const StorageService = {
       console.warn('Error clearing draft pieces:', e);
     }
   },
-  getDraftBuilderMeta: (): { clienteId?: string; vendedor?: string; notas?: string; ivaPorcentaje?: number; descuentoPorcentaje?: number } | null => {
+  getDraftBuilderMeta: (): { 
+    clienteId?: string; 
+    vendedor?: string; 
+    notas?: string; 
+    ivaPorcentaje?: number; 
+    descuentoPorcentaje?: number;
+    diasEntrega?: number;
+    fechaEntrega?: string;
+    tiempoEntrega?: string;
+  } | null => {
     try {
       const data = localStorage.getItem(STORAGE_KEYS.DRAFT_BUILDER_META);
       return data ? JSON.parse(data) : null;

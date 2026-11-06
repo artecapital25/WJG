@@ -124,6 +124,11 @@ export interface CotizadorTotalsSummaryProps {
   setVendedorNombre: (nombre: string) => void;
   notas: string;
   setNotas: (notas: string) => void;
+  diasEntrega?: number;
+  fechaEntrega?: string;
+  handleCambiarDiasEntrega?: (dias: number) => void;
+  handleCambiarFechaEntrega?: (fecha: string) => void;
+  tiempoEntregaTexto?: string;
   tieneItemsPendientes: boolean;
   esEdicion: boolean;
   numeroCotFinal: string;
