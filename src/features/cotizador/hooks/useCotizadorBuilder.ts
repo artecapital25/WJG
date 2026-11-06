@@ -22,6 +22,7 @@ import { processAndOptimizeImage } from '../../../services/imageService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { toast } from '../../../components/ui/ToastProvider';
 import { EmailNotificationService } from '../../../services/emailNotificationService';
+import { StorageService } from '../../../services/storageService';
 
 export function useCotizadorBuilder({
   items,
@@ -42,15 +43,40 @@ export function useCotizadorBuilder({
   onAddCliente,
   onLoadPieceToCalculator
 }: CotizacionBuilderProps) {
+  const draftMeta = useMemo(() => (!cotizacionEnEdicion ? StorageService.getDraftBuilderMeta() : null), [cotizacionEnEdicion]);
+
   const [clienteId, setClienteId] = useState<string>(() => {
-    return cotizacionEnEdicion?.cliente?.id || clientes[0]?.id || '';
+    return cotizacionEnEdicion?.cliente?.id || draftMeta?.clienteId || clientes[0]?.id || '';
   });
-  const [vendedorNombre, setVendedorNombre] = useState<string>('Wendy');
-  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState<number>(0);
+  const [vendedorNombre, setVendedorNombre] = useState<string>(() => {
+    return draftMeta?.vendedor || 'Wendy';
+  });
+  const [descuentoPorcentaje, setDescuentoPorcentaje] = useState<number>(() => {
+    return cotizacionEnEdicion?.descuento_porcentaje || draftMeta?.descuentoPorcentaje || 0;
+  });
   const [ivaPorcentaje, setIvaPorcentaje] = useState<number>(() => {
-    return cotizacionEnEdicion?.iva_porcentaje || 0;
+    return cotizacionEnEdicion?.iva_porcentaje !== undefined 
+      ? cotizacionEnEdicion.iva_porcentaje 
+      : draftMeta?.ivaPorcentaje !== undefined 
+      ? draftMeta.ivaPorcentaje 
+      : 0;
   });
-  const [notas, setNotas] = useState<string>('No incluye transporte fuera del perímetro urbano.');
+  const [notas, setNotas] = useState<string>(() => {
+    return cotizacionEnEdicion?.notas || draftMeta?.notas || 'No incluye transporte fuera del perímetro urbano.';
+  });
+
+  // Auto-guardado de metadatos de cotización en borrador persistente
+  useEffect(() => {
+    if (!cotizacionEnEdicion && items.length > 0) {
+      StorageService.saveDraftBuilderMeta({
+        clienteId,
+        vendedor: vendedorNombre,
+        descuentoPorcentaje,
+        ivaPorcentaje,
+        notas
+      });
+    }
+  }, [clienteId, vendedorNombre, descuentoPorcentaje, ivaPorcentaje, notas, items.length, cotizacionEnEdicion]);
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [cotizacionParaConfirmarWhatsApp, setCotizacionParaConfirmarWhatsApp] = useState<Cotizacion | null>(null);
@@ -367,6 +393,8 @@ export function useCotizadorBuilder({
 
   const ejecutarGuardadoFinalCotizacion = (cotizacionFinal: Cotizacion) => {
     onSaveCotizacion(cotizacionFinal);
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
 
     confetti({
       particleCount: 80,

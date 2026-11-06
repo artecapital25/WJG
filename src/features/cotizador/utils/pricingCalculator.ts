@@ -169,6 +169,7 @@ export interface FormatoLineaIVAResult {
   leyenda: string;
   lineaWhatsApp: string;
   lineaCompleta: string;
+  esCero: boolean;
 }
 
 /**
@@ -199,7 +200,8 @@ export function formatearLineaIVA(
     valorTexto,
     leyenda,
     lineaWhatsApp,
-    lineaCompleta
+    lineaCompleta,
+    esCero
   };
 }
 

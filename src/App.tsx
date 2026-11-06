@@ -265,7 +265,12 @@ export const App: React.FC = () => {
   const [productosStock, setProductosStock] = useState<ProductoStock[]>(() => StorageService.getProductosStock());
 
   // Estado Transaccional
-  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>([]);
+  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>(() => StorageService.getDraftPieces());
+
+  // Auto-guardado de piezas del borrador en almacenamiento persistente (previene pérdida en PC y móvil)
+  useEffect(() => {
+    StorageService.saveDraftPieces(draftPieces);
+  }, [draftPieces]);
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
   const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(null);
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);

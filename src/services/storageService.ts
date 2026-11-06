@@ -14,7 +14,8 @@ import {
   VentaExpress,
   TareaEquipo,
   SolicitudInsumo,
-  HerramientaLink
+  HerramientaLink,
+  PiezaCotizada
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -53,7 +54,9 @@ const STORAGE_KEYS = {
   TAREAS: 'wjg_tareas_equipo',
   SOLICITUDES_INSUMOS: 'wjg_solicitudes_insumos',
   HERRAMIENTAS: 'wjg_herramientas_links',
-  GOOGLE_SHEETS_CONFIG: 'wjg_google_sheets_config'
+  GOOGLE_SHEETS_CONFIG: 'wjg_google_sheets_config',
+  DRAFT_PIECES: 'wjg_draft_pieces',
+  DRAFT_BUILDER_META: 'wjg_draft_builder_meta'
 };
 
 const TAREAS_INICIALES: TareaEquipo[] = [
@@ -496,6 +499,57 @@ export const StorageService = {
     a.click();
     URL.revokeObjectURL(url);
     return { success: true, method: 'download', fileName };
+  },
+
+  // Gestión de Borradores de Cotización (Auto-save anti-pérdida en PC y Móvil)
+  getDraftPieces: (): PiezaCotizada[] => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DRAFT_PIECES);
+      return data ? JSON.parse(data) : [];
+    } catch (e) {
+      console.warn('Error reading draft pieces from storage:', e);
+      return [];
+    }
+  },
+  saveDraftPieces: (pieces: PiezaCotizada[]) => {
+    try {
+      if (!pieces || pieces.length === 0) {
+        localStorage.removeItem(STORAGE_KEYS.DRAFT_PIECES);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.DRAFT_PIECES, JSON.stringify(pieces));
+      }
+    } catch (e) {
+      console.warn('Error saving draft pieces to storage:', e);
+    }
+  },
+  clearDraftPieces: () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_PIECES);
+    } catch (e) {
+      console.warn('Error clearing draft pieces:', e);
+    }
+  },
+  getDraftBuilderMeta: (): { clienteId?: string; vendedor?: string; notas?: string; ivaPorcentaje?: number; descuentoPorcentaje?: number } | null => {
+    try {
+      const data = localStorage.getItem(STORAGE_KEYS.DRAFT_BUILDER_META);
+      return data ? JSON.parse(data) : null;
+    } catch (e) {
+      return null;
+    }
+  },
+  saveDraftBuilderMeta: (meta: any) => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.DRAFT_BUILDER_META, JSON.stringify(meta));
+    } catch (e) {
+      console.warn('Error saving draft builder meta:', e);
+    }
+  },
+  clearDraftBuilderMeta: () => {
+    try {
+      localStorage.removeItem(STORAGE_KEYS.DRAFT_BUILDER_META);
+    } catch (e) {
+      console.warn('Error clearing draft builder meta:', e);
+    }
   },
 
   // Restaurar copia de seguridad desde archivo JSON (soporta V2 plano y V3 con tablas)
