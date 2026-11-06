@@ -318,6 +318,12 @@ export interface CuentaCobro {
   cliente: Cliente;
   fecha_emision: string;
   items_resumen: string;
+  subtotal?: number;
+  descuento_porcentaje?: number;
+  descuento_monto?: number;
+  iva_porcentaje?: number;
+  iva_monto?: number;
+  iva_regimen_nota?: string;
   total: number;
   abono: number;
   saldo_pendiente: number;

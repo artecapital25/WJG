@@ -29,13 +29,14 @@ import {
   Cliente, 
   DatosPagoRegistro 
 } from '../../types';
-import { generarPDFCuentaCobro } from '../../services/pdfService';
-import { generateCuentaCobroWhatsAppUrl, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
-import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../services/posService';
+import { generarPDFCuentaCobro, obtenerBlobURLCuentaCobro, obtenerBlobURLReciboPOS } from '../../services/pdfService';
+import { generateCuentaCobroWhatsAppUrl, generateCuentaCobroWhatsAppText, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
+import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro, generarTextoComprobantePOS } from '../../services/posService';
 import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
 import { ModalConfirmarEliminarCobro, InfoCobroAEliminar } from '../common/ModalConfirmarEliminarCobro';
+import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
 import { CloudSyncService } from '../../services/cloudSyncService';
 import { toast } from '../ui/ToastProvider';
 
@@ -119,6 +120,51 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [cobroParaEliminar, setCobroParaEliminar] = useState<InfoCobroAEliminar | null>(null);
+
+  // Modal Visualizador Universal de Documentos PDF y Texto
+  const [documentoVisualizar, setDocumentoVisualizar] = useState<{
+    titulo: string;
+    subtitulo: string;
+    blobUrl: string | null;
+    nombreArchivo: string;
+    textoDescriptivo: string;
+    telefono?: string;
+  } | null>(null);
+
+  const handleAbrirVisorCuenta = async (cuenta: CuentaCobro) => {
+    try {
+      const blobUrl = await obtenerBlobURLCuentaCobro(cuenta, config);
+      const texto = generateCuentaCobroWhatsAppText(cuenta, config);
+      setDocumentoVisualizar({
+        titulo: `Cuenta de Cobro ${cuenta.numero_cc}`,
+        subtitulo: `${cuenta.cliente.nombre} • Saldo: $${cuenta.saldo_pendiente.toLocaleString('es-CO')} COP`,
+        blobUrl,
+        nombreArchivo: `Cuenta_Cobro_${cuenta.numero_cc}_${cuenta.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        textoDescriptivo: texto,
+        telefono: cuenta.cliente.telefono
+      });
+    } catch (e) {
+      console.error('Error generando vista previa de cuenta de cobro:', e);
+      toast.error('No se pudo generar la vista previa del documento.');
+    }
+  };
+
+  const handleAbrirVisorVentaPOS = async (venta: VentaExpress) => {
+    try {
+      const blobUrl = await obtenerBlobURLReciboPOS(venta, config, 'ticket80mm');
+      const texto = generarTextoComprobantePOS(venta, config);
+      setDocumentoVisualizar({
+        titulo: `Recibo POS ${venta.numero_venta}`,
+        subtitulo: `${venta.cliente_nombre} • Total: $${venta.total.toLocaleString('es-CO')} COP`,
+        blobUrl,
+        nombreArchivo: `Recibo_${venta.numero_venta}_${venta.cliente_nombre.replace(/[^a-zA-Z0-9]/g, '_')}`,
+        textoDescriptivo: texto,
+        telefono: venta.cliente_telefono
+      });
+    } catch (e) {
+      console.error('Error generando vista previa de venta POS:', e);
+    }
+  };
 
   const handleAbrirModalEliminarCobro = (item: ItemDeudaConsolidado) => {
     let cobroId = item.id.replace(/^(ot-|cc-|pos-)/, '');
@@ -1226,6 +1272,17 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
                   <button 
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => handleAbrirVisorCuenta(cuenta)}
+                    style={{ borderColor: 'rgba(56, 189, 248, 0.4)', color: 'var(--brand-cyan)' }}
+                    title="Ver PDF en vivo y copiar plantilla de texto para WhatsApp"
+                  >
+                    <Receipt size={14} />
+                    <span>Ver Documento</span>
+                  </button>
+
+                  <button 
                     className="btn btn-whatsapp btn-sm"
                     onClick={() => openWhatsApp(generateCuentaCobroWhatsAppUrl(cuenta, config))}
                   >
@@ -1518,6 +1575,27 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
         onClose={() => setCobroParaEliminar(null)}
         onConfirmar={handleConfirmarEliminarCobro}
       />
+
+      {/* MODAL VISUALIZADOR UNIVERSAL DE DOCUMENTOS PDF Y TEXTO */}
+      {documentoVisualizar && (
+        <ModalVisualizadorDocumento
+          isOpen={Boolean(documentoVisualizar)}
+          onClose={() => setDocumentoVisualizar(null)}
+          titulo={documentoVisualizar.titulo}
+          subtitulo={documentoVisualizar.subtitulo}
+          pdfBlobUrl={documentoVisualizar.blobUrl}
+          nombreArchivoPDF={documentoVisualizar.nombreArchivo}
+          textoDescriptivo={documentoVisualizar.textoDescriptivo}
+          clienteTelefono={documentoVisualizar.telefono}
+          onEnviarWhatsApp={() => {
+            if (documentoVisualizar.telefono) {
+              const phone = formatWhatsAppPhone(documentoVisualizar.telefono);
+              const url = `https://wa.me/${phone}?text=${encodeURIComponent(documentoVisualizar.textoDescriptivo)}`;
+              openWhatsApp(url);
+            }
+          }}
+        />
+      )}
     </div>
   );
 };

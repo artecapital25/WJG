@@ -131,5 +131,6 @@ export interface CotizadorTotalsSummaryProps {
   onSendWhatsApp: () => void;
   onSharePDFWhatsApp: () => void;
   onDownloadPDF: () => void;
+  onVisualizarDocumento?: () => void;
   onCancelarEdicion?: () => void;
 }

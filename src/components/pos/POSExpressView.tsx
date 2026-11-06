@@ -22,7 +22,8 @@ import {
   Wrench,
   CheckCircle2,
   Boxes,
-  Copy
+  Copy,
+  FileText
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
@@ -38,6 +39,9 @@ import {
 import { openWhatsApp } from '../../services/whatsappService';
 import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
 import { ModalConfirmacionWhatsApp } from '../common/ModalConfirmacionWhatsApp';
+import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
+import { obtenerBlobURLReciboPOS } from '../../services/pdfService';
+import { LEYENDA_IVA_CERO } from '../../features/cotizador/utils/pricingCalculator';
 import { toast } from '../ui/ToastProvider';
 import { EmailNotificationService } from '../../services/emailNotificationService';
 
@@ -118,6 +122,41 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [ventaParaAbono, setVentaParaAbono] = useState<VentaExpress | null>(null);
   const [montoNuevoAbono, setMontoNuevoAbono] = useState<number>(0);
   const [ventaParaConfirmarWhatsApp, setVentaParaConfirmarWhatsApp] = useState<VentaExpress | null>(null);
+  const [ivaPorcentajePOS, setIvaPorcentajePOS] = useState<number>(0);
+
+  // Modal Visualizador de Documentos PDF y Texto Estructurado
+  const [documentoVisualizar, setDocumentoVisualizar] = useState<{
+    venta: VentaExpress;
+    formato: 'ticket80mm' | 'reciboCarta';
+    blobUrl: string | null;
+    textoDescriptivo: string;
+  } | null>(null);
+
+  const handleAbrirVisorDocumento = async (venta: VentaExpress, formato: 'ticket80mm' | 'reciboCarta' = 'reciboCarta') => {
+    try {
+      const blobUrl = await obtenerBlobURLReciboPOS(venta, config, formato);
+      const texto = generarTextoComprobantePOS(venta, config);
+      setDocumentoVisualizar({
+        venta,
+        formato,
+        blobUrl,
+        textoDescriptivo: texto
+      });
+    } catch (e) {
+      console.error('Error generando preview de recibo POS:', e);
+      toast.error('No se pudo generar la vista previa del recibo.');
+    }
+  };
+
+  const handleCambiarFormatoVisor = async (nuevoFormato: 'ticket80mm' | 'reciboCarta') => {
+    if (!documentoVisualizar) return;
+    try {
+      const blobUrl = await obtenerBlobURLReciboPOS(documentoVisualizar.venta, config, nuevoFormato);
+      setDocumentoVisualizar(prev => prev ? { ...prev, formato: nuevoFormato, blobUrl } : null);
+    } catch (e) {
+      console.error('Error cambiando formato de recibo:', e);
+    }
+  };
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -217,6 +256,11 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       return;
     }
 
+    const subtotalCalc = ivaPorcentajePOS > 0 
+      ? Math.round(totalNum / (1 + (ivaPorcentajePOS / 100)))
+      : totalNum;
+    const ivaMontoCalc = totalNum - subtotalCalc;
+
     const nuevaVenta: VentaExpress = {
       id: `pos-${Date.now()}`,
       numero_venta: generarConsecutivoPOS(ventas),
@@ -224,6 +268,10 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       nombre_producto: nombreProducto.trim(),
       cliente_nombre: clienteNombre.trim(),
       cliente_telefono: clienteTelefono.trim() || '3000000000',
+      subtotal: subtotalCalc,
+      iva_porcentaje: ivaPorcentajePOS,
+      iva_monto: ivaMontoCalc,
+      iva_regimen_nota: ivaPorcentajePOS === 0 ? LEYENDA_IVA_CERO : undefined,
       total: totalNum,
       abono: abonoNum,
       saldo_pendiente: saldoPendiente,
@@ -667,6 +715,50 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                   onChange={e => setAbono(e.target.value === '' ? '' : Number(e.target.value))}
                   step="5000"
                 />
+              </div>
+            </div>
+
+            {/* Tratamiento Tributario e IVA Obligatorio */}
+            <div style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: '10px',
+              padding: '10px 12px',
+              marginBottom: '14px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)' }}>
+                  IMPUESTO (IVA):
+                </span>
+                <span style={{ fontSize: '0.78rem', fontWeight: 700, color: ivaPorcentajePOS > 0 ? 'var(--brand-cyan)' : 'var(--text-muted)' }}>
+                  {ivaPorcentajePOS === 0 ? `0% (${LEYENDA_IVA_CERO})` : `${ivaPorcentajePOS}%`}
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: '6px' }}>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${ivaPorcentajePOS === 0 ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem' }}
+                  onClick={() => setIvaPorcentajePOS(0)}
+                >
+                  0% (Sin IVA)
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${ivaPorcentajePOS === 19 ? 'btn-cyan' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem' }}
+                  onClick={() => setIvaPorcentajePOS(19)}
+                >
+                  19% (General)
+                </button>
+                <button
+                  type="button"
+                  className={`btn btn-sm ${ivaPorcentajePOS === 5 ? 'btn-cyan' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '4px 0', fontSize: '0.75rem' }}
+                  onClick={() => setIvaPorcentajePOS(5)}
+                >
+                  5%
+                </button>
               </div>
             </div>
 
@@ -1204,6 +1296,18 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                               <span>Editar</span>
                             </button>
 
+                            {/* Botón Ver / Descargar Recibo PDF y Texto */}
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => handleAbrirVisorDocumento(venta, 'ticket80mm')}
+                              style={{ fontSize: '0.75rem', padding: '4px 10px', display: 'flex', alignItems: 'center', gap: '4px', borderColor: 'rgba(56, 189, 248, 0.4)', color: 'var(--brand-cyan)' }}
+                              title="Ver recibo formal en PDF y copiar texto para WhatsApp"
+                            >
+                              <FileText size={13} />
+                              <span>Recibo PDF</span>
+                            </button>
+
                             {/* Botón Registrar Abono */}
                             {!esPagado && (
                               <button
@@ -1509,6 +1613,28 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
           ]}
           onConfirmadoExitoso={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
           onConfirmarSinEnvio={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
+        />
+      )}
+
+      {/* Modal Visualizador Universal de Documentos PDF y Texto Estructurado */}
+      {documentoVisualizar && (
+        <ModalVisualizadorDocumento
+          isOpen={Boolean(documentoVisualizar)}
+          onClose={() => setDocumentoVisualizar(null)}
+          titulo={`Recibo de Venta ${documentoVisualizar.venta.numero_venta}`}
+          subtitulo={`${documentoVisualizar.venta.cliente_nombre} • Total: $${documentoVisualizar.venta.total.toLocaleString('es-CO')} COP`}
+          pdfBlobUrl={documentoVisualizar.blobUrl}
+          nombreArchivoPDF={`Recibo_${documentoVisualizar.venta.numero_venta}_${documentoVisualizar.venta.cliente_nombre.replace(/[^a-zA-Z0-9]/g, '_')}`}
+          textoDescriptivo={documentoVisualizar.textoDescriptivo}
+          clienteTelefono={documentoVisualizar.venta.cliente_telefono}
+          selectorFormatoPOS={{
+            formatoActual: documentoVisualizar.formato,
+            onChangeFormato: handleCambiarFormatoVisor
+          }}
+          onEnviarWhatsApp={() => {
+            const url = generarWhatsAppComprobantePOS(documentoVisualizar.venta, config);
+            openWhatsApp(url);
+          }}
         />
       )}
     </div>

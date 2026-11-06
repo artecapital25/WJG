@@ -9,7 +9,8 @@ import { ModalEditarPiezaCotizacion } from './ModalEditarPiezaCotizacion';
 import { ModalNuevoClienteRapido } from './ModalNuevoClienteRapido';
 import { ModalLightboxImagen } from './ModalLightboxImagen';
 import { ModalConfirmacionWhatsApp } from '../../../components/common/ModalConfirmacionWhatsApp';
-import { generateCotizacionWhatsAppText } from '../../../services/whatsappService';
+import { ModalVisualizadorDocumento } from '../../../components/common/ModalVisualizadorDocumento';
+import { generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
 
 export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) => {
   const b = useCotizadorBuilder(props);
@@ -176,6 +177,7 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             onSendWhatsApp={() => b.handleFinalizar(true)}
             onSharePDFWhatsApp={b.handleCompartirPDF}
             onDownloadPDF={b.handleDescargarPDF}
+            onVisualizarDocumento={b.handleVisualizarDocumentoCotizacion}
             onCancelarEdicion={props.onCancelarEdicion}
           />
         </>
@@ -256,6 +258,30 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
           onConfirmarSinEnvio={() => b.ejecutarGuardadoFinalCotizacion(b.cotizacionParaConfirmarWhatsApp!)}
         />
       )}
+
+      {/* Modal Visualizador Universal de Documentos PDF y Texto Estructurado */}
+      {b.cotizacionParaVisualizar && (() => {
+        const docVis = b.cotizacionParaVisualizar;
+        return (
+          <ModalVisualizadorDocumento
+            isOpen={true}
+            onClose={() => b.setCotizacionParaVisualizar(null)}
+            titulo={`Cotización N° ${docVis.cotizacion.numero_cot}`}
+            subtitulo={`${docVis.cotizacion.cliente.nombre} • Total: $${docVis.cotizacion.total.toLocaleString('es-CO')} COP`}
+            pdfBlobUrl={docVis.blobUrl}
+            nombreArchivoPDF={`Cotizacion_${docVis.cotizacion.numero_cot}_${docVis.cotizacion.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}`}
+            textoDescriptivo={docVis.textoDescriptivo}
+            clienteTelefono={docVis.cotizacion.cliente.telefono}
+            onEnviarWhatsApp={() => {
+              const phone = docVis.cotizacion.cliente.telefono;
+              if (phone) {
+                const url = `https://wa.me/${phone.replace(/\D/g, '')}?text=${encodeURIComponent(docVis.textoDescriptivo)}`;
+                openWhatsApp(url);
+              }
+            }}
+          />
+        );
+      })()}
     </div>
   );
 };

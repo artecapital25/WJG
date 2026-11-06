@@ -8,6 +8,8 @@ import {
   calcularCostoManoObra,
   calcularTotalesCotizacion,
   calcularDescuentoVolumenSugerido,
+  formatearLineaIVA,
+  LEYENDA_IVA_CERO,
   validarRegla50Anticipo,
   generarNumeroCotSugerido,
   limpiarNotasObservaciones
@@ -153,5 +155,20 @@ describe('pricingCalculator - Pure Math & 50% Rule Engine', () => {
     expect(limpias).toContain('Entrega en taller');
     expect(limpias).toContain('Garantía 30 días');
     expect(limpias).toContain('NOTA: Cotización preliminar');
+  });
+
+  it('11. formatearLineaIVA: garantiza desglose fiscal obligatorio incluso cuando el IVA sea 0%', () => {
+    const ivaCero = formatearLineaIVA(0, 0);
+    expect(ivaCero.porcentaje).toBe(0);
+    expect(ivaCero.monto).toBe(0);
+    expect(ivaCero.leyenda).toBe(LEYENDA_IVA_CERO);
+    expect(ivaCero.lineaCompleta).toContain('IVA (0%): $0 COP (Régimen Simple / No Responsable)');
+    expect(ivaCero.lineaWhatsApp).toContain('🏛️ *IVA (0%):* $0 COP _(Régimen Simple / No Responsable)_');
+
+    const ivaGeneral = formatearLineaIVA(19, 19000);
+    expect(ivaGeneral.porcentaje).toBe(19);
+    expect(ivaGeneral.monto).toBe(19000);
+    expect(ivaGeneral.lineaCompleta).toContain('IVA (19%): +$19.000 COP');
+    expect(ivaGeneral.lineaWhatsApp).toContain('🏛️ *IVA (19%):* +$19.000 COP');
   });
 });

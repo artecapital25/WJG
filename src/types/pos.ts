@@ -32,6 +32,14 @@ export interface VentaExpress {
   producto_stock_id?: string;
   descontar_stock?: boolean;
   cantidad_vendida?: number;
+
+  // Desglose Fiscal Obligatorio (IVA)
+  subtotal?: number;
+  descuento_porcentaje?: number;
+  descuento_monto?: number;
+  iva_porcentaje?: number;
+  iva_monto?: number;
+  iva_regimen_nota?: string;
 }
 
 export type NivelAlertaPago = 'vencido' | 'hoy' | 'proximo' | 'al_dia' | 'pagado';

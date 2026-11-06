@@ -16,8 +16,8 @@ import {
   limpiarNotasObservaciones 
 } from '../utils/pricingCalculator';
 import { calcularPieza3D, ParametrosPiezaInput } from '../../../services/calculationEngine';
-import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../../services/pdfService';
-import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../../services/whatsappService';
+import { generarPDFCotizacion, compartirPDFWhatsApp, obtenerBlobURLCotizacion } from '../../../services/pdfService';
+import { generateCotizacionWhatsAppUrl, generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
 import { processAndOptimizeImage } from '../../../services/imageService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { toast } from '../../../components/ui/ToastProvider';
@@ -54,6 +54,11 @@ export function useCotizadorBuilder({
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [cotizacionParaConfirmarWhatsApp, setCotizacionParaConfirmarWhatsApp] = useState<Cotizacion | null>(null);
+  const [cotizacionParaVisualizar, setCotizacionParaVisualizar] = useState<{
+    cotizacion: Cotizacion;
+    blobUrl: string | null;
+    textoDescriptivo: string;
+  } | null>(null);
 
   // Modal para editar pieza/ítem individual con todos sus parámetros
   const [piezaEditando, setPiezaEditando] = useState<PiezaCotizada | null>(null);
@@ -386,6 +391,26 @@ export function useCotizadorBuilder({
     generarPDFCotizacion(cotTemp, config);
   };
 
+  const handleVisualizarDocumentoCotizacion = async () => {
+    const cotTemp = construirCotizacionFinal(cotizacionEnEdicion ? cotizacionEnEdicion.estado : 'Borrador');
+    if (!cotTemp) {
+      toast.warning('Agrega al menos una pieza y asigna un cliente antes de ver el documento.');
+      return;
+    }
+    try {
+      const blobUrl = await obtenerBlobURLCotizacion(cotTemp, config);
+      const texto = generateCotizacionWhatsAppText(cotTemp, config);
+      setCotizacionParaVisualizar({
+        cotizacion: cotTemp,
+        blobUrl,
+        textoDescriptivo: texto
+      });
+    } catch (e) {
+      console.error('Error generando vista previa de cotización:', e);
+      toast.error('No se pudo generar la vista previa del documento.');
+    }
+  };
+
   const handleCompartirPDF = () => {
     const cotizacionFinal = construirCotizacionFinal(cotizacionEnEdicion ? cotizacionEnEdicion.estado : 'Enviada');
     if (!cotizacionFinal) {
@@ -586,6 +611,9 @@ export function useCotizadorBuilder({
     handleItemImageUpload,
     handleFinalizar,
     handleDescargarPDF,
+    handleVisualizarDocumentoCotizacion,
+    cotizacionParaVisualizar,
+    setCotizacionParaVisualizar,
     handleCompartirPDF,
     handleCrearNuevoCliente,
     handleRecalcularTarifasVigentes,

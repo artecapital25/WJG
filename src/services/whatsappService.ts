@@ -1,4 +1,5 @@
 import { Cotizacion, CuentaCobro, ConfiguracionTaller } from '../types';
+import { LEYENDA_IVA_CERO } from '../features/cotizador/utils/pricingCalculator';
 
 export function formatWhatsAppPhone(phone: string): string {
   // Strip non-digits
@@ -70,7 +71,7 @@ ${itemsText}
 
 ━━━━━━━━━━━━━━━━━━━━
 💰 *Subtotal ítems:* $${cotizacion.subtotal.toLocaleString('es-CO')} COP
-${cotizacion.descuento_porcentaje > 0 ? `🏷️ *Descuento comercial (${cotizacion.descuento_porcentaje}%):* -$${(cotizacion.descuento_monto ?? Math.round((cotizacion.subtotal * cotizacion.descuento_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : ''}${cotizacion.iva_porcentaje && cotizacion.iva_porcentaje > 0 ? `🏛️ *IVA (${cotizacion.iva_porcentaje}%):* +$${(cotizacion.iva_monto ?? Math.round(((cotizacion.subtotal - (cotizacion.descuento_monto || 0)) * cotizacion.iva_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : ''}💵 *TOTAL:${cotizacion.iva_porcentaje ? ' (IVA Inc.)' : ''}* $${cotizacion.total.toLocaleString('es-CO')} COP
+${cotizacion.descuento_porcentaje > 0 ? `🏷️ *Descuento comercial (${cotizacion.descuento_porcentaje}%):* -$${(cotizacion.descuento_monto ?? Math.round((cotizacion.subtotal * cotizacion.descuento_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : ''}${cotizacion.iva_porcentaje && cotizacion.iva_porcentaje > 0 ? `🏛️ *IVA (${cotizacion.iva_porcentaje}%):* +$${(cotizacion.iva_monto ?? Math.round(((cotizacion.subtotal - (cotizacion.descuento_monto || 0)) * cotizacion.iva_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : `🏛️ *IVA (0%):* $0 COP _(${LEYENDA_IVA_CERO})_\n`}💵 *TOTAL:* $${cotizacion.total.toLocaleString('es-CO')} COP
 ━━━━━━━━━━━━━━━━━━━━
 ${esParcial ? '\n⚠️ *AVISO:* Cotización preliminar. Los gramos de resina y dimensiones finales se confirmarán al abrir y laminar los modelos 3D en el programa de corte.\n' : ''}
 📝 *Notas y Condiciones:*
@@ -89,14 +90,15 @@ export function generateCotizacionWhatsAppUrl(
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 
-export function generateCuentaCobroWhatsAppUrl(
+export function generateCuentaCobroWhatsAppText(
   cuenta: CuentaCobro,
   config: ConfiguracionTaller
 ): string {
-  const phone = formatWhatsAppPhone(cuenta.cliente.telefono);
-  
-  const mensaje = 
-`👋 Estimado/a *${cuenta.cliente.nombre}*,
+  const subtotalCc = cuenta.subtotal || cuenta.total;
+  const ivaPct = cuenta.iva_porcentaje || 0;
+  const ivaMonto = cuenta.iva_monto || 0;
+
+  return `👋 Estimado/a *${cuenta.cliente.nombre}*,
 
 Te enviamos la cuenta de cobro correspondiente a tu pedido en *WJGEEKS 3D* 🎨📦:
 
@@ -106,7 +108,8 @@ Te enviamos la cuenta de cobro correspondiente a tu pedido en *WJGEEKS 3D* 🎨�
 🛠️ *Concepto:* ${cuenta.items_resumen}
 
 ━━━━━━━━━━━━━━━━━━━━
-💵 *Total del Pedido:* $${cuenta.total.toLocaleString('es-CO')} COP
+💰 *Subtotal:* $${subtotalCc.toLocaleString('es-CO')} COP
+${ivaPct > 0 ? `🏛️ *IVA (${ivaPct}%):* +$${ivaMonto.toLocaleString('es-CO')} COP\n` : `🏛️ *IVA (0%):* $0 COP _(${LEYENDA_IVA_CERO})_\n`}💵 *Total del Pedido:* $${cuenta.total.toLocaleString('es-CO')} COP
 ✅ *Abono Realizado:* $${cuenta.abono.toLocaleString('es-CO')} COP
 ⏳ *SALDO PENDIENTE:* $${cuenta.saldo_pendiente.toLocaleString('es-CO')} COP
 ━━━━━━━━━━━━━━━━━━━━
@@ -116,7 +119,14 @@ Te enviamos la cuenta de cobro correspondiente a tu pedido en *WJGEEKS 3D* 🎨�
 • *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos tu comprobante para coordinar el despacho inmediato. ¡Muchas gracias por tu compra! ✨🚀`;
+}
 
+export function generateCuentaCobroWhatsAppUrl(
+  cuenta: CuentaCobro,
+  config: ConfiguracionTaller
+): string {
+  const phone = formatWhatsAppPhone(cuenta.cliente.telefono);
+  const mensaje = generateCuentaCobroWhatsAppText(cuenta, config);
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 

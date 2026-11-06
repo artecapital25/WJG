@@ -155,6 +155,50 @@ export function calcularTotalesCotizacion(
   };
 }
 
+export const LEYENDA_IVA_CERO = 'Régimen Simple / No Responsable';
+
+export interface FormatoLineaIVAResult {
+  porcentaje: number;
+  monto: number;
+  etiqueta: string;
+  valorTexto: string;
+  leyenda: string;
+  lineaWhatsApp: string;
+  lineaCompleta: string;
+}
+
+/**
+ * Genera el desglose fiscal unificado de IVA para interfaz, PDF y mensajes de WhatsApp,
+ * garantizando la línea explícita de IVA aún cuando sea 0%.
+ */
+export function formatearLineaIVA(
+  ivaPorcentaje: number = 0, 
+  ivaMonto: number = 0
+): FormatoLineaIVAResult {
+  const pct = Number(ivaPorcentaje) || 0;
+  const monto = Number(ivaMonto) || 0;
+  const esCero = pct === 0;
+  const leyenda = esCero ? LEYENDA_IVA_CERO : '';
+  const valorTexto = `$${monto.toLocaleString('es-CO')} COP`;
+  const etiqueta = `IVA (${pct}%)`;
+  const lineaCompleta = esCero 
+    ? `IVA (0%): $0 COP (${LEYENDA_IVA_CERO})` 
+    : `IVA (${pct}%): +${valorTexto}`;
+  const lineaWhatsApp = esCero
+    ? `🏛️ *IVA (0%):* $0 COP _(${LEYENDA_IVA_CERO})_`
+    : `🏛️ *IVA (${pct}%):* +${valorTexto}`;
+
+  return {
+    porcentaje: pct,
+    monto,
+    etiqueta,
+    valorTexto,
+    leyenda,
+    lineaWhatsApp,
+    lineaCompleta
+  };
+}
+
 /**
  * Regla de negocio del 50%: Valida si el abono cubre el anticipo mínimo requerido
  * y calcula el saldo restante exacto.

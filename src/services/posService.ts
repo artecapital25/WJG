@@ -1,6 +1,7 @@
 import { VentaExpress, AlertaCobroInfo, NivelAlertaPago, DeudorConsolidado } from '../types/pos';
 import { ConfiguracionTaller } from '../types';
 import { formatWhatsAppPhone } from './whatsappService';
+import { LEYENDA_IVA_CERO } from '../features/cotizador/utils/pricingCalculator';
 
 export function calcularAlertaCobro(
   fechaPrometida?: string,
@@ -100,6 +101,10 @@ export function generarTextoComprobantePOS(
 🛠️ *Orden de Trabajo:* ${venta.ot_numero || 'En Proceso'}
 🎨 *Estado de Diseño:* ${venta.estado_diseno === 'requiere_nuevo' ? '⏳ Requiere Modelado Nuevo (Germán)' : '🟢 Diseño Listo (Para Producción)'}` : '';
 
+  const subtotalVenta = venta.subtotal || venta.total;
+  const ivaPct = venta.iva_porcentaje || 0;
+  const ivaMonto = venta.iva_monto || 0;
+
   return `👋 ¡Hola *${venta.cliente_nombre}*! 🎨📦
 Te compartimos el comprobante de tu compra en *WJGEEKS 3D*:
 
@@ -108,7 +113,8 @@ Te compartimos el comprobante de tu compra en *WJGEEKS 3D*:
 📅 *Fecha:* ${venta.fecha_venta}${bloqueOT}
 
 ━━━━━━━━━━━━━━━━━━━━
-💵 *Total:* $${venta.total.toLocaleString('es-CO')} COP
+💰 *Subtotal:* $${subtotalVenta.toLocaleString('es-CO')} COP
+${ivaPct > 0 ? `🏛️ *IVA (${ivaPct}%):* +$${ivaMonto.toLocaleString('es-CO')} COP\n` : `🏛️ *IVA (0%):* $0 COP _(${LEYENDA_IVA_CERO})_\n`}💵 *Total:* $${venta.total.toLocaleString('es-CO')} COP
 ✅ *Abonado:* $${venta.abono.toLocaleString('es-CO')} COP
 ${esPagado ? '🎉 *ESTADO:* ¡PAGADO TOTAL!' : `⏳ *SALDO PENDIENTE:* $${venta.saldo_pendiente.toLocaleString('es-CO')} COP`}
 ━━━━━━━━━━━━━━━━━━━━

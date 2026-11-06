@@ -26,6 +26,7 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
   onSendWhatsApp,
   onSharePDFWhatsApp,
   onDownloadPDF,
+  onVisualizarDocumento,
   onCancelarEdicion
 }) => {
   return (
@@ -225,13 +226,20 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
           </div>
         )}
 
-        {/* IVA */}
-        {ivaPorcentaje > 0 && (
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', color: 'var(--brand-cyan)' }}>
-            <span>IVA ({ivaPorcentaje}%):</span>
-            <span>+${ivaMonto.toLocaleString('es-CO')} COP</span>
-          </div>
-        )}
+        {/* IVA Obligatorio */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', color: ivaPorcentaje > 0 ? 'var(--brand-cyan)' : 'var(--text-muted)' }}>
+          <span>
+            IVA ({ivaPorcentaje}%):
+            {ivaPorcentaje === 0 && (
+              <span style={{ fontSize: '0.74rem', color: 'var(--text-subtle)', marginLeft: '6px' }}>
+                (Régimen Simple / No Responsable)
+              </span>
+            )}
+          </span>
+          <span style={{ fontWeight: 600 }}>
+            {ivaPorcentaje > 0 ? `+$${ivaMonto.toLocaleString('es-CO')} COP` : '$0 COP'}
+          </span>
+        </div>
 
         {/* Total Final */}
         <div style={{ 
@@ -285,6 +293,19 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
           <FileDown size={16} />
           <span>Enviar PDF por WhatsApp</span>
         </button>
+
+        {onVisualizarDocumento && (
+          <button 
+            type="button" 
+            className="btn btn-secondary" 
+            onClick={onVisualizarDocumento}
+            style={{ borderColor: 'rgba(56, 189, 248, 0.4)', color: 'var(--brand-cyan)', fontWeight: 600 }}
+            title="Ver PDF en pantalla y copiar texto formateado para WhatsApp"
+          >
+            <FileDown size={16} />
+            <span>Ver Documento PDF / Texto</span>
+          </button>
+        )}
 
         <button 
           type="button" 

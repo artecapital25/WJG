@@ -1,6 +1,8 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { Cotizacion, CuentaCobro, ConfiguracionTaller } from '../types';
+import { VentaExpress } from '../types/pos';
+import { LEYENDA_IVA_CERO } from '../features/cotizador/utils/pricingCalculator';
 import { generateCotizacionWhatsAppUrl, generateCuentaCobroWhatsAppUrl } from './whatsappService';
 
 let cachedLogoDataUrl: string | null = null;
@@ -304,11 +306,20 @@ export function crearDocPDFCotizacion(
     doc.text(`-$${descMonto.toLocaleString('es-CO')} COP`, pageWidth - 15, currentY, { align: 'right' });
   }
 
+  currentY += 5.5;
   if (cotizacion.iva_porcentaje && cotizacion.iva_porcentaje > 0) {
-    currentY += 5.5;
     const ivaMonto = cotizacion.iva_monto ?? Math.round(((cotizacion.subtotal - (cotizacion.descuento_monto || 0)) * cotizacion.iva_porcentaje) / 100);
     doc.text(`IVA (${cotizacion.iva_porcentaje}%):`, totalsX, currentY);
     doc.text(`+$${ivaMonto.toLocaleString('es-CO')} COP`, pageWidth - 15, currentY, { align: 'right' });
+  } else {
+    doc.text('IVA (0%):', totalsX, currentY);
+    doc.text('$0 COP', pageWidth - 15, currentY, { align: 'right' });
+    currentY += 3.8;
+    doc.setFontSize(6.8);
+    doc.setTextColor(100, 116, 139);
+    doc.text('(Régimen Simple / No Responsable)', pageWidth - 15, currentY, { align: 'right' });
+    doc.setFontSize(9);
+    doc.setTextColor(71, 85, 105);
   }
 
   // Total Bar
@@ -376,6 +387,13 @@ export async function generarPDFCotizacion(cotizacion: Cotizacion, config: Confi
   const doc = crearDocPDFCotizacion(cotizacion, config, logo);
   const filename = `Cotizacion_${cotizacion.numero_cot}_${cotizacion.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   doc.save(filename);
+}
+
+export async function obtenerBlobURLCotizacion(cotizacion: Cotizacion, config: ConfiguracionTaller): Promise<string> {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCotizacion(cotizacion, config, logo);
+  const blob = doc.output('blob');
+  return URL.createObjectURL(blob);
 }
 
 export async function compartirPDFWhatsApp(cotizacion: Cotizacion, config: ConfiguracionTaller) {
@@ -520,43 +538,68 @@ export function crearDocPDFCuentaCobro(
 
   // Payment Breakdown
   const boxX = pageWidth - 90;
+  const subtotalCc = cuenta.subtotal || cuenta.total;
+  const ivaPctCc = cuenta.iva_porcentaje || 0;
+  const ivaMontoCc = cuenta.iva_monto || 0;
+
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(boxX, finalY, 75, 36, 3, 3, 'F');
+  doc.roundedRect(boxX, finalY, 75, 48, 3, 3, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(boxX, finalY, 75, 36, 3, 3, 'S');
+  doc.roundedRect(boxX, finalY, 75, 48, 3, 3, 'S');
 
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor(71, 85, 105);
-  doc.text('Total Servicio:', boxX + 5, finalY + 8);
-  doc.text(`$${cuenta.total.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 8, { align: 'right' });
+  doc.text('Subtotal:', boxX + 5, finalY + 7);
+  doc.text(`$${subtotalCc.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 7, { align: 'right' });
 
-  doc.text('Abono Realizado:', boxX + 5, finalY + 16);
+  // Línea obligatoria de IVA
+  if (ivaPctCc > 0) {
+    doc.text(`IVA (${ivaPctCc}%):`, boxX + 5, finalY + 13);
+    doc.text(`+$${ivaMontoCc.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 13, { align: 'right' });
+  } else {
+    doc.text('IVA (0%):', boxX + 5, finalY + 13);
+    doc.text('$0 COP', pageWidth - 20, finalY + 13, { align: 'right' });
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('(Régimen Simple / No Responsable)', pageWidth - 20, finalY + 17, { align: 'right' });
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+  }
+
+  doc.text('Total Facturado:', boxX + 5, finalY + 23);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`$${cuenta.total.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 23, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+
+  doc.text('Abono Realizado:', boxX + 5, finalY + 29);
   doc.setTextColor(16, 185, 129); // Green
-  doc.text(`-$${cuenta.abono.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 16, { align: 'right' });
+  doc.text(`-$${cuenta.abono.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 29, { align: 'right' });
 
   doc.setFillColor(239, 68, 68); // Red banner for pending
-  doc.rect(boxX + 3, finalY + 22, 69, 10, 'F');
+  doc.rect(boxX + 3, finalY + 34, 69, 11, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
-  doc.text('SALDO PENDIENTE:', boxX + 6, finalY + 28);
-  doc.text(`$${cuenta.saldo_pendiente.toLocaleString('es-CO')}`, pageWidth - 22, finalY + 28, { align: 'right' });
+  doc.text('SALDO PENDIENTE:', boxX + 6, finalY + 41);
+  doc.text(`$${cuenta.saldo_pendiente.toLocaleString('es-CO')}`, pageWidth - 22, finalY + 41, { align: 'right' });
 
   // Bank Info Card
   doc.setFillColor(241, 245, 249);
-  doc.roundedRect(15, finalY, pageWidth - 115, 36, 3, 3, 'F');
+  doc.roundedRect(15, finalY, pageWidth - 115, 48, 3, 3, 'F');
   doc.setDrawColor(226, 232, 240);
-  doc.roundedRect(15, finalY, pageWidth - 115, 36, 3, 3, 'S');
+  doc.roundedRect(15, finalY, pageWidth - 115, 48, 3, 3, 'S');
 
   doc.setFontSize(8.5);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(15, 23, 42);
-  doc.text('DATOS PARA TRANSFERENCIA BANCARIA:', 20, finalY + 8);
+  doc.text('DATOS PARA TRANSFERENCIA BANCARIA:', 20, finalY + 10);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor(51, 65, 85);
-  doc.text(`- Bre-B (Llave única): ${config.bre_b || '0090778625'}`, 20, finalY + 15);
-  doc.text(`- Nequi: ${config.nequi} (${config.titular_cuenta})`, 20, finalY + 21);
+  doc.text(`- Bre-B (Llave única): ${config.bre_b || '0090778625'}`, 20, finalY + 19);
+  doc.text(`- Nequi: ${config.nequi} (${config.titular_cuenta})`, 20, finalY + 26);
+  doc.text(`- Titular: ${config.titular_cuenta}`, 20, finalY + 33);
+  doc.text(`- Régimen Tributario: ${LEYENDA_IVA_CERO}`, 20, finalY + 40);
 
   // Footer
   doc.setFillColor(241, 245, 249);
@@ -573,6 +616,13 @@ export async function generarPDFCuentaCobro(cuenta: CuentaCobro, config: Configu
   const doc = crearDocPDFCuentaCobro(cuenta, config, logo);
   const filename = `Cuenta_Cobro_${cuenta.numero_cc}_${cuenta.cliente.nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
   doc.save(filename);
+}
+
+export async function obtenerBlobURLCuentaCobro(cuenta: CuentaCobro, config: ConfiguracionTaller): Promise<string> {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFCuentaCobro(cuenta, config, logo);
+  const blob = doc.output('blob');
+  return URL.createObjectURL(blob);
 }
 
 export async function compartirPDFCuentaCobroWhatsApp(cuenta: CuentaCobro, config: ConfiguracionTaller) {
@@ -595,7 +645,382 @@ export async function compartirPDFCuentaCobroWhatsApp(cuenta: CuentaCobro, confi
     }
   }
 
-  doc.save(filename);
   const url = generateCuentaCobroWhatsAppUrl(cuenta, config);
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+/**
+ * Generador de Recibos y Comprobantes POS en formato PDF (Soporta Ticket Térmico 80mm y Recibo Formal Carta)
+ */
+export function crearDocPDFReciboPOS(
+  venta: VentaExpress,
+  config: ConfiguracionTaller,
+  formato: 'ticket80mm' | 'reciboCarta' = 'reciboCarta',
+  logoDataUrl?: string | null
+): jsPDF {
+  const logo = logoDataUrl || cachedLogoDataUrl;
+  const subtotalVenta = venta.subtotal || venta.total;
+  const ivaPct = venta.iva_porcentaje || 0;
+  const ivaMonto = venta.iva_monto || 0;
+  const cantidad = venta.cantidad_vendida || 1;
+  const precioUnitario = Math.round(subtotalVenta / cantidad);
+
+  if (formato === 'ticket80mm') {
+    // --- FORMATO TICKET TÉRMICO 80mm ---
+    const doc = new jsPDF({
+      orientation: 'portrait',
+      unit: 'mm',
+      format: [80, 210]
+    });
+
+    let y = 10;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(13);
+    doc.text('WJGEEKS 3D PRO', 40, y, { align: 'center' });
+    
+    y += 5;
+    doc.setFontSize(7.5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(71, 85, 105);
+    doc.text('Taller de Modelado & Fabricación 3D', 40, y, { align: 'center' });
+    y += 4;
+    doc.text(`NIT / ID: ${config.titular_cuenta || 'WJGEEKS-CO'}`, 40, y, { align: 'center' });
+    y += 4;
+    doc.text(`Tel: ${config.telefono_contacto} | IG: ${config.instagram}`, 40, y, { align: 'center' });
+    
+    y += 5;
+    doc.setLineDashPattern([1, 1], 0);
+    doc.line(6, y, 74, y);
+    doc.setLineDashPattern([], 0);
+
+    y += 6;
+    doc.setFontSize(8.5);
+    doc.setTextColor(15, 23, 42);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`RECIBO DE VENTA: ${venta.numero_venta}`, 40, y, { align: 'center' });
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text(`Fecha: ${venta.fecha_venta || new Date().toISOString().slice(0, 10)}`, 8, y);
+    y += 4;
+    doc.text(`Cliente: ${venta.cliente_nombre}`, 8, y);
+    y += 4;
+    doc.text(`Teléfono: ${venta.cliente_telefono}`, 8, y);
+
+    y += 4;
+    doc.setLineDashPattern([1, 1], 0);
+    doc.line(6, y, 74, y);
+    doc.setLineDashPattern([], 0);
+
+    y += 6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text('DESCRIPCIÓN', 8, y);
+    doc.text('CANT', 48, y, { align: 'center' });
+    doc.text('TOTAL', 72, y, { align: 'right' });
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    const prodLines = doc.splitTextToSize(venta.nombre_producto, 38);
+    doc.text(prodLines, 8, y);
+    doc.text(cantidad.toString(), 48, y, { align: 'center' });
+    doc.text(`$${subtotalVenta.toLocaleString('es-CO')}`, 72, y, { align: 'right' });
+    y += Math.max(5, prodLines.length * 4);
+
+    doc.setLineDashPattern([1, 1], 0);
+    doc.line(6, y, 74, y);
+    doc.setLineDashPattern([], 0);
+
+    // Totales
+    y += 5;
+    doc.text('Subtotal:', 8, y);
+    doc.text(`$${subtotalVenta.toLocaleString('es-CO')} COP`, 72, y, { align: 'right' });
+
+    y += 4.5;
+    if (ivaPct > 0) {
+      doc.text(`IVA (${ivaPct}%):`, 8, y);
+      doc.text(`+$${ivaMonto.toLocaleString('es-CO')} COP`, 72, y, { align: 'right' });
+    } else {
+      doc.text('IVA (0%):', 8, y);
+      doc.text('$0 COP', 72, y, { align: 'right' });
+      y += 3.5;
+      doc.setFontSize(6.2);
+      doc.setTextColor(100, 116, 139);
+      doc.text(`(${LEYENDA_IVA_CERO})`, 72, y, { align: 'right' });
+      doc.setFontSize(7.5);
+      doc.setTextColor(15, 23, 42);
+    }
+
+    y += 5;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.text('TOTAL:', 8, y);
+    doc.text(`$${venta.total.toLocaleString('es-CO')} COP`, 72, y, { align: 'right' });
+
+    y += 5;
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('Abono / Pagado:', 8, y);
+    doc.setTextColor(16, 185, 129);
+    doc.text(`$${venta.abono.toLocaleString('es-CO')} COP`, 72, y, { align: 'right' });
+    doc.setTextColor(15, 23, 42);
+
+    y += 4.5;
+    doc.text('Saldo Pendiente:', 8, y);
+    if (venta.saldo_pendiente > 0) {
+      doc.setTextColor(239, 68, 68);
+      doc.setFont('helvetica', 'bold');
+    }
+    doc.text(`$${venta.saldo_pendiente.toLocaleString('es-CO')} COP`, 72, y, { align: 'right' });
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(15, 23, 42);
+
+    y += 5;
+    doc.setFontSize(7.5);
+    doc.text(`Medio de Pago: ${venta.metodo_pago || 'Bre-B'}`, 8, y);
+    y += 4;
+    doc.text(`Estado: ${venta.estado_pago}`, 8, y);
+
+    y += 6;
+    doc.setLineDashPattern([1, 1], 0);
+    doc.line(6, y, 74, y);
+    doc.setLineDashPattern([], 0);
+
+    y += 6;
+    doc.setFontSize(7);
+    doc.setTextColor(100, 116, 139);
+    doc.text('¡Gracias por apoyar el talento y la fabricación local!', 40, y, { align: 'center' });
+    y += 4;
+    doc.text('Garantía y soporte en: +57 320 2796115', 40, y, { align: 'center' });
+
+    return doc;
+  }
+
+  // --- FORMATO RECIBO FORMAL CARTA ---
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+
+  // Header Bar
+  doc.setFillColor(15, 23, 42);
+  doc.rect(0, 0, pageWidth, 28, 'F');
+
+  let brandTextX = 15;
+  if (logo) {
+    try {
+      doc.addImage(logo, 'PNG', 15, 4, 20, 20);
+      brandTextX = 39;
+    } catch (e) {
+      console.warn('Error al insertar logo en recibo POS:', e);
+      brandTextX = 15;
+    }
+  }
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(18);
+  doc.setFont('helvetica', 'bold');
+  doc.text('WJGEEKS 3D PRO', brandTextX, 13);
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(56, 189, 248);
+  doc.text('Comprobante de Venta POS & Recibo de Caja', brandTextX, 19);
+
+  doc.setFontSize(7.5);
+  doc.setTextColor(203, 213, 225);
+  doc.text('Taller de Modelado, Fabricación Digital & Acabados', brandTextX, 24);
+
+  // Recibo Tag
+  doc.setFillColor(56, 189, 248);
+  doc.roundedRect(pageWidth - 65, 8, 50, 12, 2, 2, 'F');
+  doc.setTextColor(15, 23, 42);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'bold');
+  doc.text('RECIBO DE VENTA', pageWidth - 40, 13, { align: 'center' });
+  doc.setFontSize(8.5);
+  doc.text(`N° ${venta.numero_venta}`, pageWidth - 40, 18, { align: 'center' });
+
+  // Metadata Card
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(15, 34, pageWidth - 30, 26, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(15, 34, pageWidth - 30, 26, 3, 3, 'S');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('DATOS DEL CLIENTE Y OPERACIÓN:', 20, 42);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text(`• Cliente: ${venta.cliente_nombre}`, 20, 48);
+  doc.text(`• Teléfono: ${venta.cliente_telefono}`, 20, 54);
+
+  doc.text(`• Fecha de Emisión: ${venta.fecha_venta || new Date().toISOString().slice(0, 10)}`, pageWidth / 2 + 10, 48);
+  doc.text(`• Medio de Pago: ${venta.metodo_pago || 'Bre-B'} (${venta.estado_pago})`, pageWidth / 2 + 10, 54);
+
+  // Tabla del Ítem POS
+  const tableData = [
+    [
+      '1',
+      venta.nombre_producto,
+      cantidad.toString(),
+      `$${precioUnitario.toLocaleString('es-CO')}`,
+      `$${subtotalVenta.toLocaleString('es-CO')}`
+    ]
+  ];
+
+  autoTable(doc, {
+    startY: 66,
+    head: [['#', 'Producto / Detalle de la Venta', 'Cant.', 'Valor Unit.', 'Subtotal']],
+    body: tableData,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [15, 23, 42],
+      textColor: [255, 255, 255],
+      fontSize: 9,
+      fontStyle: 'bold',
+      halign: 'center'
+    },
+    styles: {
+      fontSize: 9,
+      cellPadding: 6,
+      valign: 'middle'
+    },
+    columnStyles: {
+      0: { halign: 'center', cellWidth: 15 },
+      1: { cellWidth: 100 },
+      2: { halign: 'center', cellWidth: 20 },
+      3: { halign: 'right', cellWidth: 26 },
+      4: { halign: 'right', cellWidth: 26 }
+    }
+  });
+
+  const finalY = (doc as any).lastAutoTable.finalY + 12;
+
+  // Bloque Financiero y de Totales
+  const boxX = pageWidth - 90;
+  doc.setFillColor(248, 250, 252);
+  doc.roundedRect(boxX, finalY, 75, 48, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(boxX, finalY, 75, 48, 3, 3, 'S');
+
+  doc.setFontSize(8.5);
+  doc.setTextColor(71, 85, 105);
+  doc.text('Subtotal:', boxX + 5, finalY + 7);
+  doc.text(`$${subtotalVenta.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 7, { align: 'right' });
+
+  // Línea de IVA Explícita
+  if (ivaPct > 0) {
+    doc.text(`IVA (${ivaPct}%):`, boxX + 5, finalY + 13);
+    doc.text(`+$${ivaMonto.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 13, { align: 'right' });
+  } else {
+    doc.text('IVA (0%):', boxX + 5, finalY + 13);
+    doc.text('$0 COP', pageWidth - 20, finalY + 13, { align: 'right' });
+    doc.setFontSize(6.5);
+    doc.setTextColor(148, 163, 184);
+    doc.text('(Régimen Simple / No Responsable)', pageWidth - 20, finalY + 17, { align: 'right' });
+    doc.setFontSize(8.5);
+    doc.setTextColor(71, 85, 105);
+  }
+
+  doc.text('Total Venta:', boxX + 5, finalY + 23);
+  doc.setFont('helvetica', 'bold');
+  doc.text(`$${venta.total.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 23, { align: 'right' });
+  doc.setFont('helvetica', 'normal');
+
+  doc.text('Abono / Recibido:', boxX + 5, finalY + 29);
+  doc.setTextColor(16, 185, 129);
+  doc.text(`-$${venta.abono.toLocaleString('es-CO')}`, pageWidth - 20, finalY + 29, { align: 'right' });
+
+  doc.setFillColor(venta.saldo_pendiente > 0 ? 239 : 16, venta.saldo_pendiente > 0 ? 68 : 185, venta.saldo_pendiente > 0 ? 68 : 129);
+  doc.rect(boxX + 3, finalY + 34, 69, 11, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.text(venta.saldo_pendiente > 0 ? 'SALDO PENDIENTE:' : 'PAGADO COMPLETO', boxX + 6, finalY + 41);
+  doc.text(`$${venta.saldo_pendiente.toLocaleString('es-CO')}`, pageWidth - 22, finalY + 41, { align: 'right' });
+
+  // Tarjeta de Garantía y Medios
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(15, finalY, pageWidth - 115, 48, 3, 3, 'F');
+  doc.setDrawColor(226, 232, 240);
+  doc.roundedRect(15, finalY, pageWidth - 115, 48, 3, 3, 'S');
+
+  doc.setFontSize(8.5);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(15, 23, 42);
+  doc.text('POLÍTICAS DE COMPRA & GARANTÍA:', 20, finalY + 10);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(51, 65, 85);
+  doc.text('• Piezas verificadas y curadas bajo estándares de calidad WJGEEKS.', 20, finalY + 18);
+  doc.text('• Conserva este comprobante para cualquier soporte de fabricación.', 20, finalY + 25);
+  doc.text(`• Canales oficiales de atención: ${config.telefono_contacto} | Instagram: ${config.instagram}`, 20, finalY + 32);
+  doc.text(`• Régimen Tributario: ${LEYENDA_IVA_CERO}`, 20, finalY + 39);
+
+  // Footer
+  doc.setFillColor(241, 245, 249);
+  doc.rect(0, 260, pageWidth, 20, 'F');
+  doc.setTextColor(71, 85, 105);
+  doc.setFontSize(8);
+  doc.text(`WJGEEKS 3D PRO • Contacto: ${config.telefono_contacto} | Instagram: ${config.instagram}`, pageWidth / 2, 271, { align: 'center' });
+
+  return doc;
+}
+
+export async function generarPDFReciboPOS(
+  venta: VentaExpress,
+  config: ConfiguracionTaller,
+  formato: 'ticket80mm' | 'reciboCarta' = 'reciboCarta'
+) {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFReciboPOS(venta, config, formato, logo);
+  const ext = formato === 'ticket80mm' ? 'ticket' : 'recibo';
+  const filename = `${ext}_${venta.numero_venta}_${venta.cliente_nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+  doc.save(filename);
+}
+
+export async function obtenerBlobURLReciboPOS(
+  venta: VentaExpress,
+  config: ConfiguracionTaller,
+  formato: 'ticket80mm' | 'reciboCarta' = 'reciboCarta'
+): Promise<string> {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFReciboPOS(venta, config, formato, logo);
+  const blob = doc.output('blob');
+  return URL.createObjectURL(blob);
+}
+
+export async function compartirPDFReciboPOSWhatsApp(
+  venta: VentaExpress,
+  config: ConfiguracionTaller,
+  formato: 'ticket80mm' | 'reciboCarta' = 'reciboCarta'
+) {
+  const logo = await getLogoDataUrl();
+  const doc = crearDocPDFReciboPOS(venta, config, formato, logo);
+  const ext = formato === 'ticket80mm' ? 'ticket' : 'recibo';
+  const filename = `${ext}_${venta.numero_venta}_${venta.cliente_nombre.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
+  const blob = doc.output('blob');
+  const file = new File([blob], filename, { type: 'application/pdf' });
+
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try {
+      await navigator.share({
+        files: [file],
+        title: `Recibo de Venta ${venta.numero_venta} - WJGEEKS 3D`,
+        text: `Hola ${venta.cliente_nombre}, te adjuntamos tu comprobante de venta N° ${venta.numero_venta} de WJGEEKS 3D.`
+      });
+      return;
+    } catch (e) {
+      console.log('Share dismissed or cancelled');
+    }
+  }
 }

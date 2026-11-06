@@ -781,29 +781,54 @@ export const CloudSyncService = {
 
       if (!data || data.length === 0) return [];
 
-      return data.map((row: any): VentaExpress => ({
-        id: row.id,
-        numero_venta: row.numero_venta,
-        foto_url: row.foto_url || undefined,
-        nombre_producto: row.nombre_producto,
-        cliente_nombre: row.cliente_nombre,
-        cliente_telefono: row.cliente_telefono || '',
-        total: Number(row.total) || 0,
-        abono: Number(row.abono) || 0,
-        saldo_pendiente: Number(row.saldo_pendiente) || 0,
-        estado_pago: row.estado_pago as any,
-        fecha_venta: row.fecha_venta || new Date().toISOString().slice(0, 10),
-        fecha_prometida_pago: row.fecha_prometida_pago || undefined,
-        notas: row.notas || '',
-        metodo_pago: row.metodo_pago || 'Nequi',
-        creado_por: row.creado_por || 'Equipo WJGEEKS',
-        requiere_ot: Boolean(row.requiere_ot),
-        estado_diseno: row.estado_diseno || undefined,
-        ot_id: row.ot_id || undefined,
-        ot_numero: row.ot_numero || undefined,
-        enlace_diseno: row.enlace_diseno || undefined,
-        notas_diseno: row.notas_diseno || undefined
-      }));
+      return data.map((row: any): VentaExpress => {
+        let subtotalVal = Number(row.subtotal) || Number(row.total) || 0;
+        let ivaPorcentajeVal = Number(row.iva_porcentaje) || 0;
+        let ivaMontoVal = Number(row.iva_monto) || 0;
+        let notasLimpia = row.notas || '';
+
+        if (row.notas && row.notas.includes('<!-- WJ_POS_FISCAL:')) {
+          try {
+            const start = row.notas.indexOf('<!-- WJ_POS_FISCAL:') + '<!-- WJ_POS_FISCAL:'.length;
+            const end = row.notas.indexOf(':WJ_POS_FISCAL -->');
+            if (end > start) {
+              const parsed = JSON.parse(decodeURIComponent(row.notas.substring(start, end)));
+              subtotalVal = parsed.subtotal ?? subtotalVal;
+              ivaPorcentajeVal = parsed.iva_porcentaje ?? ivaPorcentajeVal;
+              ivaMontoVal = parsed.iva_monto ?? ivaMontoVal;
+              notasLimpia = row.notas.replace(/<!-- WJ_POS_FISCAL:[\s\S]*?:WJ_POS_FISCAL -->/g, '').trim();
+            }
+          } catch (_) {}
+        }
+
+        return {
+          id: row.id,
+          numero_venta: row.numero_venta,
+          foto_url: row.foto_url || undefined,
+          nombre_producto: row.nombre_producto,
+          cliente_nombre: row.cliente_nombre,
+          cliente_telefono: row.cliente_telefono || '',
+          subtotal: subtotalVal,
+          iva_porcentaje: ivaPorcentajeVal,
+          iva_monto: ivaMontoVal,
+          iva_regimen_nota: ivaPorcentajeVal === 0 ? 'Régimen Simple / No Responsable' : undefined,
+          total: Number(row.total) || 0,
+          abono: Number(row.abono) || 0,
+          saldo_pendiente: Number(row.saldo_pendiente) || 0,
+          estado_pago: row.estado_pago as any,
+          fecha_venta: row.fecha_venta || new Date().toISOString().slice(0, 10),
+          fecha_prometida_pago: row.fecha_prometida_pago || undefined,
+          notas: notasLimpia,
+          metodo_pago: row.metodo_pago || 'Nequi',
+          creado_por: row.creado_por || 'Equipo WJGEEKS',
+          requiere_ot: Boolean(row.requiere_ot),
+          estado_diseno: row.estado_diseno || undefined,
+          ot_id: row.ot_id || undefined,
+          ot_numero: row.ot_numero || undefined,
+          enlace_diseno: row.enlace_diseno || undefined,
+          notas_diseno: row.notas_diseno || undefined
+        };
+      });
     } catch (e) {
       console.warn('Exception in fetchVentasExpress:', e);
       return null;
@@ -815,6 +840,17 @@ export const CloudSyncService = {
     if (!this.isAvailable()) return { success: false, error: 'Supabase no está configurado o sin conexión.' };
 
     try {
+      const snapshotPrefix = '<!-- WJ_POS_FISCAL:';
+      const snapshotSuffix = ':WJ_POS_FISCAL -->';
+      const rawNotas = (venta.notas || '').replace(/<!-- WJ_POS_FISCAL:[\s\S]*?:WJ_POS_FISCAL -->/g, '').trim();
+      const fiscalData = {
+        subtotal: venta.subtotal || venta.total,
+        iva_porcentaje: venta.iva_porcentaje || 0,
+        iva_monto: venta.iva_monto || 0,
+        iva_regimen_nota: venta.iva_regimen_nota || 'Régimen Simple / No Responsable'
+      };
+      const notasConFiscal = `${rawNotas}\n${snapshotPrefix}${encodeURIComponent(JSON.stringify(fiscalData))}${snapshotSuffix}`;
+
       const payload = {
         id: venta.id,
         numero_venta: venta.numero_venta,
@@ -828,7 +864,7 @@ export const CloudSyncService = {
         estado_pago: venta.estado_pago,
         fecha_venta: venta.fecha_venta,
         fecha_prometida_pago: venta.fecha_prometida_pago || null,
-        notas: venta.notas || null,
+        notas: notasConFiscal,
         metodo_pago: venta.metodo_pago || 'Nequi',
         creado_por: venta.creado_por || 'Equipo WJGEEKS',
         requiere_ot: Boolean(venta.requiere_ot),
