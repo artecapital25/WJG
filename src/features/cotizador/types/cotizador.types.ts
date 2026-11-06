@@ -112,6 +112,11 @@ export interface CotizadorTotalsSummaryProps {
   descuentoPorcentaje: number;
   setDescuentoPorcentaje: (desc: number) => void;
   descuentoMonto: number;
+  subtotalConDescuento: number;
+  ivaPorcentaje: number;
+  setIvaPorcentaje: (iva: number) => void;
+  ivaMonto: number;
+  ahorroVolumenTotal: number;
   total: number;
   tipoEstado: 'Enviada' | 'Parcial' | 'Borrador';
   setTipoEstado: (tipo: 'Enviada' | 'Parcial' | 'Borrador') => void;

@@ -40,6 +40,8 @@ export interface ParametrosPiezaInput {
     precio_sugerido: number;
   };
   precioFijadoTarifa?: boolean;
+  aplicaDescuentoVolumen?: boolean;
+  descuentoVolumenPorcentaje?: number;
 }
 
 export interface DesgloseTarifaMaquina {
@@ -321,18 +323,42 @@ export function calcularPieza3D(
     (input.costoModeloComprado || 0);
 
   // 10. Precio de Venta (Redondeado a centenas COP exactas con MROUND)
-  let precio_unitario: number;
+  let precio_unitario_base: number;
   let margen_calculado = input.margenGanancia;
 
   if (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0) {
-    precio_unitario = Math.round(input.precioUnitarioManual / 100) * 100;
+    precio_unitario_base = Math.round(input.precioUnitarioManual / 100) * 100;
     if (costo_base_produccion > 0) {
-      margen_calculado = (precio_unitario - costo_base_produccion) / costo_base_produccion;
+      margen_calculado = (precio_unitario_base - costo_base_produccion) / costo_base_produccion;
     }
   } else {
     const precio_unitario_raw = costo_base_produccion * (1 + input.margenGanancia);
-    precio_unitario = Math.round(precio_unitario_raw / 100) * 100;
+    precio_unitario_base = Math.round(precio_unitario_raw / 100) * 100;
   }
+
+  // Descuento por Cantidad / Volumen (Escala 6+ unidades)
+  let precio_unitario = precio_unitario_base;
+  let descVolumenPct = 0;
+  let descVolumenMonto = 0;
+  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
+
+  if (aplicaVolumen) {
+    if (input.descuentoVolumenPorcentaje !== undefined && input.descuentoVolumenPorcentaje > 0) {
+      descVolumenPct = input.descuentoVolumenPorcentaje;
+    } else if (input.cantidad >= 24) {
+      descVolumenPct = 20;
+    } else if (input.cantidad >= 12) {
+      descVolumenPct = 15;
+    } else if (input.cantidad >= 6) {
+      descVolumenPct = 10;
+    }
+
+    if (descVolumenPct > 0) {
+      descVolumenMonto = Math.round((precio_unitario_base * (descVolumenPct / 100)) / 100) * 100;
+      precio_unitario = Math.max(0, precio_unitario_base - descVolumenMonto);
+    }
+  }
+
   const precio_total = Math.ceil((precio_unitario * input.cantidad) / 100) * 100;
 
   // 11. Tiempo Estimado de Entrega de Taller
@@ -414,6 +440,10 @@ export function calcularPieza3D(
     margen_ganancia: margen_calculado,
     precio_unitario,
     precio_total,
+    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
+    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
+    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
+    precio_unitario_original: descVolumenPct > 0 ? precio_unitario_base : undefined,
     tarifa_tamano_aplicada: input.tarifaTamanoAplicada,
     precio_fijado_tarifa: input.precioFijadoTarifa,
     tiempo_entrega,

@@ -192,13 +192,27 @@ export const CloudSyncService = {
 
         let notasLimpia = row.notas || 'No incluye transporte fuera del perímetro urbano.';
         let itemsRestaurados: PiezaCotizada[] | null = null;
+        let metaFinanciera: { iva_porcentaje?: number; iva_monto?: number; descuento_monto?: number; ahorro_volumen_total?: number } = {};
         if (row.notas && row.notas.includes('<!-- WJ_ITEMS_SNAPSHOT:')) {
           try {
             const start = row.notas.indexOf('<!-- WJ_ITEMS_SNAPSHOT:') + '<!-- WJ_ITEMS_SNAPSHOT:'.length;
             const end = row.notas.indexOf(':WJ_ITEMS_SNAPSHOT -->');
             if (end > start) {
               const encoded = row.notas.substring(start, end);
-              itemsRestaurados = JSON.parse(decodeURIComponent(encoded));
+              const parsed = JSON.parse(decodeURIComponent(encoded));
+              if (Array.isArray(parsed)) {
+                itemsRestaurados = parsed;
+              } else if (parsed && typeof parsed === 'object') {
+                if (Array.isArray(parsed.items)) {
+                  itemsRestaurados = parsed.items;
+                }
+                metaFinanciera = {
+                  iva_porcentaje: parsed.iva_porcentaje,
+                  iva_monto: parsed.iva_monto,
+                  descuento_monto: parsed.descuento_monto,
+                  ahorro_volumen_total: parsed.ahorro_volumen_total
+                };
+              }
               notasLimpia = row.notas.replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
             }
           } catch (e) {
@@ -226,8 +240,11 @@ export const CloudSyncService = {
           estado: normalizarEstadoDbParaUI(row.estado),
           items: (itemsRestaurados && itemsRestaurados.length > 0) ? itemsRestaurados : itemsMapeados,
           subtotal: Number(row.subtotal) || 0,
-          iva_porcentaje: 0,
+          iva_porcentaje: metaFinanciera.iva_porcentaje !== undefined ? metaFinanciera.iva_porcentaje : (Number(row.iva_porcentaje) || 0),
+          iva_monto: metaFinanciera.iva_monto,
           descuento_porcentaje: Number(row.descuento_porcentaje) || 0,
+          descuento_monto: metaFinanciera.descuento_monto,
+          ahorro_volumen_total: metaFinanciera.ahorro_volumen_total,
           total: Number(row.total) || 0,
           tiempo_entrega_estimado: row.tiempo_entrega_estimado || '(3) Días hábiles',
           notas: notasLimpia,
@@ -434,12 +451,19 @@ export const CloudSyncService = {
         return 'BORRADOR';
       };
 
-      // Serializar snapshot de items dentro de notas de forma segura para conservar el 100% de detalles técnicos
+      // Serializar snapshot de items y metadatos financieros dentro de notas de forma segura para conservar el 100% de detalles técnicos
       const snapshotPrefix = '<!-- WJ_ITEMS_SNAPSHOT:';
       const snapshotSuffix = ':WJ_ITEMS_SNAPSHOT -->';
       const rawNotas = (cot.notas || '').replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
-      const encodedItems = encodeURIComponent(JSON.stringify(cot.items || []));
-      const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedItems}${snapshotSuffix}`;
+      const payloadSnapshot = {
+        items: cot.items || [],
+        iva_porcentaje: cot.iva_porcentaje || 0,
+        iva_monto: cot.iva_monto || 0,
+        descuento_monto: cot.descuento_monto || 0,
+        ahorro_volumen_total: cot.ahorro_volumen_total || 0
+      };
+      const encodedSnapshot = encodeURIComponent(JSON.stringify(payloadSnapshot));
+      const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedSnapshot}${snapshotSuffix}`;
 
       // 5.2 Upsert de la cotización por numero_cot con columnas canónicas
       const { data: cotData, error: cotErr } = await supabase!

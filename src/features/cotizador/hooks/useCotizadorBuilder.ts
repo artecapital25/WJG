@@ -47,6 +47,9 @@ export function useCotizadorBuilder({
   });
   const [vendedorNombre, setVendedorNombre] = useState<string>('Wendy');
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState<number>(0);
+  const [ivaPorcentaje, setIvaPorcentaje] = useState<number>(() => {
+    return cotizacionEnEdicion?.iva_porcentaje || 0;
+  });
   const [notas, setNotas] = useState<string>('No incluye transporte fuera del perímetro urbano.');
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
@@ -97,6 +100,7 @@ export function useCotizadorBuilder({
         setVendedorNombre(cotizacionEnEdicion.vendedor);
       }
       setDescuentoPorcentaje(cotizacionEnEdicion.descuento_porcentaje || 0);
+      setIvaPorcentaje(cotizacionEnEdicion.iva_porcentaje || 0);
       setNotas(limpiarNotasObservaciones(cotizacionEnEdicion.notas || ''));
       if (cotizacionEnEdicion.estado) {
         setTipoEstado(cotizacionEnEdicion.estado as any);
@@ -117,9 +121,16 @@ export function useCotizadorBuilder({
   }, [tieneItemsPendientes]);
 
   // Cálculos puros y reactivos de totales
-  const { subtotal, descuentoMonto, total } = useMemo(() => {
-    return calcularTotalesCotizacion(items, descuentoPorcentaje);
-  }, [items, descuentoPorcentaje]);
+  const { 
+    subtotal, 
+    descuentoMonto, 
+    subtotalConDescuento, 
+    ivaMonto, 
+    total, 
+    ahorroVolumenTotal 
+  } = useMemo(() => {
+    return calcularTotalesCotizacion(items, descuentoPorcentaje, ivaPorcentaje);
+  }, [items, descuentoPorcentaje, ivaPorcentaje]);
 
   // Regla del 50% de anticipo
   const { abonoEfectivo, saldoPendiente, cumpleMinimo50, porcentajeAbonado } = useMemo(() => {
@@ -318,8 +329,11 @@ export function useCotizadorBuilder({
       estado: estadoOverride || tipoEstado,
       items: [...items],
       subtotal,
-      iva_porcentaje: 0,
+      iva_porcentaje: ivaPorcentaje,
+      iva_monto: ivaMonto,
       descuento_porcentaje: descuentoPorcentaje,
+      descuento_monto: descuentoMonto,
+      ahorro_volumen_total: ahorroVolumenTotal,
       total,
       tiempo_entrega_estimado: items[0]?.tiempo_entrega || '(3) Días hábiles',
       notas: limpiarNotasObservaciones(notas, tipoEstado === 'Parcial'),
@@ -513,6 +527,11 @@ export function useCotizadorBuilder({
     // Totales y Regla del 50%
     subtotal,
     descuentoMonto,
+    subtotalConDescuento,
+    ivaPorcentaje,
+    setIvaPorcentaje,
+    ivaMonto,
+    ahorroVolumenTotal,
     total,
     estadoPagoInicial,
     setEstadoPagoInicial,

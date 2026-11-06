@@ -105,6 +105,8 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       if (piezaEnEdicion.margen_ganancia !== undefined) {
         setMargenGanancia(piezaEnEdicion.margen_ganancia);
       }
+      setAplicaDescuentoVolumen(piezaEnEdicion.aplica_descuento_volumen ?? true);
+      setDescuentoVolumenManual(piezaEnEdicion.descuento_volumen_porcentaje);
 
       if (piezaEnEdicion.enlaces_compra && piezaEnEdicion.enlaces_compra.length > 0) {
         setEnlacesCompra(piezaEnEdicion.enlaces_compra.map((enl, idx) => ({
@@ -187,6 +189,8 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
   const [costoModeloComprado, setCostoModeloComprado] = useState(0);
   const [margenGanancia, setMargenGanancia] = useState(0.40); // 40%
+  const [aplicaDescuentoVolumen, setAplicaDescuentoVolumen] = useState<boolean>(piezaEnEdicion?.aplica_descuento_volumen ?? true);
+  const [descuentoVolumenManual, setDescuentoVolumenManual] = useState<number | undefined>(piezaEnEdicion?.descuento_volumen_porcentaje);
   const [imagenUrl, setImagenUrl] = useState<string>('');
   const [tipoOrigenImagen, setTipoOrigenImagen] = useState<'archivo' | 'stl' | null>(null);
   const [isOptimizingImage, setIsOptimizingImage] = useState(false);
@@ -480,7 +484,9 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       notasPendientes,
       precioUnitarioManual: precioFijadoTarifa ? precioUnitarioManual : undefined,
       tarifaTamanoAplicada: precioFijadoTarifa && tarifaAplicada ? tarifaAplicada : undefined,
-      precioFijadoTarifa
+      precioFijadoTarifa,
+      aplicaDescuentoVolumen,
+      descuentoVolumenPorcentaje: descuentoVolumenManual
     };
 
     return calcularCotizacionIntegral(input, personal, config);
@@ -522,6 +528,8 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     empaquesSeleccionados,
     costoModeloComprado,
     margenGanancia,
+    aplicaDescuentoVolumen,
+    descuentoVolumenManual,
     imagenUrl,
     personal,
     config,
@@ -677,6 +685,12 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     handleAddEnlaceCompra,
     handleRemoveEnlaceCompra,
     handleUpdateEnlaceCompra,
+
+    // Descuento por volumen
+    aplicaDescuentoVolumen,
+    setAplicaDescuentoVolumen,
+    descuentoVolumenManual,
+    setDescuentoVolumenManual,
 
     // Cálculo y envío
     calculoEnVivo,

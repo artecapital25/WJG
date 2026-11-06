@@ -66,6 +66,7 @@ import {
 } from './components/cuentasCobro/cuentasCobroUtils';
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
+import { calcularDescuentoVolumenSugerido } from './features/cotizador/utils/pricingCalculator';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -700,10 +701,26 @@ export const App: React.FC = () => {
     if (newCantidad < 1) return;
     setDraftPieces(prev => prev.map(p => {
       if (p.id === id) {
-        const precio_total = Math.ceil((p.precio_unitario * newCantidad) / 100) * 100;
+        let precioUnitario = p.precio_unitario;
+        let precioOriginal = p.precio_unitario_original || p.precio_unitario;
+        let descVolumenPct = p.descuento_volumen_porcentaje || 0;
+        let descVolumenMonto = p.descuento_volumen_monto || 0;
+
+        // Si la pieza tiene activado el descuento por volumen (o por defecto activo)
+        if (p.aplica_descuento_volumen !== false) {
+          descVolumenPct = calcularDescuentoVolumenSugerido(newCantidad);
+          descVolumenMonto = Math.round(precioOriginal * (descVolumenPct / 100));
+          precioUnitario = precioOriginal - descVolumenMonto;
+        }
+
+        const precio_total = Math.ceil((precioUnitario * newCantidad) / 100) * 100;
         return {
           ...p,
           cantidad: newCantidad,
+          precio_unitario: precioUnitario,
+          precio_unitario_original: precioOriginal,
+          descuento_volumen_porcentaje: descVolumenPct,
+          descuento_volumen_monto: descVolumenMonto,
           precio_total
         };
       }

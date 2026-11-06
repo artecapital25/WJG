@@ -196,6 +196,10 @@ export function crearDocPDFCotizacion(
       specText += `\n• ${procesosVisibles.join(' • ')}`;
     }
 
+    if (item.aplica_descuento_volumen && item.descuento_volumen_porcentaje && item.descuento_volumen_porcentaje > 0) {
+      specText += `\n• Descuento por volumen (${item.cantidad} u): ${item.descuento_volumen_porcentaje}% OFF (Regular: $${(item.precio_unitario_original || item.precio_unitario).toLocaleString('es-CO')} c/u)`;
+    }
+
     if (hasImages) {
       return [
         (index + 1).toString(),
@@ -287,23 +291,35 @@ export function crearDocPDFCotizacion(
   const totalsX = pageWidth - 80;
   doc.setFontSize(9);
 
+  let currentY = finalY;
+
   doc.setTextColor(71, 85, 105);
-  doc.text('Subtotal:', totalsX, finalY);
-  doc.text(`$${cotizacion.subtotal.toLocaleString('es-CO')} COP`, pageWidth - 15, finalY, { align: 'right' });
+  doc.text('Subtotal:', totalsX, currentY);
+  doc.text(`$${cotizacion.subtotal.toLocaleString('es-CO')} COP`, pageWidth - 15, currentY, { align: 'right' });
 
   if (cotizacion.descuento_porcentaje > 0) {
-    doc.text(`Descuento (${cotizacion.descuento_porcentaje}%):`, totalsX, finalY + 6);
-    doc.text(`-$${((cotizacion.subtotal * cotizacion.descuento_porcentaje) / 100).toLocaleString('es-CO')} COP`, pageWidth - 15, finalY + 6, { align: 'right' });
+    currentY += 5.5;
+    const descMonto = cotizacion.descuento_monto ?? Math.round((cotizacion.subtotal * cotizacion.descuento_porcentaje) / 100);
+    doc.text(`Descuento (${cotizacion.descuento_porcentaje}%):`, totalsX, currentY);
+    doc.text(`-$${descMonto.toLocaleString('es-CO')} COP`, pageWidth - 15, currentY, { align: 'right' });
+  }
+
+  if (cotizacion.iva_porcentaje && cotizacion.iva_porcentaje > 0) {
+    currentY += 5.5;
+    const ivaMonto = cotizacion.iva_monto ?? Math.round(((cotizacion.subtotal - (cotizacion.descuento_monto || 0)) * cotizacion.iva_porcentaje) / 100);
+    doc.text(`IVA (${cotizacion.iva_porcentaje}%):`, totalsX, currentY);
+    doc.text(`+$${ivaMonto.toLocaleString('es-CO')} COP`, pageWidth - 15, currentY, { align: 'right' });
   }
 
   // Total Bar
+  currentY += 5;
   doc.setFillColor(15, 23, 42);
-  doc.roundedRect(totalsX - 4, finalY + 11, 69, 10, 2, 2, 'F');
+  doc.roundedRect(totalsX - 4, currentY, 69, 10, 2, 2, 'F');
   doc.setTextColor(255, 255, 255);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
-  doc.text('TOTAL:', totalsX, finalY + 18);
-  doc.text(`$${cotizacion.total.toLocaleString('es-CO')} COP`, pageWidth - 17, finalY + 18, { align: 'right' });
+  doc.text('TOTAL:', totalsX, currentY + 7);
+  doc.text(`$${cotizacion.total.toLocaleString('es-CO')} COP`, pageWidth - 17, currentY + 7, { align: 'right' });
 
   // 5. Notes & Terms
   doc.setFont('helvetica', 'normal');

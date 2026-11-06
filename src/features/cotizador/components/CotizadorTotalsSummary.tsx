@@ -7,6 +7,11 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
   descuentoPorcentaje,
   setDescuentoPorcentaje,
   descuentoMonto,
+  subtotalConDescuento,
+  ivaPorcentaje,
+  setIvaPorcentaje,
+  ivaMonto,
+  ahorroVolumenTotal,
   total,
   tipoEstado,
   setTipoEstado,
@@ -61,29 +66,114 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
         </div>
       </div>
 
-      {/* Descuento y Vendedor */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', margin: '16px 0' }}>
-        <div className="form-group">
-          <label className="form-label">Descuento (%)</label>
-          <input 
-            type="number" 
-            className="form-input" 
-            min="0" 
-            max="50" 
-            value={descuentoPorcentaje}
-            onChange={e => setDescuentoPorcentaje(parseFloat(e.target.value) || 0)}
-          />
-        </div>
+      {/* Apartado de Descuentos Comerciales e IVA */}
+      <div style={{
+        background: 'rgba(255, 255, 255, 0.02)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '12px',
+        padding: '14px',
+        margin: '16px 0'
+      }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: '16px' }}>
+          {/* Descuento Comercial */}
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Descuento Comercial Global</span>
+              <strong style={{ color: descuentoPorcentaje > 0 ? 'var(--accent-warning)' : 'var(--text-muted)' }}>
+                {descuentoPorcentaje}% (-${descuentoMonto.toLocaleString('es-CO')})
+              </strong>
+            </label>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+              {[0, 5, 10, 15, 20].map(pct => (
+                <button
+                  key={pct}
+                  type="button"
+                  className={`btn btn-sm ${descuentoPorcentaje === pct ? 'btn-primary' : 'btn-secondary'}`}
+                  style={{ flex: 1, padding: '4px 0', fontSize: '0.78rem' }}
+                  onClick={() => setDescuentoPorcentaje(pct)}
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                type="number" 
+                className="form-input" 
+                min="0" 
+                max="100" 
+                step="1"
+                placeholder="Otro %"
+                value={descuentoPorcentaje === 0 ? '' : descuentoPorcentaje}
+                onChange={e => setDescuentoPorcentaje(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                style={{ fontSize: '0.85rem' }}
+              />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>% manual</span>
+            </div>
+          </div>
 
-        <div className="form-group">
-          <label className="form-label">Vendedor / Asesor</label>
-          <input 
-            type="text" 
-            className="form-input" 
-            value={vendedorNombre}
-            onChange={e => setVendedorNombre(e.target.value)}
-          />
+          {/* IVA */}
+          <div className="form-group" style={{ margin: 0 }}>
+            <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <span>Impuesto al Valor Agregado (IVA)</span>
+              <strong style={{ color: ivaPorcentaje > 0 ? 'var(--brand-cyan)' : 'var(--text-muted)' }}>
+                {ivaPorcentaje}% (+${ivaMonto.toLocaleString('es-CO')})
+              </strong>
+            </label>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+              <button
+                type="button"
+                className={`btn btn-sm ${ivaPorcentaje === 0 ? 'btn-primary' : 'btn-secondary'}`}
+                style={{ flex: 1, padding: '4px 0', fontSize: '0.78rem' }}
+                onClick={() => setIvaPorcentaje(0)}
+              >
+                0% (Sin IVA)
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${ivaPorcentaje === 19 ? 'btn-cyan' : 'btn-secondary'}`}
+                style={{ flex: 1, padding: '4px 0', fontSize: '0.78rem' }}
+                onClick={() => setIvaPorcentaje(19)}
+              >
+                19% (General)
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${ivaPorcentaje === 5 ? 'btn-cyan' : 'btn-secondary'}`}
+                style={{ flex: 1, padding: '4px 0', fontSize: '0.78rem' }}
+                onClick={() => setIvaPorcentaje(5)}
+              >
+                5%
+              </button>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <input 
+                type="number" 
+                className="form-input" 
+                min="0" 
+                max="100" 
+                step="1"
+                placeholder="Otro % IVA"
+                value={ivaPorcentaje === 0 ? '' : ivaPorcentaje}
+                onChange={e => setIvaPorcentaje(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
+                style={{ fontSize: '0.85rem' }}
+              />
+              <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>% manual</span>
+            </div>
+          </div>
         </div>
+      </div>
+
+      {/* Vendedor / Asesor */}
+      <div className="form-group" style={{ marginBottom: '14px' }}>
+        <label className="form-label">Vendedor / Asesor Comercial</label>
+        <input 
+          type="text" 
+          className="form-input" 
+          value={vendedorNombre}
+          onChange={e => setVendedorNombre(e.target.value)}
+          placeholder="Nombre del asesor"
+        />
       </div>
 
       {/* Condiciones y Observaciones */}
@@ -97,20 +187,71 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
         />
       </div>
 
-      {/* Desglose de Totales */}
-      <div style={{ background: 'rgba(0, 0, 0, 0.35)', padding: '16px', borderRadius: '12px', margin: '16px 0' }}>
+      {/* Desglose de Totales Financieros */}
+      <div style={{ 
+        background: 'rgba(0, 0, 0, 0.45)', 
+        border: '1px solid rgba(56, 189, 248, 0.2)', 
+        padding: '16px 18px', 
+        borderRadius: '12px', 
+        margin: '16px 0' 
+      }}>
+        {/* Subtotal */}
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', color: 'var(--text-muted)' }}>
-          <span>Subtotal:</span>
-          <span>${subtotal.toLocaleString('es-CO')} COP</span>
+          <span>Subtotal ítems:</span>
+          <span style={{ fontWeight: 600 }}>${subtotal.toLocaleString('es-CO')} COP</span>
         </div>
+
+        {/* Ahorro por Volumen */}
+        {ahorroVolumenTotal > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.85rem', color: '#34d399' }}>
+            <span>🎉 Ahorro por volumen ya aplicado:</span>
+            <span>-${ahorroVolumenTotal.toLocaleString('es-CO')} COP</span>
+          </div>
+        )}
+
+        {/* Descuento Comercial */}
         {descuentoPorcentaje > 0 && (
           <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', color: 'var(--accent-warning)' }}>
-            <span>Descuento ({descuentoPorcentaje}%):</span>
+            <span>Descuento Comercial ({descuentoPorcentaje}%):</span>
             <span>-${descuentoMonto.toLocaleString('es-CO')} COP</span>
           </div>
         )}
-        <div style={{ display: 'flex', justifyContent: 'space-between', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', fontWeight: 800, fontSize: '1.25rem' }}>
-          <span>TOTAL:</span>
+
+        {/* Base Imponible si hay IVA o descuento */}
+        {(descuentoPorcentaje > 0 || ivaPorcentaje > 0) && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.85rem', color: 'var(--text-subtle)', borderTop: '1px dashed rgba(255, 255, 255, 0.08)', paddingTop: '6px' }}>
+            <span>Subtotal neto (Base gravable):</span>
+            <span>${subtotalConDescuento.toLocaleString('es-CO')} COP</span>
+          </div>
+        )}
+
+        {/* IVA */}
+        {ivaPorcentaje > 0 && (
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.88rem', color: 'var(--brand-cyan)' }}>
+            <span>IVA ({ivaPorcentaje}%):</span>
+            <span>+${ivaMonto.toLocaleString('es-CO')} COP</span>
+          </div>
+        )}
+
+        {/* Total Final */}
+        <div style={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          paddingTop: '10px', 
+          marginTop: '6px',
+          borderTop: '1px solid rgba(255, 255, 255, 0.15)', 
+          fontWeight: 800, 
+          fontSize: '1.3rem' 
+        }}>
+          <div>
+            <div>TOTAL:</div>
+            {ivaPorcentaje === 0 && (
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>
+                (Exento de IVA / Régimen no responsable)
+              </div>
+            )}
+          </div>
           <span style={{ color: 'var(--brand-cyan)' }}>${total.toLocaleString('es-CO')} COP</span>
         </div>
       </div>

@@ -98,17 +98,61 @@ export function calcularCotizacionIntegral(
 }
 
 /**
- * Calcula los totales reactivos de una cotización: Subtotal, Descuento y Total neto
+ * Calcula el porcentaje de descuento sugerido por volumen según la cantidad de unidades
+ * Escalas oficiales: 6-11 unid = 10%, 12-23 unid = 15%, 24+ unid = 20%
+ */
+export function calcularDescuentoVolumenSugerido(cantidad: number): number {
+  if (cantidad >= 24) return 20;
+  if (cantidad >= 12) return 15;
+  if (cantidad >= 6) return 10;
+  return 0;
+}
+
+export interface TotalesCotizacionResult {
+  subtotal: number;
+  descuentoPorcentaje: number;
+  descuentoMonto: number;
+  subtotalConDescuento: number;
+  ivaPorcentaje: number;
+  ivaMonto: number;
+  total: number;
+  ahorroVolumenTotal: number;
+}
+
+/**
+ * Calcula los totales reactivos de una cotización: Subtotal, Descuento Comercial, Subtotal Neto, IVA y Total final
  */
 export function calcularTotalesCotizacion(
   items: PiezaCotizada[],
-  descuentoPorcentaje: number = 0
-): { subtotal: number; descuentoMonto: number; total: number } {
+  descuentoPorcentaje: number = 0,
+  ivaPorcentaje: number = 0
+): TotalesCotizacionResult {
   const subtotal = items.reduce((sum, item) => sum + (Number(item.precio_total) || 0), 0);
   const clampedDescuento = Math.max(0, Math.min(100, Number(descuentoPorcentaje) || 0));
   const descuentoMonto = Math.round((subtotal * clampedDescuento) / 100);
-  const total = Math.max(0, subtotal - descuentoMonto);
-  return { subtotal, descuentoMonto, total };
+  const subtotalConDescuento = Math.max(0, subtotal - descuentoMonto);
+
+  const clampedIva = Math.max(0, Math.min(100, Number(ivaPorcentaje) || 0));
+  const ivaMonto = Math.round((subtotalConDescuento * clampedIva) / 100);
+  const total = subtotalConDescuento + ivaMonto;
+
+  const ahorroVolumenTotal = items.reduce((sum, item) => {
+    if (item.descuento_volumen_monto && item.descuento_volumen_monto > 0) {
+      return sum + (item.descuento_volumen_monto * (item.cantidad || 1));
+    }
+    return sum;
+  }, 0);
+
+  return { 
+    subtotal, 
+    descuentoPorcentaje: clampedDescuento, 
+    descuentoMonto, 
+    subtotalConDescuento,
+    ivaPorcentaje: clampedIva,
+    ivaMonto,
+    total,
+    ahorroVolumenTotal
+  };
 }
 
 /**

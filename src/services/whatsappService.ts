@@ -38,8 +38,11 @@ export function generateCotizacionWhatsAppText(
         )
         .map(m => m.proceso.trim());
       const txtProcesos = procesosVisibles.length > 0 ? `\n  ⚙️ _${procesosVisibles.join(' • ')}_` : '';
+      const txtVolumen = (item.aplica_descuento_volumen && item.descuento_volumen_porcentaje && item.descuento_volumen_porcentaje > 0)
+        ? `\n  🎉 _Descuento por volumen (${item.cantidad} u): ${item.descuento_volumen_porcentaje}% OFF_`
+        : '';
 
-      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}`;
+      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}${txtVolumen}`;
     })
     .join('\n');
 
@@ -66,8 +69,8 @@ Te compartimos la ${esParcial ? '*cotización preliminar/parcial*' : '*cotizaci�
 ${itemsText}
 
 ━━━━━━━━━━━━━━━━━━━━
-💰 *Subtotal:* $${cotizacion.subtotal.toLocaleString('es-CO')} COP
-${cotizacion.descuento_porcentaje > 0 ? `🏷️ *Descuento:* ${cotizacion.descuento_porcentaje}%\n` : ''}💵 *TOTAL ESTIMADO:* $${cotizacion.total.toLocaleString('es-CO')} COP
+💰 *Subtotal ítems:* $${cotizacion.subtotal.toLocaleString('es-CO')} COP
+${cotizacion.descuento_porcentaje > 0 ? `🏷️ *Descuento comercial (${cotizacion.descuento_porcentaje}%):* -$${(cotizacion.descuento_monto ?? Math.round((cotizacion.subtotal * cotizacion.descuento_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : ''}${cotizacion.iva_porcentaje && cotizacion.iva_porcentaje > 0 ? `🏛️ *IVA (${cotizacion.iva_porcentaje}%):* +$${(cotizacion.iva_monto ?? Math.round(((cotizacion.subtotal - (cotizacion.descuento_monto || 0)) * cotizacion.iva_porcentaje) / 100)).toLocaleString('es-CO')} COP\n` : ''}💵 *TOTAL:${cotizacion.iva_porcentaje ? ' (IVA Inc.)' : ''}* $${cotizacion.total.toLocaleString('es-CO')} COP
 ━━━━━━━━━━━━━━━━━━━━
 ${esParcial ? '\n⚠️ *AVISO:* Cotización preliminar. Los gramos de resina y dimensiones finales se confirmarán al abrir y laminar los modelos 3D en el programa de corte.\n' : ''}
 📝 *Notas y Condiciones:*

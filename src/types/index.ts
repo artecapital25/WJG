@@ -197,6 +197,11 @@ export interface PiezaCotizada {
     precio_sugerido: number;
   };
   precio_fijado_tarifa?: boolean;
+  // Descuentos por Cantidad / Volumen
+  aplica_descuento_volumen?: boolean;
+  descuento_volumen_porcentaje?: number;
+  descuento_volumen_monto?: number;
+  precio_unitario_original?: number;
 }
 
 export interface TarifaTamano {
@@ -231,7 +236,10 @@ export interface Cotizacion {
   items: PiezaCotizada[];
   subtotal: number;
   iva_porcentaje: number;
+  iva_monto?: number;
   descuento_porcentaje: number;
+  descuento_monto?: number;
+  ahorro_volumen_total?: number;
   total: number;
   tiempo_entrega_estimado: string;
   notas: string;

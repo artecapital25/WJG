@@ -7,6 +7,7 @@ import {
   calcularDesgastePantallaLCD,
   calcularCostoManoObra,
   calcularTotalesCotizacion,
+  calcularDescuentoVolumenSugerido,
   validarRegla50Anticipo,
   generarNumeroCotSugerido,
   limpiarNotasObservaciones
@@ -76,7 +77,35 @@ describe('pricingCalculator - Pure Math & 50% Rule Engine', () => {
     const con10Pct = calcularTotalesCotizacion(mockItems, 10);
     expect(con10Pct.subtotal).toBe(150000);
     expect(con10Pct.descuentoMonto).toBe(15000);
+    expect(con10Pct.subtotalConDescuento).toBe(135000);
     expect(con10Pct.total).toBe(135000);
+
+    // Con IVA del 19% sin descuento comercial
+    const conIva19 = calcularTotalesCotizacion(mockItems, 0, 19);
+    expect(conIva19.subtotal).toBe(150000);
+    expect(conIva19.ivaMonto).toBe(28500);
+    expect(conIva19.total).toBe(178500);
+
+    // Con Descuento 10% e IVA 19% (IVA sobre base imponible con descuento)
+    // Base = 150000 - 15000 = 135000. IVA 19% = 25650. Total = 160650
+    const conDescuentoEIva = calcularTotalesCotizacion(mockItems, 10, 19);
+    expect(conDescuentoEIva.subtotalConDescuento).toBe(135000);
+    expect(conDescuentoEIva.ivaMonto).toBe(25650);
+    expect(conDescuentoEIva.total).toBe(160650);
+  });
+
+  it('7b. calcularDescuentoVolumenSugerido: respeta las escalas para pedidos por mayor', () => {
+    expect(calcularDescuentoVolumenSugerido(1)).toBe(0);
+    expect(calcularDescuentoVolumenSugerido(5)).toBe(0);
+    // Escala 6-11 unid -> 10%
+    expect(calcularDescuentoVolumenSugerido(6)).toBe(10);
+    expect(calcularDescuentoVolumenSugerido(11)).toBe(10);
+    // Escala 12-23 unid -> 15%
+    expect(calcularDescuentoVolumenSugerido(12)).toBe(15);
+    expect(calcularDescuentoVolumenSugerido(23)).toBe(15);
+    // Escala 24+ unid -> 20%
+    expect(calcularDescuentoVolumenSugerido(24)).toBe(20);
+    expect(calcularDescuentoVolumenSugerido(100)).toBe(20);
   });
 
   it('8. validarRegla50Anticipo: verifica la política de anticipo del 50%', () => {

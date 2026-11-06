@@ -156,6 +156,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
           porcentajeRelleno={form.porcentajeRelleno}
           cantidad={form.cantidad}
           piezaEnEdicion={props.piezaEnEdicion}
+          aplicaDescuentoVolumen={form.aplicaDescuentoVolumen}
+          setAplicaDescuentoVolumen={form.setAplicaDescuentoVolumen}
+          descuentoVolumenManual={form.descuentoVolumenManual}
+          setDescuentoVolumenManual={form.setDescuentoVolumenManual}
         />
       </form>
 

@@ -157,6 +157,11 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             descuentoPorcentaje={b.descuentoPorcentaje}
             setDescuentoPorcentaje={b.setDescuentoPorcentaje}
             descuentoMonto={b.descuentoMonto}
+            subtotalConDescuento={b.subtotalConDescuento}
+            ivaPorcentaje={b.ivaPorcentaje}
+            setIvaPorcentaje={b.setIvaPorcentaje}
+            ivaMonto={b.ivaMonto}
+            ahorroVolumenTotal={b.ahorroVolumenTotal}
             total={b.total}
             tipoEstado={b.tipoEstado}
             setTipoEstado={b.setTipoEstado}

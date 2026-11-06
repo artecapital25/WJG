@@ -13,6 +13,10 @@ interface CotizadorCostSummaryProps {
   porcentajeRelleno: number;
   cantidad: number;
   piezaEnEdicion?: PiezaCotizada | null;
+  aplicaDescuentoVolumen?: boolean;
+  setAplicaDescuentoVolumen?: (val: boolean) => void;
+  descuentoVolumenManual?: number;
+  setDescuentoVolumenManual?: (val: number | undefined) => void;
 }
 
 export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
@@ -25,7 +29,11 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
   tipoEstructura,
   porcentajeRelleno,
   cantidad,
-  piezaEnEdicion
+  piezaEnEdicion,
+  aplicaDescuentoVolumen = true,
+  setAplicaDescuentoVolumen,
+  descuentoVolumenManual,
+  setDescuentoVolumenManual
 }) => {
   return (
     <>
@@ -117,6 +125,44 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
             </div>
           </div>
 
+          {cantidad >= 6 && (
+            <div style={{
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: '10px',
+              padding: '10px 14px',
+              marginTop: '12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px',
+              flexWrap: 'wrap'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <span style={{ fontSize: '1.2rem' }}>🎉</span>
+                <div>
+                  <div style={{ color: '#10b981', fontWeight: 700, fontSize: '0.85rem' }}>
+                    Descuento por Volumen ({cantidad} unid.)
+                  </div>
+                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                    {calculoEnVivo.aplica_descuento_volumen && (calculoEnVivo.descuento_volumen_porcentaje || 0) > 0
+                      ? `${calculoEnVivo.descuento_volumen_porcentaje}% OFF aplicado • Ahorras $${(calculoEnVivo.descuento_volumen_monto || 0).toLocaleString('es-CO')} COP/u`
+                      : 'Escala sugerida: 6+ unid (10%), 12+ unid (15%), 24+ unid (20%)'}
+                  </div>
+                </div>
+              </div>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-main)' }}>
+                <input
+                  type="checkbox"
+                  checked={aplicaDescuentoVolumen}
+                  onChange={(e) => setAplicaDescuentoVolumen?.(e.target.checked)}
+                  style={{ width: '16px', height: '16px', accentColor: '#10b981', cursor: 'pointer' }}
+                />
+                Aplicar descuento
+              </label>
+            </div>
+          )}
+
           <div className="price-hero-box">
             <div>
               <div className="price-hero-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
@@ -131,8 +177,18 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
                 Total ({cantidad} unid.): ${(calculoEnVivo.precio_total).toLocaleString('es-CO')} COP • Margen real: {Math.round(calculoEnVivo.margen_ganancia * 100)}%
               </div>
             </div>
-            <div className="price-hero-amount">
-              ${calculoEnVivo.precio_unitario.toLocaleString('es-CO')} COP
+            <div className="price-hero-amount" style={{ textAlign: 'right' }}>
+              {Boolean(calculoEnVivo.aplica_descuento_volumen && calculoEnVivo.precio_unitario_original && calculoEnVivo.precio_unitario_original > calculoEnVivo.precio_unitario) && (
+                <div style={{ fontSize: '0.8rem', textDecoration: 'line-through', color: 'var(--text-muted)', fontWeight: 500, lineHeight: 1 }}>
+                  ${calculoEnVivo.precio_unitario_original?.toLocaleString('es-CO')} COP
+                </div>
+              )}
+              <div>${calculoEnVivo.precio_unitario.toLocaleString('es-CO')} COP</div>
+              {Boolean(calculoEnVivo.aplica_descuento_volumen && (calculoEnVivo.descuento_volumen_porcentaje || 0) > 0) && (
+                <span style={{ fontSize: '0.7rem', background: 'rgba(16, 185, 129, 0.2)', color: '#10b981', padding: '1px 6px', borderRadius: '4px', fontWeight: 700, display: 'inline-block' }}>
+                  -{calculoEnVivo.descuento_volumen_porcentaje}% OFF
+                </span>
+              )}
             </div>
           </div>
         </div>
