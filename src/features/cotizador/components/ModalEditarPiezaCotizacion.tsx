@@ -23,6 +23,8 @@ interface ModalEditarPiezaCotizacionProps {
   setEditNombre: (v: string) => void;
   editCantidad: number;
   setEditCantidad: (v: number) => void;
+  editAplicaDescuentoVolumen?: boolean;
+  setEditAplicaDescuentoVolumen?: (v: boolean) => void;
   editPrecioUnitario: number;
   setEditPrecioUnitario: (v: number) => void;
   editAltoMm: number;
@@ -63,6 +65,8 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
   setEditNombre,
   editCantidad,
   setEditCantidad,
+  editAplicaDescuentoVolumen = true,
+  setEditAplicaDescuentoVolumen,
   editPrecioUnitario,
   setEditPrecioUnitario,
   editAltoMm,
@@ -196,6 +200,33 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
               />
             </div>
           </div>
+
+          {/* Toggle Descuento por Volumen si cantidad >= 2 */}
+          {editCantidad >= 2 && (
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              background: 'rgba(16, 185, 129, 0.08)',
+              border: '1px solid rgba(16, 185, 129, 0.3)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              marginBottom: '12px'
+            }}>
+              <span style={{ fontSize: '0.8rem', color: '#10b981', fontWeight: 600 }}>
+                🎉 Descuento por Volumen ({editCantidad} unidades)
+              </span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', fontSize: '0.78rem', color: '#fff' }}>
+                <input 
+                  type="checkbox"
+                  checked={editAplicaDescuentoVolumen}
+                  onChange={e => setEditAplicaDescuentoVolumen?.(e.target.checked)}
+                  style={{ width: '15px', height: '15px', accentColor: '#10b981', cursor: 'pointer' }}
+                />
+                Aplicar descuento
+              </label>
+            </div>
+          )}
 
           {/* Subtotal del producto */}
           <div style={{

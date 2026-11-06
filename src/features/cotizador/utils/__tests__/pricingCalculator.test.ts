@@ -14,7 +14,9 @@ import {
   generarNumeroCotSugerido,
   limpiarNotasObservaciones
 } from '../pricingCalculator';
-import { PiezaCotizada } from '../../../../types';
+import { PiezaCotizada, Cotizacion, ConfiguracionTaller } from '../../../../types';
+import { generateCotizacionWhatsAppText } from '../../../../services/whatsappService';
+import { crearDocPDFCotizacion } from '../../../../services/pdfService';
 
 describe('pricingCalculator - Pure Math & 50% Rule Engine', () => {
   it('1. calcularVolumenCm3: calcula cm3 exactos para dimensiones 3D', () => {
@@ -170,5 +172,79 @@ describe('pricingCalculator - Pure Math & 50% Rule Engine', () => {
     expect(ivaGeneral.monto).toBe(19000);
     expect(ivaGeneral.lineaCompleta).toContain('IVA (19%): +$19.000 COP');
     expect(ivaGeneral.lineaWhatsApp).toContain('🏛️ *IVA (19%):* +$19.000 COP');
+  });
+
+  it('12. Descuento por volumen opcional: respeta switch por pieza y no se imprime en la descripción física', () => {
+    const piezaConVolumen: PiezaCotizada = {
+      id: 'pz-vol-1',
+      nombre_item: 'Figura Coleccionable',
+      cantidad: 10,
+      alto_mm: 100,
+      ancho_mm: 50,
+      profundidad_mm: 50,
+      volumen_cm3: 25,
+      peso_estimado_g: 50,
+      resina_id: 'res-1',
+      resina_nombre: 'Resina Gris',
+      maquina_id: 'maq-1',
+      maquina_nombre: 'Anycubic',
+      tiempo_impresion_min: 180,
+      tiempo_desarrollo_min: 0,
+      tiempo_armado_min: 0,
+      tiempo_pintura_min: 0,
+      costo_energia: 1000,
+      costo_resina: 5000,
+      costo_curado: 500,
+      costo_insumos: 1000,
+      costo_mano_obra: 3000,
+      costo_modelo_comprado: 0,
+      costo_base_produccion: 10500,
+      margen_ganancia: 0.4,
+      precio_unitario: 15000,
+      precio_total: 150000,
+      tiempo_entrega: '(3) Días hábiles',
+      descripcion_tecnica: 'Resina estándar',
+      aplica_descuento_volumen: true,
+      descuento_volumen_porcentaje: 10,
+      descuento_volumen_monto: 1500
+    };
+
+    const mockConfig: ConfiguracionTaller = {
+      tarifa_kwh: 834,
+      margen_merma_resina: 1.4,
+      telefono_contacto: '3202796115',
+      telefono_contacto2: '3217273025',
+      correo: 'wjgeeks3d@gmail.com',
+      instagram: '@WJGEEKS3D',
+      nequi: '3202796115',
+      bre_b: '0090778625',
+      titular_cuenta: 'WJGEEKS 3D PRO'
+    };
+
+    const mockCotizacion: Cotizacion = {
+      id: 'cot-vol',
+      numero_cot: '26-001',
+      fecha: '2026-11-06',
+      tiempo_entrega_estimado: '(3) Días hábiles',
+      cliente: { id: 'c1', codigo: 1, nombre: 'Cliente Test', nit_cc: '', telefono: '3202796115', correo: '' },
+      vendedor: 'Wendy',
+      estado: 'Enviada',
+      items: [piezaConVolumen],
+      subtotal: 150000,
+      descuento_porcentaje: 0,
+      iva_porcentaje: 0,
+      total: 150000,
+      notas: '• Incluye descuento especial por volumen aplicado al lote de fabricación.'
+    };
+
+    // 1. WhatsApp text
+    const msg = generateCotizacionWhatsAppText(mockCotizacion, mockConfig);
+    // Debe contener la nota en Observaciones, pero NO en la descripción del ítem
+    expect(msg).toContain('• Incluye descuento especial por volumen');
+    expect(msg).not.toContain('🎉 _Descuento por volumen');
+
+    // 2. PDF Spec text
+    const doc = crearDocPDFCotizacion(mockCotizacion, mockConfig);
+    expect(doc).toBeDefined();
   });
 });

@@ -135,6 +135,7 @@ export function useCotizadorBuilder({
   const [editDescripcionTecnica, setEditDescripcionTecnica] = useState('');
   const [editMaquinasAdicionales, setEditMaquinasAdicionales] = useState<MaquinaInvolucrada[]>([]);
   const [editEnlacesCompra, setEditEnlacesCompra] = useState<EnlaceReferenciaCompra[]>([]);
+  const [editAplicaDescuentoVolumen, setEditAplicaDescuentoVolumen] = useState<boolean>(true);
 
   // Tipo de cotización
   const tieneItemsPendientes = useMemo(() => items.some(it => it.datos_pendientes), [items]);
@@ -230,6 +231,7 @@ export function useCotizadorBuilder({
     setEditVaPintado(Boolean(item.va_pintado));
     setEditTieneEmpaque(Boolean(item.tiene_empaque));
     setEditDatosPendientes(Boolean(item.datos_pendientes));
+    setEditAplicaDescuentoVolumen(item.aplica_descuento_volumen !== false);
     setEditDescripcionTecnica(item.descripcion_tecnica || '');
     setEditEnlacesCompra(item.enlaces_compra ? item.enlaces_compra.map(e => ({ ...e })) : []);
 
@@ -349,6 +351,8 @@ export function useCotizadorBuilder({
       resina_nombre: resinaElegida ? (resinaElegida.resumen || `${resinaElegida.marca} ${resinaElegida.tipo}`) : piezaEditando.resina_nombre,
       va_pintado: editVaPintado,
       tiene_empaque: editTieneEmpaque,
+      aplica_descuento_volumen: editAplicaDescuentoVolumen,
+      descuento_volumen_porcentaje: editAplicaDescuentoVolumen ? piezaEditando.descuento_volumen_porcentaje : undefined,
       descripcion_tecnica: editDescripcionTecnica,
       maquinas_involucradas: nuevosProcesos,
       enlaces_compra: editEnlacesCompra
@@ -648,6 +652,8 @@ export function useCotizadorBuilder({
     setEditNombre,
     editCantidad,
     setEditCantidad,
+    editAplicaDescuentoVolumen,
+    setEditAplicaDescuentoVolumen,
     editPrecioUnitario,
     setEditPrecioUnitario,
     editAltoMm,

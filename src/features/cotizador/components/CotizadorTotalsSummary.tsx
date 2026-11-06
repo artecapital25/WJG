@@ -270,6 +270,30 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
 
         {/* Chips de Notas Rápidas */}
         <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', marginBottom: '8px' }}>
+          {ahorroVolumenTotal > 0 && (
+            <button
+              type="button"
+              onClick={() => setNotas(toggleNotaRapida(notas || '', '• Incluye descuento especial por volumen aplicado al lote de fabricación.'))}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                padding: '3px 8px',
+                borderRadius: '6px',
+                border: (notas || '').includes('descuento especial por volumen') ? '1px solid #10b981' : '1px solid rgba(16, 185, 129, 0.4)',
+                background: (notas || '').includes('descuento especial por volumen') ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)',
+                color: '#34d399',
+                cursor: 'pointer',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {(notas || '').includes('descuento especial por volumen') ? <Check size={11} color="#34d399" /> : <Plus size={11} />}
+              <span>🎉 Descuento Volumen (-${ahorroVolumenTotal.toLocaleString('es-CO')})</span>
+            </button>
+          )}
+
           {NOTAS_RAPIDAS_SUGERIDAS.map((item) => {
             const estaActiva = (notas || '').toLowerCase().includes(item.texto.replace(/^[•\s]+/, '').trim().toLowerCase());
             return (

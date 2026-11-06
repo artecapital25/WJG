@@ -52,11 +52,8 @@ export function generateCotizacionWhatsAppText(
         )
         .map(m => m.proceso.trim());
       const txtProcesos = procesosVisibles.length > 0 ? `\n  ⚙️ _${procesosVisibles.join(' • ')}_` : '';
-      const txtVolumen = (item.aplica_descuento_volumen && item.descuento_volumen_porcentaje && item.descuento_volumen_porcentaje > 0)
-        ? `\n  🎉 _Descuento por volumen (${item.cantidad} u): ${item.descuento_volumen_porcentaje}% OFF_`
-        : '';
 
-      return `• *${item.nombre_item}${tagTec}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}${txtVolumen}`;
+      return `• *${item.nombre_item}${tagTec}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}`;
     })
     .join('\n');
 

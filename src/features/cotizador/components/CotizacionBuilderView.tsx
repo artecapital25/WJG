@@ -199,6 +199,8 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
         setEditNombre={b.setEditNombre}
         editCantidad={b.editCantidad}
         setEditCantidad={b.setEditCantidad}
+        editAplicaDescuentoVolumen={b.editAplicaDescuentoVolumen}
+        setEditAplicaDescuentoVolumen={b.setEditAplicaDescuentoVolumen}
         editPrecioUnitario={b.editPrecioUnitario}
         setEditPrecioUnitario={b.setEditPrecioUnitario}
         editAltoMm={b.editAltoMm}

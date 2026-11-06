@@ -166,12 +166,6 @@ export const CotizadorItemList: React.FC<CotizadorItemListProps> = React.memo(({
                 </span>
               ) : null}
 
-              {item.aplica_descuento_volumen && Boolean(item.descuento_volumen_porcentaje && item.descuento_volumen_porcentaje > 0) && (
-                <span style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
-                  🎉 -{item.descuento_volumen_porcentaje}% Vol.
-                </span>
-              )}
-
               {item.enlaces_compra && item.enlaces_compra.length > 0 && (
                 <span style={{ 
                   background: 'rgba(236, 72, 153, 0.18)', 

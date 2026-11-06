@@ -125,7 +125,7 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
             </div>
           </div>
 
-          {cantidad >= 6 && (
+          {cantidad >= 2 && (
             <div style={{
               background: 'rgba(16, 185, 129, 0.08)',
               border: '1px solid rgba(16, 185, 129, 0.3)',

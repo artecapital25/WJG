@@ -211,10 +211,6 @@ export function crearDocPDFCotizacion(
       specText += `\n• ${procesosVisibles.join(' • ')}`;
     }
 
-    if (item.aplica_descuento_volumen && item.descuento_volumen_porcentaje && item.descuento_volumen_porcentaje > 0) {
-      specText += `\n• Descuento por volumen (${item.cantidad} u): ${item.descuento_volumen_porcentaje}% OFF (Regular: $${(item.precio_unitario_original || item.precio_unitario).toLocaleString('es-CO')} c/u)`;
-    }
-
     if (hasImages) {
       return [
         (index + 1).toString(),
