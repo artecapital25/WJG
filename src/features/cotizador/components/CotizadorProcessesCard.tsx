@@ -1,9 +1,10 @@
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { Maquina, PiezaCotizada } from '../../../types';
+import { Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
 import { ItemMaquinaExtraForm } from '../types/cotizador.types';
 
 interface CotizadorProcessesCardProps {
+  tecnologia?: TecnologiaFabricacion;
   requiereCurado: boolean;
   setRequiereCurado: (val: boolean) => void;
   curadoId: string;
@@ -38,6 +39,7 @@ interface CotizadorProcessesCardProps {
 }
 
 export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
+  tecnologia = 'SLA_RESINA',
   requiereCurado,
   setRequiereCurado,
   curadoId,
@@ -102,14 +104,15 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-        {/* Proceso 2: Lavado y Curado UV */}
-        <div style={{
-          background: requiereCurado ? 'rgba(0, 0, 0, 0.25)' : 'rgba(0, 0, 0, 0.1)',
-          border: `1px solid ${requiereCurado ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)'}`,
-          borderRadius: '10px',
-          padding: '12px 14px',
-          opacity: requiereCurado ? 1 : 0.65
-        }}>
+        {/* Proceso 2: Lavado y Curado UV (Solo requerido en Resina SLA) */}
+        {tecnologia === 'SLA_RESINA' && (
+          <div style={{
+            background: requiereCurado ? 'rgba(0, 0, 0, 0.25)' : 'rgba(0, 0, 0, 0.1)',
+            border: `1px solid ${requiereCurado ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.05)'}`,
+            borderRadius: '10px',
+            padding: '12px 14px',
+            opacity: requiereCurado ? 1 : 0.65
+          }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
             <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '8px', margin: 0 }}>
               <input 
@@ -179,6 +182,7 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
             </>
           )}
         </div>
+        )}
 
         {/* Proceso 3: Pintura y Acabado / Aerógrafo */}
         <div style={{

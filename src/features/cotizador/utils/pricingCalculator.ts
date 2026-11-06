@@ -4,7 +4,22 @@
  */
 
 import { Resina, Maquina, Insumo, Personal, ConfiguracionTaller, PiezaCotizada } from '../../../types';
-import { ParametrosPiezaInput, calcularPieza3D } from '../../../services/calculationEngine';
+import { 
+  ParametrosPiezaInput, 
+  calcularPieza3D, 
+  calcularPiezaFDM, 
+  calcularPiezaLaser, 
+  calcularPiezaCNC, 
+  calcularCotizacionIntegral 
+} from '../../../services/calculationEngine';
+
+export {
+  calcularCotizacionIntegral,
+  calcularPieza3D,
+  calcularPiezaFDM,
+  calcularPiezaLaser,
+  calcularPiezaCNC
+};
 
 /**
  * Calcula el volumen de la pieza en cm3 (ml)
@@ -84,17 +99,6 @@ export function calcularCostoManoObra(
   if (salarioMensual <= 0 || horasMensuales <= 0 || tiempoMinutos <= 0) return 0;
   const costoPorMinuto = salarioMensual / (horasMensuales * 60);
   return Number((tiempoMinutos * costoPorMinuto).toFixed(2));
-}
-
-/**
- * Wrapper de alta fidelidad para el cálculo integral de pieza 3D
- */
-export function calcularCotizacionIntegral(
-  input: ParametrosPiezaInput,
-  personal: Personal[],
-  config: ConfiguracionTaller
-): PiezaCotizada {
-  return calcularPieza3D(input, personal, config);
 }
 
 /**

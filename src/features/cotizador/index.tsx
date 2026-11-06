@@ -85,9 +85,38 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
           setTiempoImpresionManualMin={form.setTiempoImpresionManualMin}
           altoMm={form.altoMm}
           calculoEnVivo={form.calculoEnVivo}
+          tecnologia={form.tecnologia}
+          setTecnologia={form.setTecnologia}
+          materialFilamento={form.materialFilamento}
+          setMaterialFilamento={form.setMaterialFilamento}
+          pesoFilamentoG={form.pesoFilamentoG}
+          setPesoFilamentoG={form.setPesoFilamentoG}
+          costoRolloKg={form.costoRolloKg}
+          setCostoRolloKg={form.setCostoRolloKg}
+          tiempoFDMMin={form.tiempoFDMMin}
+          setTiempoFDMMin={form.setTiempoFDMMin}
+          materialLamina={form.materialLamina}
+          setMaterialLamina={form.setMaterialLamina}
+          espesorLaminaMm={form.espesorLaminaMm}
+          setEspesorLaminaMm={form.setEspesorLaminaMm}
+          longitudCorteMm={form.longitudCorteMm}
+          setLongitudCorteMm={form.setLongitudCorteMm}
+          costoMetroCuadradoLamina={form.costoMetroCuadradoLamina}
+          setCostoMetroCuadradoLamina={form.setCostoMetroCuadradoLamina}
+          tiempoLaserMin={form.tiempoLaserMin}
+          setTiempoLaserMin={form.setTiempoLaserMin}
+          tipoProcesoLaser={form.tipoProcesoLaser}
+          setTipoProcesoLaser={form.setTipoProcesoLaser}
+          materialBloque={form.materialBloque}
+          setMaterialBloque={form.setMaterialBloque}
+          costoBloqueMaterial={form.costoBloqueMaterial}
+          setCostoBloqueMaterial={form.setCostoBloqueMaterial}
+          tiempoMecanizadoMin={form.tiempoMecanizadoMin}
+          setTiempoMecanizadoMin={form.setTiempoMecanizadoMin}
         />
 
         <CotizadorProcessesCard
+          tecnologia={form.tecnologia}
           requiereCurado={form.requiereCurado}
           setRequiereCurado={form.setRequiereCurado}
           curadoId={form.curadoId}

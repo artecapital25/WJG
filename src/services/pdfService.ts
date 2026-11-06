@@ -167,13 +167,26 @@ export function crearDocPDFCotizacion(
       ? item.tiene_empaque
       : Boolean(item.lista_empaques && item.lista_empaques.length > 0);
 
-    const txtPintura = vaPintado ? 'Sí (Pintado)' : 'No (Color natural de resina)';
+    let descMat = `Material: ${item.resina_nombre}`;
+    let tagTec = '';
+    if (item.tecnologia === 'FDM_FILAMENTO') {
+      tagTec = ' [FDM Filamento]';
+      descMat = `Filamento: ${item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`;
+    } else if (item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER') {
+      tagTec = ' [Láser CO₂]';
+      descMat = `Lámina: ${item.material_lamina || item.resina_nombre} (${item.espesor_lamina_mm || 3}mm) • Proceso: ${item.tipo_proceso_laser || 'corte'}`;
+    } else if (item.tecnologia === 'CNC_ROUTER') {
+      tagTec = ' [Router CNC]';
+      descMat = `Bloque: ${item.material_bloque || item.resina_nombre} • Mecanizado: ${item.tiempo_mecanizado_min || 45} min`;
+    }
+
+    const txtPintura = vaPintado ? 'Sí (Pintado)' : 'No (Acabado Natural)';
     const txtEmpaque = tieneEmpaque && item.lista_empaques && item.lista_empaques.length > 0
       ? `Sí (${item.lista_empaques.map(e => e.nombre).join(', ')})`
       : tieneEmpaque ? 'Sí' : 'No';
 
     // Unificado en una sola línea clara para material y dimensiones (evita doble espacio confuso)
-    let specText = `${item.nombre_item}\n• Medidas: ${descMedidas} | Material: ${item.resina_nombre}\n• Pintura: ${txtPintura}  |  Empaque: ${txtEmpaque}`;
+    let specText = `${item.nombre_item}${tagTec}\n• Medidas: ${descMedidas} | ${descMat}\n• Pintura: ${txtPintura}  |  Empaque: ${txtEmpaque}`;
 
     if (item.precio_fijado_tarifa && item.tarifa_tamano_aplicada) {
       specText += `\n• Tarifa: Escala básica ${item.tarifa_tamano_aplicada.altura_cm} cm`;

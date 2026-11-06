@@ -19,9 +19,22 @@ export function generateCotizacionWhatsAppText(
 
   const itemsText = cotizacion.items
     .map((item) => {
+      let descMaterial = `Material: ${item.resina_nombre}`;
+      let tagTec = '';
+      if (item.tecnologia === 'FDM_FILAMENTO') {
+        tagTec = ' [🧵 FDM]';
+        descMaterial = `Filamento: ${item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`;
+      } else if (item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER') {
+        tagTec = ' [⚡ Láser]';
+        descMaterial = `Lámina: ${item.material_lamina || item.resina_nombre} (${item.espesor_lamina_mm || 3}mm) • Proceso: ${item.tipo_proceso_laser || 'corte'}`;
+      } else if (item.tecnologia === 'CNC_ROUTER') {
+        tagTec = ' [🪵 CNC]';
+        descMaterial = `Bloque: ${item.material_bloque || item.resina_nombre} • Mecanizado: ${item.tiempo_mecanizado_min || 45}m`;
+      }
+
       const descMedidas = item.datos_pendientes 
-        ? `_[Medidas y resina pendientes de confirmar en Slicer]_`
-        : `_${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Material: ${item.resina_nombre}_`;
+        ? `_[Medidas y material pendientes de confirmar en software]_`
+        : `_${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • ${descMaterial}_`;
       const txtPintura = item.va_pintado ? '🎨 Pintado: Sí' : '⚪ Pintado: No';
       const txtEmpaque = item.tiene_empaque 
         ? (item.lista_empaques && item.lista_empaques.length > 0 ? `📦 Empaque: ${item.lista_empaques.map(e => e.nombre).join(', ')}` : '📦 Empaque: Sí')
@@ -43,7 +56,7 @@ export function generateCotizacionWhatsAppText(
         ? `\n  🎉 _Descuento por volumen (${item.cantidad} u): ${item.descuento_volumen_porcentaje}% OFF_`
         : '';
 
-      return `• *${item.nombre_item}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}${txtVolumen}`;
+      return `• *${item.nombre_item}${tagTec}* (Cant: ${item.cantidad}) - $${item.precio_total.toLocaleString('es-CO')} COP\n  ${descMedidas}\n  _(${txtPintura} • ${txtEmpaque})_${txtProcesos}${txtVolumen}`;
     })
     .join('\n');
 

@@ -202,7 +202,37 @@ export interface PiezaCotizada {
   descuento_volumen_porcentaje?: number;
   descuento_volumen_monto?: number;
   precio_unitario_original?: number;
+
+  // Multi-Fabricación Polimórfica
+  tecnologia?: TecnologiaFabricacion;
+  // FDM Filamento
+  material_filamento?: string;
+  peso_filamento_g?: number;
+  costo_filamento_kg?: number;
+  desgaste_boquilla_costo?: number;
+  // Corte & Grabado Láser CO2
+  material_lamina?: string;
+  espesor_lamina_mm?: number;
+  longitud_corte_mm?: number;
+  area_lamina_cm2?: number;
+  tiempo_laser_min?: number;
+  desgaste_tubo_laser_costo?: number;
+  tipo_proceso_laser?: 'corte' | 'grabado' | 'ambos';
+  // Router CNC
+  material_bloque?: string;
+  tiempo_mecanizado_min?: number;
+  desgaste_fresa_costo?: number;
+  // Diccionario genérico de parámetros
+  parametros_tecnicos?: Record<string, any>;
 }
+
+export type TecnologiaFabricacion = 
+  | 'SLA_RESINA' 
+  | 'FDM_FILAMENTO' 
+  | 'CORTE_LASER' 
+  | 'GRABADO_LASER' 
+  | 'CNC_ROUTER' 
+  | 'OTRO';
 
 export interface TarifaTamano {
   id: string;

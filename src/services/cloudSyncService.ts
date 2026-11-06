@@ -506,7 +506,13 @@ export const CloudSyncService = {
           subtotal: Number(it.precio_total) || 0,
           tiempo_horas: Number(((it.tiempo_impresion_min || 0) / 60).toFixed(2)),
           peso_gramos: Number((it.peso_estimado_g || 0).toFixed(2)),
-          tecnologia: 'SLA'
+          tecnologia: it.tecnologia === 'FDM_FILAMENTO'
+            ? 'FDM'
+            : (it.tecnologia === 'CORTE_LASER' || it.tecnologia === 'GRABADO_LASER')
+            ? 'LASER'
+            : it.tecnologia === 'CNC_ROUTER'
+            ? 'CNC'
+            : 'SLA'
         }));
 
         await supabase!.from('cotizacion_items').insert(itemsPayload);

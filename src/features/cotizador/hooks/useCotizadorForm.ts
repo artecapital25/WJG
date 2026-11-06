@@ -6,7 +6,8 @@ import {
   Personal, 
   ConfiguracionTaller, 
   PiezaCotizada, 
-  TarifaTamano 
+  TarifaTamano,
+  TecnologiaFabricacion
 } from '../../../types';
 import { 
   ItemPinturaForm, 
@@ -56,6 +57,28 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [tipoEstructura, setTipoEstructura] = useState<'solido' | 'ahuecado'>('solido');
   const [porcentajeRelleno, setPorcentajeRelleno] = useState<number>(35);
 
+  // Tecnología de Fabricación Multi-Proceso
+  const [tecnologia, setTecnologia] = useState<TecnologiaFabricacion>(piezaEnEdicion?.tecnologia || 'SLA_RESINA');
+
+  // Parámetros FDM Filamento
+  const [materialFilamento, setMaterialFilamento] = useState<string>(piezaEnEdicion?.material_filamento || 'PLA');
+  const [pesoFilamentoG, setPesoFilamentoG] = useState<number>(piezaEnEdicion?.peso_filamento_g || 45);
+  const [costoRolloKg, setCostoRolloKg] = useState<number>(piezaEnEdicion?.costo_filamento_kg || 85000);
+  const [tiempoFDMMin, setTiempoFDMMin] = useState<number>(piezaEnEdicion?.tiempo_impresion_min || 180);
+
+  // Parámetros Láser CO2
+  const [materialLamina, setMaterialLamina] = useState<string>(piezaEnEdicion?.material_lamina || 'Acrílico Cristal 3mm');
+  const [espesorLaminaMm, setEspesorLaminaMm] = useState<number>(piezaEnEdicion?.espesor_lamina_mm || 3);
+  const [longitudCorteMm, setLongitudCorteMm] = useState<number>(1200);
+  const [costoMetroCuadradoLamina, setCostoMetroCuadradoLamina] = useState<number>(110000);
+  const [tiempoLaserMin, setTiempoLaserMin] = useState<number>(piezaEnEdicion?.tiempo_laser_min || 15);
+  const [tipoProcesoLaser, setTipoProcesoLaser] = useState<'corte' | 'grabado' | 'ambos'>(piezaEnEdicion?.tipo_proceso_laser || 'corte');
+
+  // Parámetros Router CNC
+  const [materialBloque, setMaterialBloque] = useState<string>(piezaEnEdicion?.material_bloque || 'Madera Cedro / MDF');
+  const [costoBloqueMaterial, setCostoBloqueMaterial] = useState<number>(35000);
+  const [tiempoMecanizadoMin, setTiempoMecanizadoMin] = useState<number>(piezaEnEdicion?.tiempo_mecanizado_min || 45);
+
   // Sincronizar datos iniciales desde el visor STL
   useEffect(() => {
     if (initialPieceData) {
@@ -84,6 +107,16 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       setAltoMm(piezaEnEdicion.alto_mm || 100);
       setAnchoMm(piezaEnEdicion.ancho_mm || 60);
       setProfundidadMm(piezaEnEdicion.profundidad_mm || 60);
+      if (piezaEnEdicion.tecnologia) setTecnologia(piezaEnEdicion.tecnologia);
+      if (piezaEnEdicion.material_filamento) setMaterialFilamento(piezaEnEdicion.material_filamento);
+      if (piezaEnEdicion.peso_filamento_g) setPesoFilamentoG(piezaEnEdicion.peso_filamento_g);
+      if (piezaEnEdicion.costo_filamento_kg) setCostoRolloKg(piezaEnEdicion.costo_filamento_kg);
+      if (piezaEnEdicion.material_lamina) setMaterialLamina(piezaEnEdicion.material_lamina);
+      if (piezaEnEdicion.espesor_lamina_mm) setEspesorLaminaMm(piezaEnEdicion.espesor_lamina_mm);
+      if (piezaEnEdicion.tiempo_laser_min) setTiempoLaserMin(piezaEnEdicion.tiempo_laser_min);
+      if (piezaEnEdicion.tipo_proceso_laser) setTipoProcesoLaser(piezaEnEdicion.tipo_proceso_laser);
+      if (piezaEnEdicion.material_bloque) setMaterialBloque(piezaEnEdicion.material_bloque);
+      if (piezaEnEdicion.tiempo_mecanizado_min) setTiempoMecanizadoMin(piezaEnEdicion.tiempo_mecanizado_min);
       if (piezaEnEdicion.resina_id) setResinaId(piezaEnEdicion.resina_id);
       if (piezaEnEdicion.maquina_id) setMaquinaId(piezaEnEdicion.maquina_id);
       if (piezaEnEdicion.modo_calculo_resina) setModoCalculoResina(piezaEnEdicion.modo_calculo_resina);
@@ -456,6 +489,20 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       profundidad_mm: Number(profundidadMm) || 1,
       resina: resinaActual,
       impresora: maquinaActual,
+      tecnologia,
+      materialFilamento,
+      pesoFilamentoG: Number(pesoFilamentoG) || 45,
+      costoRolloKg: Number(costoRolloKg) || 85000,
+      tiempoFDMMin: Number(tiempoFDMMin) || 180,
+      materialLamina,
+      espesorLaminaMm: Number(espesorLaminaMm) || 3,
+      longitudCorteMm: Number(longitudCorteMm) || 1200,
+      costoMetroCuadradoLamina: Number(costoMetroCuadradoLamina) || 110000,
+      tiempoLaserMin: Number(tiempoLaserMin) || 15,
+      tipoProcesoLaser,
+      materialBloque,
+      costoBloqueMaterial: Number(costoBloqueMaterial) || 35000,
+      tiempoMecanizadoMin: Number(tiempoMecanizadoMin) || 45,
       tiempoImpresionManualMin: tiempoImpresionModo === 'manual' ? Number(tiempoImpresionManualMin) : undefined,
       requiereCurado,
       estacionCurado,
@@ -537,7 +584,21 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     maquinas,
     precioFijadoTarifa,
     precioUnitarioManual,
-    tarifaAplicada
+    tarifaAplicada,
+    tecnologia,
+    materialFilamento,
+    pesoFilamentoG,
+    costoRolloKg,
+    tiempoFDMMin,
+    materialLamina,
+    espesorLaminaMm,
+    longitudCorteMm,
+    costoMetroCuadradoLamina,
+    tiempoLaserMin,
+    tipoProcesoLaser,
+    materialBloque,
+    costoBloqueMaterial,
+    tiempoMecanizadoMin
   ]);
 
   const handleSubmit = (e: FormEvent) => {
@@ -691,6 +752,36 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setAplicaDescuentoVolumen,
     descuentoVolumenManual,
     setDescuentoVolumenManual,
+
+    // Multi-Fabricación Polimórfica
+    tecnologia,
+    setTecnologia,
+    materialFilamento,
+    setMaterialFilamento,
+    pesoFilamentoG,
+    setPesoFilamentoG,
+    costoRolloKg,
+    setCostoRolloKg,
+    tiempoFDMMin,
+    setTiempoFDMMin,
+    materialLamina,
+    setMaterialLamina,
+    espesorLaminaMm,
+    setEspesorLaminaMm,
+    longitudCorteMm,
+    setLongitudCorteMm,
+    costoMetroCuadradoLamina,
+    setCostoMetroCuadradoLamina,
+    tiempoLaserMin,
+    setTiempoLaserMin,
+    tipoProcesoLaser,
+    setTipoProcesoLaser,
+    materialBloque,
+    setMaterialBloque,
+    costoBloqueMaterial,
+    setCostoBloqueMaterial,
+    tiempoMecanizadoMin,
+    setTiempoMecanizadoMin,
 
     // Cálculo y envío
     calculoEnVivo,

@@ -1,4 +1,14 @@
-import { Resina, Maquina, Insumo, Personal, ConfiguracionTaller, PiezaCotizada, MaquinaInvolucrada, EnlaceReferenciaCompra } from '../types';
+import { 
+  Resina, 
+  Maquina, 
+  Insumo, 
+  Personal, 
+  ConfiguracionTaller, 
+  PiezaCotizada, 
+  MaquinaInvolucrada, 
+  EnlaceReferenciaCompra,
+  TecnologiaFabricacion
+} from '../types';
 
 export interface ParametrosPiezaInput {
   nombre_item: string;
@@ -8,6 +18,32 @@ export interface ParametrosPiezaInput {
   profundidad_mm: number;
   resina: Resina;
   impresora: Maquina;
+  tecnologia?: TecnologiaFabricacion;
+
+  // Parámetros FDM Filamento
+  materialFilamento?: string;
+  pesoFilamentoG?: number;
+  costoRolloKg?: number;
+  tiempoFDMMin?: number;
+  desgasteBoquillaCosto?: number;
+
+  // Parámetros Láser CO2
+  materialLamina?: string;
+  espesorLaminaMm?: number;
+  anchoLaminaMm?: number;
+  altoLaminaMm?: number;
+  longitudCorteMm?: number;
+  costoMetroCuadradoLamina?: number;
+  tiempoLaserMin?: number;
+  tipoProcesoLaser?: 'corte' | 'grabado' | 'ambos';
+  potenciaLaserWatts?: number;
+
+  // Parámetros Router CNC
+  materialBloque?: string;
+  costoBloqueMaterial?: number;
+  tiempoMecanizadoMin?: number;
+  desgasteFresaCosto?: number;
+
   tiempoImpresionManualMin?: number;
   requiereCurado?: boolean;
   estacionCurado?: Maquina;
@@ -279,12 +315,13 @@ export function calcularPieza3D(
 
   // 6. Costo de Resina con factor de merma y soportes
   let costo_resina = 0;
+  const costoGramoResina = input.resina.costo_gramo || (input.resina.precio_compra ? input.resina.precio_compra / 1000 : 135);
   if (peso_estimado_g > 0) {
     if (input.modoCalculoResina === 'manual') {
-      costo_resina = peso_estimado_g * input.resina.costo_gramo * 1.10;
+      costo_resina = peso_estimado_g * costoGramoResina * 1.10;
     } else {
       const factorMerma = config.margen_merma_resina || 1.40;
-      costo_resina = peso_estimado_g * input.resina.costo_gramo * factorMerma;
+      costo_resina = peso_estimado_g * costoGramoResina * factorMerma;
     }
   }
 
@@ -304,8 +341,8 @@ export function calcularPieza3D(
   const costo_insumos = costoAccesorios + costoPinturas + costoEmpaques;
 
   // 8. Tarifas de Mano de Obra (Personal)
-  const tarifaDev = personal.find(p => p.rol.toLowerCase().includes('desarrollador'))?.costo_minuto || 166.67;
-  const tarifaPintor = personal.find(p => p.rol.toLowerCase().includes('pintor'))?.costo_minuto || 166.67;
+  const tarifaDev = personal.find(p => (p.rol || (p as any).cargo || '').toLowerCase().includes('desarrollador'))?.costo_minuto || 166.67;
+  const tarifaPintor = personal.find(p => (p.rol || (p as any).cargo || '').toLowerCase().includes('pintor'))?.costo_minuto || 166.67;
 
   const valorDesarrollo = input.tiempoDesarrolloMin * tarifaDev;
   const valorArmado = input.tiempoArmadoMin * tarifaPintor;
@@ -460,6 +497,7 @@ export function calcularPieza3D(
     tiene_empaque,
     costo_empaque: Math.round(costoEmpaques),
     lista_empaques,
+    tecnologia: 'SLA_RESINA',
     lista_pinturas: input.pinturas.map(p => ({
       nombre: p.insumo.nombre,
       cantidad_ml: p.cantidad_ml,
@@ -471,4 +509,339 @@ export function calcularPieza3D(
       costo: Math.round(a.insumo.costo_unitario * a.cantidad)
     }))
   };
+}
+
+/**
+ * Motor de Cálculo para Impresión 3D FDM (Filamentos PLA, PETG, ABS, TPU, etc.)
+ */
+export function calcularPiezaFDM(
+  input: ParametrosPiezaInput,
+  personal: Personal[],
+  config: ConfiguracionTaller
+): PiezaCotizada {
+  const tarifaKwh = config.tarifa_kwh || 834.0;
+  const cantidad = Math.max(1, input.cantidad || 1);
+  const pesoGramos = Number(input.pesoFilamentoG) || 50;
+  const materialFilamento = input.materialFilamento || 'PLA';
+  const costoRolloKg = Number(input.costoRolloKg) || 85000; // COP por 1000g de filamento
+  const tiempoMinutos = Number(input.tiempoFDMMin) || 180; // 3 horas por defecto
+  const alto = Number(input.alto_mm) || 60;
+  const ancho = Number(input.ancho_mm) || 60;
+  const prof = Number(input.profundidad_mm) || 60;
+
+  // 1. Costo Material Filamento (+5% merma/purga)
+  const costoFilamento = Math.round((pesoGramos * 1.05 / 1000) * costoRolloKg);
+
+  // 2. Energía FDM (Consumo típico impresora FDM ~150W - 250W por cama caliente)
+  const potenciaKw = (input.impresora?.consumo_kwh && input.impresora.consumo_kwh > 0)
+    ? input.impresora.consumo_kwh
+    : 0.20; // 200W
+  const costoEnergia = Math.round((potenciaKw * (tiempoMinutos / 60)) * tarifaKwh);
+
+  // 3. Desgaste y Repuestos (Boquilla de latón/acero, correas, extrusor)
+  const costoRepuestos = Math.round(Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 5)); // ~$300 COP/hora
+
+  // 4. Mano de obra operario
+  const operador = personal[0];
+  const costoMinutoOperario = operador?.costo_minuto || 130.21;
+  const tiempoOperario = (input.tiempoDesarrolloMin || 0) + (input.tiempoArmadoMin || 0);
+  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+
+  // 5. Insumos y Empaques
+  const costoEmpaques = (input.empaques || []).reduce((acc, e) => acc + (e.insumo.costo_unitario * e.cantidad), 0);
+  const costoAccesorios = (input.accesorios || []).reduce((acc, a) => acc + (a.insumo.costo_unitario * a.cantidad), 0);
+
+  // 6. Costo Base de Producción
+  const costoBaseProduccion = costoFilamento + costoEnergia + costoRepuestos + costoManoObra + costoEmpaques + costoAccesorios + (input.costoModeloComprado || 0);
+
+  // 7. Margen de ganancia
+  const margen = Number(input.margenGanancia) || 0.40;
+  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+
+  // 8. Escala de Descuento por Volumen (6+ = 10%, 12+ = 15%, 24+ = 20%)
+  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
+  let descVolumenPct = 0;
+  if (aplicaVolumen) {
+    if (input.descuentoVolumenPorcentaje !== undefined) {
+      descVolumenPct = input.descuentoVolumenPorcentaje;
+    } else if (cantidad >= 24) descVolumenPct = 20;
+    else if (cantidad >= 12) descVolumenPct = 15;
+    else if (cantidad >= 6) descVolumenPct = 10;
+  }
+  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
+  const precioUnitario = precioUnitarioBase - descVolumenMonto;
+  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+
+  const descTecnica = `Impresión FDM: ${materialFilamento} (${pesoGramos}g)\nMedidas: ${alto}x${ancho}x${prof}mm\nTiempo est.: ${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}m • Máquina: ${input.impresora?.nombre || 'FDM Core'}`;
+
+  return {
+    id: `fdm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    nombre_item: input.nombre_item,
+    cantidad,
+    alto_mm: alto,
+    ancho_mm: ancho,
+    profundidad_mm: prof,
+    volumen_cm3: Number(((ancho * prof * alto) / 1000).toFixed(2)),
+    peso_estimado_g: pesoGramos,
+    tecnologia: 'FDM_FILAMENTO',
+    material_filamento: materialFilamento,
+    peso_filamento_g: pesoGramos,
+    costo_filamento_kg: costoRolloKg,
+    desgaste_boquilla_costo: costoRepuestos,
+    resina_id: 'fdm-filamento',
+    resina_nombre: `Filamento ${materialFilamento}`,
+    maquina_id: input.impresora?.id || 'maq-fdm',
+    maquina_nombre: input.impresora?.nombre || 'Impresora FDM',
+    tiempo_impresion_min: tiempoMinutos,
+    tiempo_desarrollo_min: input.tiempoDesarrolloMin || 0,
+    tiempo_armado_min: input.tiempoArmadoMin || 0,
+    tiempo_pintura_min: 0,
+    costo_energia: costoEnergia,
+    costo_repuestos_maquina: costoRepuestos,
+    costo_resina: costoFilamento,
+    costo_curado: 0,
+    costo_insumos: costoAccesorios,
+    costo_mano_obra: costoManoObra,
+    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_base_produccion: costoBaseProduccion,
+    margen_ganancia: margen,
+    precio_unitario: precioUnitario,
+    precio_total: precioTotal,
+    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
+    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
+    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
+    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    tiempo_entrega: tiempoMinutos > 360 ? '(2 a 3) Días hábiles' : '(1 a 2) Días hábiles',
+    descripcion_tecnica: descTecnica,
+    imagen_url: input.imagen_url,
+    tiene_empaque: (input.empaques || []).length > 0,
+    costo_empaque: costoEmpaques,
+    lista_empaques: (input.empaques || []).map(e => ({ nombre: e.insumo.nombre, cantidad: e.cantidad, costo: e.insumo.costo_unitario * e.cantidad })),
+    lista_pinturas: [],
+    lista_accesorios: (input.accesorios || []).map(a => ({ nombre: a.insumo.nombre, cantidad: a.cantidad, costo: a.insumo.costo_unitario * a.cantidad }))
+  };
+}
+
+/**
+ * Motor de Cálculo para Corte y Grabado Láser CO2 / Fibra
+ */
+export function calcularPiezaLaser(
+  input: ParametrosPiezaInput,
+  personal: Personal[],
+  config: ConfiguracionTaller
+): PiezaCotizada {
+  const tarifaKwh = config.tarifa_kwh || 834.0;
+  const cantidad = Math.max(1, input.cantidad || 1);
+  const anchoMm = Number(input.anchoLaminaMm || input.ancho_mm) || 100;
+  const altoMm = Number(input.altoLaminaMm || input.alto_mm) || 100;
+  const espesorMm = Number(input.espesorLaminaMm) || 3;
+  const materialLamina = input.materialLamina || 'Acrílico Cristal 3mm';
+  const costoM2 = Number(input.costoMetroCuadradoLamina) || 95000; // COP/m2
+  const tiempoLaserMin = Number(input.tiempoLaserMin) || 15;
+  const proceso = input.tipoProcesoLaser || 'corte';
+
+  // 1. Costo Material de Lámina (área en cm2 convertida a m2 con 15% desperdicio corte)
+  const areaCm2 = (anchoMm * altoMm) / 100;
+  const areaM2 = (areaCm2 / 10000) * 1.15;
+  const costoMaterial = Math.round(areaM2 * costoM2);
+
+  // 2. Energía Láser (Láser CO2 80W-100W consume ~1.2 kW con chiller, extractor y compresor)
+  const potenciaKw = 1.2;
+  const costoEnergia = Math.round((potenciaKw * (tiempoLaserMin / 60)) * tarifaKwh);
+
+  // 3. Amortización del Tubo Láser CO2 ($1.800.000 COP / 2500 horas = ~$720 COP/hora)
+  const costoTuboMinuto = 12; // ~$720 COP / 60 min
+  const costoDesgasteTubo = Math.round(tiempoLaserMin * costoTuboMinuto);
+
+  // 4. Mano de Obra (Vectorizado, preparación de cama y desprendimiento)
+  const operador = personal[0];
+  const costoMinutoOperario = operador?.costo_minuto || 130.21;
+  const tiempoOperario = (input.tiempoDesarrolloMin || 10) + (input.tiempoArmadoMin || 5);
+  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+
+  // 5. Costo Base de Producción
+  const costoEmpaques = (input.empaques || []).reduce((acc, e) => acc + (e.insumo.costo_unitario * e.cantidad), 0);
+  const costoBaseProduccion = costoMaterial + costoEnergia + costoDesgasteTubo + costoManoObra + costoEmpaques + (input.costoModeloComprado || 0);
+
+  // 6. Margen de ganancia
+  const margen = Number(input.margenGanancia) || 0.45;
+  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+
+  // 7. Descuento por Volumen
+  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
+  let descVolumenPct = 0;
+  if (aplicaVolumen) {
+    if (input.descuentoVolumenPorcentaje !== undefined) {
+      descVolumenPct = input.descuentoVolumenPorcentaje;
+    } else if (cantidad >= 24) descVolumenPct = 20;
+    else if (cantidad >= 12) descVolumenPct = 15;
+    else if (cantidad >= 6) descVolumenPct = 10;
+  }
+  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
+  const precioUnitario = precioUnitarioBase - descVolumenMonto;
+  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+
+  const descTecnica = `Corte Láser CO₂: ${materialLamina} (${espesorMm}mm)\nDimensiones: ${anchoMm}x${altoMm}mm (${areaCm2.toFixed(1)} cm²)\nProceso: ${proceso.toUpperCase()} • Tiempo láser: ${tiempoLaserMin} min`;
+
+  return {
+    id: `laser-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    nombre_item: input.nombre_item,
+    cantidad,
+    alto_mm: altoMm,
+    ancho_mm: anchoMm,
+    profundidad_mm: espesorMm,
+    volumen_cm3: Number(((anchoMm * altoMm * espesorMm) / 1000).toFixed(2)),
+    peso_estimado_g: Math.round(areaCm2 * espesorMm * 0.12), // Densidad aprox acrílico/mdf
+    tecnologia: 'CORTE_LASER',
+    material_lamina: materialLamina,
+    espesor_lamina_mm: espesorMm,
+    area_lamina_cm2: areaCm2,
+    tiempo_laser_min: tiempoLaserMin,
+    tipo_proceso_laser: proceso,
+    desgaste_tubo_laser_costo: costoDesgasteTubo,
+    resina_id: 'laser-lamina',
+    resina_nombre: materialLamina,
+    maquina_id: input.impresora?.id || 'maq-laser',
+    maquina_nombre: input.impresora?.nombre || 'Cortadora Láser CO2',
+    tiempo_impresion_min: tiempoLaserMin,
+    tiempo_desarrollo_min: input.tiempoDesarrolloMin || 10,
+    tiempo_armado_min: input.tiempoArmadoMin || 5,
+    tiempo_pintura_min: 0,
+    costo_energia: costoEnergia,
+    costo_repuestos_maquina: costoDesgasteTubo,
+    costo_resina: costoMaterial,
+    costo_curado: 0,
+    costo_insumos: 0,
+    costo_mano_obra: costoManoObra,
+    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_base_produccion: costoBaseProduccion,
+    margen_ganancia: margen,
+    precio_unitario: precioUnitario,
+    precio_total: precioTotal,
+    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
+    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
+    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
+    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    tiempo_entrega: '(1 a 2) Días hábiles',
+    descripcion_tecnica: descTecnica,
+    imagen_url: input.imagen_url,
+    tiene_empaque: (input.empaques || []).length > 0,
+    costo_empaque: costoEmpaques,
+    lista_empaques: (input.empaques || []).map(e => ({ nombre: e.insumo.nombre, cantidad: e.cantidad, costo: e.insumo.costo_unitario * e.cantidad })),
+    lista_pinturas: [],
+    lista_accesorios: []
+  };
+}
+
+/**
+ * Motor de Cálculo para Router CNC / Mecanizado
+ */
+export function calcularPiezaCNC(
+  input: ParametrosPiezaInput,
+  personal: Personal[],
+  config: ConfiguracionTaller
+): PiezaCotizada {
+  const tarifaKwh = config.tarifa_kwh || 834.0;
+  const cantidad = Math.max(1, input.cantidad || 1);
+  const anchoMm = Number(input.ancho_mm) || 120;
+  const altoMm = Number(input.alto_mm) || 120;
+  const profMm = Number(input.profundidad_mm) || 20;
+  const materialBloque = input.materialBloque || 'Madera Cedro / MDF';
+  const costoMaterial = Number(input.costoBloqueMaterial) || 35000;
+  const tiempoMecanizadoMin = Number(input.tiempoMecanizadoMin) || 45;
+
+  const potenciaKw = 1.5; // Spindle CNC + motores
+  const costoEnergia = Math.round((potenciaKw * (tiempoMecanizadoMin / 60)) * tarifaKwh);
+  const costoDesgasteFresa = Math.round(Number(input.desgasteFresaCosto) || (tiempoMecanizadoMin * 15));
+
+  const operador = personal[0];
+  const costoMinutoOperario = operador?.costo_minuto || 130.21;
+  const tiempoOperario = (input.tiempoDesarrolloMin || 15) + (input.tiempoArmadoMin || 10);
+  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+
+  const costoBaseProduccion = costoMaterial + costoEnergia + costoDesgasteFresa + costoManoObra + (input.costoModeloComprado || 0);
+  const margen = Number(input.margenGanancia) || 0.40;
+  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+
+  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
+  let descVolumenPct = 0;
+  if (aplicaVolumen) {
+    if (input.descuentoVolumenPorcentaje !== undefined) {
+      descVolumenPct = input.descuentoVolumenPorcentaje;
+    } else if (cantidad >= 24) descVolumenPct = 20;
+    else if (cantidad >= 12) descVolumenPct = 15;
+    else if (cantidad >= 6) descVolumenPct = 10;
+  }
+  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
+  const precioUnitario = precioUnitarioBase - descVolumenMonto;
+  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+
+  const descTecnica = `Mecanizado Router CNC: ${materialBloque}\nMedidas: ${altoMm}x${anchoMm}x${profMm}mm • Tiempo: ${tiempoMecanizadoMin} min`;
+
+  return {
+    id: `cnc-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+    nombre_item: input.nombre_item,
+    cantidad,
+    alto_mm: altoMm,
+    ancho_mm: anchoMm,
+    profundidad_mm: profMm,
+    volumen_cm3: Number(((anchoMm * profMm * altoMm) / 1000).toFixed(2)),
+    peso_estimado_g: 250,
+    tecnologia: 'CNC_ROUTER',
+    material_bloque: materialBloque,
+    tiempo_mecanizado_min: tiempoMecanizadoMin,
+    desgaste_fresa_costo: costoDesgasteFresa,
+    resina_id: 'cnc-material',
+    resina_nombre: materialBloque,
+    maquina_id: input.impresora?.id || 'maq-cnc',
+    maquina_nombre: input.impresora?.nombre || 'Router CNC Industrial',
+    tiempo_impresion_min: tiempoMecanizadoMin,
+    tiempo_desarrollo_min: input.tiempoDesarrolloMin || 15,
+    tiempo_armado_min: input.tiempoArmadoMin || 10,
+    tiempo_pintura_min: 0,
+    costo_energia: costoEnergia,
+    costo_repuestos_maquina: costoDesgasteFresa,
+    costo_resina: costoMaterial,
+    costo_curado: 0,
+    costo_insumos: 0,
+    costo_mano_obra: costoManoObra,
+    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_base_produccion: costoBaseProduccion,
+    margen_ganancia: margen,
+    precio_unitario: precioUnitario,
+    precio_total: precioTotal,
+    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
+    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
+    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
+    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    tiempo_entrega: '(2 a 3) Días hábiles',
+    descripcion_tecnica: descTecnica,
+    imagen_url: input.imagen_url,
+    tiene_empaque: false,
+    costo_empaque: 0,
+    lista_empaques: [],
+    lista_pinturas: [],
+    lista_accesorios: []
+  };
+}
+
+/**
+ * Función Despachadora Polimórfica que ejecuta el motor de cálculo según la tecnología de fabricación
+ */
+export function calcularCotizacionIntegral(
+  input: ParametrosPiezaInput,
+  personal: Personal[],
+  config: ConfiguracionTaller
+): PiezaCotizada {
+  const tec = input.tecnologia || 'SLA_RESINA';
+  if (tec === 'FDM_FILAMENTO') {
+    return calcularPiezaFDM(input, personal, config);
+  }
+  if (tec === 'CORTE_LASER' || tec === 'GRABADO_LASER') {
+    return calcularPiezaLaser(input, personal, config);
+  }
+  if (tec === 'CNC_ROUTER') {
+    return calcularPiezaCNC(input, personal, config);
+  }
+  return calcularPieza3D(input, personal, config);
 }

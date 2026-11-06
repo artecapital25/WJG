@@ -121,6 +121,26 @@ export const CotizadorItemList: React.FC<CotizadorItemListProps> = React.memo(({
           <div style={{ flex: 1, minWidth: '220px' }}>
             <div style={{ fontWeight: 600, fontSize: '0.92rem', display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
               <span>{idx + 1}. {item.nombre_item} (x{item.cantidad})</span>
+
+              {/* Badge de Tecnología de Fabricación */}
+              {item.tecnologia === 'FDM_FILAMENTO' ? (
+                <span style={{ background: 'rgba(249, 115, 22, 0.18)', color: '#fb923c', border: '1px solid rgba(249, 115, 22, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                  🧵 FDM Filamento
+                </span>
+              ) : item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER' ? (
+                <span style={{ background: 'rgba(244, 63, 94, 0.18)', color: '#fb7185', border: '1px solid rgba(244, 63, 94, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                  ⚡ Láser CO₂
+                </span>
+              ) : item.tecnologia === 'CNC_ROUTER' ? (
+                <span style={{ background: 'rgba(16, 185, 129, 0.18)', color: '#34d399', border: '1px solid rgba(16, 185, 129, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                  🪵 Router CNC
+                </span>
+              ) : (
+                <span style={{ background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', border: '1px solid rgba(56, 189, 248, 0.35)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
+                  🖨️ SLA Resina
+                </span>
+              )}
+
               {item.datos_pendientes && (
                 <span style={{ background: 'rgba(234, 179, 8, 0.2)', color: '#fde047', border: '1px solid rgba(234, 179, 8, 0.4)', padding: '1px 6px', borderRadius: '4px', fontSize: '0.68rem', fontWeight: 700 }}>
                   🟡 Pendiente Slicer
@@ -171,10 +191,17 @@ export const CotizadorItemList: React.FC<CotizadorItemListProps> = React.memo(({
             </div>
 
             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {item.datos_pendientes 
-                ? `[Medidas y peso pendientes de software] • Material: ${item.resina_nombre}`
-                : `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Material: ${item.resina_nombre} (${item.peso_estimado_g}g)`
-              }
+              {item.datos_pendientes ? (
+                `[Medidas y peso pendientes de software] • Material: ${item.resina_nombre}`
+              ) : item.tecnologia === 'FDM_FILAMENTO' ? (
+                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Filamento: ${item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`
+              ) : item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER' ? (
+                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Lámina: ${item.material_lamina || item.resina_nombre} (${item.espesor_lamina_mm || 3}mm) • Proceso: ${item.tipo_proceso_laser || 'corte'}`
+              ) : item.tecnologia === 'CNC_ROUTER' ? (
+                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Bloque: ${item.material_bloque || item.resina_nombre} • Mecanizado: ${item.tiempo_mecanizado_min || 45} min`
+              ) : (
+                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Resina: ${item.resina_nombre} (${item.peso_estimado_g}g)`
+              )}
               {item.lista_empaques && item.lista_empaques.length > 0 && (
                 <span style={{ color: '#4ade80' }}> • Empaque: {item.lista_empaques.map(e => `${e.nombre} (x${e.cantidad})`).join(', ')}</span>
               )}
