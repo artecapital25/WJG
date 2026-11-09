@@ -48,6 +48,23 @@ export interface Resina {
   activo?: boolean;
 }
 
+export interface Filamento {
+  id: string;
+  marca: string;
+  tipo: string; // PLA, PLA+, PETG, ABS, TPU, ASA, NYLON, etc.
+  color: string;
+  peso_bobina_g: number; // 1000g normalmente
+  precio_compra: number; // COP
+  costo_gramo: number; // calculado: precio_compra / peso_bobina_g
+  stock_actual_g: number; // Gramos disponibles en bodega
+  temperatura_nozzle?: number; // ej. 210°C
+  temperatura_bed?: number; // ej. 60°C
+  densidad_g_cm3?: number; // ej. 1.24 g/cm3
+  enlace_compra?: string;
+  imagen_url?: string;
+  activo: boolean;
+}
+
 export interface Insumo {
   id: string;
   codigo: number;
@@ -80,6 +97,7 @@ export interface Maquina {
   id: string;
   nombre: string;
   tipo: string;
+  tecnologia?: TecnologiaFabricacion;
   consumo_kwh: number;
   costo_minuto_energia?: number;
   costo_minuto_repuestos?: number;
@@ -117,6 +135,7 @@ export interface Proveedor {
 export interface ConfiguracionTaller {
   tarifa_kwh: number;
   margen_merma_resina: number;
+  margen_merma_fdm?: number;
   telefono_contacto: string;
   telefono_contacto2: string;
   correo?: string;
@@ -207,9 +226,14 @@ export interface PiezaCotizada {
   tecnologia?: TecnologiaFabricacion;
   // FDM Filamento
   material_filamento?: string;
+  filamento_id?: string;
+  filamento_nombre?: string;
+  filamento_marca?: string;
+  filamento_color?: string;
   peso_filamento_g?: number;
   costo_filamento_kg?: number;
   desgaste_boquilla_costo?: number;
+  merma_porcentaje?: number;
   // Corte & Grabado Láser CO2
   material_lamina?: string;
   espesor_lamina_mm?: number;
@@ -242,6 +266,30 @@ export interface TarifaTamano {
   tiempo_estimado?: string;
   cm?: number;
   precio_cop?: number;
+}
+
+export type MotivoProduccionInterna = 
+  | 'EXHIBICION' 
+  | 'PRUEBA_CALIBRACION' 
+  | 'MUESTRA_COMERCIAL' 
+  | 'DESARROLLO_INTERNO'
+  | 'DESPERDICIO_FALLA';
+
+export interface RegistroProduccionInterna {
+  id: string;
+  nombre_pieza: string;
+  motivo: MotivoProduccionInterna;
+  tecnologia: TecnologiaFabricacion;
+  material_id: string;
+  material_nombre: string;
+  peso_consumido_g: number;
+  tiempo_minutos: number;
+  costo_total_estimado: number;
+  maquina_id?: string;
+  maquina_nombre?: string;
+  fecha: string;
+  responsable: string;
+  notas?: string;
 }
 
 export type EstadoCotizacion = 'Borrador' | 'Enviada' | 'Aceptada' | 'Rechazada' | 'Facturada' | 'Parcial';
@@ -318,6 +366,9 @@ export interface OrdenTrabajo {
   observaciones?: string;
   peso_estimado_g?: number;
   resina_id?: string;
+  tecnologia?: TecnologiaFabricacion;
+  filamento_id?: string;
+  filamento_nombre?: string;
   inventario_descontado?: boolean;
   
   // Trazabilidad de Modelos 3D y STL (Germán ➔ Juan)

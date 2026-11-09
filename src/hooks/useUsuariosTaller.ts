@@ -23,12 +23,12 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
   {
     id: '4485aa21-3896-4510-b693-fc68e947372d',
     nombre: 'Wendy',
-    rol: 'PINTURA_ACABADOS',
+    rol: 'ADMIN_COBRANZAS',
     telefono: '3204814702',
     telefono_notificaciones: '573204814702',
     email: 'wendy@wjgeeks.com',
     cedula: '1098765433',
-    permisos_areas: ['taller', 'gestion'],
+    permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'],
     pin_acceso: '1234',
     activo: true,
     must_change_password: false
@@ -36,12 +36,12 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
   {
     id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
     nombre: 'Juan',
-    rol: 'IMPRESION_MANTENIMIENTO',
+    rol: 'ADMIN_COBRANZAS',
     telefono: '3217273025',
     telefono_notificaciones: '573217273025',
     email: 'juan@wjgeeks.com',
     cedula: '1098765434',
-    permisos_areas: ['taller'],
+    permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'],
     pin_acceso: '1234',
     activo: true,
     must_change_password: false

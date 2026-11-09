@@ -188,7 +188,7 @@ export const CotizadorItemList: React.FC<CotizadorItemListProps> = React.memo(({
               {item.datos_pendientes ? (
                 `[Medidas y peso pendientes de software] • Material: ${item.resina_nombre}`
               ) : item.tecnologia === 'FDM_FILAMENTO' ? (
-                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Filamento: ${item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`
+                `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Filamento: ${item.filamento_nombre || item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`
               ) : item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER' ? (
                 `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Lámina: ${item.material_lamina || item.resina_nombre} (${item.espesor_lamina_mm || 3}mm) • Proceso: ${item.tipo_proceso_laser || 'corte'}`
               ) : item.tecnologia === 'CNC_ROUTER' ? (

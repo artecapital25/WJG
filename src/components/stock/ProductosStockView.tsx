@@ -32,6 +32,7 @@ interface ProductosStockViewProps {
   onAgregarACotizacion?: (pieza: PiezaCotizada) => void;
   onNavigateToCotizador?: () => void;
   onRefreshStock?: () => Promise<ProductoStock[] | null>;
+  onOpenProduccionInterna?: () => void;
 }
 
 const CATEGORIAS_PREDEFINIDAS = [
@@ -47,7 +48,8 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   onUpdateProductos,
   onAgregarACotizacion,
   onNavigateToCotizador,
-  onRefreshStock
+  onRefreshStock,
+  onOpenProduccionInterna
 }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState<string>('Todos');
@@ -371,6 +373,18 @@ ${itemsText}
             >
               <RefreshCw size={14} style={{ animation: isRefreshing ? 'spin 1s linear infinite' : 'none' }} />
               <span>{isRefreshing ? 'Sincronizando...' : 'Sincronizar Nube'}</span>
+            </button>
+          )}
+
+          {onOpenProduccionInterna && (
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={onOpenProduccionInterna}
+              style={{ border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8', fontWeight: 700 }}
+              title="Registrar piezas de exhibición, vitrina, pruebas de calibración o fallas"
+            >
+              <span>🧪 Pruebas & Exhibición</span>
             </button>
           )}
 

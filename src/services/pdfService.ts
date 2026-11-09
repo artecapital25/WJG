@@ -171,7 +171,7 @@ export function crearDocPDFCotizacion(
     let tagTec = '';
     if (item.tecnologia === 'FDM_FILAMENTO') {
       tagTec = ' [FDM Filamento]';
-      descMat = `Filamento: ${item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`;
+      descMat = `Filamento: ${item.filamento_nombre || item.material_filamento || item.resina_nombre} (${item.peso_filamento_g || item.peso_estimado_g}g)`;
     } else if (item.tecnologia === 'CORTE_LASER' || item.tecnologia === 'GRABADO_LASER') {
       tagTec = ' [Láser CO₂]';
       descMat = `Lámina: ${item.material_lamina || item.resina_nombre} (${item.espesor_lamina_mm || 3}mm) • Proceso: ${item.tipo_proceso_laser || 'corte'}`;

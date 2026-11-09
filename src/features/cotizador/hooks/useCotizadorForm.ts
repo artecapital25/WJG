@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, ChangeEvent, FormEvent } from 'react';
 import { 
   Resina, 
+  Filamento,
   Maquina, 
   Insumo, 
   Personal, 
@@ -61,10 +62,33 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [tecnologia, setTecnologia] = useState<TecnologiaFabricacion>(piezaEnEdicion?.tecnologia || 'SLA_RESINA');
 
   // Parámetros FDM Filamento
+  const filamentos = props.filamentos || [];
+  const [filamentoId, setFilamentoId] = useState<string>(piezaEnEdicion?.filamento_id || filamentos[0]?.id || '');
   const [materialFilamento, setMaterialFilamento] = useState<string>(piezaEnEdicion?.material_filamento || 'PLA');
   const [pesoFilamentoG, setPesoFilamentoG] = useState<number>(piezaEnEdicion?.peso_filamento_g || 45);
   const [costoRolloKg, setCostoRolloKg] = useState<number>(piezaEnEdicion?.costo_filamento_kg || 85000);
   const [tiempoFDMMin, setTiempoFDMMin] = useState<number>(piezaEnEdicion?.tiempo_impresion_min || 180);
+
+  // Mermas de Seguridad Editables (% configurable por pieza)
+  const [mermaPorcentajeFdm, setMermaPorcentajeFdm] = useState<number>(
+    piezaEnEdicion?.merma_porcentaje !== undefined 
+      ? piezaEnEdicion.merma_porcentaje 
+      : (config.margen_merma_fdm !== undefined ? config.margen_merma_fdm : 5)
+  );
+  const [mermaPorcentajeResina, setMermaPorcentajeResina] = useState<number>(
+    piezaEnEdicion?.merma_porcentaje !== undefined
+      ? piezaEnEdicion.merma_porcentaje
+      : (config.margen_merma_resina ? (config.margen_merma_resina > 2 ? config.margen_merma_resina : Math.round((config.margen_merma_resina - 1) * 100)) : 10)
+  );
+
+  const filamentoActual = filamentos.find(f => f.id === filamentoId) || filamentos[0];
+
+  useEffect(() => {
+    if (filamentoActual && !piezaEnEdicion) {
+      setMaterialFilamento(`${filamentoActual.marca} ${filamentoActual.tipo} (${filamentoActual.color})`);
+      setCostoRolloKg(Math.round(filamentoActual.costo_gramo * 1000));
+    }
+  }, [filamentoId, filamentoActual]);
 
   // Parámetros Láser CO2
   const [materialLamina, setMaterialLamina] = useState<string>(piezaEnEdicion?.material_lamina || 'Acrílico Cristal 3mm');
@@ -181,6 +205,28 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [maquinaId, setMaquinaId] = useState(maquinas[0]?.id || '');
   const [tiempoImpresionModo, setTiempoImpresionModo] = useState<'auto' | 'manual'>('auto');
   const [tiempoImpresionManualMin, setTiempoImpresionManualMin] = useState<number>(120);
+
+  // Selección inteligente de Maquinaria con Adaptación Automática de Tecnología
+  const handleSelectMaquina = (mId: string) => {
+    setMaquinaId(mId);
+    const selectedMaq = maquinas.find(m => m.id === mId);
+    if (selectedMaq) {
+      if (selectedMaq.tecnologia) {
+        setTecnologia(selectedMaq.tecnologia);
+      } else {
+        const nom = (selectedMaq.nombre + ' ' + selectedMaq.tipo).toLowerCase();
+        if (nom.includes('fdm') || nom.includes('filamento') || nom.includes('bambu') || nom.includes('kobra') || nom.includes('ender')) {
+          setTecnologia('FDM_FILAMENTO');
+        } else if (nom.includes('laser') || nom.includes('láser')) {
+          setTecnologia('CORTE_LASER');
+        } else if (nom.includes('cnc') || nom.includes('router')) {
+          setTecnologia('CNC_ROUTER');
+        } else {
+          setTecnologia('SLA_RESINA');
+        }
+      }
+    }
+  };
 
   // 2. Lavado y Curado UV (Wash & Cure)
   const defaultCuradoMaq = maquinas.find(m => m.tipo.toLowerCase().includes('curad')) || maquinas[1] || maquinas[0];
@@ -490,9 +536,12 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       resina: resinaActual,
       impresora: maquinaActual,
       tecnologia,
+      filamentoSeleccionado: filamentoActual,
+      mermaPorcentajeFdm,
+      mermaPorcentajeResina,
       materialFilamento,
       pesoFilamentoG: Number(pesoFilamentoG) || 45,
-      costoRolloKg: Number(costoRolloKg) || 85000,
+      costoRolloKg: filamentoActual ? Math.round(filamentoActual.costo_gramo * 1000) : (Number(costoRolloKg) || 85000),
       tiempoFDMMin: Number(tiempoFDMMin) || 180,
       materialLamina,
       espesorLaminaMm: Number(espesorLaminaMm) || 3,
@@ -647,9 +696,20 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setResinaId,
     resinaActual,
 
+    // Filamentos y Mermas
+    filamentos,
+    filamentoId,
+    setFilamentoId,
+    filamentoActual,
+    mermaPorcentajeFdm,
+    setMermaPorcentajeFdm,
+    mermaPorcentajeResina,
+    setMermaPorcentajeResina,
+
     // Maquinaria principal
     maquinaId,
     setMaquinaId,
+    handleSelectMaquina,
     maquinaActual,
     tiempoImpresionModo,
     setTiempoImpresionModo,

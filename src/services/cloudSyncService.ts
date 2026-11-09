@@ -9,6 +9,8 @@ import {
 } from '../data/initialData';
 import { 
   Resina, 
+  Filamento,
+  RegistroProduccionInterna,
   Insumo, 
   Maquina,
   RepuestoMaquina, 
@@ -818,6 +820,24 @@ export const CloudSyncService = {
     }
   },
 
+  // 8.1 Eliminar Cliente en Supabase
+  async deleteCliente(id: string, nombre?: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      if (UUID_REGEX.test(id)) {
+        const { error } = await supabase!.from('clientes').delete().eq('id', id);
+        if (!error) return true;
+      }
+      if (nombre) {
+        const { error } = await supabase!.from('clientes').delete().ilike('nombre', `%${nombre}%`);
+        return !error;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  },
+
   // 9. Sembrar datos iniciales del Excel a Supabase
   async seedInitialData(): Promise<{ success: boolean; message: string }> {
     if (!this.isAvailable()) {
@@ -1456,6 +1476,151 @@ export const CloudSyncService = {
     }
   },
 
+  // 20.01 Sincronizar Filamento en Supabase
+  async saveFilamento(filamento: Filamento): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const validId = ensureValidUuid(filamento.id);
+      filamento.id = validId;
+      const payload = {
+        id: validId,
+        marca: filamento.marca,
+        tipo: filamento.tipo,
+        color: filamento.color,
+        peso_bobina_g: Number(filamento.peso_bobina_g) || 1000,
+        precio_compra: Number(filamento.precio_compra) || 85000,
+        costo_gramo: Number(filamento.costo_gramo) || 85,
+        stock_actual_g: Number(filamento.stock_actual_g) || 1000,
+        temperatura_nozzle: filamento.temperatura_nozzle ? Number(filamento.temperatura_nozzle) : 215,
+        temperatura_bed: filamento.temperatura_bed ? Number(filamento.temperatura_bed) : 60,
+        densidad_g_cm3: filamento.densidad_g_cm3 ? Number(filamento.densidad_g_cm3) : 1.24,
+        enlace_compra: filamento.enlace_compra || null,
+        imagen_url: filamento.imagen_url || null,
+        activo: filamento.activo !== false
+      };
+      const { error } = await supabase!.from('filamentos').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 20.02 Traer Filamentos desde Supabase
+  async fetchFilamentos(): Promise<Filamento[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('filamentos')
+        .select('*')
+        .order('tipo', { ascending: true });
+
+      if (error) {
+        console.warn('Info/Warning fetching filamentos from Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): Filamento => ({
+        id: row.id,
+        marca: row.marca || 'Genérico',
+        tipo: row.tipo || 'PLA',
+        color: row.color || 'Negro',
+        peso_bobina_g: Number(row.peso_bobina_g) || 1000,
+        precio_compra: Number(row.precio_compra) || 85000,
+        costo_gramo: Number(row.costo_gramo) || 85,
+        stock_actual_g: Number(row.stock_actual_g) || 1000,
+        temperatura_nozzle: Number(row.temperatura_nozzle) || 215,
+        temperatura_bed: Number(row.temperatura_bed) || 60,
+        densidad_g_cm3: Number(row.densidad_g_cm3) || 1.24,
+        enlace_compra: row.enlace_compra || '',
+        imagen_url: row.imagen_url || '',
+        activo: row.activo !== false
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchFilamentos:', e);
+      return null;
+    }
+  },
+
+  // 20.03 Eliminar Filamento en Supabase
+  async deleteFilamento(id: string, marcaTipo?: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('filamentos').delete().eq('id', id);
+      if (!error) return true;
+      if (marcaTipo) {
+        const { error: err2 } = await supabase!.from('filamentos').delete().ilike('tipo', `%${marcaTipo}%`);
+        return !err2;
+      }
+      return false;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 20.04 Guardar Registro de Producción Interna en Supabase
+  async saveProduccionInterna(reg: RegistroProduccionInterna): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const validId = ensureValidUuid(reg.id);
+      reg.id = validId;
+      const payload = {
+        id: validId,
+        nombre_pieza: reg.nombre_pieza,
+        motivo: reg.motivo,
+        tecnologia: reg.tecnologia,
+        material_id: reg.material_id,
+        material_nombre: reg.material_nombre,
+        peso_consumido_g: Number(reg.peso_consumido_g) || 0,
+        tiempo_minutos: Number(reg.tiempo_minutos) || 0,
+        costo_total_estimado: Number(reg.costo_total_estimado) || 0,
+        maquina_id: reg.maquina_id || null,
+        maquina_nombre: reg.maquina_nombre || null,
+        fecha: reg.fecha || new Date().toISOString(),
+        responsable: reg.responsable || 'Germán',
+        notas: reg.notas || null
+      };
+      const { error } = await supabase!.from('produccion_interna').upsert(payload, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      return false;
+    }
+  },
+
+  // 20.05 Traer Registros de Producción Interna desde Supabase
+  async fetchProduccionInterna(): Promise<RegistroProduccionInterna[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('produccion_interna')
+        .select('*')
+        .order('fecha', { ascending: false });
+
+      if (error) {
+        console.warn('Info fetching produccion_interna from Supabase:', error.message);
+        return null;
+      }
+      if (!data || data.length === 0) return [];
+      return data.map((row: any): RegistroProduccionInterna => ({
+        id: row.id,
+        nombre_pieza: row.nombre_pieza || 'Pieza Interna',
+        motivo: row.motivo || 'EXHIBICION',
+        tecnologia: row.tecnologia || 'FDM_FILAMENTO',
+        material_id: row.material_id || '',
+        material_nombre: row.material_nombre || '',
+        peso_consumido_g: Number(row.peso_consumido_g) || 0,
+        tiempo_minutos: Number(row.tiempo_minutos) || 0,
+        costo_total_estimado: Number(row.costo_total_estimado) || 0,
+        maquina_id: row.maquina_id || undefined,
+        maquina_nombre: row.maquina_nombre || undefined,
+        fecha: row.fecha || new Date().toISOString(),
+        responsable: row.responsable || 'Taller',
+        notas: row.notas || ''
+      }));
+    } catch (e) {
+      return null;
+    }
+  },
+
   // 21. Sincronizar Insumos en Supabase
   async saveInsumo(insumo: Insumo): Promise<boolean> {
     if (!this.isAvailable()) return false;
@@ -1538,10 +1703,25 @@ export const CloudSyncService = {
           .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
         const costo_total_min = costo_minuto_energia + costo_minuto_repuestos;
 
+        let tecnologia = row.tecnologia;
+        if (!tecnologia) {
+          const nom = (row.nombre || '').toLowerCase() + ' ' + (row.tipo || '').toLowerCase();
+          if (nom.includes('fdm') || nom.includes('filamento') || nom.includes('bambu') || nom.includes('kobra') || nom.includes('ender')) {
+            tecnologia = 'FDM_FILAMENTO';
+          } else if (nom.includes('laser') || nom.includes('láser')) {
+            tecnologia = 'CORTE_LASER';
+          } else if (nom.includes('cnc') || nom.includes('router')) {
+            tecnologia = 'CNC_ROUTER';
+          } else {
+            tecnologia = 'SLA_RESINA';
+          }
+        }
+
         return {
           id: row.id,
           nombre: row.nombre,
           tipo: row.tipo || 'Impresora 3D',
+          tecnologia,
           consumo_kwh: consumo,
           costo_minuto: Number(row.costo_minuto) > 0 ? Number(row.costo_minuto) : Number(costo_total_min.toFixed(4)),
           costo_minuto_energia: Number(costo_minuto_energia.toFixed(4)),
@@ -1568,6 +1748,7 @@ export const CloudSyncService = {
         id: validId,
         nombre: maquina.nombre,
         tipo: maquina.tipo || 'Impresora 3D',
+        tecnologia: maquina.tecnologia || (maquina.tipo?.toLowerCase().includes('filamento') || maquina.tipo?.toLowerCase().includes('fdm') ? 'FDM_FILAMENTO' : 'SLA_RESINA'),
         consumo_kwh: Number(maquina.consumo_kwh) || 0.05,
         costo_minuto: Number(maquina.costo_minuto) || 0,
         estado: maquina.estado || 'Disponible',
@@ -1591,9 +1772,10 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('maquinas').delete().eq('id', id);
-        return !error;
-      } else if (nombre) {
-        const { error } = await supabase!.from('maquinas').delete().eq('nombre', nombre);
+        if (!error) return true;
+      }
+      if (nombre) {
+        const { error } = await supabase!.from('maquinas').delete().ilike('nombre', `%${nombre}%`);
         return !error;
       }
       return false;
@@ -1641,9 +1823,10 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('insumos').delete().eq('id', id);
-        return !error;
-      } else if (nombre) {
-        const { error } = await supabase!.from('insumos').delete().eq('nombre', nombre);
+        if (!error) return true;
+      }
+      if (nombre) {
+        const { error } = await supabase!.from('insumos').delete().ilike('nombre', `%${nombre}%`);
         return !error;
       }
       return false;
@@ -1692,9 +1875,10 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('resinas').delete().eq('id', id);
-        return !error;
-      } else if (resumen) {
-        const { error } = await supabase!.from('resinas').delete().eq('tipo', resumen);
+        if (!error) return true;
+      }
+      if (resumen) {
+        const { error } = await supabase!.from('resinas').delete().ilike('tipo', `%${resumen}%`);
         return !error;
       }
       return false;
@@ -1721,6 +1905,7 @@ export const CloudSyncService = {
       return {
         tarifa_kwh: Number(data.tarifa_kwh) || 834,
         margen_merma_resina: Number(data.margen_merma_resina) || 1.4,
+        margen_merma_fdm: Number(data.margen_merma_fdm) || 5.0,
         telefono_contacto: data.telefono_contacto || '+57 320 2796115',
         telefono_contacto2: data.telefono_contacto2 || '+57 321 7273025',
         correo: data.correo || 'wjgeeks3d@gmail.com',
@@ -1742,6 +1927,7 @@ export const CloudSyncService = {
       const payload: any = {
         tarifa_kwh: Number(cfg.tarifa_kwh) || 834,
         margen_merma_resina: Number(cfg.margen_merma_resina) || 1.4,
+        margen_merma_fdm: Number(cfg.margen_merma_fdm) || 5.0,
         nequi: cfg.nequi || '',
         bre_b: cfg.bre_b || '',
         instagram: cfg.instagram || '',
@@ -1767,50 +1953,58 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.13 Traer Tarifas de Personal desde Supabase
+  // 21.13 Traer Tarifas de Personal desde Supabase (Unificado canónicamente con usuarios_taller)
   async fetchTarifasPersonal(): Promise<Personal[] | null> {
     if (!this.isAvailable()) return null;
     try {
-      const { data, error } = await supabase!.from('tarifas_personal').select('*');
-      if (error) return null;
+      const { data, error } = await supabase!
+        .from('usuarios_taller')
+        .select('id, nombre, rol, costo_hora, costo_minuto')
+        .order('nombre', { ascending: true });
+
+      if (error) {
+        console.warn('Error fetching personal unificado desde usuarios_taller:', error.message);
+        return null;
+      }
       if (!data || data.length === 0) return [];
+
       return data.map((row: any): Personal => ({
         id: row.id,
-        rol: row.rol,
-        costo_hora: Number(row.costo_hora) || 0,
-        costo_minuto: Number(row.costo_minuto) || 0
+        rol: row.rol || row.nombre || 'Operador',
+        costo_hora: Number(row.costo_hora) > 0 ? Number(row.costo_hora) : 10000,
+        costo_minuto: Number(row.costo_minuto) > 0 ? Number(row.costo_minuto) : 166.67
       }));
     } catch (e) {
       return null;
     }
   },
 
-  // 21.14 Guardar Tarifa de Personal en Supabase
+  // 21.14 Guardar Tarifa de Personal en Supabase (Actualiza costo_hora y costo_minuto en usuarios_taller)
   async saveTarifaPersonal(p: Personal): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const payload = {
-        id: p.id,
-        rol: p.rol,
+      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.id);
+      let query = supabase!.from('usuarios_taller').update({
         costo_hora: p.costo_hora,
         costo_minuto: p.costo_minuto
-      };
-      const { error } = await supabase!.from('tarifas_personal').upsert(payload, { onConflict: 'id' });
+      });
+
+      if (isUuid) {
+        query = query.eq('id', p.id);
+      } else {
+        query = query.ilike('rol', `%${p.rol}%`);
+      }
+
+      const { error } = await query;
       return !error;
     } catch (e) {
       return false;
     }
   },
 
-  // 21.15 Eliminar Tarifa de Personal en Supabase
-  async deleteTarifaPersonal(id: string): Promise<boolean> {
-    if (!this.isAvailable()) return false;
-    try {
-      const { error } = await supabase!.from('tarifas_personal').delete().eq('id', id);
-      return !error;
-    } catch (e) {
-      return false;
-    }
+  // 21.15 Eliminar Tarifa de Personal en Supabase (Mantiene integridad de usuarios_taller)
+  async deleteTarifaPersonal(_id: string): Promise<boolean> {
+    return true;
   },
 
   // 21.16 Traer Proveedores desde Supabase

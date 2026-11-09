@@ -15,10 +15,13 @@ import {
   TareaEquipo,
   SolicitudInsumo,
   HerramientaLink,
-  PiezaCotizada
+  PiezaCotizada,
+  Filamento,
+  RegistroProduccionInterna
 } from '../types';
 import {
   RESINAS_INICIALES,
+  FILAMENTOS_INICIALES,
   INSUMOS_INICIALES,
   MAQUINAS_INICIALES,
   PERSONAL_INICIAL,
@@ -31,14 +34,20 @@ import { COTIZACIONES_INICIALES } from '../data/initialCotizaciones';
 import { supabase, isSupabaseConfigured } from './supabaseClient';
 
 const PROVEEDORES_INICIALES: Proveedor[] = [
-  { id: 'prov-1', nombre: 'Anycubic Oficial Colombia', contacto: 'Soporte Ventas', telefono: '3150001122', rubro: 'Resinas y Maquinaria 3D', enlace_web: 'https://anycubic.com' },
-  { id: 'prov-2', nombre: 'Play Art Pinturas', contacto: 'Distribución', telefono: '3203334455', rubro: 'Pinturas Acrílicas y Primers' },
-  { id: 'prov-3', nombre: 'Químicos Andina', contacto: 'Ventas Granel', telefono: '3109998877', rubro: 'Alcohol Isopropílico y Etanol 96%' },
-  { id: 'prov-4', nombre: 'Ferretería & Imanes Tech', contacto: 'Despachos', telefono: '3124445566', rubro: 'Tornillería M3, Imanes Neodimio y Herrajes' }
+  { id: '48cd4c70-c971-4113-9f07-c742095b67c1', nombre: 'Anycubic Oficial Colombia', contacto: 'Soporte Ventas', telefono: '3150001122', rubro: 'Resinas y Maquinaria 3D', enlace_web: 'https://anycubic.com' },
+  { id: 'f9cf9508-d302-4e2e-a86b-629bcca67d21', nombre: 'Play Art Pinturas', contacto: 'Distribución', telefono: '3203334455', rubro: 'Pinturas Acrílicas y Primers', enlace_web: 'https://playart.com.co' },
+  { id: '222e19eb-4f94-47f2-8581-45fc7a309e9f', nombre: 'Químicos Andina', contacto: 'Ventas Granel', telefono: '3109998877', rubro: 'Alcohol Isopropílico y Etanol 96%', enlace_web: 'https://quimicosandina.com' },
+  { id: '20492875-f514-4601-a123-67e8abdb05da', nombre: 'Ferretería & Imanes Tech', contacto: 'Despachos', telefono: '3124445566', rubro: 'Tornillería M3, Imanes Neodimio y Herrajes' },
+  { id: 'ab077710-d41e-4070-9252-c721613189f0', nombre: 'Arrow 3D Colombia', contacto: 'Ventas Filamentos & Resinas', telefono: '+57 300 1234567', rubro: 'Filamentos PLA/PETG y Resinas Nacionales', enlace_web: 'https://arrow3d.com.co' },
+  { id: '6d22c84f-244f-4951-a4b1-e0772d3bfddb', nombre: 'Make3D Colombia / eSun', contacto: 'Asesoría Técnica y Ventas', telefono: '+57 318 7654321', rubro: 'Filamentos eSun PLA+/PETG/TPU y Repuestos', enlace_web: 'https://make3d.co' },
+  { id: '5d7f1709-6c2f-4b62-8d34-975799427fd9', nombre: 'Creativa 3D / Polymaker', contacto: 'Distribuidor Oficial', telefono: '+57 311 9876543', rubro: 'Filamentos Técnicos PolyLite/PolyTerra y Resinas UV', enlace_web: 'https://creativa3d.co' },
+  { id: '36301bf8-162c-4ae5-83ca-f8b78fa2cc2c', nombre: 'Amazon Business / Global Store', contacto: 'Importaciones Rápidas', telefono: 'N/A', rubro: 'Electrónica, Motores NEMA, Hotends y Herrajes', enlace_web: 'https://amazon.com' }
 ];
 
 const STORAGE_KEYS = {
   RESINAS: 'wjg_resinas',
+  FILAMENTOS: 'wjg_filamentos',
+  PRODUCCION_INTERNA: 'wjg_produccion_interna',
   INSUMOS: 'wjg_insumos',
   MAQUINAS: 'wjg_maquinas',
   PERSONAL: 'wjg_personal',
@@ -264,6 +273,35 @@ export const StorageService = {
   },
   saveResinas: (items: Resina[]) => saveItem(STORAGE_KEYS.RESINAS, items),
 
+  getFilamentos: (): Filamento[] => {
+    return loadItem<Filamento[]>(STORAGE_KEYS.FILAMENTOS, FILAMENTOS_INICIALES);
+  },
+  saveFilamentos: (items: Filamento[]) => saveItem(STORAGE_KEYS.FILAMENTOS, items),
+
+  getProduccionesInternas: (): RegistroProduccionInterna[] => {
+    return loadItem<RegistroProduccionInterna[]>(STORAGE_KEYS.PRODUCCION_INTERNA, []);
+  },
+  saveProduccionesInternas: (items: RegistroProduccionInterna[]) => saveItem(STORAGE_KEYS.PRODUCCION_INTERNA, items),
+
+  descontarStockMaterial: (tecnologia: string, materialId: string, gramos: number): void => {
+    if (!materialId || gramos <= 0) return;
+    if (tecnologia === 'FDM_FILAMENTO') {
+      const filamentos = StorageService.getFilamentos();
+      const idx = filamentos.findIndex(f => f.id === materialId);
+      if (idx !== -1) {
+        filamentos[idx].stock_actual_g = Math.max(0, (filamentos[idx].stock_actual_g || 1000) - gramos);
+        StorageService.saveFilamentos(filamentos);
+      }
+    } else if (tecnologia === 'SLA_RESINA') {
+      const resinas = StorageService.getResinas();
+      const idx = resinas.findIndex(r => r.id === materialId);
+      if (idx !== -1) {
+        resinas[idx].peso_g = Math.max(0, (resinas[idx].peso_g || 1000) - gramos);
+        StorageService.saveResinas(resinas);
+      }
+    }
+  },
+
   getInsumos: (): Insumo[] => {
     return loadItem<Insumo[]>(STORAGE_KEYS.INSUMOS, INSUMOS_INICIALES);
   },
@@ -353,6 +391,8 @@ export const StorageService = {
       empresa: 'WJGEEKS 3D PRO',
       timestamp: new Date().toISOString(),
       resinas: StorageService.getResinas(),
+      filamentos: StorageService.getFilamentos(),
+      produccion_interna: StorageService.getProduccionesInternas(),
       insumos: StorageService.getInsumos(),
       maquinas: StorageService.getMaquinas(),
       personal: StorageService.getPersonal(),

@@ -34,10 +34,13 @@ import { useUsuariosTaller } from './hooks/useUsuariosTaller';
 import { useAuthorization } from './hooks/useAuthorization';
 import { AccessDeniedView } from './components/ui/AccessDeniedView';
 import { CambiarPinModal } from './components/auth/CambiarPinModal';
+import { ModalProduccionInterna } from './components/produccionInterna/ModalProduccionInterna';
 
 import { 
   TabType, 
   Resina, 
+  Filamento,
+  RegistroProduccionInterna,
   Insumo, 
   Maquina, 
   Personal, 
@@ -136,6 +139,7 @@ export const App: React.FC = () => {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [showDailyBriefingModal, setShowDailyBriefingModal] = useState(false);
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
+  const [showModalProduccionInterna, setShowModalProduccionInterna] = useState(false);
   const [whatsappHealthStatus, setWhatsappHealthStatus] = useState<'operativo' | 'alerta_critica' | 'desconocido'>('operativo');
 
   // Monitor periódico de salud de WhatsApp (+57 320 2796115)
@@ -212,20 +216,42 @@ export const App: React.FC = () => {
     setIsClientPortalMode(Boolean(isExplicitPortal || hasTrackingParam));
   };
 
-  // Estado PWA (Instalación nativa en navegador / móvil)
+  // Estado PWA (Instalación nativa en navegador / móvil - Se muestra solo una vez si no está instalada)
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isInstallable, setIsInstallable] = useState(false);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+                         (window.navigator as any).standalone === true;
+    const isAlreadyInstalled = localStorage.getItem('wjg_pwa_installed') === 'true';
+
+    // Si la app ya está instalada en el dispositivo, no interceptar ni mostrar avisos
+    if (isStandalone || isAlreadyInstalled) {
+      setIsInstallable(false);
+      return;
+    }
+
     const handleBeforeInstall = (e: Event) => {
+      // Prevenir el banner invasivo automático solo si no está instalada
       e.preventDefault();
       setDeferredPrompt(e);
       setIsInstallable(true);
     };
 
+    const handleAppInstalled = () => {
+      localStorage.setItem('wjg_pwa_installed', 'true');
+      setIsInstallable(false);
+      setDeferredPrompt(null);
+    };
+
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    window.addEventListener('appinstalled', handleAppInstalled);
+
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+      window.removeEventListener('appinstalled', handleAppInstalled);
     };
   }, []);
 
@@ -233,12 +259,15 @@ export const App: React.FC = () => {
     if (deferredPrompt) {
       deferredPrompt.prompt();
       const choice = await deferredPrompt.userChoice;
-      if (choice.outcome === 'accepted') {
+      if (choice && choice.outcome === 'accepted') {
+        localStorage.setItem('wjg_pwa_installed', 'true');
         setIsInstallable(false);
         setDeferredPrompt(null);
       }
     } else {
-      alert("📲 Para instalar WJGEEKS 3D Pro en tu celular:\n\n1. En Chrome / Android: Toca el menú (⋮) y selecciona 'Instalar aplicación' o 'Agregar a pantalla principal'.\n2. En iPhone / Safari: Toca el botón Compartir y elige 'Agregar al inicio'.");
+      alert("📲 Para instalar WJGEEKS 3D Pro en tu dispositivo:\n\n1. En Chrome / Android: Toca el menú (⋮) y selecciona 'Instalar aplicación' o 'Agregar a pantalla principal'.\n2. En iPhone / Safari: Toca el botón Compartir y elige 'Agregar al inicio'.");
+      localStorage.setItem('wjg_pwa_installed', 'true');
+      setIsInstallable(false);
     }
   };
 
@@ -255,6 +284,8 @@ export const App: React.FC = () => {
 
   // Datos Maestros
   const [resinas, setResinas] = useState<Resina[]>(() => StorageService.getResinas());
+  const [filamentos, setFilamentos] = useState<Filamento[]>(() => StorageService.getFilamentos());
+  const [produccionesInternas, setProduccionesInternas] = useState<RegistroProduccionInterna[]>(() => StorageService.getProduccionesInternas());
   const [insumos, setInsumos] = useState<Insumo[]>(() => StorageService.getInsumos());
   const [maquinas, setMaquinas] = useState<Maquina[]>(() => StorageService.getMaquinas());
   const [personal, setPersonal] = useState<Personal[]>(() => StorageService.getPersonal());
@@ -285,6 +316,8 @@ export const App: React.FC = () => {
   useEffect(() => {
     // 1. Carga local inmediata para rapidez y soporte offline
     setResinas(StorageService.getResinas());
+    setFilamentos(StorageService.getFilamentos());
+    setProduccionesInternas(StorageService.getProduccionesInternas());
     setInsumos(StorageService.getInsumos());
     setMaquinas(StorageService.getMaquinas());
     setPersonal(StorageService.getPersonal());
@@ -323,6 +356,8 @@ export const App: React.FC = () => {
           cloudMaquinas,
           cloudInsumos,
           cloudResinas,
+          cloudFilamentos,
+          cloudProducciones,
           cloudConfig,
           cloudPersonal,
           cloudProveedores,
@@ -340,6 +375,8 @@ export const App: React.FC = () => {
           CloudSyncService.fetchMaquinas(),
           CloudSyncService.fetchInsumos(),
           CloudSyncService.fetchResinas(),
+          CloudSyncService.fetchFilamentos(),
+          CloudSyncService.fetchProduccionInterna(),
           CloudSyncService.fetchConfiguracion(),
           CloudSyncService.fetchTarifasPersonal(),
           CloudSyncService.fetchProveedores(),
@@ -510,6 +547,16 @@ export const App: React.FC = () => {
         if (cloudResinas !== null && cloudResinas.length > 0) {
           setResinas(cloudResinas);
           StorageService.saveResinas(cloudResinas);
+        }
+
+        if (cloudFilamentos !== null && cloudFilamentos.length > 0) {
+          setFilamentos(cloudFilamentos);
+          StorageService.saveFilamentos(cloudFilamentos);
+        }
+
+        if (cloudProducciones !== null && cloudProducciones.length > 0) {
+          setProduccionesInternas(cloudProducciones);
+          StorageService.saveProduccionesInternas(cloudProducciones);
         }
 
         // Sincronización de Configuración de Taller (Tarifa Eléctrica / Luz, Medios de Pago)
@@ -1000,10 +1047,13 @@ export const App: React.FC = () => {
           tiempo_impresion_min: item.tiempo_impresion_min || 0,
           tiempo_armado_min: item.tiempo_armado_min || 0,
           tiempo_pintura_min: item.tiempo_pintura_min || 0,
-          peso_estimado_g: item.peso_estimado_g || 0,
+          peso_estimado_g: item.peso_estimado_g || (item.tecnologia === 'FDM_FILAMENTO' ? item.peso_filamento_g : 0) || 0,
+          tecnologia: item.tecnologia || 'SLA_RESINA',
           resina_id: item.resina_id,
+          filamento_id: item.filamento_id,
+          filamento_nombre: item.filamento_nombre,
           inventario_descontado: false,
-          resina_nombre: item.resina_nombre,
+          resina_nombre: item.resina_nombre || (item.filamento_nombre ? item.filamento_nombre : ''),
           maquina_nombre: item.maquina_nombre,
           maquinas_involucradas: item.maquinas_involucradas,
           enlaces_compra: item.enlaces_compra,
@@ -1208,32 +1258,55 @@ export const App: React.FC = () => {
       const cant = targetOT.cantidad || 1;
       const gramosARestar = (targetOT.peso_estimado_g || 40) * cant;
 
-      // 1. Descontar resina líquida del catálogo de resinas
-      const updatedResinas = resinas.map(r => {
-        const match = r.id === targetOT.resina_id || 
-                      r.resumen === targetOT.resina_nombre || 
-                      `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
-        if (match) {
-          const nuevoPeso = Math.max(0, Math.round((r.peso_g - gramosARestar) * 10) / 10);
-          return { ...r, peso_g: nuevoPeso };
-        }
-        return r;
-      });
-      setResinas(updatedResinas);
-      StorageService.saveResinas(updatedResinas);
+      const esFDM = targetOT.tecnologia === 'FDM_FILAMENTO' || !!targetOT.filamento_id || 
+                    (targetOT.maquina_nombre && targetOT.maquina_nombre.toLowerCase().includes('bambu'));
 
-      // 2. Descontar alcohol isopropílico de insumos (aprox 30ml por pieza impresa)
-      const mlAlcohol = 30 * cant;
-      const updatedInsumos = insumos.map(ins => {
-        const nom = ins.nombre.toLowerCase();
-        if (nom.includes('alcohol') || nom.includes('isoprop')) {
-          const nuevaPres = Math.max(0, ins.presentacion - mlAlcohol);
-          return { ...ins, presentacion: nuevaPres };
-        }
-        return ins;
-      });
-      setInsumos(updatedInsumos);
-      StorageService.saveInsumos(updatedInsumos);
+      if (esFDM) {
+        // 1. Descontar filamento del catálogo de filamentos
+        const updatedFilamentos = filamentos.map(f => {
+          const match = f.id === targetOT.filamento_id || 
+                        targetOT.filamento_nombre?.toLowerCase().includes(f.color.toLowerCase()) ||
+                        `${f.marca} ${f.tipo} ${f.color}`.toLowerCase().includes((targetOT.filamento_nombre || targetOT.resina_nombre || '').toLowerCase());
+          if (match) {
+            const nuevoStock = Math.max(0, Math.round(((f.stock_actual_g || 1000) - gramosARestar) * 10) / 10);
+            return { ...f, stock_actual_g: nuevoStock };
+          }
+          return f;
+        });
+        setFilamentos(updatedFilamentos);
+        StorageService.saveFilamentos(updatedFilamentos);
+        const filAfectado = updatedFilamentos.find(f => f.id === targetOT.filamento_id);
+        if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+      } else {
+        // 1. Descontar resina líquida del catálogo de resinas
+        const updatedResinas = resinas.map(r => {
+          const match = r.id === targetOT.resina_id || 
+                        r.resumen === targetOT.resina_nombre || 
+                        `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
+          if (match) {
+            const nuevoPeso = Math.max(0, Math.round((r.peso_g - gramosARestar) * 10) / 10);
+            return { ...r, peso_g: nuevoPeso };
+          }
+          return r;
+        });
+        setResinas(updatedResinas);
+        StorageService.saveResinas(updatedResinas);
+        const resAfectada = updatedResinas.find(r => r.id === targetOT.resina_id);
+        if (resAfectada) CloudSyncService.saveResina(resAfectada);
+
+        // 2. Descontar alcohol isopropílico de insumos (aprox 30ml por pieza impresa)
+        const mlAlcohol = 30 * cant;
+        const updatedInsumos = insumos.map(ins => {
+          const nom = ins.nombre.toLowerCase();
+          if (nom.includes('alcohol') || nom.includes('isoprop')) {
+            const nuevaPres = Math.max(0, ins.presentacion - mlAlcohol);
+            return { ...ins, presentacion: nuevaPres };
+          }
+          return ins;
+        });
+        setInsumos(updatedInsumos);
+        StorageService.saveInsumos(updatedInsumos);
+      }
 
       discountApplied = true;
     }
@@ -1466,6 +1539,50 @@ export const App: React.FC = () => {
     setClientes(updated);
     StorageService.saveClientes(updated);
     CloudSyncService.saveCliente(nuevo);
+  };
+
+  // Handlers para Producción Interna / Pruebas / Exhibición
+  const handleGuardarProduccionInterna = (nuevoRegistro: RegistroProduccionInterna, descontarStock: boolean) => {
+    const updated = [nuevoRegistro, ...produccionesInternas];
+    setProduccionesInternas(updated);
+    StorageService.saveProduccionesInternas(updated);
+    CloudSyncService.saveProduccionInterna(nuevoRegistro);
+
+    if (descontarStock && nuevoRegistro.material_id && nuevoRegistro.peso_consumido_g > 0) {
+      if (nuevoRegistro.tecnologia === 'FDM_FILAMENTO') {
+        const updatedFilamentos = filamentos.map(f => {
+          if (f.id === nuevoRegistro.material_id) {
+            const nuevoStock = Math.max(0, Math.round(((f.stock_actual_g || 1000) - nuevoRegistro.peso_consumido_g) * 10) / 10);
+            return { ...f, stock_actual_g: nuevoStock };
+          }
+          return f;
+        });
+        setFilamentos(updatedFilamentos);
+        StorageService.saveFilamentos(updatedFilamentos);
+        const filAfectado = updatedFilamentos.find(f => f.id === nuevoRegistro.material_id);
+        if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+      } else {
+        const updatedResinas = resinas.map(r => {
+          if (r.id === nuevoRegistro.material_id) {
+            const nuevoPeso = Math.max(0, Math.round(((r.peso_g || 1000) - nuevoRegistro.peso_consumido_g) * 10) / 10);
+            return { ...r, peso_g: nuevoPeso };
+          }
+          return r;
+        });
+        setResinas(updatedResinas);
+        StorageService.saveResinas(updatedResinas);
+        const resAfectada = updatedResinas.find(r => r.id === nuevoRegistro.material_id);
+        if (resAfectada) CloudSyncService.saveResina(resAfectada);
+      }
+    }
+    toast.success(`Pieza "${nuevoRegistro.nombre_pieza}" registrada en producción interna.`);
+  };
+
+  const handleEliminarProduccionInterna = (id: string) => {
+    const updated = produccionesInternas.filter(p => p.id !== id);
+    setProduccionesInternas(updated);
+    StorageService.saveProduccionesInternas(updated);
+    toast.info('Registro de producción interna eliminado.');
   };
 
   const handleUpdateProductosStock = (items: ProductoStock[]) => {
@@ -2261,6 +2378,7 @@ export const App: React.FC = () => {
           <div>
             <CotizadorForm 
               resinas={resinas}
+              filamentos={filamentos}
               maquinas={maquinas}
               insumos={insumos}
               personal={personal}
@@ -2281,6 +2399,7 @@ export const App: React.FC = () => {
               cotizaciones={cotizaciones}
               cotizacionEnEdicion={editingCotizacion}
               resinas={resinas}
+              filamentos={filamentos}
               maquinas={maquinas}
               insumos={insumos}
               personal={personal}
@@ -2311,6 +2430,7 @@ export const App: React.FC = () => {
             onNavigateToCotizaciones={(cotId) => {
               setActiveTab('cotizaciones');
             }}
+            onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
           />
         )}
 
@@ -2370,6 +2490,7 @@ export const App: React.FC = () => {
         {activeTab === 'catalogos' && (
           <CatalogosManager 
             resinas={resinas}
+            filamentos={filamentos}
             insumos={insumos}
             maquinas={maquinas}
             personal={personal}
@@ -2381,6 +2502,11 @@ export const App: React.FC = () => {
               setResinas(r); 
               StorageService.saveResinas(r); 
               r.forEach(res => CloudSyncService.saveResina(res));
+            }}
+            onUpdateFilamentos={f => {
+              setFilamentos(f);
+              StorageService.saveFilamentos(f);
+              f.forEach(fil => CloudSyncService.saveFilamento(fil));
             }}
             onUpdateInsumos={i => { 
               setInsumos(i); 
@@ -2414,10 +2540,11 @@ export const App: React.FC = () => {
               t.forEach(tar => CloudSyncService.saveTarifaTamano(tar));
             }}
             onRefreshCatalogos={async () => {
-              const [freshMaq, freshIns, freshRes, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+              const [freshMaq, freshIns, freshRes, freshFil, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
                 CloudSyncService.fetchMaquinas(),
                 CloudSyncService.fetchInsumos(),
                 CloudSyncService.fetchResinas(),
+                CloudSyncService.fetchFilamentos(),
                 CloudSyncService.fetchConfiguracion(),
                 CloudSyncService.fetchTarifasPersonal(),
                 CloudSyncService.fetchProveedores(),
@@ -2426,6 +2553,7 @@ export const App: React.FC = () => {
               if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
               if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
               if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+              if (freshFil && freshFil.length > 0) { setFilamentos(freshFil); StorageService.saveFilamentos(freshFil); }
               if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
               if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
               if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
@@ -2465,6 +2593,7 @@ export const App: React.FC = () => {
               }
               return freshStock;
             }}
+            onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
           />
         )}
 
@@ -2604,6 +2733,19 @@ export const App: React.FC = () => {
           onClose={() => setShowWhatsAppModal(false)}
         />
       </React.Suspense>
+      {/* Modal de Producción Interna, Pruebas & Exhibición */}
+      <ModalProduccionInterna 
+        isOpen={showModalProduccionInterna}
+        onClose={() => setShowModalProduccionInterna(false)}
+        filamentos={filamentos}
+        resinas={resinas}
+        maquinas={maquinas}
+        config={config}
+        producciones={produccionesInternas}
+        onGuardarProduccion={handleGuardarProduccionInterna}
+        onEliminarProduccion={handleEliminarProduccionInterna}
+      />
+
       {/* Modal de Cambio de PIN de Operador */}
       <CambiarPinModal 
         isOpen={showChangePinModal}

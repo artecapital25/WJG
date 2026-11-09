@@ -62,6 +62,18 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
             </button>
           </div>
 
+          {props.onOpenProduccionInterna && (
+            <button 
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={props.onOpenProduccionInterna}
+              style={{ fontWeight: 800, padding: '8px 12px', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+              title="Registrar piezas de exhibición, vitrina, pruebas de calibración o fallas"
+            >
+              <span>🧪 Pruebas & Exhibición</span>
+            </button>
+          )}
+
           <button 
             className="btn btn-primary btn-sm"
             onClick={() => taller.setShowModalRapido(true)}

@@ -1,5 +1,6 @@
 import { 
   Resina, 
+  Filamento,
   Maquina, 
   Insumo, 
   Personal, 
@@ -21,11 +22,14 @@ export interface ParametrosPiezaInput {
   tecnologia?: TecnologiaFabricacion;
 
   // Parámetros FDM Filamento
+  filamentoSeleccionado?: Filamento;
   materialFilamento?: string;
   pesoFilamentoG?: number;
   costoRolloKg?: number;
   tiempoFDMMin?: number;
   desgasteBoquillaCosto?: number;
+  mermaPorcentajeFdm?: number;
+  mermaPorcentajeResina?: number;
 
   // Parámetros Láser CO2
   materialLamina?: string;
@@ -317,12 +321,15 @@ export function calcularPieza3D(
   let costo_resina = 0;
   const costoGramoResina = input.resina.costo_gramo || (input.resina.precio_compra ? input.resina.precio_compra / 1000 : 135);
   if (peso_estimado_g > 0) {
-    if (input.modoCalculoResina === 'manual') {
-      costo_resina = peso_estimado_g * costoGramoResina * 1.10;
+    let factorMerma: number;
+    if (input.mermaPorcentajeResina !== undefined) {
+      factorMerma = 1 + (input.mermaPorcentajeResina / 100);
+    } else if (input.modoCalculoResina === 'manual') {
+      factorMerma = 1.10;
     } else {
-      const factorMerma = config.margen_merma_resina || 1.40;
-      costo_resina = peso_estimado_g * costoGramoResina * factorMerma;
+      factorMerma = config.margen_merma_resina || 1.40;
     }
+    costo_resina = peso_estimado_g * costoGramoResina * factorMerma;
   }
 
   // 7. Insumos Adicionales (Accesorios, bisutería, empaque, pinturas)
@@ -513,6 +520,7 @@ export function calcularPieza3D(
 
 /**
  * Motor de Cálculo para Impresión 3D FDM (Filamentos PLA, PETG, ABS, TPU, etc.)
+ * Implementa el estándar industrial 3DPCC (Material + Merma + Energía + Desgaste + Mano de Obra)
  */
 export function calcularPiezaFDM(
   input: ParametrosPiezaInput,
@@ -522,26 +530,39 @@ export function calcularPiezaFDM(
   const tarifaKwh = config.tarifa_kwh || 834.0;
   const cantidad = Math.max(1, input.cantidad || 1);
   const pesoGramos = Number(input.pesoFilamentoG) || 50;
-  const materialFilamento = input.materialFilamento || 'PLA';
-  const costoRolloKg = Number(input.costoRolloKg) || 85000; // COP por 1000g de filamento
-  const tiempoMinutos = Number(input.tiempoFDMMin) || 180; // 3 horas por defecto
+
+  // 1. Filamento y Merma Editable
+  const filamento = input.filamentoSeleccionado;
+  const materialFilamento = filamento ? `${filamento.marca} ${filamento.tipo} (${filamento.color})` : (input.materialFilamento || 'PLA');
+  const costoGramo = filamento?.costo_gramo || ((Number(input.costoRolloKg) || 85000) / 1000);
+  const costoRolloKg = filamento ? (filamento.costo_gramo * 1000) : (Number(input.costoRolloKg) || 85000);
+
+  // Merma de seguridad (% editable, por defecto config o 5%)
+  const mermaPct = input.mermaPorcentajeFdm !== undefined
+    ? input.mermaPorcentajeFdm
+    : (config.margen_merma_fdm !== undefined ? config.margen_merma_fdm : 5);
+  const factorMerma = 1 + (mermaPct / 100);
+
+  // Costo Material = Peso Slicer * Factor Merma * Costo Gramo
+  const costoFilamento = Math.round(pesoGramos * factorMerma * costoGramo);
+
+  const tiempoMinutos = Number(input.tiempoFDMMin) || 180;
   const alto = Number(input.alto_mm) || 60;
   const ancho = Number(input.ancho_mm) || 60;
   const prof = Number(input.profundidad_mm) || 60;
 
-  // 1. Costo Material Filamento (+5% merma/purga)
-  const costoFilamento = Math.round((pesoGramos * 1.05 / 1000) * costoRolloKg);
+  // 2. Energía FDM (Tarifas dinámicas de máquina)
+  const desgloseMaquina = resolverTarifasMaquina(input.impresora, tarifaKwh);
+  const costoEnergia = Math.round(tiempoMinutos * desgloseMaquina.costoMinutoEnergia);
 
-  // 2. Energía FDM (Consumo típico impresora FDM ~150W - 250W por cama caliente)
-  const potenciaKw = (input.impresora?.consumo_kwh && input.impresora.consumo_kwh > 0)
-    ? input.impresora.consumo_kwh
-    : 0.20; // 200W
-  const costoEnergia = Math.round((potenciaKw * (tiempoMinutos / 60)) * tarifaKwh);
+  // 3. Desgaste y Repuestos (Amortización boquilla, PEI, lubricación)
+  const costoRepuestos = Math.round(
+    desgloseMaquina.costoMinutoRepuestos > 0
+      ? tiempoMinutos * desgloseMaquina.costoMinutoRepuestos
+      : (Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 1.25))
+  );
 
-  // 3. Desgaste y Repuestos (Boquilla de latón/acero, correas, extrusor)
-  const costoRepuestos = Math.round(Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 5)); // ~$300 COP/hora
-
-  // 4. Mano de obra operario
+  // 4. Mano de obra operario (Slicing, cama, retiro soportes)
   const operador = personal[0];
   const costoMinutoOperario = operador?.costo_minuto || 130.21;
   const tiempoOperario = (input.tiempoDesarrolloMin || 0) + (input.tiempoArmadoMin || 0);
@@ -551,12 +572,17 @@ export function calcularPiezaFDM(
   const costoEmpaques = (input.empaques || []).reduce((acc, e) => acc + (e.insumo.costo_unitario * e.cantidad), 0);
   const costoAccesorios = (input.accesorios || []).reduce((acc, a) => acc + (a.insumo.costo_unitario * a.cantidad), 0);
 
-  // 6. Costo Base de Producción
+  // 6. Costo Base de Producción Industrial (3DPCC)
   const costoBaseProduccion = costoFilamento + costoEnergia + costoRepuestos + costoManoObra + costoEmpaques + costoAccesorios + (input.costoModeloComprado || 0);
 
   // 7. Margen de ganancia
   const margen = Number(input.margenGanancia) || 0.40;
-  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+  let precioUnitarioBase: number;
+  if (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0) {
+    precioUnitarioBase = Math.round(input.precioUnitarioManual / 100) * 100;
+  } else {
+    precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+  }
 
   // 8. Escala de Descuento por Volumen (6+ = 10%, 12+ = 15%, 24+ = 20%)
   const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
@@ -572,7 +598,7 @@ export function calcularPiezaFDM(
   const precioUnitario = precioUnitarioBase - descVolumenMonto;
   const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
 
-  const descTecnica = `Impresión FDM: ${materialFilamento} (${pesoGramos}g)\nMedidas: ${alto}x${ancho}x${prof}mm\nTiempo est.: ${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}m • Máquina: ${input.impresora?.nombre || 'FDM Core'}`;
+  const descTecnica = `Tecnología: Impresión 3D FDM • Material: Filamento ${materialFilamento}\nPeso: ${pesoGramos}g (+${mermaPct}% merma) • Medidas: ${alto}x${ancho}x${prof}mm\nTiempo est.: ${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}m • Máquina: ${input.impresora?.nombre || 'Bambulab P1S'}`;
 
   return {
     id: `fdm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -585,10 +611,15 @@ export function calcularPiezaFDM(
     peso_estimado_g: pesoGramos,
     tecnologia: 'FDM_FILAMENTO',
     material_filamento: materialFilamento,
+    filamento_id: filamento?.id,
+    filamento_nombre: filamento ? `${filamento.marca} ${filamento.tipo}` : materialFilamento,
+    filamento_marca: filamento?.marca,
+    filamento_color: filamento?.color,
+    merma_porcentaje: mermaPct,
     peso_filamento_g: pesoGramos,
     costo_filamento_kg: costoRolloKg,
     desgaste_boquilla_costo: costoRepuestos,
-    resina_id: 'fdm-filamento',
+    resina_id: filamento?.id || 'fdm-filamento',
     resina_nombre: `Filamento ${materialFilamento}`,
     maquina_id: input.impresora?.id || 'maq-fdm',
     maquina_nombre: input.impresora?.nombre || 'Impresora FDM',

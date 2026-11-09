@@ -26,6 +26,7 @@ import {
 } from 'lucide-react';
 import { 
   Resina, 
+  Filamento, 
   Insumo, 
   Maquina, 
   Personal, 
@@ -42,6 +43,7 @@ import { toast } from '../ui/ToastProvider';
 
 interface CatalogosManagerProps {
   resinas: Resina[];
+  filamentos?: Filamento[];
   insumos: Insumo[];
   maquinas: Maquina[];
   personal: Personal[];
@@ -50,6 +52,7 @@ interface CatalogosManagerProps {
   config: ConfiguracionTaller;
   tarifasTamanos?: TarifaTamano[];
   onUpdateResinas: (r: Resina[]) => void;
+  onUpdateFilamentos?: (f: Filamento[]) => void;
   onUpdateInsumos: (i: Insumo[]) => void;
   onUpdateMaquinas: (m: Maquina[]) => void;
   onUpdatePersonal: (p: Personal[]) => void;
@@ -61,10 +64,11 @@ interface CatalogosManagerProps {
   onRefreshCatalogos?: () => Promise<void>;
 }
 
-type SubTab = 'resinas' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
+type SubTab = 'resinas' | 'filamentos' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
 
 export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   resinas,
+  filamentos = [],
   insumos,
   maquinas,
   personal,
@@ -73,6 +77,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   config,
   tarifasTamanos = [],
   onUpdateResinas,
+  onUpdateFilamentos,
   onUpdateInsumos,
   onUpdateMaquinas,
   onUpdatePersonal,
@@ -179,31 +184,94 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const resinaABorrar = resinas.find(r => r.id === id);
     if (!resinaABorrar) return;
 
-    const cotizaciones = StorageService.getCotizaciones();
-    const ordenes = StorageService.getOrdenes();
-    const enUsoEnCotizaciones = cotizaciones.some(c => 
-      c.items?.some(it => it.resina_id === id || it.resina_nombre?.toLowerCase() === resinaABorrar.tipo?.toLowerCase())
-    );
-    const enUsoEnOrdenes = ordenes.some(o => 
-      o.resina_nombre?.toLowerCase() === resinaABorrar.tipo?.toLowerCase()
-    );
-
-    if (enUsoEnCotizaciones || enUsoEnOrdenes) {
-      if (confirm(`La resina "${resinaABorrar.tipo}" está registrada en cotizaciones u órdenes de trabajo. Para proteger el historial de cobros no puede eliminarse físicamente del sistema. ¿Deseas marcarla como Descontinuada/Inactiva para que no se ofrezca en nuevos proyectos?`)) {
-        const updated = resinas.map(r => r.id === id ? { ...r, activo: false } : r);
-        onUpdateResinas(updated);
-        CloudSyncService.saveResina({ ...resinaABorrar, activo: false });
-        toast.success(`Resina "${resinaABorrar.tipo}" marcada como Inactiva/Descontinuada`);
-      }
+    if (!confirm(`¿Eliminar definitivamente la resina "${resinaABorrar.tipo} (${resinaABorrar.color})"?\n\nEsta acción borrará el registro de Supabase y del inventario local de forma permanente.`)) {
       return;
     }
 
-    if (confirm(`¿Eliminar la resina "${resinaABorrar.tipo}" del catálogo?`)) {
-      const updated = resinas.filter(r => r.id !== id);
-      onUpdateResinas(updated);
-      CloudSyncService.deleteResina(id, resinaABorrar.tipo);
-      toast.success('Resina eliminada del catálogo');
+    const updated = resinas.filter(r => r.id !== id);
+    onUpdateResinas(updated);
+    StorageService.saveResinas(updated);
+    CloudSyncService.deleteResina(id, resinaABorrar.tipo);
+    toast.success(`Resina "${resinaABorrar.tipo}" eliminada del catálogo`);
+  };
+
+  // -----------------------------------------------------------------
+  // HANDLERS FILAMENTOS
+  // -----------------------------------------------------------------
+  const handleOpenModalFilamento = (fil?: Filamento) => {
+    if (fil) {
+      setItemEnEdicion({ ...fil, isEdit: true, imagen_url: fil.imagen_url || '' });
+    } else {
+      setItemEnEdicion({
+        id: ensureValidUuid(),
+        marca: 'eSun',
+        tipo: 'PLA+',
+        color: 'Negro',
+        peso_bobina_g: 1000,
+        precio_compra: 85000,
+        costo_gramo: 85,
+        stock_actual_g: 1000,
+        temperatura_nozzle: 215,
+        temperatura_bed: 60,
+        densidad_g_cm3: 1.24,
+        enlace_compra: '',
+        imagen_url: '',
+        activo: true,
+        isEdit: false
+      });
     }
+    setModalType('filamento');
+  };
+
+  const handleSaveFilamento = (e: React.FormEvent) => {
+    e.preventDefault();
+    const peso = Number(itemEnEdicion.peso_bobina_g) || 1000;
+    const precio = Number(itemEnEdicion.precio_compra) || 85000;
+    const costo_gramo = peso > 0 ? Number((precio / peso).toFixed(2)) : 85;
+
+    const filamentoGuardado: Filamento = {
+      id: itemEnEdicion.id || ensureValidUuid(),
+      marca: itemEnEdicion.marca || 'Genérico',
+      tipo: itemEnEdicion.tipo || 'PLA',
+      color: itemEnEdicion.color || 'Negro',
+      peso_bobina_g: peso,
+      precio_compra: precio,
+      costo_gramo: costo_gramo,
+      stock_actual_g: Number(itemEnEdicion.stock_actual_g) || peso,
+      temperatura_nozzle: Number(itemEnEdicion.temperatura_nozzle) || 215,
+      temperatura_bed: Number(itemEnEdicion.temperatura_bed) || 60,
+      densidad_g_cm3: Number(itemEnEdicion.densidad_g_cm3) || 1.24,
+      enlace_compra: itemEnEdicion.enlace_compra || '',
+      imagen_url: itemEnEdicion.imagen_url || '',
+      activo: itemEnEdicion.activo !== false
+    };
+
+    let updated: Filamento[];
+    if (itemEnEdicion.isEdit) {
+      updated = filamentos.map(f => f.id === filamentoGuardado.id ? filamentoGuardado : f);
+    } else {
+      updated = [filamentoGuardado, ...filamentos];
+    }
+
+    if (onUpdateFilamentos) onUpdateFilamentos(updated);
+    StorageService.saveFilamentos(updated);
+    CloudSyncService.saveFilamento(filamentoGuardado);
+    toast.success(`Filamento "${filamentoGuardado.marca} ${filamentoGuardado.tipo} (${filamentoGuardado.color})" guardado`);
+    setModalType(null);
+    setItemEnEdicion(null);
+  };
+
+  const handleDeleteFilamento = (id: string) => {
+    const fil = filamentos.find(f => f.id === id);
+    if (!fil) return;
+    if (!confirm(`¿Eliminar definitivamente el filamento "${fil.marca} ${fil.tipo} (${fil.color})"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
+      return;
+    }
+    const updated = filamentos.filter(f => f.id !== id);
+    if (onUpdateFilamentos) onUpdateFilamentos(updated);
+    StorageService.saveFilamentos(updated);
+    CloudSyncService.deleteFilamento(id, fil.tipo);
+    toast.success('Filamento eliminado del taller');
   };
 
   // -----------------------------------------------------------------
@@ -264,31 +332,15 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const insumoABorrar = insumos.find(i => i.id === id);
     if (!insumoABorrar) return;
 
-    const cotizaciones = StorageService.getCotizaciones();
-    const enUso = cotizaciones.some(c => 
-      c.items?.some(it => 
-        it.lista_pinturas?.some(p => p.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase()) ||
-        it.lista_accesorios?.some(a => a.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase()) ||
-        it.lista_empaques?.some(e => e.nombre?.toLowerCase() === insumoABorrar.nombre?.toLowerCase())
-      )
-    );
-
-    if (enUso) {
-      if (confirm(`El insumo "${insumoABorrar.nombre}" está registrado en cotizaciones del taller. Para proteger el historial contable no puede eliminarse físicamente. ¿Deseas desactivarlo (stock en 0)?`)) {
-        const updated = insumos.map(i => i.id === id ? { ...i, stock_actual: 0 } : i);
-        onUpdateInsumos(updated);
-        CloudSyncService.saveInsumo({ ...insumoABorrar, stock_actual: 0 });
-        toast.success(`Insumo "${insumoABorrar.nombre}" desactivado con stock 0`);
-      }
+    if (!confirm(`¿Eliminar definitivamente el insumo "${insumoABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
       return;
     }
 
-    if (confirm('¿Eliminar este insumo del taller?')) {
-      const updated = insumos.filter(i => i.id !== id);
-      onUpdateInsumos(updated);
-      CloudSyncService.deleteInsumo(id, insumoABorrar.nombre);
-      toast.success('Insumo eliminado');
-    }
+    const updated = insumos.filter(i => i.id !== id);
+    onUpdateInsumos(updated);
+    StorageService.saveInsumos(updated);
+    CloudSyncService.deleteInsumo(id, insumoABorrar.nombre);
+    toast.success(`Insumo "${insumoABorrar.nombre}" eliminado`);
   };
 
   // -----------------------------------------------------------------
@@ -298,6 +350,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     if (maq) {
       setItemEnEdicion({ 
         ...maq, 
+        tecnologia: maq.tecnologia || (maq.tipo?.toLowerCase().includes('filamento') || maq.tipo?.toLowerCase().includes('fdm') ? 'FDM_FILAMENTO' : 'SLA_RESINA'),
         isEdit: true, 
         imagen_url: maq.imagen_url || '',
         repuestos: Array.isArray(maq.repuestos) ? maq.repuestos.map(r => ({ ...r })) : []
@@ -307,6 +360,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         id: ensureValidUuid(),
         nombre: 'Bambulab P1S / P2S',
         tipo: 'Impresora 3D Filamento (FDM)',
+        tecnologia: 'FDM_FILAMENTO',
         consumo_kwh: 0.13,
         repuestos: [],
         estado: 'Disponible',
@@ -391,6 +445,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       id: itemEnEdicion.id,
       nombre: itemEnEdicion.nombre,
       tipo: itemEnEdicion.tipo,
+      tecnologia: itemEnEdicion.tecnologia || (itemEnEdicion.tipo?.toLowerCase().includes('filamento') || itemEnEdicion.tipo?.toLowerCase().includes('fdm') ? 'FDM_FILAMENTO' : 'SLA_RESINA'),
       consumo_kwh: consumoKwh,
       costo_minuto_energia: Number(costo_minuto_energia.toFixed(4)),
       costo_minuto_repuestos: Number(costo_minuto_repuestos.toFixed(4)),
@@ -505,28 +560,15 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const maquinaABorrar = maquinas.find(m => m.id === id);
     if (!maquinaABorrar) return;
 
-    const cotizaciones = StorageService.getCotizaciones();
-    const ordenes = StorageService.getOrdenes();
-    const enUso = cotizaciones.some(c => 
-      c.items?.some(it => it.maquina_id === id || it.maquina_nombre?.toLowerCase() === maquinaABorrar.nombre?.toLowerCase() || it.maquinas_involucradas?.some(m => m.maquina_id === id))
-    ) || ordenes.some(o => o.maquina_nombre?.toLowerCase() === maquinaABorrar.nombre?.toLowerCase() || o.maquinas_involucradas?.some(m => m.maquina_id === id));
-
-    if (enUso) {
-      if (confirm(`La máquina "${maquinaABorrar.nombre}" está asignada en cotizaciones u órdenes de trabajo. Para proteger la trazabilidad no puede eliminarse físicamente del sistema. ¿Deseas pasarla a estado "Mantenimiento / Fuera de Servicio"?`)) {
-        const updated = maquinas.map(m => m.id === id ? { ...m, estado: 'Mantenimiento' as any } : m);
-        onUpdateMaquinas(updated);
-        CloudSyncService.saveMaquina({ ...maquinaABorrar, estado: 'Mantenimiento' as any });
-        toast.success(`Máquina "${maquinaABorrar.nombre}" pasada a Mantenimiento`);
-      }
+    if (!confirm(`¿Eliminar definitivamente la máquina "${maquinaABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
       return;
     }
 
-    if (confirm(`¿Eliminar la máquina "${maquinaABorrar.nombre}" del taller?`)) {
-      const updated = maquinas.filter(m => m.id !== id);
-      onUpdateMaquinas(updated);
-      CloudSyncService.deleteMaquina(id, maquinaABorrar.nombre);
-      toast.success('Máquina eliminada del taller');
-    }
+    const updated = maquinas.filter(m => m.id !== id);
+    onUpdateMaquinas(updated);
+    StorageService.saveMaquinas(updated);
+    CloudSyncService.deleteMaquina(id, maquinaABorrar.nombre);
+    toast.success(`Máquina "${maquinaABorrar.nombre}" eliminada del taller`);
   };
 
   // -----------------------------------------------------------------
@@ -630,23 +672,24 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const tieneDeudas = cuentasAsociadas.some(c => c.saldo_pendiente > 0);
 
     if (tieneDeudas) {
-      toast.error(`No es posible eliminar a ${cliente?.nombre || 'este cliente'} porque tiene saldos pendientes por cobrar en Cuentas de Cobro.`);
-      return;
-    }
-
-    if (cotsAsociadas.length > 0) {
-      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${cotsAsociadas.length} cotización(es) histórica(s). ¿Deseas eliminarlo del directorio de clientes frecuentes?`)) {
+      if (!confirm(`⚠️ ADVERTENCIA: ${cliente?.nombre || 'Este cliente'} tiene saldo pendiente en Cuentas de Cobro.\n¿Deseas forzar su eliminación definitiva del catálogo?`)) {
+        return;
+      }
+    } else if (cotsAsociadas.length > 0) {
+      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${cotsAsociadas.length} cotización(es) registrada(s).\n¿Deseas eliminarlo definitivamente del catálogo?`)) {
         return;
       }
     } else {
-      if (!confirm(`¿Eliminar al cliente "${cliente?.nombre || 'seleccionado'}" del directorio?`)) {
+      if (!confirm(`¿Eliminar al cliente "${cliente?.nombre || 'seleccionado'}" del catálogo?`)) {
         return;
       }
     }
 
     const updated = clientes.filter(c => c.id !== id);
     onUpdateClientes(updated);
-    toast.success('Cliente eliminado del catálogo');
+    StorageService.saveClientes(updated);
+    CloudSyncService.deleteCliente(id, cliente?.nombre);
+    toast.success('Cliente eliminado del catálogo y base de datos');
   };
 
   // -----------------------------------------------------------------
@@ -838,6 +881,14 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         </button>
 
         <button 
+          className={`btn btn-sm ${subTab === 'filamentos' ? 'btn-cyan' : 'btn-secondary'}`}
+          onClick={() => setSubTab('filamentos')}
+        >
+          <Zap size={14} />
+          <span>Filamentos ({filamentos.length})</span>
+        </button>
+
+        <button 
           className={`btn btn-sm ${subTab === 'insumos' ? 'btn-cyan' : 'btn-secondary'}`}
           onClick={() => setSubTab('insumos')}
         >
@@ -994,6 +1045,134 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+      )}
+
+      {/* VISTA FILAMENTOS (FDM) */}
+      {subTab === 'filamentos' && (
+        <div className="glass-card">
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Catálogo de Filamentos 3D (FDM)</h3>
+              <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: '2px 0 0 0' }}>
+                Bobinas de PLA, PETG, ABS, TPU con control de costo por gramo y stock en bodega
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+              <input 
+                type="text" 
+                className="form-input" 
+                style={{ maxWidth: '200px', padding: '6px 12px', minHeight: '34px', fontSize: '0.8rem' }}
+                placeholder="Buscar filamento..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+              />
+              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalFilamento()}>
+                <Plus size={14} />
+                <span>Agregar Filamento</span>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
+            {filamentos
+              .filter(f => 
+                f.marca.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                f.tipo.toLowerCase().includes(searchQuery.toLowerCase()) || 
+                f.color.toLowerCase().includes(searchQuery.toLowerCase())
+              )
+              .map(fil => (
+                <div key={fil.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ 
+                            display: 'inline-block', 
+                            width: '12px', 
+                            height: '12px', 
+                            borderRadius: '50%', 
+                            background: fil.color.toLowerCase().includes('negro') ? '#1e293b' :
+                              fil.color.toLowerCase().includes('blanco') ? '#f8fafc' :
+                              fil.color.toLowerCase().includes('rojo') ? '#ef4444' :
+                              fil.color.toLowerCase().includes('azul') ? '#3b82f6' :
+                              fil.color.toLowerCase().includes('gris') ? '#94a3b8' :
+                              fil.color.toLowerCase().includes('verde') ? '#22c55e' :
+                              fil.color.toLowerCase().includes('amarillo') ? '#eab308' : 'var(--brand-cyan)',
+                            border: '1px solid rgba(255,255,255,0.3)'
+                          }} />
+                          <h4 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc' }}>
+                            {fil.marca} {fil.tipo}
+                          </h4>
+                        </div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--brand-cyan)', fontWeight: 600, marginTop: '2px' }}>
+                          Color: {fil.color}
+                        </div>
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '4px' }}>
+                        {fil.enlace_compra && (
+                          <a href={fil.enlace_compra} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-cyan)', padding: '3px 4px' }} title="Ver enlace">
+                            <ExternalLink size={13} />
+                          </a>
+                        )}
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }}
+                          onClick={() => handleOpenModalFilamento(fil)}
+                          title="Editar filamento"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }}
+                          onClick={() => handleDeleteFilamento(fil.id)}
+                          title="Eliminar filamento"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span>🌡️ Nozzle: {fil.temperatura_nozzle || 215}°C • Bed: {fil.temperatura_bed || 60}°C</span>
+                        <span>{fil.densidad_g_cm3 || 1.24} g/cm³</span>
+                      </div>
+                      
+                      {/* Barra de Stock */}
+                      <div style={{ marginTop: '4px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '2px' }}>
+                          <span style={{ color: fil.stock_actual_g < 200 ? '#f87171' : 'var(--text-main)', fontWeight: 600 }}>
+                            Stock en bodega: {fil.stock_actual_g}g
+                          </span>
+                          <span style={{ color: 'var(--text-subtle)' }}>
+                            {((fil.stock_actual_g / (fil.peso_bobina_g || 1000)) * 100).toFixed(0)}% de rollo
+                          </span>
+                        </div>
+                        <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
+                          <div style={{ 
+                            width: `${Math.min(100, Math.max(0, (fil.stock_actual_g / (fil.peso_bobina_g || 1000)) * 100))}%`, 
+                            height: '100%', 
+                            background: fil.stock_actual_g < 200 ? '#ef4444' : 'var(--brand-cyan)' 
+                          }} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+                    <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }}>
+                      ${fil.costo_gramo.toFixed(2)} COP / gramo
+                    </span>
+                    <span style={{ color: 'var(--text-subtle)', fontSize: '0.75rem' }}>
+                      ${fil.precio_compra.toLocaleString('es-CO')} / {fil.peso_bobina_g}g
+                    </span>
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
       )}
@@ -1968,6 +2147,158 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               </form>
             )}
 
+            {/* FORMULARIO FILAMENTO */}
+            {modalType === 'filamento' && (
+              <form onSubmit={handleSaveFilamento}>
+                <ImageUploadField
+                  label="Fotografía de la Bobina o Muestra"
+                  helperText="Sube foto del carrete o tómala con la cámara en el taller."
+                  value={itemEnEdicion.imagen_url || ''}
+                  onChange={(url) => setItemEnEdicion({ ...itemEnEdicion, imagen_url: url })}
+                />
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Marca *</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={itemEnEdicion.marca}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, marca: e.target.value })}
+                      placeholder="eSun, Bambu Lab, Polymaker..."
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Tipo de Filamento *</label>
+                    <input 
+                      type="text" 
+                      list="tipos-filamento-list"
+                      className="form-input" 
+                      value={itemEnEdicion.tipo}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, tipo: e.target.value })}
+                      placeholder="PLA+, PETG, ABS, TPU..."
+                      required
+                    />
+                    <datalist id="tipos-filamento-list">
+                      <option value="PLA" />
+                      <option value="PLA+" />
+                      <option value="PETG" />
+                      <option value="ABS" />
+                      <option value="TPU 95A" />
+                      <option value="ASA" />
+                      <option value="NYLON" />
+                      <option value="FIBRA_CARBONO" />
+                    </datalist>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Color / Tono *</label>
+                    <input 
+                      type="text" 
+                      className="form-input" 
+                      value={itemEnEdicion.color}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, color: e.target.value })}
+                      placeholder="Negro, Blanco Frío, Rojo Ferrari..."
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Stock en Bodega (g)</label>
+                    <div className="input-with-unit">
+                      <input 
+                        type="number" 
+                        className="form-input" 
+                        value={itemEnEdicion.stock_actual_g}
+                        onChange={e => setItemEnEdicion({ ...itemEnEdicion, stock_actual_g: parseFloat(e.target.value) || 0 })}
+                        placeholder="Gramos"
+                        required
+                      />
+                      <span className="input-unit-badge">g</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Precio Compra Rollo (COP) *</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      value={itemEnEdicion.precio_compra}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, precio_compra: parseFloat(e.target.value) || 0 })}
+                      required
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Peso Total Rollo (g)</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      value={itemEnEdicion.peso_bobina_g}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, peso_bobina_g: parseFloat(e.target.value) || 1000 })}
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label">Temp. Boquilla (°C)</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      value={itemEnEdicion.temperatura_nozzle}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, temperatura_nozzle: parseFloat(e.target.value) || 215 })}
+                      placeholder="215"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Temp. Cama (°C)</label>
+                    <input 
+                      type="number" 
+                      className="form-input" 
+                      value={itemEnEdicion.temperatura_bed}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, temperatura_bed: parseFloat(e.target.value) || 60 })}
+                      placeholder="60"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Densidad (g/cm³)</label>
+                    <input 
+                      type="number" 
+                      step="0.01"
+                      className="form-input" 
+                      value={itemEnEdicion.densidad_g_cm3}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, densidad_g_cm3: parseFloat(e.target.value) || 1.24 })}
+                      placeholder="1.24"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Enlace de Compra / Reposición</label>
+                  <input 
+                    type="url" 
+                    className="form-input" 
+                    value={itemEnEdicion.enlace_compra || ''}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, enlace_compra: e.target.value })}
+                    placeholder="https://..."
+                  />
+                </div>
+
+                <div style={{ padding: '8px 12px', background: 'rgba(56, 189, 248, 0.08)', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.25)', fontSize: '0.8rem', color: '#38bdf8', marginBottom: '12px' }}>
+                  💰 <strong>Costo Calculado:</strong> ${(Number(itemEnEdicion.precio_compra || 0) / (Number(itemEnEdicion.peso_bobina_g) || 1000)).toFixed(2)} COP por gramo
+                </div>
+
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Filamento</button>
+                  <button type="button" className="btn btn-secondary" onClick={() => setModalType(null)}>Cancelar</button>
+                </div>
+              </form>
+            )}
+
             {/* FORMULARIO INSUMO */}
             {modalType === 'insumo' && (
               <form onSubmit={handleSaveInsumo}>
@@ -2168,17 +2499,33 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Estado de la Máquina</label>
-                  <select
-                    className="form-select"
-                    value={itemEnEdicion.estado || 'Disponible'}
-                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, estado: e.target.value })}
-                  >
-                    <option value="Disponible">🟢 Disponible para Producción</option>
-                    <option value="En Uso">🟡 En Uso</option>
-                    <option value="Mantenimiento">🔴 En Mantenimiento</option>
-                  </select>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div className="form-group">
+                    <label className="form-label" style={{ fontWeight: 600 }}>Tecnología de Fabricación</label>
+                    <select
+                      className="form-select"
+                      value={itemEnEdicion.tecnologia || 'SLA_RESINA'}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, tecnologia: e.target.value })}
+                      style={{ border: '1px solid #38bdf8' }}
+                    >
+                      <option value="SLA_RESINA">🧪 Impresión 3D Resina (SLA / MSLA)</option>
+                      <option value="FDM_FILAMENTO">🧵 Impresión 3D Filamento (FDM / FFF)</option>
+                      <option value="CORTE_LASER">⚡ Corte / Grabado Láser</option>
+                      <option value="CNC_ROUTER">⚙️ CNC Router / Mecanizado</option>
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Estado de la Máquina</label>
+                    <select
+                      className="form-select"
+                      value={itemEnEdicion.estado || 'Disponible'}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, estado: e.target.value })}
+                    >
+                      <option value="Disponible">🟢 Disponible para Producción</option>
+                      <option value="En Uso">🟡 En Uso</option>
+                      <option value="Mantenimiento">🔴 En Mantenimiento</option>
+                    </select>
+                  </div>
                 </div>
 
                 {/* MODULO DE REPUESTOS Y MANTENIMIENTO DENTRO DEL MODAL */}

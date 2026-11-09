@@ -1,12 +1,21 @@
 import React from 'react';
-import { Scale, Zap, Layers, Flame, Cpu } from 'lucide-react';
-import { Resina, Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
+import { Scale, Zap, Layers, Flame, Cpu, Sparkles } from 'lucide-react';
+import { Resina, Filamento, Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
 
 interface CotizadorMaterialsCardProps {
   resinas: Resina[];
   resinaId: string;
   setResinaId: (val: string) => void;
   resinaActual?: Resina;
+  filamentos?: Filamento[];
+  filamentoId?: string;
+  setFilamentoId?: (val: string) => void;
+  filamentoActual?: Filamento;
+  mermaPorcentajeFdm?: number;
+  setMermaPorcentajeFdm?: (val: number) => void;
+  mermaPorcentajeResina?: number;
+  setMermaPorcentajeResina?: (val: number) => void;
+  onSelectMaquina?: (mId: string) => void;
   modoCalculoResina: 'volumen' | 'manual';
   setModoCalculoResina: (val: 'volumen' | 'manual') => void;
   pesoResinaManualG: number;
@@ -62,6 +71,15 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
   resinaId,
   setResinaId,
   resinaActual,
+  filamentos = [],
+  filamentoId,
+  setFilamentoId,
+  filamentoActual,
+  mermaPorcentajeFdm = 5,
+  setMermaPorcentajeFdm,
+  mermaPorcentajeResina = 10,
+  setMermaPorcentajeResina,
+  onSelectMaquina,
   modoCalculoResina,
   setModoCalculoResina,
   pesoResinaManualG,
@@ -190,7 +208,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: modoCalculoResina === 'manual' ? '1.5fr 1fr' : '1fr', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: modoCalculoResina === 'manual' ? '1.5fr 1fr 1fr' : '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
             <div>
               <label className="form-label">Tipo de Resina</label>
               <select 
@@ -222,6 +240,24 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 </div>
               </div>
             )}
+
+            <div>
+              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>% Merma Resina</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--brand-cyan)' }}>Lavado / Tina</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  className="form-input"
+                  value={mermaPorcentajeResina}
+                  onChange={e => setMermaPorcentajeResina && setMermaPorcentajeResina(Math.max(0, parseFloat(e.target.value) || 0))}
+                  placeholder="10"
+                  step="1"
+                />
+                <span className="input-unit-badge">%</span>
+              </div>
+            </div>
           </div>
 
           {/* Selector de Estructura y Vaciado */}
@@ -305,7 +341,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <select 
                   className="form-select"
                   value={maquinaId}
-                  onChange={e => setMaquinaId(e.target.value)}
+                  onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
                 >
                   {maquinas.map(m => (
                     <option key={m.id} value={m.id}>
@@ -348,26 +384,33 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
       {/* 2. MODO FDM FILAMENTO */}
       {tecnologia === 'FDM_FILAMENTO' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
             <div>
-              <label className="form-label">Material de Filamento</label>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                <label className="form-label" style={{ margin: 0 }}>Bobina de Filamento</label>
+                <span style={{ fontSize: '0.7rem', color: 'var(--brand-cyan)' }}>
+                  {filamentos.length} en inventario
+                </span>
+              </div>
               <select
                 className="form-select"
-                value={materialFilamento}
-                onChange={e => setMaterialFilamento && setMaterialFilamento(e.target.value)}
+                value={filamentoId || (filamentos[0]?.id || '')}
+                onChange={e => setFilamentoId && setFilamentoId(e.target.value)}
               >
-                <option value="PLA">PLA Estándar (Fácil impresión / Figuras)</option>
-                <option value="PLA+">PLA+ / PLA Pro (Mayor resistencia)</option>
-                <option value="PETG">PETG (Resistente UV y químico)</option>
-                <option value="ABS">ABS / ASA (Alta temperatura / Exterior)</option>
-                <option value="TPU">TPU Flexible (Elastómero / Piezas de goma)</option>
-                <option value="NYLON">Nylon / Poliamida (Mecánico / Engranajes)</option>
-                <option value="FIBRA_CARBONO">PLA/PETG Fibra de Carbono (Rígido)</option>
+                {filamentos && filamentos.length > 0 ? (
+                  filamentos.map(f => (
+                    <option key={f.id} value={f.id}>
+                      {f.marca} {f.tipo} ({f.color}) — ${f.costo_gramo}/g (Stock: {f.stock_actual_g}g)
+                    </option>
+                  ))
+                ) : (
+                  <option value="">No hay filamentos cargados en catálogo</option>
+                )}
               </select>
             </div>
 
             <div>
-              <label className="form-label">Peso del Modelo (Slicer Cura/Prusa/Bambu)</label>
+              <label className="form-label">Peso Slicer (Gramos)</label>
               <div className="input-with-unit">
                 <input
                   type="number"
@@ -382,20 +425,50 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
 
             <div>
-              <label className="form-label">Costo Rollo Filamento ($/kg)</label>
+              <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>% Merma / Purga</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--brand-cyan)' }}>Soportes & AMS</span>
+              </label>
               <div className="input-with-unit">
                 <input
                   type="number"
                   className="form-input"
-                  value={costoRolloKg}
+                  value={mermaPorcentajeFdm}
+                  onChange={e => setMermaPorcentajeFdm && setMermaPorcentajeFdm(Math.max(0, parseFloat(e.target.value) || 0))}
+                  placeholder="5"
+                  step="1"
+                />
+                <span className="input-unit-badge">%</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="form-label">Costo Rollo Filamento</label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  className="form-input"
+                  value={filamentoActual ? Math.round(filamentoActual.costo_gramo * 1000) : costoRolloKg}
                   onChange={e => setCostoRolloKg && setCostoRolloKg(Math.max(1000, parseFloat(e.target.value) || 85000))}
                   placeholder="COP por kg"
                   step="1000"
+                  readOnly={Boolean(filamentoActual)}
+                  style={filamentoActual ? { background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' } : {}}
                 />
                 <span className="input-unit-badge">$/kg</span>
               </div>
             </div>
           </div>
+
+          {filamentoActual && (
+            <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
+              <span>🎨 <strong>Color:</strong> {filamentoActual.color}</span>
+              <span>🏷️ <strong>Marca:</strong> {filamentoActual.marca}</span>
+              <span>🌡️ <strong>Nozzle:</strong> {filamentoActual.temperatura_nozzle || 215}°C</span>
+              <span>🔥 <strong>Bed:</strong> {filamentoActual.temperatura_bed || 60}°C</span>
+              <span>📦 <strong>Stock Bodega:</strong> {filamentoActual.stock_actual_g}g</span>
+            </div>
+          )}
 
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
             <div>
@@ -403,11 +476,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               <select
                 className="form-select"
                 value={maquinaId}
-                onChange={e => setMaquinaId(e.target.value)}
+                onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
               >
                 {maquinas.map(m => (
                   <option key={m.id} value={m.id}>
-                    {m.nombre} ({m.tipo}) — {m.consumo_kwh} kW/h
+                    {m.nombre} ({m.tipo}) — {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
                   </option>
                 ))}
               </select>
@@ -428,8 +501,15 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
           </div>
 
-          <div style={{ fontSize: '0.72rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
-            💡 <strong>FDM:</strong> {Math.floor(tiempoFDMMin / 60)}h {tiempoFDMMin % 60}m • Material: {pesoFilamentoG}g a ${(pesoFilamentoG * (costoRolloKg / 1000)).toLocaleString('es-CO')} COP • Incluye amortización de boquilla y consumo de cama caliente.
+          <div style={{ fontSize: '0.74rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)', display: 'flex', flexDirection: 'column', gap: '3px' }}>
+            <div>
+              💡 <strong>Desglose FDM 3DPCC:</strong> {Math.floor(tiempoFDMMin / 60)}h {tiempoFDMMin % 60}m de máquina ({maquinaActual?.nombre || 'FDM'})
+            </div>
+            <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', color: 'var(--text-main)', marginTop: '2px' }}>
+              <span>🧶 Material: ${(calculoEnVivo?.costo_resina || 0).toLocaleString('es-CO')} COP ({(pesoFilamentoG * (1 + mermaPorcentajeFdm/100)).toFixed(1)}g con {mermaPorcentajeFdm}% merma)</span>
+              <span>⚡ Energía: ${(calculoEnVivo?.costo_energia || 0).toLocaleString('es-CO')} COP</span>
+              <span>🔧 Boquilla/PEI: ${(calculoEnVivo?.costo_repuestos_maquina || 0).toLocaleString('es-CO')} COP</span>
+            </div>
           </div>
         </div>
       )}

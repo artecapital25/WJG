@@ -1,5 +1,6 @@
 import { 
   Resina, 
+  Filamento,
   Maquina, 
   Insumo, 
   Personal, 
@@ -43,6 +44,7 @@ export interface ItemEnlaceCompraForm {
 
 export interface CotizadorFormProps {
   resinas: Resina[];
+  filamentos?: Filamento[];
   maquinas: Maquina[];
   insumos: Insumo[];
   personal: Personal[];
@@ -72,6 +74,7 @@ export interface CotizacionBuilderProps {
   cotizaciones?: import('../../../types').Cotizacion[];
   cotizacionEnEdicion?: import('../../../types').Cotizacion | null;
   resinas?: Resina[];
+  filamentos?: Filamento[];
   maquinas?: Maquina[];
   insumos?: Insumo[];
   personal?: import('../../../types').Personal[];

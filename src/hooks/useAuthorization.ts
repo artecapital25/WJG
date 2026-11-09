@@ -46,29 +46,29 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
       return {
         id: '4485aa21-3896-4510-b693-fc68e947372d',
         nombre: 'Wendy',
-        rol: 'PINTURA_ACABADOS',
+        rol: 'ADMIN_COBRANZAS',
         telefono: '3204814702',
         telefono_notificaciones: '573204814702',
-        permisos_areas: ['taller', 'gestion'] as HubAreaPermission[],
+        permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[],
         activo: true
       };
     }
 
-    // Default Juan: Solo Taller
+    // Default Juan: Administrador completo
     return {
       id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
       nombre: 'Juan',
-      rol: 'IMPRESION_MANTENIMIENTO',
+      rol: 'ADMIN_COBRANZAS',
       telefono: '3217273025',
       telefono_notificaciones: '573217273025',
-      permisos_areas: ['taller'] as HubAreaPermission[],
+      permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[],
       activo: true
     };
   }, [activeOperatorName, usuarios]);
 
   const permisos: HubAreaPermission[] = useMemo(() => {
     if (!currentUser.activo) return [];
-    return currentUser.permisos_areas || ['taller'];
+    return currentUser.permisos_areas || ['ventas', 'taller', 'finanzas', 'gestion'];
   }, [currentUser]);
 
   const hasPermission = (area: HubAreaPermission): boolean => {
@@ -94,6 +94,6 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
     hasPermission,
     canAccessHub,
     canAccessTab,
-    isGermanAdmin: currentUser.nombre.toLowerCase().includes('german')
+    isGermanAdmin: currentUser.rol === 'ADMIN_COBRANZAS' || (currentUser.permisos_areas && currentUser.permisos_areas.includes('gestion'))
   };
 }

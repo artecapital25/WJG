@@ -1,6 +1,6 @@
 // Datos maestros extraídos directamente del libro de producción WJGEEKS.xlsx
 // Contiene 31 clientes, 10 tipos de resina, 31 insumos de taller y máquinas oficiales.
-import { ProductoStock } from '../types';
+import { ProductoStock, Filamento, TecnologiaFabricacion } from '../types';
 
 export interface Resina {
   id: string;
@@ -33,6 +33,7 @@ export interface Maquina {
   id: string;
   nombre: string;
   tipo: string;
+  tecnologia?: TecnologiaFabricacion;
   consumo_kwh: number;
   costo_minuto: number;
   costo_minuto_energia?: number;
@@ -204,6 +205,51 @@ export const RESINAS_INICIALES: Resina[] = [
     "costo_gramo": 76.10619469,
     "velocidad_impresion_mm_h": 30.0,
     "resumen": "Resina Standar ABS  \nColor Negra"
+  }
+];
+
+export const FILAMENTOS_INICIALES: Filamento[] = [
+  {
+    id: "9ce486c0-2bda-49e2-96c0-5a9810503060",
+    marca: "Arrow",
+    tipo: "PLA Standar",
+    color: "Blanco",
+    peso_bobina_g: 1000,
+    precio_compra: 78000,
+    costo_gramo: 78,
+    stock_actual_g: 1000,
+    temperatura_nozzle: 210,
+    temperatura_bed: 60,
+    densidad_g_cm3: 1.24,
+    activo: true
+  },
+  {
+    id: "c4319b98-de57-48b6-a261-e0e4c142a94b",
+    marca: "Arrow",
+    tipo: "PETG",
+    color: "Negro",
+    peso_bobina_g: 1000,
+    precio_compra: 80000,
+    costo_gramo: 80,
+    stock_actual_g: 1000,
+    temperatura_nozzle: 235,
+    temperatura_bed: 75,
+    densidad_g_cm3: 1.27,
+    activo: true
+  },
+  {
+    id: "9c338dfc-9f33-4c91-be92-af9e4ae4cd18",
+    marca: "Arrow",
+    tipo: "PETG",
+    color: "Blanco",
+    peso_bobina_g: 1000,
+    precio_compra: 80000,
+    costo_gramo: 80,
+    stock_actual_g: 1000,
+    temperatura_nozzle: 235,
+    temperatura_bed: 75,
+    densidad_g_cm3: 1.27,
+    activo: true
   }
 ];
 
@@ -647,6 +693,7 @@ export const MAQUINAS_INICIALES: Maquina[] = [
     "id": "maq-1",
     "nombre": "Anycubic MONO 4",
     "tipo": "Impresora 3D Resina",
+    "tecnologia": "SLA_RESINA",
     "consumo_kwh": 0.05,
     "costo_minuto_energia": 0.695,
     "costo_minuto_repuestos": 5.667,
@@ -677,6 +724,7 @@ export const MAQUINAS_INICIALES: Maquina[] = [
     "id": "maq-6",
     "nombre": "Anycubic Photon Mono X 6Ks",
     "tipo": "Impresora 3D Resina",
+    "tecnologia": "SLA_RESINA",
     "consumo_kwh": 0.06,
     "costo_minuto_energia": 0.834,
     "costo_minuto_repuestos": 6.556,
@@ -707,6 +755,7 @@ export const MAQUINAS_INICIALES: Maquina[] = [
     "id": "maq-bambu",
     "nombre": "Bambulab P1S / P2S",
     "tipo": "Impresora 3D Filamento (FDM)",
+    "tecnologia": "FDM_FILAMENTO",
     "consumo_kwh": 0.13,
     "costo_minuto_energia": 1.807,
     "costo_minuto_repuestos": 1.917,
@@ -737,6 +786,7 @@ export const MAQUINAS_INICIALES: Maquina[] = [
     "id": "maq-4",
     "nombre": "Anycubic Kobra 2 Neo",
     "tipo": "Impresora 3D Filamento (FDM)",
+    "tecnologia": "FDM_FILAMENTO",
     "consumo_kwh": 0.15,
     "costo_minuto_energia": 2.085,
     "costo_minuto_repuestos": 1.333,
@@ -1124,6 +1174,7 @@ export const CLIENTES_INICIALES: Cliente[] = [
 export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "tarifa_kwh": 834.0,
   "margen_merma_resina": 1.4,
+  "margen_merma_fdm": 5.0,
   "telefono_contacto": "3202796115",
   "telefono_contacto2": "3217273025",
   "correo": "wjgeeks3d@gmail.com",

@@ -67,6 +67,14 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
           resinaId={form.resinaId}
           setResinaId={form.setResinaId}
           resinaActual={form.resinaActual}
+          filamentos={props.filamentos || []}
+          filamentoId={form.filamentoId}
+          setFilamentoId={form.setFilamentoId}
+          filamentoActual={form.filamentoActual}
+          mermaPorcentajeFdm={form.mermaPorcentajeFdm}
+          setMermaPorcentajeFdm={form.setMermaPorcentajeFdm}
+          mermaPorcentajeResina={form.mermaPorcentajeResina}
+          setMermaPorcentajeResina={form.setMermaPorcentajeResina}
           modoCalculoResina={form.modoCalculoResina}
           setModoCalculoResina={form.setModoCalculoResina}
           pesoResinaManualG={form.pesoResinaManualG}
@@ -78,6 +86,7 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
           maquinas={props.maquinas}
           maquinaId={form.maquinaId}
           setMaquinaId={form.setMaquinaId}
+          onSelectMaquina={form.handleSelectMaquina}
           maquinaActual={form.maquinaActual}
           tiempoImpresionModo={form.tiempoImpresionModo}
           setTiempoImpresionModo={form.setTiempoImpresionModo}

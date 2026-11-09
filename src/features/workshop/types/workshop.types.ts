@@ -23,6 +23,7 @@ export interface WorkOrdersPipelineProps {
   onActualizarOT?: (otActualizada: OrdenTrabajo) => void;
   onEliminarOT?: (otId: string, motivo: string, revertirCotizacion?: boolean, nuevoEstadoCot?: EstadoCotizacion) => void;
   onNavigateToCotizaciones?: (cotNumeroOId?: string) => void;
+  onOpenProduccionInterna?: () => void;
 }
 
 export interface HandoffConfig {
