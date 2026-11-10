@@ -2473,5 +2473,58 @@ export const CloudSyncService = {
       console.warn('Exception queuing notification:', e);
       return false;
     }
+  },
+
+  // 24. Subir Fotografía a Supabase Storage (Bucket 'archivos-taller' con fallback WebP)
+  async uploadFotoTaller(
+    input: File | string, 
+    carpeta: 'piezas' | 'materiales' | 'insumos' | 'maquinas' = 'piezas'
+  ): Promise<string> {
+    if (typeof input === 'string' && (input.startsWith('http://') || input.startsWith('https://'))) {
+      return input;
+    }
+
+    try {
+      const { processAndOptimizeImage, dataUrlToBlob } = await import('./imageService');
+      
+      const dataUrl = typeof input === 'string' && input.startsWith('data:image/')
+        ? input
+        : await processAndOptimizeImage(input, 640, 640, 0.75);
+
+      if (!this.isAvailable()) {
+        return dataUrl;
+      }
+
+      const blob = dataUrlToBlob(dataUrl);
+      const filename = `${carpeta}/${Date.now()}-${Math.random().toString(36).substring(2, 8)}.webp`;
+
+      const { error } = await supabase!.storage
+        .from('archivos-taller')
+        .upload(filename, blob, {
+          contentType: 'image/webp',
+          cacheControl: '31536000',
+          upsert: true
+        });
+
+      if (error) {
+        console.warn('Supabase storage upload error, fallback a dataUrl:', error.message);
+        return dataUrl;
+      }
+
+      const { data: pubData } = supabase!.storage
+        .from('archivos-taller')
+        .getPublicUrl(filename);
+
+      if (pubData?.publicUrl) {
+        return pubData.publicUrl;
+      }
+
+      return dataUrl;
+    } catch (err) {
+      console.warn('Error en uploadFotoTaller, fallback a dataUrl:', err);
+      if (typeof input === 'string') return input;
+      const { processAndOptimizeImage } = await import('./imageService');
+      return await processAndOptimizeImage(input, 640, 640, 0.75);
+    }
   }
 };

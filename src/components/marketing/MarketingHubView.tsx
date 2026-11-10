@@ -1021,16 +1021,29 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
               borderRadius: '12px',
               padding: '18px 20px'
             }}>
-              <h4 style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--brand-cyan)', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <HelpCircle size={16} />
-                ¿Cómo subir este catálogo a Instagram & WhatsApp Business?
+              <h4 style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--brand-cyan)', margin: '0 0 12px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <HelpCircle size={17} />
+                Guía Paso a Paso para Meta Business Suite en Colombia (Línea Claro & @WJGEEKS3D)
               </h4>
-              <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <li>Descarga el archivo <code>wjg_meta_commerce_catalog.csv</code> haciendo clic en el botón superior.</li>
-                <li>Ingresa a tu <strong style={{ color: '#fff' }}>Meta Business Suite</strong> (business.facebook.com) con la cuenta vinculada a Instagram.</li>
-                <li>En el menú lateral, dirígete a <strong style={{ color: 'var(--brand-cyan)' }}>Administrador de Comercio (Commerce Manager) &gt; Catálogos</strong>.</li>
-                <li>Selecciona <strong style={{ color: '#fff' }}>Orígenes de datos &gt; Subir productos</strong> y escoge la opción <strong>Hoja de cálculo o archivo CSV</strong>.</li>
-                <li>Sube el archivo descargado. ¡Tus figuras quedarán publicadas automáticamente con precios en COP y botón para chatear por WhatsApp!</li>
+              <ol style={{ margin: 0, paddingLeft: '20px', fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.6', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <li>
+                  <strong style={{ color: '#fff' }}>1. Línea Operativa Claro Colombia:</strong> Consigue una SIM Prepago o Pospago de Claro asignada exclusivamente a WJGEEKS (+57 320 2796115). Regístrala en la app <em>Mi Claro</em> para proteger la titularidad. Instala <strong>WhatsApp Business</strong> en tu celular con este número y añade tu logo, catálogo y horarios.
+                </li>
+                <li>
+                  <strong style={{ color: '#fff' }}>2. Meta Business Suite & Fanpage:</strong> Ingresa desde el computador a <a href="https://business.facebook.com" target="_blank" rel="noreferrer" style={{ color: 'var(--brand-cyan)', textDecoration: 'underline' }}>business.facebook.com</a> con tu Facebook personal y crea la cuenta empresarial <strong>WJGEEKS 3D PRO</strong> con su Fan Page oficial.
+                </li>
+                <li>
+                  <strong style={{ color: '#fff' }}>3. Vincular Instagram (@WJGEEKS3D):</strong> En la app móvil de Instagram, ve a <em>Configuración ➔ Cuenta ➔ Cambiar a cuenta profesional / creador</em>, y conéctala con la Fan Page de Facebook de WJGEEKS.
+                </li>
+                <li>
+                  <strong style={{ color: '#fff' }}>4. Descargar Catálogo CSV:</strong> Haz clic en el botón superior <strong>"Descargar Catálogo CSV"</strong> para obtener todos los productos y tarifas formateados bajo el estándar oficial de Meta.
+                </li>
+                <li>
+                  <strong style={{ color: '#fff' }}>5. Cargar en Commerce Manager:</strong> En Meta Business Suite, dirígete a <strong style={{ color: 'var(--brand-cyan)' }}>Administrador de Ventas (Commerce Manager) &gt; Catálogos &gt; Orígenes de datos &gt; Subir archivo de datos</strong> y selecciona el archivo CSV.
+                </li>
+                <li>
+                  <strong style={{ color: '#fff' }}>6. Etiquetar en Anuncios y Posts:</strong> Al crear historias, publicaciones o anuncios en Meta Ads Manager, presiona <em>"Etiquetar Productos"</em>. Tus clientes podrán tocar cualquier figura y cotizar de inmediato en COP.
+                </li>
               </ol>
             </div>
           </div>

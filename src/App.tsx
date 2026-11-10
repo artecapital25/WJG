@@ -597,6 +597,9 @@ export const App: React.FC = () => {
       }
     };
 
+    // Saneamiento proactivo de memoria en localStorage para evitar errores de cuota en móviles
+    StorageService.sanitizeLocalStorage();
+
     syncCloudData();
 
     // 3. Suscripción reactiva en tiempo real a cambios de taller entre todos los dispositivos

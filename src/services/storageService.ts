@@ -258,8 +258,19 @@ function saveItem<T>(key: string, val: T): void {
   try {
     localStorage.setItem(key, JSON.stringify(val));
     triggerAutoSyncIfEnabled(key);
-  } catch (e) {
+  } catch (e: any) {
     console.error(`Error saving ${key} to storage:`, e);
+    // Manejo defensivo de cuota de memoria llena (QuotaExceededError)
+    if (e && (e.name === 'QuotaExceededError' || e.code === 22 || e.number === -2147024882 || String(e).toLowerCase().includes('quota'))) {
+      console.warn('Alerta de cuota excedida: ejecutando saneamiento de localStorage...');
+      StorageService.sanitizeLocalStorage();
+      try {
+        localStorage.setItem(key, JSON.stringify(val));
+        triggerAutoSyncIfEnabled(key);
+      } catch (retryErr) {
+        console.error('No se pudo guardar incluso tras saneamiento:', retryErr);
+      }
+    }
   }
 }
 
@@ -641,6 +652,58 @@ export const StorageService = {
       localStorage.removeItem(STORAGE_KEYS.DRAFT_BUILDER_META);
     } catch (e) {
       console.warn('Error clearing draft builder meta:', e);
+    }
+  },
+
+  // Rutina de saneamiento para liberar memoria local y prevenir QuotaExceededError
+  sanitizeLocalStorage: (): { bytesLiberados: number; keysSaneadas: number } => {
+    if (typeof localStorage === 'undefined') return { bytesLiberados: 0, keysSaneadas: 0 };
+    let bytesLiberados = 0;
+    let keysSaneadas = 0;
+
+    try {
+      // 1. Limpiar claves temporales o de preview obsoletas
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('wjg_preview_') || k.startsWith('wjg_temp_') || k.includes('cache_old'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => {
+        const item = localStorage.getItem(k);
+        if (item) bytesLiberados += item.length;
+        localStorage.removeItem(k);
+        keysSaneadas++;
+      });
+
+      // 2. Limpiar Base64 pesados en el borrador de piezas si excede 1.5MB
+      const draftData = localStorage.getItem(STORAGE_KEYS.DRAFT_PIECES);
+      if (draftData && draftData.length > 1500000) {
+        try {
+          const pieces = JSON.parse(draftData);
+          if (Array.isArray(pieces)) {
+            const cleanedPieces = pieces.map((p: any) => {
+              if (p.imagen_url && p.imagen_url.startsWith('data:image/') && p.imagen_url.length > 50000) {
+                return { ...p, imagen_url: '' };
+              }
+              return p;
+            });
+            const cleanedStr = JSON.stringify(cleanedPieces);
+            bytesLiberados += (draftData.length - cleanedStr.length);
+            localStorage.setItem(STORAGE_KEYS.DRAFT_PIECES, cleanedStr);
+            keysSaneadas++;
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEYS.DRAFT_PIECES);
+        }
+      }
+
+      console.info(`[SanitizeStorage] Se liberaron ~${Math.round(bytesLiberados / 1024)} KB de localStorage.`);
+      return { bytesLiberados, keysSaneadas };
+    } catch (e) {
+      console.warn('Error durante sanitizeLocalStorage:', e);
+      return { bytesLiberados, keysSaneadas };
     }
   },
 

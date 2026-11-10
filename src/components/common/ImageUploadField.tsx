@@ -1,6 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Camera, Upload, Trash2, Eye, Link, RefreshCw, X, Image as ImageIcon } from 'lucide-react';
 import { processAndOptimizeImage } from '../../services/imageService';
+import { CloudSyncService } from '../../services/cloudSyncService';
 import { toast } from '../ui/ToastProvider';
 
 interface ImageUploadFieldProps {
@@ -39,9 +40,14 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
 
     try {
       setIsProcessing(true);
-      const optimized = await processAndOptimizeImage(file, maxWidth, maxHeight, quality);
-      onChange(optimized);
-      toast.success('✓ Foto optimizada y adjuntada correctamente.');
+      // Subida optimizada a Supabase Storage con compresión WebP
+      const finalUrl = await CloudSyncService.uploadFotoTaller(file, 'piezas');
+      onChange(finalUrl);
+      if (finalUrl.startsWith('http')) {
+        toast.success('✓ Foto optimizada y alojada en Supabase Storage CDN.');
+      } else {
+        toast.success('✓ Foto optimizada en formato WebP ultraliviano.');
+      }
     } catch (err: any) {
       console.error('Error al procesar la imagen:', err);
       toast.error('Error al optimizar la foto: ' + (err?.message || 'Formato no soportado'));
@@ -279,10 +285,10 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
                   title="Abre la cámara trasera de tu móvil o tablet"
                 >
                   <Camera size={16} />
-                  <span>Tomar Foto (Cámara)</span>
+                  <span>📷 Tomar Foto (Cámara)</span>
                 </button>
 
-                {/* Botón Subir Archivo */}
+                {/* Botón Subir Archivo desde Galería o PC */}
                 <button
                   type="button"
                   className="btn btn-secondary btn-sm"
@@ -290,13 +296,14 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
                     display: 'flex',
                     alignItems: 'center',
                     gap: '6px',
-                    padding: '8px 12px'
+                    padding: '8px 14px',
+                    fontWeight: 600
                   }}
                   onClick={() => fileInputRef.current?.click()}
-                  title="Subir archivo PNG o JPG desde tu dispositivo"
+                  title="Elegir foto o imagen desde tu galería del celular o archivos de PC"
                 >
                   <Upload size={15} />
-                  <span>Subir Archivo</span>
+                  <span>📁 Elegir de Galería / PC</span>
                 </button>
 
                 {/* Botón Pegar URL */}

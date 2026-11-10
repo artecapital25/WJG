@@ -1,15 +1,15 @@
 /**
  * Servicio de procesamiento y optimización de imágenes para WJGEEKS 3D.
  * Redimensiona y comprime imágenes (fotos desde celulares o capturas de canvas Three.js)
- * para mantener la base de datos ligera, evitar desbordar localStorage y asegurar
- * que la generación de PDFs con jsPDF sea rápida y nítida.
+ * a formato WebP ultraliviano (25 KB - 40 KB) para mantener la base de datos ligera,
+ * evitar desbordar localStorage y asegurar subidas ultrarrápidas a Supabase Storage.
  */
 
 export async function processAndOptimizeImage(
   input: File | string,
-  maxWidth = 800,
-  maxHeight = 800,
-  quality = 0.85
+  maxWidth = 640,
+  maxHeight = 640,
+  quality = 0.75
 ): Promise<string> {
   return new Promise((resolve, reject) => {
     try {
@@ -50,10 +50,17 @@ export async function processAndOptimizeImage(
         // Dibujar en el lienzo redimensionado
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Convertir a JPEG para fotos o PNG para transparencia
-        const isPng = typeof input === 'string' && input.startsWith('data:image/png');
-        const outputFormat = isPng ? 'image/png' : 'image/jpeg';
-        const dataUrl = canvas.toDataURL(outputFormat, quality);
+        // Convertir prioritariamente a WebP (ultra compacto) o JPEG de respaldo
+        let dataUrl = '';
+        try {
+          dataUrl = canvas.toDataURL('image/webp', quality);
+          // Si el navegador no soporta webp, devuelve image/png
+          if (!dataUrl.startsWith('data:image/webp')) {
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+        } catch {
+          dataUrl = canvas.toDataURL('image/jpeg', quality);
+        }
 
         resolve(dataUrl);
       };
@@ -77,6 +84,36 @@ export async function processAndOptimizeImage(
       reject(err);
     }
   });
+}
+
+/**
+ * Convierte un DataURL Base64 a un Blob binario para subida eficiente a Supabase Storage
+ */
+export function dataUrlToBlob(dataUrl: string): Blob {
+  const parts = dataUrl.split(';base64,');
+  const contentType = parts[0].split(':')[1] || 'image/webp';
+  const raw = window.atob(parts[1]);
+  const rawLength = raw.length;
+  const uInt8Array = new Uint8Array(rawLength);
+
+  for (let i = 0; i < rawLength; ++i) {
+    uInt8Array[i] = raw.charCodeAt(i);
+  }
+
+  return new Blob([uInt8Array], { type: contentType });
+}
+
+/**
+ * Convierte un File a un Blob optimizado directamente
+ */
+export async function fileToOptimizedBlob(
+  file: File,
+  maxWidth = 640,
+  maxHeight = 640,
+  quality = 0.75
+): Promise<Blob> {
+  const dataUrl = await processAndOptimizeImage(file, maxWidth, maxHeight, quality);
+  return dataUrlToBlob(dataUrl);
 }
 
 /**
