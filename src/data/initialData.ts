@@ -64,6 +64,7 @@ export interface Cliente {
 export interface ConfiguracionTaller {
   tarifa_kwh: number;
   margen_merma_resina: number;
+  margen_merma_fdm?: number;
   telefono_contacto: string;
   telefono_contacto2: string;
   correo?: string;

@@ -10,6 +10,7 @@ const TAB_TO_HUB_MAP: Record<TabType, HubAreaPermission> = {
   workflow: 'taller',
   stl: 'taller',
   stock: 'taller',
+  materiales: 'taller',
   calendario: 'taller',
   seguimiento: 'taller',
   cuentas: 'finanzas',
@@ -18,6 +19,7 @@ const TAB_TO_HUB_MAP: Record<TabType, HubAreaPermission> = {
   tareas: 'gestion',
   usuarios: 'gestion',
   marketing: 'gestion',
+  directorio: 'gestion',
   catalogos: 'gestion',
   herramientas: 'gestion'
 };

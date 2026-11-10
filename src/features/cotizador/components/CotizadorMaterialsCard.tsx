@@ -123,6 +123,35 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
   tiempoMecanizadoMin = 45,
   setTiempoMecanizadoMin
 }) => {
+  // Filtrado estricto de maquinaria por tecnología
+  const maquinasSLA = maquinas.filter(m => 
+    m.tecnologia === 'SLA_RESINA' || 
+    m.nombre.toLowerCase().includes('mono') || 
+    m.nombre.toLowerCase().includes('photon') || 
+    (m.tipo || '').toLowerCase().includes('resina')
+  );
+  const maquinasSLAParaSelect = maquinasSLA.length > 0 ? maquinasSLA : maquinas;
+
+  const maquinasFDM = maquinas.filter(m => 
+    m.tecnologia === 'FDM_FILAMENTO' || 
+    m.nombre.toLowerCase().includes('bambu') || 
+    m.nombre.toLowerCase().includes('p1s') || 
+    m.nombre.toLowerCase().includes('p2s') || 
+    m.nombre.toLowerCase().includes('kobra') || 
+    m.nombre.toLowerCase().includes('ender') || 
+    (m.tipo || '').toLowerCase().includes('fdm') ||
+    (m.tipo || '').toLowerCase().includes('filamento')
+  );
+  const maquinasFDMParaSelect = maquinasFDM.length > 0 ? maquinasFDM : maquinas;
+
+  // Filamentos ordenados alfabéticamente
+  const filamentosOrdenados = React.useMemo(() => {
+    return [...filamentos].sort((a, b) => {
+      const keyA = `${a.marca} ${a.tipo} ${a.color}`.trim();
+      const keyB = `${b.marca} ${b.tipo} ${b.color}`.trim();
+      return keyA.localeCompare(keyB);
+    });
+  }, [filamentos]);
   return (
     <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border-subtle)' }}>
       
@@ -343,7 +372,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                   value={maquinaId}
                   onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
                 >
-                  {maquinas.map(m => (
+                  {maquinasSLAParaSelect.map(m => (
                     <option key={m.id} value={m.id}>
                       {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
                     </option>
@@ -397,10 +426,10 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 value={filamentoId || (filamentos[0]?.id || '')}
                 onChange={e => setFilamentoId && setFilamentoId(e.target.value)}
               >
-                {filamentos && filamentos.length > 0 ? (
-                  filamentos.map(f => (
+                {filamentosOrdenados && filamentosOrdenados.length > 0 ? (
+                  filamentosOrdenados.map(f => (
                     <option key={f.id} value={f.id}>
-                      {f.marca} {f.tipo} ({f.color}) — ${f.costo_gramo}/g (Stock: {f.stock_actual_g}g)
+                      {f.marca} {f.tipo} ({f.color}) — ${f.costo_gramo}/g (Stock: {f.stock_actual_g || 1000}g)
                     </option>
                   ))
                 ) : (
@@ -472,13 +501,13 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
 
           <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
             <div>
-              <label className="form-label">Impresora FDM</label>
+              <label className="form-label">Impresora FDM (Filamento)</label>
               <select
                 className="form-select"
                 value={maquinaId}
                 onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
               >
-                {maquinas.map(m => (
+                {maquinasFDMParaSelect.map(m => (
                   <option key={m.id} value={m.id}>
                     {m.nombre} ({m.tipo}) — {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
                   </option>

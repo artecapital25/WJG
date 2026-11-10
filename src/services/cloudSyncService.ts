@@ -382,20 +382,20 @@ export const CloudSyncService = {
     }
   },
 
-  // 3. Traer Clientes desde la Nube
+  // 3. Traer Clientes desde la Nube (Ordenados Alfabéticamente)
   async fetchClientes(): Promise<Cliente[] | null> {
     if (!this.isAvailable()) return null;
     try {
       const { data, error } = await supabase!
         .from('clientes')
         .select('*')
-        .order('codigo', { ascending: true });
+        .order('nombre', { ascending: true });
 
       if (error) {
         console.warn('Error fetching clientes:', error);
         return null;
       }
-      return data || [];
+      return (data || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
     } catch (e) {
       console.warn('Exception in fetchClientes:', e);
       return null;
@@ -1519,22 +1519,24 @@ export const CloudSyncService = {
         return null;
       }
       if (!data || data.length === 0) return [];
-      return data.map((row: any): Filamento => ({
-        id: row.id,
-        marca: row.marca || 'Genérico',
-        tipo: row.tipo || 'PLA',
-        color: row.color || 'Negro',
-        peso_bobina_g: Number(row.peso_bobina_g) || 1000,
-        precio_compra: Number(row.precio_compra) || 85000,
-        costo_gramo: Number(row.costo_gramo) || 85,
-        stock_actual_g: Number(row.stock_actual_g) || 1000,
-        temperatura_nozzle: Number(row.temperatura_nozzle) || 215,
-        temperatura_bed: Number(row.temperatura_bed) || 60,
-        densidad_g_cm3: Number(row.densidad_g_cm3) || 1.24,
-        enlace_compra: row.enlace_compra || '',
-        imagen_url: row.imagen_url || '',
-        activo: row.activo !== false
-      }));
+      return data
+        .map((row: any): Filamento => ({
+          id: row.id,
+          marca: row.marca || 'Genérico',
+          tipo: row.tipo || 'PLA',
+          color: row.color || 'Negro',
+          peso_bobina_g: Number(row.peso_bobina_g) || 1000,
+          precio_compra: Number(row.precio_compra) || 85000,
+          costo_gramo: Number(row.costo_gramo) || 85,
+          stock_actual_g: Number(row.stock_actual_g) || 1000,
+          temperatura_nozzle: Number(row.temperatura_nozzle) || 215,
+          temperatura_bed: Number(row.temperatura_bed) || 60,
+          densidad_g_cm3: Number(row.densidad_g_cm3) || 1.24,
+          enlace_compra: row.enlace_compra || '',
+          imagen_url: row.imagen_url || '',
+          activo: row.activo !== false
+        }))
+        .sort((a, b) => `${a.marca} ${a.tipo} ${a.color}`.trim().localeCompare(`${b.marca} ${b.tipo} ${b.color}`.trim()));
     } catch (e) {
       console.warn('Exception in fetchFilamentos:', e);
       return null;
@@ -1730,7 +1732,7 @@ export const CloudSyncService = {
           imagen_url: row.imagen_url || undefined,
           repuestos: repuestosParsed
         };
-      });
+      }).sort((a, b) => a.nombre.localeCompare(b.nombre));
     } catch (e) {
       console.warn('Exception in fetchMaquinas:', e);
       return null;
@@ -1849,20 +1851,22 @@ export const CloudSyncService = {
         return null;
       }
       if (!data || data.length === 0) return [];
-      return data.map((row: any): Resina => ({
-        id: row.id,
-        tipo: row.tipo,
-        marca: row.marca || 'Anycubic',
-        color: row.color || 'Gris',
-        volumen_l: Number(row.volumen_l) || 1.0,
-        densidad_g_cm3: Number(row.densidad_g_cm3) || 1.13,
-        peso_g: Number(row.peso_g) || 1130,
-        precio_compra: Number(row.precio_compra) || 89000,
-        costo_gramo: Number(row.costo_gramo) || 78.76,
-        velocidad_impresion_mm_h: Number(row.velocidad_impresion_mm_h) || 20,
-        resumen: row.resumen || `${row.tipo} Color ${row.color}`,
-        imagen_url: row.imagen_url || ''
-      }));
+      return data
+        .map((row: any): Resina => ({
+          id: row.id,
+          tipo: row.tipo,
+          marca: row.marca || 'Anycubic',
+          color: row.color || 'Gris',
+          volumen_l: Number(row.volumen_l) || 1.0,
+          densidad_g_cm3: Number(row.densidad_g_cm3) || 1.13,
+          peso_g: Number(row.peso_g) || 1130,
+          precio_compra: Number(row.precio_compra) || 89000,
+          costo_gramo: Number(row.costo_gramo) || 78.76,
+          velocidad_impresion_mm_h: Number(row.velocidad_impresion_mm_h) || 20,
+          resumen: row.resumen || `${row.tipo} Color ${row.color}`,
+          imagen_url: row.imagen_url || ''
+        }))
+        .sort((a, b) => `${a.tipo} ${a.color}`.trim().localeCompare(`${b.tipo} ${b.color}`.trim()));
     } catch (e) {
       console.warn('Exception in fetchResinas:', e);
       return null;
@@ -2021,7 +2025,7 @@ export const CloudSyncService = {
         telefono: row.telefono || '',
         rubro: row.rubro || 'Insumos 3D',
         enlace_web: row.enlace_web || ''
-      }));
+      })).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
     } catch (e) {
       return null;
     }

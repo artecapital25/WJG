@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Settings, 
   Layers, 
@@ -41,7 +41,12 @@ import { CloudSyncService, ensureValidUuid } from '../../services/cloudSyncServi
 import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
 
+export type CatalogCategory = 'materiales' | 'directorio' | 'ajustes';
+export type SubTab = 'resinas' | 'filamentos' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
+
 interface CatalogosManagerProps {
+  initialCategory?: CatalogCategory;
+  initialSubTab?: SubTab;
   resinas: Resina[];
   filamentos?: Filamento[];
   insumos: Insumo[];
@@ -64,9 +69,9 @@ interface CatalogosManagerProps {
   onRefreshCatalogos?: () => Promise<void>;
 }
 
-type SubTab = 'resinas' | 'filamentos' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
-
 export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
+  initialCategory,
+  initialSubTab,
   resinas,
   filamentos = [],
   insumos,
@@ -88,7 +93,66 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   onOpenBackup,
   onRefreshCatalogos
 }) => {
-  const [subTab, setSubTab] = useState<SubTab>('resinas');
+  const determineDefaultSubTab = (cat?: CatalogCategory, explicitSub?: SubTab): SubTab => {
+    if (explicitSub) return explicitSub;
+    if (cat === 'materiales') return 'filamentos';
+    if (cat === 'directorio') return 'clientes';
+    return 'maquinaria';
+  };
+
+  const determineCategoryFromSubTab = (sub: SubTab): CatalogCategory => {
+    if (sub === 'filamentos' || sub === 'resinas' || sub === 'insumos') return 'materiales';
+    if (sub === 'clientes' || sub === 'proveedores' || sub === 'personal') return 'directorio';
+    return 'ajustes';
+  };
+
+  const [activeCategory, setActiveCategory] = useState<CatalogCategory>(
+    initialCategory || (initialSubTab ? determineCategoryFromSubTab(initialSubTab) : 'materiales')
+  );
+
+  const [subTab, setSubTab] = useState<SubTab>(
+    determineDefaultSubTab(initialCategory, initialSubTab)
+  );
+
+  useEffect(() => {
+    if (initialCategory) {
+      setActiveCategory(initialCategory);
+      setSubTab(determineDefaultSubTab(initialCategory, initialSubTab));
+    } else if (initialSubTab) {
+      setActiveCategory(determineCategoryFromSubTab(initialSubTab));
+      setSubTab(initialSubTab);
+    }
+  }, [initialCategory, initialSubTab]);
+
+  // Listas ordenadas alfabéticamente A-Z de forma universal
+  const sortedResinas = useMemo(() => {
+    return [...resinas].sort((a, b) => `${a.tipo} ${a.color}`.localeCompare(`${b.tipo} ${b.color}`));
+  }, [resinas]);
+
+  const sortedFilamentos = useMemo(() => {
+    return [...filamentos].sort((a, b) => `${a.marca} ${a.tipo} ${a.color}`.localeCompare(`${b.marca} ${b.tipo} ${b.color}`));
+  }, [filamentos]);
+
+  const sortedInsumos = useMemo(() => {
+    return [...insumos].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [insumos]);
+
+  const sortedMaquinas = useMemo(() => {
+    return [...maquinas].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [maquinas]);
+
+  const sortedClientes = useMemo(() => {
+    return [...clientes].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [clientes]);
+
+  const sortedProveedores = useMemo(() => {
+    return [...proveedores].sort((a, b) => a.nombre.localeCompare(b.nombre));
+  }, [proveedores]);
+
+  const sortedPersonal = useMemo(() => {
+    return [...personal].sort((a, b) => a.rol.localeCompare(b.rol));
+  }, [personal]);
+
   const [searchQuery, setSearchQuery] = useState('');
 
   // Modales de Edición / Creación
@@ -870,79 +934,142 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         )}
       </div>
 
-      {/* Navegación Touch */}
+      {/* Selector de Categorías Principales */}
+      <div style={{
+        display: 'flex',
+        gap: '8px',
+        overflowX: 'auto',
+        padding: '6px',
+        marginBottom: '14px',
+        background: 'rgba(15, 23, 42, 0.65)',
+        borderRadius: '12px',
+        border: '1px solid var(--border-subtle)'
+      }}>
+        <button
+          type="button"
+          className={`btn btn-sm ${activeCategory === 'materiales' ? 'btn-cyan' : 'btn-ghost'}`}
+          onClick={() => {
+            setActiveCategory('materiales');
+            setSubTab('filamentos');
+          }}
+          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+        >
+          <Package size={15} />
+          <span>📦 Materiales ({filamentos.length + resinas.length + insumos.length})</span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn btn-sm ${activeCategory === 'directorio' ? 'btn-cyan' : 'btn-ghost'}`}
+          onClick={() => {
+            setActiveCategory('directorio');
+            setSubTab('clientes');
+          }}
+          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+        >
+          <Users size={15} />
+          <span>👥 Directorio ({clientes.length + proveedores.length})</span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn btn-sm ${activeCategory === 'ajustes' ? 'btn-cyan' : 'btn-ghost'}`}
+          onClick={() => {
+            setActiveCategory('ajustes');
+            setSubTab('maquinaria');
+          }}
+          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+        >
+          <Wrench size={15} />
+          <span>⚙️ Maquinaria & Taller ({maquinas.length})</span>
+        </button>
+      </div>
+
+      {/* Subpestañas contextuales por Categoría */}
       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '16px' }}>
-        <button 
-          className={`btn btn-sm ${subTab === 'resinas' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('resinas')}
-        >
-          <Layers size={14} />
-          <span>Resinas ({resinas.length})</span>
-        </button>
+        {activeCategory === 'materiales' && (
+          <>
+            <button 
+              className={`btn btn-sm ${subTab === 'filamentos' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('filamentos')}
+            >
+              <Zap size={14} />
+              <span>🧵 Filamentos FDM ({filamentos.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'filamentos' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('filamentos')}
-        >
-          <Zap size={14} />
-          <span>Filamentos ({filamentos.length})</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'resinas' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('resinas')}
+            >
+              <Layers size={14} />
+              <span>💧 Resinas SLA ({resinas.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'insumos' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('insumos')}
-        >
-          <Package size={14} />
-          <span>Insumos ({insumos.length})</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'insumos' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('insumos')}
+            >
+              <Package size={14} />
+              <span>📦 Insumos & Auxiliares ({insumos.length})</span>
+            </button>
+          </>
+        )}
 
-        <button 
-          className={`btn btn-sm ${subTab === 'maquinaria' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('maquinaria')}
-        >
-          <Wrench size={14} />
-          <span>Maquinaria ({maquinas.length})</span>
-        </button>
+        {activeCategory === 'directorio' && (
+          <>
+            <button 
+              className={`btn btn-sm ${subTab === 'clientes' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('clientes')}
+            >
+              <Users size={14} />
+              <span>🏢 Clientes ({clientes.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'personal' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('personal')}
-        >
-          <Briefcase size={14} />
-          <span>Tarifas Personal</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'proveedores' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('proveedores')}
+            >
+              <Truck size={14} />
+              <span>🚚 Proveedores ({proveedores.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'clientes' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('clientes')}
-        >
-          <Users size={14} />
-          <span>Clientes ({clientes.length})</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'personal' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('personal')}
+            >
+              <Briefcase size={14} />
+              <span>💼 Tarifas Personal ({personal.length})</span>
+            </button>
+          </>
+        )}
 
-        <button 
-          className={`btn btn-sm ${subTab === 'proveedores' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('proveedores')}
-        >
-          <Truck size={14} />
-          <span>Proveedores ({proveedores.length})</span>
-        </button>
+        {activeCategory === 'ajustes' && (
+          <>
+            <button 
+              className={`btn btn-sm ${subTab === 'maquinaria' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('maquinaria')}
+            >
+              <Wrench size={14} />
+              <span>🖨️ Maquinaria ({maquinas.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'configuracion' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('configuracion')}
-        >
-          <CreditCard size={14} />
-          <span>Bancos & Taller</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'tarifas' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('tarifas')}
+            >
+              <Sparkles size={14} />
+              <span>📐 Tarifario Tamaños ({tarifasTamanos.length})</span>
+            </button>
 
-        <button 
-          className={`btn btn-sm ${subTab === 'tarifas' ? 'btn-cyan' : 'btn-secondary'}`}
-          onClick={() => setSubTab('tarifas')}
-        >
-          <Sparkles size={14} />
-          <span>Tarifario Tamaños ({tarifasTamanos.length})</span>
-        </button>
+            <button 
+              className={`btn btn-sm ${subTab === 'configuracion' ? 'btn-cyan' : 'btn-secondary'}`}
+              onClick={() => setSubTab('configuracion')}
+            >
+              <CreditCard size={14} />
+              <span>🏛️ Bancos & Taller</span>
+            </button>
+          </>
+        )}
       </div>
 
       {/* VISTA 1: RESINAS */}
@@ -957,7 +1084,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {resinas.map(res => (
+            {sortedResinas.map(res => (
               <div key={res.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
@@ -1076,7 +1203,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {filamentos
+            {sortedFilamentos
               .filter(f => 
                 f.marca.toLowerCase().includes(searchQuery.toLowerCase()) || 
                 f.tipo.toLowerCase().includes(searchQuery.toLowerCase()) || 
@@ -1199,7 +1326,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {insumos
+            {sortedInsumos
               .filter(i => i.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || i.categoria.toLowerCase().includes(searchQuery.toLowerCase()))
               .map(ins => (
                 <div key={ins.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
@@ -1329,7 +1456,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {maquinas.map(m => {
+            {sortedMaquinas.map(m => {
               const watts = Math.round((m.consumo_kwh || 0.05) * 1000);
               const costoEnergiaMin = m.costo_minuto_energia !== undefined ? m.costo_minuto_energia : (m.consumo_kwh * (config.tarifa_kwh || 834)) / 60;
               const repuestosActivos = Array.isArray(m.repuestos) ? m.repuestos.filter(r => r.activo !== false) : [];
@@ -1660,7 +1787,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
-            {personal.map(p => (
+            {sortedPersonal.map(p => (
               <div key={p.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
@@ -1718,7 +1845,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
-            {clientes
+            {sortedClientes
               .filter(c => c.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || c.telefono.includes(searchQuery))
               .map(c => (
                 <div key={c.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
@@ -1771,7 +1898,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {proveedores.map(p => (
+            {sortedProveedores.map(p => (
               <div key={p.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div style={{ fontWeight: 600, fontSize: '0.92rem', color: '#fff' }}>

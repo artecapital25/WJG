@@ -83,12 +83,55 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
   const filamentoActual = filamentos.find(f => f.id === filamentoId) || filamentos[0];
 
+  // Auto-seleccionar primer filamento si cambia la lista o no estaba asignado
+  useEffect(() => {
+    if (filamentos.length > 0) {
+      if (!filamentoId || !filamentos.some(f => f.id === filamentoId)) {
+        setFilamentoId(filamentos[0].id);
+      }
+    }
+  }, [filamentos, filamentoId]);
+
   useEffect(() => {
     if (filamentoActual && !piezaEnEdicion) {
       setMaterialFilamento(`${filamentoActual.marca} ${filamentoActual.tipo} (${filamentoActual.color})`);
       setCostoRolloKg(Math.round(filamentoActual.costo_gramo * 1000));
     }
   }, [filamentoId, filamentoActual]);
+
+  // Conmutación inteligente de tecnología con auto-asignación de máquina
+  const setTecnologiaSegura = (tec: TecnologiaFabricacion) => {
+    setTecnologia(tec);
+    if (tec === 'FDM_FILAMENTO') {
+      const fdmMaq = maquinas.find(m => 
+        m.tecnologia === 'FDM_FILAMENTO' || 
+        m.nombre.toLowerCase().includes('bambu') || 
+        m.nombre.toLowerCase().includes('p1s') || 
+        m.nombre.toLowerCase().includes('p2s') || 
+        m.nombre.toLowerCase().includes('kobra') ||
+        (m.tipo || '').toLowerCase().includes('fdm')
+      );
+      if (fdmMaq) {
+        setMaquinaId(fdmMaq.id);
+      }
+      if (filamentos.length > 0) {
+        if (!filamentoId || !filamentos.some(f => f.id === filamentoId)) {
+          setFilamentoId(filamentos[0].id);
+        }
+      }
+    } else if (tec === 'SLA_RESINA') {
+      const slaMaq = maquinas.find(m => 
+        m.tecnologia === 'SLA_RESINA' || 
+        m.nombre.toLowerCase().includes('mono 4') || 
+        m.nombre.toLowerCase().includes('mono') || 
+        m.nombre.toLowerCase().includes('photon') ||
+        (m.tipo || '').toLowerCase().includes('resina')
+      );
+      if (slaMaq) {
+        setMaquinaId(slaMaq.id);
+      }
+    }
+  };
 
   // Parámetros Láser CO2
   const [materialLamina, setMaterialLamina] = useState<string>(piezaEnEdicion?.material_lamina || 'Acrílico Cristal 3mm');
@@ -815,7 +858,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
     // Multi-Fabricación Polimórfica
     tecnologia,
-    setTecnologia,
+    setTecnologia: setTecnologiaSegura,
     materialFilamento,
     setMaterialFilamento,
     pesoFilamentoG,

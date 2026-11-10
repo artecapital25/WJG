@@ -77,7 +77,7 @@ export const App: React.FC = () => {
       const params = new URLSearchParams(window.location.search);
       const tabParam = params.get('tab') as TabType;
       const validTabs: TabType[] = [
-        'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 
+        'cotizador', 'pos', 'workflow', 'cotizaciones', 'cuentas', 'catalogos', 'materiales', 'directorio',
         'plan', 'stl', 'stock', 'seguimiento', 'finanzas', 'tareas', 'marketing', 'herramientas', 'calendario', 'usuarios'
       ];
       if (tabParam && validTabs.includes(tabParam)) {
@@ -96,7 +96,7 @@ export const App: React.FC = () => {
 
   const [activeHub, setActiveHub] = useState<HubType>(() => {
     if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) return 'ventas';
-    if (['workflow', 'stl', 'stock', 'calendario', 'seguimiento'].includes(activeTab)) return 'taller';
+    if (['workflow', 'stl', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) return 'taller';
     if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) return 'finanzas';
     return 'gestion';
   });
@@ -118,7 +118,7 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) setActiveHub('ventas');
-    else if (['workflow', 'stl', 'stock', 'calendario', 'seguimiento'].includes(activeTab)) setActiveHub('taller');
+    else if (['workflow', 'stl', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) setActiveHub('taller');
     else if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) setActiveHub('finanzas');
     else if (activeTab === 'tareas') {
       if (activeHub === 'taller' || !canAccessHub('gestion')) {
@@ -2487,8 +2487,9 @@ export const App: React.FC = () => {
           />
         )}
 
-        {activeTab === 'catalogos' && (
+        {(activeTab === 'catalogos' || activeTab === 'materiales' || activeTab === 'directorio') && (
           <CatalogosManager 
+            initialCategory={activeTab === 'materiales' ? 'materiales' : activeTab === 'directorio' ? 'directorio' : 'ajustes'}
             resinas={resinas}
             filamentos={filamentos}
             insumos={insumos}

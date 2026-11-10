@@ -266,17 +266,36 @@ function saveItem<T>(key: string, val: T): void {
 export const StorageService = {
   getResinas: (): Resina[] => {
     const list = loadItem<Resina[]>(STORAGE_KEYS.RESINAS, RESINAS_INICIALES);
-    return list.map(r => ({
-      ...r,
-      velocidad_impresion_mm_h: r.velocidad_impresion_mm_h || 20.0
-    }));
+    const safeList = Array.isArray(list) && list.length > 0 ? list : RESINAS_INICIALES;
+    return safeList
+      .map(r => ({
+        ...r,
+        velocidad_impresion_mm_h: r.velocidad_impresion_mm_h || 20.0
+      }))
+      .sort((a, b) => `${a.tipo || ''} ${a.color || ''}`.trim().localeCompare(`${b.tipo || ''} ${b.color || ''}`.trim()));
   },
-  saveResinas: (items: Resina[]) => saveItem(STORAGE_KEYS.RESINAS, items),
+  saveResinas: (items: Resina[]) => {
+    const sorted = [...items].sort((a, b) => `${a.tipo || ''} ${a.color || ''}`.trim().localeCompare(`${b.tipo || ''} ${b.color || ''}`.trim()));
+    saveItem(STORAGE_KEYS.RESINAS, sorted);
+  },
 
   getFilamentos: (): Filamento[] => {
-    return loadItem<Filamento[]>(STORAGE_KEYS.FILAMENTOS, FILAMENTOS_INICIALES);
+    const list = loadItem<Filamento[]>(STORAGE_KEYS.FILAMENTOS, FILAMENTOS_INICIALES);
+    const safeList = Array.isArray(list) && list.length > 0 ? list : FILAMENTOS_INICIALES;
+    return [...safeList].sort((a, b) => {
+      const keyA = `${a.marca || ''} ${a.tipo || ''} ${a.color || ''}`.trim();
+      const keyB = `${b.marca || ''} ${b.tipo || ''} ${b.color || ''}`.trim();
+      return keyA.localeCompare(keyB);
+    });
   },
-  saveFilamentos: (items: Filamento[]) => saveItem(STORAGE_KEYS.FILAMENTOS, items),
+  saveFilamentos: (items: Filamento[]) => {
+    const sorted = [...items].sort((a, b) => {
+      const keyA = `${a.marca || ''} ${a.tipo || ''} ${a.color || ''}`.trim();
+      const keyB = `${b.marca || ''} ${b.tipo || ''} ${b.color || ''}`.trim();
+      return keyA.localeCompare(keyB);
+    });
+    saveItem(STORAGE_KEYS.FILAMENTOS, sorted);
+  },
 
   getProduccionesInternas: (): RegistroProduccionInterna[] => {
     return loadItem<RegistroProduccionInterna[]>(STORAGE_KEYS.PRODUCCION_INTERNA, []);
@@ -303,27 +322,51 @@ export const StorageService = {
   },
 
   getInsumos: (): Insumo[] => {
-    return loadItem<Insumo[]>(STORAGE_KEYS.INSUMOS, INSUMOS_INICIALES);
+    const list = loadItem<Insumo[]>(STORAGE_KEYS.INSUMOS, INSUMOS_INICIALES);
+    const safeList = Array.isArray(list) && list.length > 0 ? list : INSUMOS_INICIALES;
+    return [...safeList].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
   },
-  saveInsumos: (items: Insumo[]) => saveItem(STORAGE_KEYS.INSUMOS, items),
+  saveInsumos: (items: Insumo[]) => {
+    const sorted = [...items].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    saveItem(STORAGE_KEYS.INSUMOS, sorted);
+  },
 
   getMaquinas: (): Maquina[] => {
     const loaded = loadItem<Maquina[]>(STORAGE_KEYS.MAQUINAS, MAQUINAS_INICIALES);
-    return loaded.map(m => ({
-      ...m,
-      repuestos: Array.isArray(m.repuestos) ? m.repuestos : []
-    }));
+    const safeList = Array.isArray(loaded) && loaded.length > 0 ? loaded : MAQUINAS_INICIALES;
+    return safeList
+      .map(m => ({
+        ...m,
+        repuestos: Array.isArray(m.repuestos) ? m.repuestos : []
+      }))
+      .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
   },
-  saveMaquinas: (items: Maquina[]) => saveItem(STORAGE_KEYS.MAQUINAS, items),
+  saveMaquinas: (items: Maquina[]) => {
+    const sorted = [...items].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    saveItem(STORAGE_KEYS.MAQUINAS, sorted);
+  },
 
   getPersonal: (): Personal[] => loadItem(STORAGE_KEYS.PERSONAL, PERSONAL_INICIAL),
   savePersonal: (items: Personal[]) => saveItem(STORAGE_KEYS.PERSONAL, items),
 
-  getClientes: (): Cliente[] => loadItem(STORAGE_KEYS.CLIENTES, isSupabaseConfigured ? [] : CLIENTES_INICIALES),
-  saveClientes: (items: Cliente[]) => saveItem(STORAGE_KEYS.CLIENTES, items),
+  getClientes: (): Cliente[] => {
+    const list = loadItem<Cliente[]>(STORAGE_KEYS.CLIENTES, isSupabaseConfigured ? [] : CLIENTES_INICIALES);
+    return [...list].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  },
+  saveClientes: (items: Cliente[]) => {
+    const sorted = [...items].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    saveItem(STORAGE_KEYS.CLIENTES, sorted);
+  },
 
-  getProveedores: (): Proveedor[] => loadItem(STORAGE_KEYS.PROVEEDORES, PROVEEDORES_INICIALES),
-  saveProveedores: (items: Proveedor[]) => saveItem(STORAGE_KEYS.PROVEEDORES, items),
+  getProveedores: (): Proveedor[] => {
+    const list = loadItem<Proveedor[]>(STORAGE_KEYS.PROVEEDORES, PROVEEDORES_INICIALES);
+    const safeList = Array.isArray(list) && list.length > 0 ? list : PROVEEDORES_INICIALES;
+    return [...safeList].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+  },
+  saveProveedores: (items: Proveedor[]) => {
+    const sorted = [...items].sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+    saveItem(STORAGE_KEYS.PROVEEDORES, sorted);
+  },
 
   getConfig: (): ConfiguracionTaller => loadItem(STORAGE_KEYS.CONFIG, CONFIGURACION_INICIAL),
   saveConfig: (config: ConfiguracionTaller) => saveItem(STORAGE_KEYS.CONFIG, config),

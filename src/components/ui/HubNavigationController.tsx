@@ -16,8 +16,9 @@ const HUB_SUBTABS: Record<HubType, SubTabConfig[]> = {
   taller: [
     { id: 'workflow', label: 'Kanban OTs' },
     { id: 'tareas', label: 'Tareas Taller' },
-    { id: 'stl', label: 'Visor STL' },
     { id: 'stock', label: 'Stock' },
+    { id: 'materiales', label: '🧵 Materiales & Filamentos' },
+    { id: 'stl', label: 'Visor STL' },
     { id: 'calendario', label: 'Calendario' },
     { id: 'seguimiento', label: 'Rastreo' },
   ],
@@ -29,8 +30,9 @@ const HUB_SUBTABS: Record<HubType, SubTabConfig[]> = {
   gestion: [
     { id: 'tareas', label: 'Equipo & S.O.S' },
     { id: 'usuarios', label: 'Personal' },
+    { id: 'directorio', label: '👥 Directorio (Clientes & Prov.)' },
     { id: 'marketing', label: 'Marketing IA' },
-    { id: 'catalogos', label: 'Ajustes' },
+    { id: 'catalogos', label: '⚙️ Ajustes Taller' },
   ],
 };
 
