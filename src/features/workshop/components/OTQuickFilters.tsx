@@ -7,21 +7,28 @@ interface OTQuickFiltersProps {
   filtroEstado: string;
   setFiltroEstado: (estado: string) => void;
   conSaldoCount: number;
+  entregadasCount?: number;
+  activasCount?: number;
 }
 
 export const OTQuickFilters: React.FC<OTQuickFiltersProps> = React.memo(({
   ordenes,
   filtroEstado,
   setFiltroEstado,
-  conSaldoCount
+  conSaldoCount,
+  entregadasCount = 0,
+  activasCount = 0
 }) => {
+  const activas = activasCount || ordenes.filter(o => o.estado !== 'Entregado').length;
+  const entregadas = entregadasCount || ordenes.filter(o => o.estado === 'Entregado').length;
+
   return (
     <div className="etapas-grid-mobile" style={{ marginBottom: '16px' }}>
       <button 
         className={`btn btn-sm ${filtroEstado === 'todos' ? 'btn-cyan' : 'btn-secondary'}`}
         onClick={() => setFiltroEstado('todos')}
       >
-        Todas ({ordenes.length})
+        Activas en Taller ({activas})
       </button>
       <button 
         className={`btn btn-sm ${filtroEstado === 'con_saldo' ? 'btn-primary' : 'btn-secondary'}`}
@@ -49,6 +56,19 @@ export const OTQuickFilters: React.FC<OTQuickFiltersProps> = React.memo(({
           </button>
         );
       })}
+      <button 
+        className={`btn btn-sm ${filtroEstado === 'entregadas' ? 'btn-primary' : 'btn-secondary'}`}
+        onClick={() => setFiltroEstado('entregadas')}
+        style={{
+          background: filtroEstado === 'entregadas' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(16, 185, 129, 0.08)',
+          borderColor: filtroEstado === 'entregadas' ? '#10b981' : 'rgba(16, 185, 129, 0.35)',
+          color: '#34d399',
+          fontWeight: 800,
+          whiteSpace: 'nowrap'
+        }}
+      >
+        📦 Entregadas ({entregadas})
+      </button>
     </div>
   );
 });

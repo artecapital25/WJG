@@ -425,14 +425,15 @@ export const CloudSyncService = {
         'CURADO': 'Curado',
         'PINTADO_ARMADO': 'Pintura y Armado',
         'CONTROL_CALIDAD': 'Control de Calidad',
-        'ENTREGADO': 'Listo para Entrega',
+        'ENTREGADO': 'Entregado',
         'CANCELADO': 'Listo para Entrega',
         'En Cola': 'En Cola',
         'Imprimiendo': 'Imprimiendo',
         'Curado': 'Curado',
         'Pintura y Armado': 'Pintura y Armado',
         'Control de Calidad': 'Control de Calidad',
-        'Listo para Entrega': 'Listo para Entrega'
+        'Listo para Entrega': 'Listo para Entrega',
+        'Entregado': 'Entregado'
       };
 
       return data.map((row: any): OrdenTrabajo => {
@@ -667,7 +668,7 @@ export const CloudSyncService = {
         'Curado': 'CURADO',
         'Pintura y Armado': 'PINTADO_ARMADO',
         'Control de Calidad': 'CONTROL_CALIDAD',
-        'Listo para Entrega': 'ENTREGADO',
+        'Listo para Entrega': 'CONTROL_CALIDAD',
         'Entregado': 'ENTREGADO',
         'Cancelado': 'CANCELADO'
       };

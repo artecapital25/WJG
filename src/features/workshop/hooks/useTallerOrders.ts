@@ -471,15 +471,30 @@ export function useTallerOrders({
   // Computaciones reactivas memorizadas
   const conSaldoCount = useMemo(() => {
     return ordenes.filter(o => 
+      o.estado !== 'Entregado' &&
       o.estado_pago !== 'Pagado Total' && 
       ((o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0))) > 0)
     ).length;
   }, [ordenes]);
 
+  const entregadasCount = useMemo(() => {
+    return ordenes.filter(o => o.estado === 'Entregado').length;
+  }, [ordenes]);
+
+  const activasCount = useMemo(() => {
+    return ordenes.filter(o => o.estado !== 'Entregado').length;
+  }, [ordenes]);
+
   const ordenesFiltradas = useMemo(() => {
-    if (filtroEstado === 'todos') return ordenes;
+    if (filtroEstado === 'todos') {
+      return ordenes.filter(o => o.estado !== 'Entregado');
+    }
+    if (filtroEstado === 'entregadas') {
+      return ordenes.filter(o => o.estado === 'Entregado');
+    }
     if (filtroEstado === 'con_saldo') {
       return ordenes.filter(o => 
+        o.estado !== 'Entregado' &&
         o.estado_pago !== 'Pagado Total' && 
         ((o.saldo_pendiente ?? Math.max(0, (o.precio_cobrado || 0) - (o.abono || 0))) > 0)
       );
@@ -494,6 +509,9 @@ export function useTallerOrders({
   return {
     filtroEstado,
     setFiltroEstado,
+    entregadasCount,
+    activasCount,
+    conSaldoCount,
     vistaModo,
     setVistaModo,
     copiedOtId,
@@ -538,7 +556,6 @@ export function useTallerOrders({
     setOtParaPago,
     otParaEliminar,
     setOtParaEliminar,
-    conSaldoCount,
     ordenesFiltradas,
     proyectosRapidosCount,
     handleConfirmarEliminarOT,

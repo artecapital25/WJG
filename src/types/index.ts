@@ -349,7 +349,7 @@ export interface Cotizacion {
   tracking_token?: string;
 }
 
-export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega';
+export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega' | 'Entregado';
 
 export type EstadoSTL = 'Modelado Pendiente' | 'Diseñado por Germán' | 'Laminado por Juan' | 'En Impresora' | 'Impreso';
 

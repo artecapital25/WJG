@@ -133,7 +133,7 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
         onRemoveItem={props.onRemoveItem}
         onUpdatePieceQuantity={props.onUpdatePieceQuantity}
         onUpdatePieceImage={props.onUpdatePieceImage}
-        onOpenEditPiece={b.handleOpenEditPiece}
+        onOpenEditPiece={props.onLoadPieceToCalculator || b.handleOpenEditPiece}
         onPreviewImage={b.setPreviewImage}
         onItemImageUpload={b.handleItemImageUpload}
       />

@@ -1,5 +1,6 @@
 import React from 'react';
 import { Kanban, Plus, Trash2, Clock, LayoutGrid, List } from 'lucide-react';
+import { EstadoOT } from '../../types';
 import { WorkOrdersPipelineProps } from './types/workshop.types';
 import { useTallerOrders } from './hooks/useTallerOrders';
 import { ETAPAS } from './utils/workshopUtils';
@@ -111,6 +112,8 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
         filtroEstado={taller.filtroEstado}
         setFiltroEstado={taller.setFiltroEstado}
         conSaldoCount={taller.conSaldoCount}
+        entregadasCount={taller.entregadasCount}
+        activasCount={taller.activasCount}
       />
 
       {/* Vista Principal: Lista o Kanban Columnas */}
@@ -133,18 +136,20 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
             WebkitOverflowScrolling: 'touch'
           }}
         >
-          {ETAPAS.map((etapa) => {
+          {(taller.filtroEstado === 'entregadas' ? ['Entregado' as EstadoOT] : ETAPAS).map((etapa) => {
             const ordenesEtapa = taller.ordenesFiltradas.filter(o => o.estado === etapa);
             return (
               <OTKanbanColumn
                 key={etapa}
-                titulo={etapa}
+                titulo={etapa === 'Entregado' ? '📦 Historial de Órdenes Entregadas' : etapa}
                 estado={etapa}
                 ordenes={ordenesEtapa}
                 config={props.config}
                 cotizaciones={props.cotizaciones}
                 copiedOtId={taller.copiedOtId}
                 copiedLinkId={taller.copiedLinkId}
+                colorBorder={etapa === 'Entregado' ? 'rgba(16, 185, 129, 0.4)' : undefined}
+                badgeBg={etapa === 'Entregado' ? 'rgba(16, 185, 129, 0.15)' : undefined}
                 onUpdateEstado={props.onUpdateEstado}
                 onGenerarCuentaCobro={props.onGenerarCuentaCobro}
                 onOpenCotizacionModal={taller.handleOpenCotizacionModal}

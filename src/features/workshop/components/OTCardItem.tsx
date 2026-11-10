@@ -500,7 +500,31 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
 
       {/* Acciones de la OT */}
       <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-        {sigEstado && (
+        {sigEstado && sigEstado === 'Entregado' ? (
+          <button 
+            type="button"
+            className="btn btn-sm" 
+            style={{ 
+              flex: 1, 
+              background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)', 
+              borderColor: '#10b981', 
+              color: '#fff', 
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px'
+            }}
+            onClick={() => {
+              if (confirm(`¿Confirmas que el pedido "${ot.item_nombre}" de ${ot.cliente_nombre} fue entregado al cliente? Pasará al historial de entregadas.`)) {
+                onUpdateEstado(ot.id, 'Entregado');
+              }
+            }}
+          >
+            <Check size={14} />
+            <span>Marcar como Entregado</span>
+          </button>
+        ) : sigEstado ? (
           <button 
             className="btn btn-primary btn-sm" 
             style={{ flex: 1 }}
@@ -509,7 +533,22 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
             <span>Avanzar a {sigEstado}</span>
             <ChevronRight size={14} />
           </button>
-        )}
+        ) : estadoValido === 'Entregado' ? (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            style={{ color: '#34d399', borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)' }}
+            onClick={() => {
+              if (confirm('¿Deseas reactivar esta orden y devolverla a "Listo para Entrega"?')) {
+                onUpdateEstado(ot.id, 'Listo para Entrega');
+              }
+            }}
+            title="Clic para reactivar orden si fue marcada como entregada por error"
+          >
+            <Check size={14} />
+            <span>Entregado (Reactivar)</span>
+          </button>
+        ) : null}
 
         <button 
           type="button"

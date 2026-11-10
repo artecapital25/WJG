@@ -911,10 +911,30 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 className="section-title">
-            <Settings size={22} color="var(--brand-cyan)" />
-            Ajustes & Catálogos Editables
+            {initialCategory === 'materiales' ? (
+              <>
+                <Package size={22} color="var(--brand-cyan)" />
+                Materiales & Bodega
+              </>
+            ) : initialCategory === 'directorio' ? (
+              <>
+                <Users size={22} color="var(--brand-cyan)" />
+                Directorio Comercial
+              </>
+            ) : (
+              <>
+                <Settings size={22} color="var(--brand-cyan)" />
+                Ajustes & Maquinaria de Taller
+              </>
+            )}
           </h2>
-          <p className="section-subtitle">Edita, agrega o elimina resinas, insumos, maquinaria, tarifas, clientes y proveedores</p>
+          <p className="section-subtitle">
+            {initialCategory === 'materiales'
+              ? 'Gestión de stock de filamentos FDM, resinas SLA e insumos de acabados'
+              : initialCategory === 'directorio'
+              ? 'Directorio unificado de clientes, proveedores y tarifas horarias de personal'
+              : 'Parámetros de maquinaria, tarifario estándar por alturas y cuentas bancarias'}
+          </p>
         </div>
         {onRefreshCatalogos && (
           <button
@@ -934,58 +954,60 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         )}
       </div>
 
-      {/* Selector de Categorías Principales */}
-      <div style={{
-        display: 'flex',
-        gap: '8px',
-        overflowX: 'auto',
-        padding: '6px',
-        marginBottom: '14px',
-        background: 'rgba(15, 23, 42, 0.65)',
-        borderRadius: '12px',
-        border: '1px solid var(--border-subtle)'
-      }}>
-        <button
-          type="button"
-          className={`btn btn-sm ${activeCategory === 'materiales' ? 'btn-cyan' : 'btn-ghost'}`}
-          onClick={() => {
-            setActiveCategory('materiales');
-            setSubTab('filamentos');
-          }}
-          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
-        >
-          <Package size={15} />
-          <span>📦 Materiales ({filamentos.length + resinas.length + insumos.length})</span>
-        </button>
+      {/* Selector de Categorías Principales (Solo si no viene predeterminada por la navegación) */}
+      {!initialCategory && (
+        <div style={{
+          display: 'flex',
+          gap: '8px',
+          overflowX: 'auto',
+          padding: '6px',
+          marginBottom: '14px',
+          background: 'rgba(15, 23, 42, 0.65)',
+          borderRadius: '12px',
+          border: '1px solid var(--border-subtle)'
+        }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${activeCategory === 'materiales' ? 'btn-cyan' : 'btn-ghost'}`}
+            onClick={() => {
+              setActiveCategory('materiales');
+              setSubTab('filamentos');
+            }}
+            style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+          >
+            <Package size={15} />
+            <span>📦 Materiales ({filamentos.length + resinas.length + insumos.length})</span>
+          </button>
 
-        <button
-          type="button"
-          className={`btn btn-sm ${activeCategory === 'directorio' ? 'btn-cyan' : 'btn-ghost'}`}
-          onClick={() => {
-            setActiveCategory('directorio');
-            setSubTab('clientes');
-          }}
-          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
-        >
-          <Users size={15} />
-          <span>👥 Directorio ({clientes.length + proveedores.length})</span>
-        </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${activeCategory === 'directorio' ? 'btn-cyan' : 'btn-ghost'}`}
+            onClick={() => {
+              setActiveCategory('directorio');
+              setSubTab('clientes');
+            }}
+            style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+          >
+            <Users size={15} />
+            <span>👥 Directorio ({clientes.length + proveedores.length})</span>
+          </button>
 
-        <button
-          type="button"
-          className={`btn btn-sm ${activeCategory === 'ajustes' ? 'btn-cyan' : 'btn-ghost'}`}
-          onClick={() => {
-            setActiveCategory('ajustes');
-            setSubTab('maquinaria');
-          }}
-          style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
-        >
-          <Wrench size={15} />
-          <span>⚙️ Maquinaria & Taller ({maquinas.length})</span>
-        </button>
-      </div>
+          <button
+            type="button"
+            className={`btn btn-sm ${activeCategory === 'ajustes' ? 'btn-cyan' : 'btn-ghost'}`}
+            onClick={() => {
+              setActiveCategory('ajustes');
+              setSubTab('maquinaria');
+            }}
+            style={{ flex: 1, minWidth: '170px', justifyContent: 'center', fontWeight: 600 }}
+          >
+            <Wrench size={15} />
+            <span>⚙️ Maquinaria & Taller ({maquinas.length})</span>
+          </button>
+        </div>
+      )}
 
-      {/* Subpestañas contextuales por Categoría */}
+      {/* Subpestañas contextuales por Categoría Especializada (Opción B) */}
       <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '12px', marginBottom: '16px' }}>
         {activeCategory === 'materiales' && (
           <>

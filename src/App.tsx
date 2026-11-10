@@ -746,8 +746,10 @@ export const App: React.FC = () => {
   };
 
   const handleLoadPieceToCalculator = (pieza: PiezaCotizada) => {
+    setActiveTab('cotizador');
     setPieceToEditInCalculator(pieza);
     window.scrollTo({ top: 0, behavior: 'smooth' });
+    toast.info(`Cargando "${pieza.nombre_item}" en el calculador principal...`);
   };
 
   const handleRemoveDraftPiece = (id: string) => {
@@ -826,6 +828,9 @@ export const App: React.FC = () => {
   const handleSaveCotizacion = async (cotizacion: Cotizacion) => {
     let updated: Cotizacion[];
     if (editingCotizacion && editingCotizacion.id === cotizacion.id) {
+      if (editingCotizacion.total !== cotizacion.total) {
+        toast.info(`Total de cotización recalculado de $${editingCotizacion.total.toLocaleString('es-CO')} a $${cotizacion.total.toLocaleString('es-CO')}. Saldos y notas contables actualizados.`);
+      }
       updated = cotizaciones.map(c => c.id === cotizacion.id ? cotizacion : c);
     } else {
       updated = [cotizacion, ...cotizaciones.filter(c => c.id !== cotizacion.id && c.numero_cot !== cotizacion.numero_cot)];
@@ -1251,7 +1256,7 @@ export const App: React.FC = () => {
     if (!targetOT) return;
 
     let discountApplied = false;
-    const etapasDescuento: EstadoOT[] = ['Curado', 'Pintura y Armado', 'Control de Calidad', 'Listo para Entrega'];
+    const etapasDescuento: EstadoOT[] = ['Curado', 'Pintura y Armado', 'Control de Calidad', 'Listo para Entrega', 'Entregado'];
 
     // Si avanza a una etapa de fabricación avanzada y aún no se ha descontado del inventario
     if (etapasDescuento.includes(nuevoEstado) && !targetOT.inventario_descontado) {
@@ -1326,7 +1331,12 @@ export const App: React.FC = () => {
     StorageService.saveOrdenes(updated);
 
     const updatedTargetOT = updated.find(o => o.id === otId);
-    if (updatedTargetOT) CloudSyncService.saveOrdenTrabajo(updatedTargetOT);
+    if (updatedTargetOT) {
+      CloudSyncService.saveOrdenTrabajo(updatedTargetOT);
+      if (nuevoEstado === 'Entregado') {
+        toast.success(`🎉 Orden ${updatedTargetOT.numero_ot} entregada y archivada en el historial.`);
+      }
+    }
   };
 
   // Generar Cuenta de Cobro a partir de una OT terminada (sin duplicaciones ni abonos inventados)

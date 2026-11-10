@@ -175,9 +175,22 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       setAnchoMm(piezaEnEdicion.ancho_mm || 60);
       setProfundidadMm(piezaEnEdicion.profundidad_mm || 60);
       if (piezaEnEdicion.tecnologia) setTecnologia(piezaEnEdicion.tecnologia);
+      if (piezaEnEdicion.filamento_id) setFilamentoId(piezaEnEdicion.filamento_id);
       if (piezaEnEdicion.material_filamento) setMaterialFilamento(piezaEnEdicion.material_filamento);
       if (piezaEnEdicion.peso_filamento_g) setPesoFilamentoG(piezaEnEdicion.peso_filamento_g);
       if (piezaEnEdicion.costo_filamento_kg) setCostoRolloKg(piezaEnEdicion.costo_filamento_kg);
+      if (piezaEnEdicion.tiempo_impresion_min) {
+        setTiempoFDMMin(piezaEnEdicion.tiempo_impresion_min);
+        setTiempoImpresionManualMin(piezaEnEdicion.tiempo_impresion_min);
+        setTiempoImpresionModo('manual');
+      }
+      if (piezaEnEdicion.merma_porcentaje !== undefined) {
+        if (piezaEnEdicion.tecnologia === 'FDM_FILAMENTO') {
+          setMermaPorcentajeFdm(piezaEnEdicion.merma_porcentaje);
+        } else {
+          setMermaPorcentajeResina(piezaEnEdicion.merma_porcentaje);
+        }
+      }
       if (piezaEnEdicion.material_lamina) setMaterialLamina(piezaEnEdicion.material_lamina);
       if (piezaEnEdicion.espesor_lamina_mm) setEspesorLaminaMm(piezaEnEdicion.espesor_lamina_mm);
       if (piezaEnEdicion.tiempo_laser_min) setTiempoLaserMin(piezaEnEdicion.tiempo_laser_min);

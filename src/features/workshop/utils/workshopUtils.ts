@@ -18,6 +18,11 @@ export const ETAPAS: EstadoOT[] = [
   'Listo para Entrega'
 ];
 
+export const TODAS_LAS_ETAPAS: EstadoOT[] = [
+  ...ETAPAS,
+  'Entregado'
+];
+
 export const ESTADOS_STL: EstadoSTL[] = [
   'Modelado Pendiente',
   'Diseñado por Germán',
@@ -29,17 +34,20 @@ export const ESTADOS_STL: EstadoSTL[] = [
 export function normalizarEstadoOT(estado: any): EstadoOT {
   if (!estado) return 'En Cola';
   const s = String(estado).toUpperCase().trim();
+  if (s === 'ENTREGADO') return 'Entregado';
   if (s === 'EN_COLA_OT' || s === 'EN COLA' || s === 'COTIZACION') return 'En Cola';
   if (s === 'IMPRESION' || s === 'IMPRIMIENDO') return 'Imprimiendo';
   if (s === 'CURADO' || s === 'LAVADO_CURADO') return 'Curado';
   if (s === 'PINTADO_ARMADO' || s === 'PINTURA Y ARMADO' || s === 'PINTURA') return 'Pintura y Armado';
   if (s === 'CONTROL_CALIDAD' || s === 'CONTROL DE CALIDAD') return 'Control de Calidad';
-  if (s === 'ENTREGADO' || s === 'LISTO PARA ENTREGA' || s === 'TERMINADO') return 'Listo para Entrega';
+  if (s === 'LISTO PARA ENTREGA' || s === 'TERMINADO') return 'Listo para Entrega';
   return 'En Cola';
 }
 
 export function getSiguienteEstado(actual: any): EstadoOT | null {
   const norm = normalizarEstadoOT(actual);
+  if (norm === 'Listo para Entrega') return 'Entregado';
+  if (norm === 'Entregado') return null;
   const idx = ETAPAS.indexOf(norm);
   if (idx >= 0 && idx < ETAPAS.length - 1) {
     return ETAPAS[idx + 1];
