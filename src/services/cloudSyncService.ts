@@ -1810,6 +1810,9 @@ export const CloudSyncService = {
         presentacion: Number(row.cantidad_presentacion || row.presentacion) || 1,
         costo_total: Number(row.costo_total) || 0,
         costo_unitario: Number(row.costo_unitario) || 0,
+        stock_actual: row.stock_actual !== undefined && row.stock_actual !== null ? Number(row.stock_actual) : undefined,
+        permite_fraccion: row.permite_fraccion !== undefined && row.permite_fraccion !== null ? Boolean(row.permite_fraccion) : undefined,
+        unidad_medida: row.unidad_medida || undefined,
         enlace_compra: row.enlace_compra || '',
         descripcion: row.descripcion || '',
         imagen_url: row.imagen_url || ''

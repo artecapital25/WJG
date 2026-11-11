@@ -16,7 +16,7 @@ import {
   limpiarNotasObservaciones 
 } from '../utils/pricingCalculator';
 import { calcularFechaEstimada, calcularDiasHabilesEntre, formatearTiempoEntrega } from '../../../utils/businessDays';
-import { calcularPieza3D, ParametrosPiezaInput } from '../../../services/calculationEngine';
+import { calcularCotizacionIntegral, ParametrosPiezaInput } from '../../../services/calculationEngine';
 import { generarPDFCotizacion, compartirPDFWhatsApp, obtenerBlobURLCotizacion } from '../../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
 import { processAndOptimizeImage } from '../../../services/imageService';
@@ -32,6 +32,7 @@ export function useCotizadorBuilder({
   cotizaciones = [],
   cotizacionEnEdicion,
   resinas = [],
+  filamentos = [],
   maquinas = [],
   insumos = [],
   personal = [],
@@ -236,7 +237,12 @@ export function useCotizadorBuilder({
     setEditEnlacesCompra(item.enlaces_compra ? item.enlaces_compra.map(e => ({ ...e })) : []);
 
     const extras = (item.maquinas_involucradas || [])
-      .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+      .filter(m =>
+        m.proceso !== 'Impresión 3D' &&
+        m.proceso !== 'Impresión 3D FDM' &&
+        m.proceso !== 'Lavado y Curado UV' &&
+        m.proceso !== 'Pintura y Aerografía'
+      )
       .map(m => ({ ...m }));
     setEditMaquinasAdicionales(extras);
   };
@@ -317,7 +323,12 @@ export function useCotizadorBuilder({
     const nuevoTot = Math.ceil((nuevoUnit * nuevaCant) / 100) * 100;
 
     const baseProcesos = (piezaEditando.maquinas_involucradas || [])
-      .filter(m => m.proceso === 'Impresión 3D' || m.proceso === 'Lavado y Curado UV');
+      .filter(m =>
+        m.proceso === 'Impresión 3D' ||
+        m.proceso === 'Impresión 3D FDM' ||
+        m.proceso === 'Lavado y Curado UV' ||
+        m.proceso === 'Pintura y Aerografía'
+      );
 
     const nuevosProcesos: MaquinaInvolucrada[] = [
       ...baseProcesos,
@@ -503,33 +514,47 @@ export function useCotizadorBuilder({
     }
     let cambios = 0;
     const subtotalPrevio = subtotal;
+    let nuevoSubtotal = 0;
 
     items.forEach(it => {
+      const esFDM = it.tecnologia === 'FDM_FILAMENTO' || !!it.filamento_id;
       const resina = (resinas || []).find(r => r.id === it.resina_id || r.tipo.toLowerCase() === it.resina_nombre?.toLowerCase()) || (resinas || [])[0];
+      const filamento = (filamentos || []).find(f => f.id === it.filamento_id || `${f.marca} ${f.tipo} ${f.color}`.toLowerCase() === (it.filamento_nombre || '').toLowerCase()) || (filamentos || [])[0];
       const impresora = (maquinas || []).find(m => m.id === it.maquina_id || m.nombre.toLowerCase() === it.maquina_nombre?.toLowerCase()) || (maquinas || [])[0];
 
-      if (!resina || !impresora) return;
+      if (!impresora || (!esFDM && !resina) || (esFDM && !filamento && !resina)) {
+        nuevoSubtotal += it.precio_total;
+        return;
+      }
 
       const pinturas = (it.lista_pinturas || []).map(p => {
-        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === p.nombre.toLowerCase()) || {
-          id: 'ins-p', nombre: p.nombre, costo_unitario: p.cantidad_ml > 0 ? p.costo / p.cantidad_ml : 0, categoria: 'Pintura'
+        const ins = (insumos || []).find(i => (p.insumo_id && i.id === p.insumo_id) || i.nombre.toLowerCase() === p.nombre.toLowerCase()) || {
+          id: p.insumo_id || 'ins-p', nombre: p.nombre, costo_unitario: p.cantidad_ml > 0 ? p.costo / p.cantidad_ml : 0, categoria: 'Pintura'
         };
         return { insumo: ins as any, cantidad_ml: p.cantidad_ml };
       });
 
       const accesorios = (it.lista_accesorios || []).map(a => {
-        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === a.nombre.toLowerCase()) || {
-          id: 'ins-a', nombre: a.nombre, costo_unitario: a.cantidad > 0 ? a.costo / a.cantidad : 0, categoria: 'Accesorio'
+        const ins = (insumos || []).find(i => (a.insumo_id && i.id === a.insumo_id) || i.nombre.toLowerCase() === a.nombre.toLowerCase()) || {
+          id: a.insumo_id || 'ins-a', nombre: a.nombre, costo_unitario: a.cantidad > 0 ? a.costo / a.cantidad : 0, categoria: 'Accesorio'
         };
-        return { insumo: ins as any, cantidad: a.cantidad };
+        return {
+          insumo: ins as any,
+          cantidad: a.cantidad,
+          modo_consumo: a.modo_consumo || 'unidad',
+          valor_entrada: a.valor_entrada ?? (a.modo_consumo === 'porcentaje' ? Math.round(a.cantidad * 10000) / 100 : a.cantidad)
+        };
       });
 
       const empaques = (it.lista_empaques || []).map(e => {
-        const ins = (insumos || []).find(i => i.nombre.toLowerCase() === e.nombre.toLowerCase()) || {
-          id: 'ins-e', nombre: e.nombre, costo_unitario: e.cantidad > 0 ? e.costo / e.cantidad : 0, categoria: 'Empaque'
+        const ins = (insumos || []).find(i => (e.insumo_id && i.id === e.insumo_id) || i.nombre.toLowerCase() === e.nombre.toLowerCase()) || {
+          id: e.insumo_id || 'ins-e', nombre: e.nombre, costo_unitario: e.cantidad > 0 ? e.costo / e.cantidad : 0, categoria: 'Empaque'
         };
         return { insumo: ins as any, cantidad: e.cantidad };
       });
+
+      const estacionCurado = it.curado_maquina_id ? (maquinas || []).find(m => m.id === it.curado_maquina_id) : undefined;
+      const maquinaPintura = it.compresor_maquina_id ? (maquinas || []).find(m => m.id === it.compresor_maquina_id) : undefined;
 
       const inputRecalc: ParametrosPiezaInput = {
         nombre_item: it.nombre_item,
@@ -537,15 +562,30 @@ export function useCotizadorBuilder({
         alto_mm: it.alto_mm,
         ancho_mm: it.ancho_mm,
         profundidad_mm: it.profundidad_mm,
+        tecnologia: esFDM ? 'FDM_FILAMENTO' : 'SLA_RESINA',
         resina,
+        filamentoSeleccionado: filamento,
+        materialFilamento: it.material_filamento || filamento?.tipo,
+        pesoFilamentoG: it.peso_filamento_g ?? it.peso_estimado_g,
+        costoRolloKg: filamento ? Math.round(filamento.costo_gramo * 1000) : it.costo_filamento_kg,
+        tiempoFDMMin: it.tiempo_impresion_min,
         impresora,
         tiempoImpresionManualMin: it.tiempo_impresion_min,
+        tiempoImpresionModo: it.tiempo_impresion_modo || 'manual',
         modoCalculoResina: it.modo_calculo_resina,
         pesoResinaManualG: it.gramos_resina_manual,
+        mermaPorcentajeResina: it.merma_porcentaje,
+        mermaPorcentajeFdm: it.merma_porcentaje,
         tipoEstructura: it.tipo_estructura,
         porcentajeRelleno: it.porcentaje_relleno,
-        requiereCurado: (it.costo_curado || 0) > 0,
-        tiempoCuradoMin: 10,
+        requiereCurado: it.requiere_curado ?? ((it.costo_curado || 0) > 0),
+        estacionCurado,
+        tiempoCuradoMin: it.tiempo_curado_min || 10,
+        tiempoCuradoPersonalizado: it.tiempo_curado_personalizado,
+        requiereCompresorPintura: it.requiere_compresor_pintura,
+        maquinaPintura,
+        tiempoCompresorMin: it.tiempo_compresor_min,
+        tiempoCompresorSincronizado: it.tiempo_compresor_sincronizado,
         tiempoDesarrolloMin: it.tiempo_desarrollo_min || 0,
         tiempoArmadoMin: it.tiempo_armado_min || 0,
         tiempoPinturaMin: it.tiempo_pintura_min || 0,
@@ -554,13 +594,16 @@ export function useCotizadorBuilder({
         precioUnitarioManual: it.precio_fijado_tarifa ? it.precio_unitario : undefined,
         precioFijadoTarifa: it.precio_fijado_tarifa,
         tarifaTamanoAplicada: it.tarifa_tamano_aplicada,
+        aplicaDescuentoVolumen: it.aplica_descuento_volumen,
+        descuentoVolumenPorcentaje: it.descuento_volumen_porcentaje,
         accesorios,
         pinturas,
         empaques,
+        enlacesCompra: it.enlaces_compra,
         imagen_url: it.imagen_url,
         datosPendientes: it.datos_pendientes,
         maquinasAdicionales: (it.maquinas_involucradas || [])
-          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Impresión 3D FDM' && m.proceso !== 'Lavado y Curado UV' && !m.proceso.toLowerCase().includes('compresor'))
           .map(m => {
             const maqActual = (maquinas || []).find(maq => maq.id === m.maquina_id || maq.nombre.toLowerCase() === m.maquina_nombre.toLowerCase()) || {
               id: m.maquina_id, nombre: m.maquina_nombre, tipo: m.tipo, consumo_kwh: 0.1, costo_minuto: m.costo_minuto
@@ -574,7 +617,8 @@ export function useCotizadorBuilder({
           })
       };
 
-      const piezaNueva = calcularPieza3D(inputRecalc, personal || [], config);
+      const piezaNueva = calcularCotizacionIntegral(inputRecalc, personal || [], config);
+      nuevoSubtotal += piezaNueva.precio_total;
       onUpdatePiece({
         ...piezaNueva,
         id: it.id
@@ -582,7 +626,6 @@ export function useCotizadorBuilder({
       cambios++;
     });
 
-    const nuevoSubtotal = items.reduce((sum, it) => sum + it.precio_total, 0);
     const dif = nuevoSubtotal - subtotalPrevio;
     const difTexto = dif === 0 
       ? 'Las tarifas vigentes coinciden con la cotización.' 

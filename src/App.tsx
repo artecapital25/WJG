@@ -36,22 +36,22 @@ import { AccessDeniedView } from './components/ui/AccessDeniedView';
 import { CambiarPinModal } from './components/auth/CambiarPinModal';
 import { ModalProduccionInterna } from './components/produccionInterna/ModalProduccionInterna';
 
-import { 
-  TabType, 
-  Resina, 
+import {
+  TabType,
+  Resina,
   Filamento,
   RegistroProduccionInterna,
-  Insumo, 
-  Maquina, 
-  Personal, 
-  Cliente, 
+  Insumo,
+  Maquina,
+  Personal,
+  Cliente,
   Proveedor,
-  ConfiguracionTaller, 
-  PiezaCotizada, 
-  Cotizacion, 
-  OrdenTrabajo, 
-  CuentaCobro, 
-  EstadoOT, 
+  ConfiguracionTaller,
+  PiezaCotizada,
+  Cotizacion,
+  OrdenTrabajo,
+  CuentaCobro,
+  EstadoOT,
   EstadoCotizacion,
   EstadoPago,
   DatosPagoRegistro,
@@ -61,7 +61,7 @@ import {
   TareaEquipo,
   SolicitudInsumo
 } from './types';
-import { 
+import {
   type ItemDeudaConsolidado,
   otMatchesVenta,
   otMatchesCuenta,
@@ -70,6 +70,7 @@ import {
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 import { calcularDescuentoVolumenSugerido } from './features/cotizador/utils/pricingCalculator';
+import { calcularCotizacionIntegral, ParametrosPiezaInput } from './services/calculationEngine';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -179,7 +180,7 @@ export const App: React.FC = () => {
   });
 
   const [showStaffModal, setShowStaffModal] = useState<boolean>(false);
-  
+
   // Autenticación Persistente ("Minuto Cero") y Dispositivos de Confianza
   const [staffUser, setStaffUser] = useState<string | null>(() => {
     if (typeof window !== 'undefined') {
@@ -224,7 +225,7 @@ export const App: React.FC = () => {
     if (typeof window === 'undefined') return;
 
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
-                         (window.navigator as any).standalone === true;
+      (window.navigator as any).standalone === true;
     const isAlreadyInstalled = localStorage.getItem('wjg_pwa_installed') === 'true';
 
     // Si la app ya está instalada en el dispositivo, no interceptar ni mostrar avisos
@@ -344,15 +345,15 @@ export const App: React.FC = () => {
     const syncCloudData = async () => {
       try {
         const [
-          cloudCots, 
-          cloudClis, 
-          cloudOTs, 
-          cloudVentas, 
-          cloudCCs, 
-          cloudTareas, 
-          cloudSolicitudes, 
-          cloudStock, 
-          cloudPayments, 
+          cloudCots,
+          cloudClis,
+          cloudOTs,
+          cloudVentas,
+          cloudCCs,
+          cloudTareas,
+          cloudSolicitudes,
+          cloudStock,
+          cloudPayments,
           cloudMaquinas,
           cloudInsumos,
           cloudResinas,
@@ -394,7 +395,7 @@ export const App: React.FC = () => {
                 mergedMap.set(c.numero_cot, c);
               }
             });
-            const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
+            const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
               b.numero_cot.localeCompare(a.numero_cot)
             );
             StorageService.saveCotizaciones(mergedList);
@@ -410,7 +411,7 @@ export const App: React.FC = () => {
         if (cloudOTs !== null) {
           // Conciliación Automática de Órdenes de Trabajo contra el Ledger Canónico (abonos_pagos)
           const reconciledOTs = cloudOTs.map(ot => {
-            const pagosDeOT = pagosLedger.filter(p => 
+            const pagosDeOT = pagosLedger.filter(p =>
               (p.orden_trabajo_id && (p.orden_trabajo_id === ot.id || p.orden_trabajo_id === ot.numero_ot)) ||
               (ot.pos_venta_id && p.pos_venta_id === ot.pos_venta_id) ||
               (p.nota && (p.nota.includes(ot.numero_ot) || (ot.pos_venta_id && p.nota.includes(ot.pos_venta_id))))
@@ -446,7 +447,7 @@ export const App: React.FC = () => {
         if (cloudVentas !== null) {
           // Conciliación Canónica de Ventas Express contra el Ledger Inmutable (abonos_pagos)
           const reconciledVentas = cloudVentas.map(v => {
-            const pagosDeVenta = pagosLedger.filter(p => 
+            const pagosDeVenta = pagosLedger.filter(p =>
               (p.pos_venta_id && (p.pos_venta_id === v.id || p.pos_venta_id === v.numero_venta)) ||
               (v.ot_id && p.orden_trabajo_id === v.ot_id) ||
               (v.ot_numero && p.orden_trabajo_id === v.ot_numero) ||
@@ -482,7 +483,7 @@ export const App: React.FC = () => {
         if (cloudCCs !== null) {
           // Conciliación Automática de Cuentas de Cobro contra el Ledger Canónico (abonos_pagos)
           const reconciledCCs = cloudCCs.map(cc => {
-            const pagosDeCC = pagosLedger.filter(p => 
+            const pagosDeCC = pagosLedger.filter(p =>
               (p.cuenta_cobro_id && p.cuenta_cobro_id === cc.id) ||
               (cc.cotizacion_numero && p.nota && p.nota.includes(cc.cotizacion_numero)) ||
               (p.nota && p.nota.includes(cc.numero_cc))
@@ -540,8 +541,19 @@ export const App: React.FC = () => {
         }
 
         if (cloudInsumos !== null && cloudInsumos.length > 0) {
-          setInsumos(cloudInsumos);
-          StorageService.saveInsumos(cloudInsumos);
+          const localInsumos = StorageService.getInsumos();
+          const localInsMap = new Map(localInsumos.map(i => [i.id, i]));
+          const mergedInsumos = cloudInsumos.map(serverI => {
+            const localI = localInsMap.get(serverI.id) || localInsumos.find(li => li.nombre.toLowerCase() === serverI.nombre.toLowerCase());
+            return {
+              ...serverI,
+              stock_actual: serverI.stock_actual !== undefined ? serverI.stock_actual : (localI?.stock_actual ?? serverI.presentacion ?? 1),
+              permite_fraccion: serverI.permite_fraccion !== undefined ? serverI.permite_fraccion : (localI?.permite_fraccion ?? true),
+              unidad_medida: serverI.unidad_medida || localI?.unidad_medida
+            };
+          });
+          setInsumos(mergedInsumos);
+          StorageService.saveInsumos(mergedInsumos);
         }
 
         if (cloudResinas !== null && cloudResinas.length > 0) {
@@ -615,7 +627,7 @@ export const App: React.FC = () => {
                 mergedMap.set(c.numero_cot, c);
               }
             });
-            const mergedList = Array.from(mergedMap.values()).sort((a, b) => 
+            const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
               b.numero_cot.localeCompare(a.numero_cot)
             );
             StorageService.saveCotizaciones(mergedList);
@@ -736,14 +748,238 @@ export const App: React.FC = () => {
     };
   }, []);
 
+  // Helper para persistir de inmediato cualquier edición de pieza dentro de una cotización activa (no aprobada)
+  const sincronizarPiezasEnCotizacionActiva = (nuevasPiezas: PiezaCotizada[]) => {
+    if (!editingCotizacion) return;
+    const estadoLower = (editingCotizacion.estado || '').toLowerCase();
+    if (estadoLower.includes('acept') || estadoLower.includes('aprob') || estadoLower.includes('factur')) {
+      return;
+    }
+
+    const subtotal = nuevasPiezas.reduce((sum, it) => sum + it.precio_total, 0);
+    const descuentoMonto = editingCotizacion.descuento_porcentaje
+      ? Math.round(subtotal * (editingCotizacion.descuento_porcentaje / 100))
+      : (editingCotizacion.descuento_monto || 0);
+    const subtotalConDescuento = Math.max(0, subtotal - descuentoMonto);
+    const ivaMonto = editingCotizacion.iva_porcentaje
+      ? Math.round(subtotalConDescuento * (editingCotizacion.iva_porcentaje / 100))
+      : 0;
+    const nuevoTotal = Math.ceil((subtotalConDescuento + ivaMonto) / 100) * 100;
+    const abonoActual = editingCotizacion.abono || 0;
+    const nuevoSaldo = Math.max(0, nuevoTotal - abonoActual);
+
+    const cotActualizada: Cotizacion = {
+      ...editingCotizacion,
+      items: nuevasPiezas,
+      subtotal,
+      descuento_monto: descuentoMonto,
+      iva_monto: ivaMonto,
+      total: nuevoTotal,
+      saldo_pendiente: nuevoSaldo
+    };
+
+    setEditingCotizacion(cotActualizada);
+    setCotizaciones(prev => {
+      const updated = prev.map(c => c.id === cotActualizada.id ? cotActualizada : c);
+      StorageService.saveCotizaciones(updated);
+      return updated;
+    });
+    CloudSyncService.saveCotizacion(cotActualizada);
+  };
+
+  // Recalcular automáticamente las cotizaciones NO aceptadas cuando cambian tarifas/costos de insumos o materiales
+  const recalcularCotizacionesNoAceptadas = (
+    nextResinas: Resina[],
+    nextFilamentos: Filamento[],
+    nextInsumos: Insumo[],
+    nextMaquinas: Maquina[],
+    nextPersonal: Personal[],
+    nextConfig: ConfiguracionTaller
+  ) => {
+    let cotizacionesRecalculadasCount = 0;
+
+    const recalcularListaPiezas = (piezas: PiezaCotizada[]): { nuevas: PiezaCotizada[]; huboCambio: boolean } => {
+      let huboCambio = false;
+      const nuevas = piezas.map(it => {
+        const esFDM = it.tecnologia === 'FDM_FILAMENTO' || !!it.filamento_id;
+        const resina = (nextResinas || []).find(r => r.id === it.resina_id || r.tipo.toLowerCase() === it.resina_nombre?.toLowerCase()) || (nextResinas || [])[0];
+        const filamento = (nextFilamentos || []).find(f => f.id === it.filamento_id || `${f.marca} ${f.tipo} ${f.color}`.toLowerCase() === (it.filamento_nombre || '').toLowerCase()) || (nextFilamentos || [])[0];
+        const impresora = (nextMaquinas || []).find(m => m.id === it.maquina_id || m.nombre.toLowerCase() === it.maquina_nombre?.toLowerCase()) || (nextMaquinas || [])[0];
+
+        if (!impresora || (!esFDM && !resina) || (esFDM && !filamento && !resina)) return it;
+
+        const pinturas = (it.lista_pinturas || []).map(p => {
+          const ins = (nextInsumos || []).find(i => (p.insumo_id && i.id === p.insumo_id) || i.nombre.toLowerCase() === p.nombre.toLowerCase()) || {
+            id: p.insumo_id || 'ins-p', nombre: p.nombre, costo_unitario: p.cantidad_ml > 0 ? p.costo / p.cantidad_ml : 0, categoria: 'Pintura'
+          };
+          return { insumo: ins as any, cantidad_ml: p.cantidad_ml };
+        });
+
+        const accesorios = (it.lista_accesorios || []).map(a => {
+          const ins = (nextInsumos || []).find(i => (a.insumo_id && i.id === a.insumo_id) || i.nombre.toLowerCase() === a.nombre.toLowerCase()) || {
+            id: a.insumo_id || 'ins-a', nombre: a.nombre, costo_unitario: a.cantidad > 0 ? a.costo / a.cantidad : 0, categoria: 'Accesorio'
+          };
+          return {
+            insumo: ins as any,
+            cantidad: a.cantidad,
+            modo_consumo: a.modo_consumo || 'unidad',
+            valor_entrada: a.valor_entrada ?? (a.modo_consumo === 'porcentaje' ? Math.round(a.cantidad * 10000) / 100 : a.cantidad)
+          };
+        });
+
+        const empaques = (it.lista_empaques || []).map(e => {
+          const ins = (nextInsumos || []).find(i => (e.insumo_id && i.id === e.insumo_id) || i.nombre.toLowerCase() === e.nombre.toLowerCase()) || {
+            id: e.insumo_id || 'ins-e', nombre: e.nombre, costo_unitario: e.cantidad > 0 ? e.costo / e.cantidad : 0, categoria: 'Empaque'
+          };
+          return { insumo: ins as any, cantidad: e.cantidad };
+        });
+
+        const estacionCurado = it.curado_maquina_id ? (nextMaquinas || []).find(m => m.id === it.curado_maquina_id) : undefined;
+        const maquinaPintura = it.compresor_maquina_id ? (nextMaquinas || []).find(m => m.id === it.compresor_maquina_id) : undefined;
+
+        const inputRecalc: ParametrosPiezaInput = {
+          nombre_item: it.nombre_item,
+          cantidad: it.cantidad,
+          alto_mm: it.alto_mm,
+          ancho_mm: it.ancho_mm,
+          profundidad_mm: it.profundidad_mm,
+          tecnologia: esFDM ? 'FDM_FILAMENTO' : 'SLA_RESINA',
+          resina,
+          filamentoSeleccionado: filamento,
+          materialFilamento: it.material_filamento || filamento?.tipo,
+          pesoFilamentoG: it.peso_filamento_g ?? it.peso_estimado_g,
+          costoRolloKg: filamento ? Math.round(filamento.costo_gramo * 1000) : it.costo_filamento_kg,
+          tiempoFDMMin: it.tiempo_impresion_min,
+          impresora,
+          tiempoImpresionManualMin: it.tiempo_impresion_min,
+          tiempoImpresionModo: it.tiempo_impresion_modo || 'manual',
+          modoCalculoResina: it.modo_calculo_resina,
+          pesoResinaManualG: it.gramos_resina_manual,
+          mermaPorcentajeResina: it.merma_porcentaje,
+          mermaPorcentajeFdm: it.merma_porcentaje,
+          tipoEstructura: it.tipo_estructura,
+          porcentajeRelleno: it.porcentaje_relleno,
+          requiereCurado: it.requiere_curado ?? ((it.costo_curado || 0) > 0),
+          estacionCurado,
+          tiempoCuradoMin: it.tiempo_curado_min || 10,
+          tiempoCuradoPersonalizado: it.tiempo_curado_personalizado,
+          requiereCompresorPintura: it.requiere_compresor_pintura,
+          maquinaPintura,
+          tiempoCompresorMin: it.tiempo_compresor_min,
+          tiempoCompresorSincronizado: it.tiempo_compresor_sincronizado,
+          tiempoDesarrolloMin: it.tiempo_desarrollo_min || 0,
+          tiempoArmadoMin: it.tiempo_armado_min || 0,
+          tiempoPinturaMin: it.tiempo_pintura_min || 0,
+          costoModeloComprado: it.costo_modelo_comprado || 0,
+          margenGanancia: it.margen_ganancia || 0.40,
+          precioUnitarioManual: it.precio_fijado_tarifa ? it.precio_unitario : undefined,
+          precioFijadoTarifa: it.precio_fijado_tarifa,
+          tarifaTamanoAplicada: it.tarifa_tamano_aplicada,
+          aplicaDescuentoVolumen: it.aplica_descuento_volumen,
+          descuentoVolumenPorcentaje: it.descuento_volumen_porcentaje,
+          accesorios,
+          pinturas,
+          empaques,
+          enlacesCompra: it.enlaces_compra,
+          imagen_url: it.imagen_url,
+          datosPendientes: it.datos_pendientes,
+          maquinasAdicionales: (it.maquinas_involucradas || [])
+            .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Impresión 3D FDM' && m.proceso !== 'Lavado y Curado UV' && !m.proceso.toLowerCase().includes('compresor'))
+            .map(m => {
+              const maqActual = (nextMaquinas || []).find(maq => maq.id === m.maquina_id || maq.nombre.toLowerCase() === m.maquina_nombre.toLowerCase()) || {
+                id: m.maquina_id, nombre: m.maquina_nombre, tipo: m.tipo, consumo_kwh: 0.1, costo_minuto: m.costo_minuto
+              };
+              return {
+                maquina: maqActual as any,
+                proceso: m.proceso,
+                tiempo_min: m.tiempo_min,
+                mostrar_en_cliente: m.mostrar_en_cliente
+              };
+            })
+        };
+
+        const piezaNueva = calcularCotizacionIntegral(inputRecalc, nextPersonal || [], nextConfig);
+        if (
+          piezaNueva.precio_total !== it.precio_total ||
+          piezaNueva.costo_base_produccion !== it.costo_base_produccion ||
+          piezaNueva.costo_insumos !== it.costo_insumos
+        ) {
+          huboCambio = true;
+        }
+        return {
+          ...piezaNueva,
+          id: it.id
+        };
+      });
+      return { nuevas, huboCambio };
+    };
+
+    const nuevasCotizaciones = cotizaciones.map(cot => {
+      const estadoLower = (cot.estado || '').toLowerCase();
+      const esAceptada = estadoLower.includes('acept') || estadoLower.includes('aprob') || estadoLower.includes('factur');
+      if (esAceptada || !cot.items || cot.items.length === 0) {
+        return cot; // Las cotizaciones aceptadas continúan igual con su precio pactado
+      }
+
+      const { nuevas, huboCambio } = recalcularListaPiezas(cot.items);
+      if (!huboCambio) return cot;
+
+      const subtotal = nuevas.reduce((sum, it) => sum + it.precio_total, 0);
+      const descuentoMonto = cot.descuento_porcentaje
+        ? Math.round(subtotal * (cot.descuento_porcentaje / 100))
+        : (cot.descuento_monto || 0);
+      const subtotalConDescuento = Math.max(0, subtotal - descuentoMonto);
+      const ivaMonto = cot.iva_porcentaje
+        ? Math.round(subtotalConDescuento * (cot.iva_porcentaje / 100))
+        : 0;
+      const nuevoTotal = Math.ceil((subtotalConDescuento + ivaMonto) / 100) * 100;
+      const nuevoSaldo = Math.max(0, nuevoTotal - (cot.abono || 0));
+
+      cotizacionesRecalculadasCount++;
+      const cotRecalculada: Cotizacion = {
+        ...cot,
+        items: nuevas,
+        subtotal,
+        descuento_monto: descuentoMonto,
+        iva_monto: ivaMonto,
+        total: nuevoTotal,
+        saldo_pendiente: nuevoSaldo
+      };
+      CloudSyncService.saveCotizacion(cotRecalculada);
+      return cotRecalculada;
+    });
+
+    if (cotizacionesRecalculadasCount > 0) {
+      setCotizaciones(nuevasCotizaciones);
+      StorageService.saveCotizaciones(nuevasCotizaciones);
+      toast.info(`🔄 Se recalcularon automáticamente ${cotizacionesRecalculadasCount} cotización(es) pendiente(s) con las nuevas tarifas. Las aprobadas permanecen intactas.`);
+    }
+
+    if (draftPieces.length > 0) {
+      const { nuevas } = recalcularListaPiezas(draftPieces);
+      setDraftPieces(nuevas);
+    }
+  };
+
   // Handlers para Piezas en Borrador / Cotización en Edición
+  const programarSincronizacionPiezas = (next: PiezaCotizada[]) => {
+    queueMicrotask(() => {
+      if (editingCotizacion) {
+        sincronizarPiezasEnCotizacionActiva(next);
+      } else {
+        StorageService.saveDraftPieces(next);
+      }
+    });
+  };
+
   const handleAgregarPieza = (pieza: PiezaCotizada) => {
     setDraftPieces(prev => {
       const exists = prev.some(p => p.id === pieza.id);
-      if (exists) {
-        return prev.map(p => p.id === pieza.id ? pieza : p);
-      }
-      return [...prev, pieza];
+      const next = exists
+        ? prev.map(p => p.id === pieza.id ? pieza : p)
+        : [...prev, pieza];
+      programarSincronizacionPiezas(next);
+      return next;
     });
     setPieceToEditInCalculator(null);
   };
@@ -756,49 +992,65 @@ export const App: React.FC = () => {
   };
 
   const handleRemoveDraftPiece = (id: string) => {
-    setDraftPieces(prev => prev.filter(p => p.id !== id));
+    setDraftPieces(prev => {
+      const next = prev.filter(p => p.id !== id);
+      programarSincronizacionPiezas(next);
+      return next;
+    });
     if (pieceToEditInCalculator?.id === id) {
       setPieceToEditInCalculator(null);
     }
   };
 
   const handleUpdateDraftPiece = (updatedPiece: PiezaCotizada) => {
-    setDraftPieces(prev => prev.map(p => p.id === updatedPiece.id ? updatedPiece : p));
+    setDraftPieces(prev => {
+      const next = prev.map(p => p.id === updatedPiece.id ? updatedPiece : p);
+      programarSincronizacionPiezas(next);
+      return next;
+    });
   };
 
   const handleUpdateDraftPieceQuantity = (id: string, newCantidad: number) => {
     if (newCantidad < 1) return;
-    setDraftPieces(prev => prev.map(p => {
-      if (p.id === id) {
-        let precioUnitario = p.precio_unitario;
-        let precioOriginal = p.precio_unitario_original || p.precio_unitario;
-        let descVolumenPct = p.descuento_volumen_porcentaje || 0;
-        let descVolumenMonto = p.descuento_volumen_monto || 0;
+    setDraftPieces(prev => {
+      const next = prev.map(p => {
+        if (p.id === id) {
+          let precioUnitario = p.precio_unitario;
+          let precioOriginal = p.precio_unitario_original || p.precio_unitario;
+          let descVolumenPct = p.descuento_volumen_porcentaje || 0;
+          let descVolumenMonto = p.descuento_volumen_monto || 0;
 
-        // Si la pieza tiene activado el descuento por volumen (o por defecto activo)
-        if (p.aplica_descuento_volumen !== false) {
-          descVolumenPct = calcularDescuentoVolumenSugerido(newCantidad);
-          descVolumenMonto = Math.round(precioOriginal * (descVolumenPct / 100));
-          precioUnitario = precioOriginal - descVolumenMonto;
+          // Si la pieza tiene activado el descuento por volumen (o por defecto activo)
+          if (p.aplica_descuento_volumen !== false) {
+            descVolumenPct = calcularDescuentoVolumenSugerido(newCantidad);
+            descVolumenMonto = Math.round(precioOriginal * (descVolumenPct / 100));
+            precioUnitario = precioOriginal - descVolumenMonto;
+          }
+
+          const precio_total = Math.ceil((precioUnitario * newCantidad) / 100) * 100;
+          return {
+            ...p,
+            cantidad: newCantidad,
+            precio_unitario: precioUnitario,
+            precio_unitario_original: precioOriginal,
+            descuento_volumen_porcentaje: descVolumenPct,
+            descuento_volumen_monto: descVolumenMonto,
+            precio_total
+          };
         }
-
-        const precio_total = Math.ceil((precioUnitario * newCantidad) / 100) * 100;
-        return {
-          ...p,
-          cantidad: newCantidad,
-          precio_unitario: precioUnitario,
-          precio_unitario_original: precioOriginal,
-          descuento_volumen_porcentaje: descVolumenPct,
-          descuento_volumen_monto: descVolumenMonto,
-          precio_total
-        };
-      }
-      return p;
-    }));
+        return p;
+      });
+      programarSincronizacionPiezas(next);
+      return next;
+    });
   };
 
   const handleUpdateDraftPieceImage = (id: string, imagenUrl: string) => {
-    setDraftPieces(prev => prev.map(p => p.id === id ? { ...p, imagen_url: imagenUrl } : p));
+    setDraftPieces(prev => {
+      const next = prev.map(p => p.id === id ? { ...p, imagen_url: imagenUrl } : p);
+      programarSincronizacionPiezas(next);
+      return next;
+    });
   };
 
   const handleEditarCotizacion = (cot: Cotizacion) => {
@@ -854,7 +1106,7 @@ export const App: React.FC = () => {
 
     // Reconciliación Transaccional con Órdenes de Trabajo (OT) del Taller si la cotización ya tiene OTs
     const currentOrders = StorageService.getOrdenes();
-    const otsAsociadas = currentOrders.filter(o => 
+    const otsAsociadas = currentOrders.filter(o =>
       o.cotizacion_id === cotizacion.id || o.cotizacion_numero === cotizacion.numero_cot
     );
 
@@ -864,7 +1116,7 @@ export const App: React.FC = () => {
       const items = cotizacion.items || [];
 
       items.forEach((item, idx) => {
-        const indexExistente = otsActualizadas.findIndex(o => 
+        const indexExistente = otsActualizadas.findIndex(o =>
           (o.cotizacion_id === cotizacion.id || o.cotizacion_numero === cotizacion.numero_cot) &&
           o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
         );
@@ -882,6 +1134,9 @@ export const App: React.FC = () => {
             tiempo_pintura_min: item.tiempo_pintura_min || otActual.tiempo_pintura_min,
             peso_estimado_g: item.peso_estimado_g || otActual.peso_estimado_g,
             detalles_tecnicos: item.descripcion_tecnica || otActual.detalles_tecnicos,
+            lista_accesorios: item.lista_accesorios || otActual.lista_accesorios,
+            lista_pinturas: item.lista_pinturas || otActual.lista_pinturas,
+            lista_empaques: item.lista_empaques || otActual.lista_empaques,
             precio_cobrado: item.precio_total || otActual.precio_cobrado,
             imagen_url: item.imagen_url || otActual.imagen_url
           };
@@ -911,6 +1166,9 @@ export const App: React.FC = () => {
             inventario_descontado: false,
             resina_nombre: item.resina_nombre,
             maquina_nombre: item.maquina_nombre,
+            lista_accesorios: item.lista_accesorios,
+            lista_pinturas: item.lista_pinturas,
+            lista_empaques: item.lista_empaques,
             detalles_tecnicos: item.descripcion_tecnica,
             imagen_url: item.imagen_url,
             precio_cobrado: item.precio_total,
@@ -928,11 +1186,11 @@ export const App: React.FC = () => {
 
     // Si la cotización tiene abono o pago registrado, crear o actualizar automáticamente Cuenta de Cobro
     if (cotizacion.estado_pago && cotizacion.estado_pago !== 'Pendiente') {
-      const ccExistente = cuentas.find(c => 
+      const ccExistente = cuentas.find(c =>
         c.cotizacion_id === cotizacion.id || c.cotizacion_numero === cotizacion.numero_cot
       );
       if (ccExistente) {
-        const updatedCCs = cuentas.map(c => 
+        const updatedCCs = cuentas.map(c =>
           c.id === ccExistente.id ? {
             ...c,
             total: cotizacion.total,
@@ -974,7 +1232,7 @@ export const App: React.FC = () => {
 
   // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT) y registra pagos / cuentas de cobro
   const handleAprobarCotizacion = (
-    cot: Cotizacion, 
+    cot: Cotizacion,
     datosPago?: DatosPagoRegistro,
     redirigirTaller: boolean = true
   ) => {
@@ -996,7 +1254,7 @@ export const App: React.FC = () => {
       comprobante_pago: comprobanteFinal
     };
 
-    const updatedCots = cotizaciones.map(c => 
+    const updatedCots = cotizaciones.map(c =>
       c.id === cot.id ? cotActualizada : c
     );
     setCotizaciones(updatedCots);
@@ -1014,8 +1272,8 @@ export const App: React.FC = () => {
 
     items.forEach((item, index) => {
       // Verificar si ya existe una OT para esta pieza en esta cotización
-      const yaExiste = currentOrders.some(o => 
-        (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) && 
+      const yaExiste = currentOrders.some(o =>
+        (o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot) &&
         o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
       );
 
@@ -1032,8 +1290,8 @@ export const App: React.FC = () => {
         }
       }
       const itemSaldo = Math.max(0, itemPrecio - itemAbono);
-      const itemEstadoPago: EstadoPago = itemSaldo === 0 
-        ? 'Pagado Total' 
+      const itemEstadoPago: EstadoPago = itemSaldo === 0
+        ? 'Pagado Total'
         : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
 
       if (!yaExiste) {
@@ -1067,6 +1325,8 @@ export const App: React.FC = () => {
           enlaces_compra: item.enlaces_compra,
           va_pintado: item.va_pintado,
           tiene_empaque: item.tiene_empaque,
+          lista_accesorios: item.lista_accesorios,
+          lista_pinturas: item.lista_pinturas,
           lista_empaques: item.lista_empaques,
           detalles_tecnicos: item.descripcion_tecnica,
           imagen_url: item.imagen_url,
@@ -1117,13 +1377,13 @@ export const App: React.FC = () => {
     StorageService.saveOrdenes(updatedOTs);
 
     // 5. Crear o Actualizar automáticamente la Cuenta de Cobro (CuentaCobro)
-    const ccExistente = cuentas.find(c => 
+    const ccExistente = cuentas.find(c =>
       c.cotizacion_id === cot.id || c.cotizacion_numero === cot.numero_cot
     );
 
     let updatedCuentas = [...cuentas];
     if (ccExistente) {
-      updatedCuentas = cuentas.map(c => 
+      updatedCuentas = cuentas.map(c =>
         c.id === ccExistente.id ? {
           ...c,
           total: cot.total,
@@ -1211,11 +1471,11 @@ export const App: React.FC = () => {
     StorageService.saveOrdenes(updatedOTs);
 
     // Actualizar o crear Cuenta de Cobro
-    const ccExistente = cuentas.find(c => 
+    const ccExistente = cuentas.find(c =>
       c.cotizacion_id === targetCot.id || c.cotizacion_numero === targetCot.numero_cot
     );
     if (ccExistente) {
-      const updatedCCs = cuentas.map(c => 
+      const updatedCCs = cuentas.map(c =>
         c.id === ccExistente.id ? {
           ...c,
           total: targetCot.total,
@@ -1266,15 +1526,15 @@ export const App: React.FC = () => {
       const cant = targetOT.cantidad || 1;
       const gramosARestar = (targetOT.peso_estimado_g || 40) * cant;
 
-      const esFDM = targetOT.tecnologia === 'FDM_FILAMENTO' || !!targetOT.filamento_id || 
-                    (targetOT.maquina_nombre && targetOT.maquina_nombre.toLowerCase().includes('bambu'));
+      const esFDM = targetOT.tecnologia === 'FDM_FILAMENTO' || !!targetOT.filamento_id ||
+        (targetOT.maquina_nombre && targetOT.maquina_nombre.toLowerCase().includes('bambu'));
 
       if (esFDM) {
         // 1. Descontar filamento del catálogo de filamentos
         const updatedFilamentos = filamentos.map(f => {
-          const match = f.id === targetOT.filamento_id || 
-                        targetOT.filamento_nombre?.toLowerCase().includes(f.color.toLowerCase()) ||
-                        `${f.marca} ${f.tipo} ${f.color}`.toLowerCase().includes((targetOT.filamento_nombre || targetOT.resina_nombre || '').toLowerCase());
+          const match = f.id === targetOT.filamento_id ||
+            targetOT.filamento_nombre?.toLowerCase().includes(f.color.toLowerCase()) ||
+            `${f.marca} ${f.tipo} ${f.color}`.toLowerCase().includes((targetOT.filamento_nombre || targetOT.resina_nombre || '').toLowerCase());
           if (match) {
             const nuevoStock = Math.max(0, Math.round(((f.stock_actual_g || 1000) - gramosARestar) * 10) / 10);
             return { ...f, stock_actual_g: nuevoStock };
@@ -1288,9 +1548,9 @@ export const App: React.FC = () => {
       } else {
         // 1. Descontar resina líquida del catálogo de resinas
         const updatedResinas = resinas.map(r => {
-          const match = r.id === targetOT.resina_id || 
-                        r.resumen === targetOT.resina_nombre || 
-                        `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
+          const match = r.id === targetOT.resina_id ||
+            r.resumen === targetOT.resina_nombre ||
+            `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
           if (match) {
             const nuevoPeso = Math.max(0, Math.round((r.peso_g - gramosARestar) * 10) / 10);
             return { ...r, peso_g: nuevoPeso };
@@ -1301,19 +1561,61 @@ export const App: React.FC = () => {
         StorageService.saveResinas(updatedResinas);
         const resAfectada = updatedResinas.find(r => r.id === targetOT.resina_id);
         if (resAfectada) CloudSyncService.saveResina(resAfectada);
+      }
 
-        // 2. Descontar alcohol isopropílico de insumos (aprox 30ml por pieza impresa)
-        const mlAlcohol = 30 * cant;
-        const updatedInsumos = insumos.map(ins => {
-          const nom = ins.nombre.toLowerCase();
-          if (nom.includes('alcohol') || nom.includes('isoprop')) {
-            const nuevaPres = Math.max(0, ins.presentacion - mlAlcohol);
-            return { ...ins, presentacion: nuevaPres };
-          }
-          return ins;
-        });
+      // 2. Descontar insumos decimales/porcionados (cintas, herrajes, empaques y alcohol isopropílico para SLA)
+      const mlAlcohol = esFDM ? 0 : 30 * cant;
+      const insumosAfectadosIds = new Set<string>();
+
+      const updatedInsumos = insumos.map(ins => {
+        const nom = ins.nombre.toLowerCase();
+        let nuevoIns = { ...ins };
+        let modificado = false;
+
+        // Descuento de alcohol para resina SLA
+        if (!esFDM && (nom.includes('alcohol') || nom.includes('isoprop'))) {
+          nuevoIns.presentacion = Math.max(0, Math.round((nuevoIns.presentacion - mlAlcohol) * 100) / 100);
+          modificado = true;
+        }
+
+        // Descuento decimal de insumos / cintas / herrajes (lista_accesorios)
+        const accMatches = (targetOT.lista_accesorios || []).filter(
+          a => (a.insumo_id && a.insumo_id === ins.id) || a.nombre.trim().toLowerCase() === nom.trim()
+        );
+        if (accMatches.length > 0) {
+          const totalFraccion = accMatches.reduce((acc, a) => acc + (Number(a.cantidad) || 0), 0) * cant;
+          const stockBase = nuevoIns.stock_actual !== undefined ? nuevoIns.stock_actual : nuevoIns.presentacion;
+          const nuevoStock = Math.max(0, Math.round((stockBase - totalFraccion) * 100) / 100);
+          nuevoIns.stock_actual = nuevoStock;
+          nuevoIns.presentacion = nuevoStock;
+          modificado = true;
+        }
+
+        // Descuento decimal de empaques (lista_empaques)
+        const empMatches = (targetOT.lista_empaques || []).filter(
+          e => (e.insumo_id && e.insumo_id === ins.id) || e.nombre.trim().toLowerCase() === nom.trim()
+        );
+        if (empMatches.length > 0) {
+          const totalEmp = empMatches.reduce((acc, e) => acc + (Number(e.cantidad) || 0), 0) * cant;
+          const stockBase = nuevoIns.stock_actual !== undefined ? nuevoIns.stock_actual : nuevoIns.presentacion;
+          const nuevoStock = Math.max(0, Math.round((stockBase - totalEmp) * 100) / 100);
+          nuevoIns.stock_actual = nuevoStock;
+          nuevoIns.presentacion = nuevoStock;
+          modificado = true;
+        }
+
+        if (modificado) {
+          insumosAfectadosIds.add(nuevoIns.id);
+        }
+        return nuevoIns;
+      });
+
+      if (insumosAfectadosIds.size > 0) {
         setInsumos(updatedInsumos);
         StorageService.saveInsumos(updatedInsumos);
+        updatedInsumos
+          .filter(i => insumosAfectadosIds.has(i.id))
+          .forEach(i => CloudSyncService.saveInsumo(i));
       }
 
       discountApplied = true;
@@ -1345,7 +1647,7 @@ export const App: React.FC = () => {
   // Generar Cuenta de Cobro a partir de una OT terminada (sin duplicaciones ni abonos inventados)
   const handleGenerarCuentaCobro = (ot: OrdenTrabajo) => {
     // 1. Verificar si ya existe una Cuenta de Cobro para esta OT o Cotización
-    const existingCC = cuentas.find(c => 
+    const existingCC = cuentas.find(c =>
       (ot.cotizacion_id && c.cotizacion_id === ot.cotizacion_id) ||
       (ot.cotizacion_numero && c.cotizacion_numero === ot.cotizacion_numero) ||
       c.id === ot.id ||
@@ -1354,8 +1656,8 @@ export const App: React.FC = () => {
     );
 
     const cotOriginal = cotizaciones.find(c => c.id === ot.cotizacion_id);
-    const totalMonto = ot.precio_cobrado && ot.precio_cobrado > 0 
-      ? ot.precio_cobrado 
+    const totalMonto = ot.precio_cobrado && ot.precio_cobrado > 0
+      ? ot.precio_cobrado
       : (cotOriginal ? cotOriginal.total : ((ot.abono || 0) + (ot.saldo_pendiente || 0) || 50000));
     const abonoMonto = ot.abono || 0; // Usar el abono real registrado en taller, nunca inventar 50%
     const saldo = Math.max(0, totalMonto - abonoMonto);
@@ -1446,7 +1748,7 @@ export const App: React.FC = () => {
       if (targetCC.cotizacion_id || targetCC.cotizacion_numero) {
         const updatedCots = cotizaciones.map(cot => {
           if ((targetCC.cotizacion_id && cot.id === targetCC.cotizacion_id) ||
-              (targetCC.cotizacion_numero && cot.numero_cot === targetCC.cotizacion_numero)) {
+            (targetCC.cotizacion_numero && cot.numero_cot === targetCC.cotizacion_numero)) {
             return {
               ...cot,
               abono: targetCC.abono,
@@ -1459,7 +1761,7 @@ export const App: React.FC = () => {
         });
         setCotizaciones(updatedCots);
         StorageService.saveCotizaciones(updatedCots);
-        const cotAfectada = updatedCots.find(c => 
+        const cotAfectada = updatedCots.find(c =>
           (targetCC.cotizacion_id && c.id === targetCC.cotizacion_id) ||
           (targetCC.cotizacion_numero && c.numero_cot === targetCC.cotizacion_numero)
         );
@@ -1467,7 +1769,7 @@ export const App: React.FC = () => {
       }
 
       // Sincronizar OTs vinculadas
-      const matchingOTs = ordenes.filter(o => 
+      const matchingOTs = ordenes.filter(o =>
         (targetCC.cotizacion_id && o.cotizacion_id === targetCC.cotizacion_id) ||
         (targetCC.cotizacion_numero && o.cotizacion_numero === targetCC.cotizacion_numero) ||
         targetCC.id === o.id ||
@@ -1536,7 +1838,7 @@ export const App: React.FC = () => {
 
     // Si el cliente no existe en el catálogo de clientes, registrarlo automáticamente
     if (nuevaCC.cliente?.nombre) {
-      const existeCliente = clientes.some(c => 
+      const existeCliente = clientes.some(c =>
         c.nombre.toLowerCase().trim() === nuevaCC.cliente.nombre.toLowerCase().trim() ||
         (nuevaCC.cliente.telefono && c.telefono && c.telefono === nuevaCC.cliente.telefono)
       );
@@ -1840,8 +2142,8 @@ export const App: React.FC = () => {
     }
 
     // 2. Si la venta tenía OT asociada, removerla de las listas locales para que no quede huérfana
-    const updatedOTs = ordenes.filter(o => 
-      o.pos_venta_id !== ventaId && 
+    const updatedOTs = ordenes.filter(o =>
+      o.pos_venta_id !== ventaId &&
       (!ventaAEliminar?.ot_id || o.id !== ventaAEliminar.ot_id) &&
       (!ventaAEliminar?.ot_numero || o.numero_ot !== ventaAEliminar.ot_numero)
     );
@@ -1850,7 +2152,7 @@ export const App: React.FC = () => {
       StorageService.saveOrdenes(updatedOTs);
     }
 
-    const updatedCCs = cuentas.filter(c => 
+    const updatedCCs = cuentas.filter(c =>
       (!ventaAEliminar?.ot_id || c.id !== ventaAEliminar.ot_id) &&
       (!ventaAEliminar?.ot_numero || c.numero_cc !== `CC-${ventaAEliminar.ot_numero.replace(/^OT-/, '')}`)
     );
@@ -1866,9 +2168,9 @@ export const App: React.FC = () => {
 
     // 4. Purgar en Supabase (venta, OT asociada y abonos en abonos_pagos)
     CloudSyncService.deleteVentaExpress(
-      ventaId, 
-      ventaAEliminar?.numero_venta, 
-      ventaAEliminar?.ot_id, 
+      ventaId,
+      ventaAEliminar?.numero_venta,
+      ventaAEliminar?.ot_id,
       ventaAEliminar?.ot_numero
     ).then(res => {
       if (res && !res.success && res.error) {
@@ -1898,8 +2200,8 @@ export const App: React.FC = () => {
 
     // 2. Si tenía OTs generadas en taller, removerlas para no dejar órdenes huérfanas
     const numCotRef = numeroCot || cotAEliminar?.numero_cot;
-    const updatedOTs = ordenes.filter(o => 
-      o.cotizacion_id !== cotId && 
+    const updatedOTs = ordenes.filter(o =>
+      o.cotizacion_id !== cotId &&
       (!numCotRef || o.cotizacion_numero !== numCotRef)
     );
     if (updatedOTs.length !== ordenes.length) {
@@ -1907,8 +2209,8 @@ export const App: React.FC = () => {
       StorageService.saveOrdenes(updatedOTs);
     }
 
-    const updatedCCs = cuentas.filter(c => 
-      c.cotizacion_id !== cotId && 
+    const updatedCCs = cuentas.filter(c =>
+      c.cotizacion_id !== cotId &&
       (!numCotRef || c.cotizacion_numero !== numCotRef)
     );
     if (updatedCCs.length !== cuentas.length) {
@@ -2022,19 +2324,19 @@ export const App: React.FC = () => {
     datos: DatosPagoRegistro
   ) => {
     // 0. Encontrar y vincular bidireccionalmente todas las entidades relacionadas
-    const targetVenta = item.rawVenta || ventasExpress.find(v => 
+    const targetVenta = item.rawVenta || ventasExpress.find(v =>
       (item.rawOT && otMatchesVenta(item.rawOT, v)) ||
       (item.rawCuenta && ventaMatchesCuenta(v, item.rawCuenta)) ||
       (v.id === item.id.replace(/^pos-/, '') || v.numero_venta === item.codigo)
     );
 
-    const targetOT = item.rawOT || ordenes.find(o => 
+    const targetOT = item.rawOT || ordenes.find(o =>
       (targetVenta && otMatchesVenta(o, targetVenta)) ||
       (item.rawCuenta && otMatchesCuenta(o, item.rawCuenta)) ||
       (o.id === item.id.replace(/^ot-/, '') || o.numero_ot === item.codigo)
     );
 
-    const targetCuenta = item.rawCuenta || cuentas.find(c => 
+    const targetCuenta = item.rawCuenta || cuentas.find(c =>
       (targetOT && otMatchesCuenta(targetOT, c)) ||
       (targetVenta && ventaMatchesCuenta(targetVenta, c)) ||
       (c.id === item.id.replace(/^cc-/, '') || c.numero_cc === item.codigo)
@@ -2148,9 +2450,9 @@ export const App: React.FC = () => {
     // 1. Si la OT actualizó estado_pago, replicarlo también en las demás OTs de la misma cotización
     const updated = ordenes.map(o => {
       if (o.id === otActualizada.id) return otActualizada;
-      if (otActualizada.estado_pago && 
-          ((otActualizada.cotizacion_id && o.cotizacion_id === otActualizada.cotizacion_id) ||
-           (otActualizada.cotizacion_numero && o.cotizacion_numero === otActualizada.cotizacion_numero))) {
+      if (otActualizada.estado_pago &&
+        ((otActualizada.cotizacion_id && o.cotizacion_id === otActualizada.cotizacion_id) ||
+          (otActualizada.cotizacion_numero && o.cotizacion_numero === otActualizada.cotizacion_numero))) {
         return {
           ...o,
           estado_pago: otActualizada.estado_pago,
@@ -2170,7 +2472,7 @@ export const App: React.FC = () => {
     if (otActualizada.cotizacion_numero || otActualizada.cotizacion_id) {
       const updatedCots = cotizaciones.map(c => {
         const matchesCot = (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
-                           (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero);
+          (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero);
         if (!matchesCot) return c;
 
         let updatedItems = c.items;
@@ -2183,8 +2485,8 @@ export const App: React.FC = () => {
           });
         }
 
-        return { 
-          ...c, 
+        return {
+          ...c,
           items: updatedItems,
           estado_pago: otActualizada.estado_pago || c.estado_pago,
           abono: otActualizada.abono !== undefined ? otActualizada.abono : c.abono,
@@ -2196,7 +2498,7 @@ export const App: React.FC = () => {
       setCotizaciones(updatedCots);
       StorageService.saveCotizaciones(updatedCots);
 
-      const cotAfectada = updatedCots.find(c => 
+      const cotAfectada = updatedCots.find(c =>
         (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
         (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero)
       );
@@ -2204,7 +2506,7 @@ export const App: React.FC = () => {
 
       // 3. Sincronizar también en la Cuenta de Cobro
       if (otActualizada.estado_pago) {
-        const ccMatch = cuentas.find(cc => 
+        const ccMatch = cuentas.find(cc =>
           (otActualizada.cotizacion_id && cc.cotizacion_id === otActualizada.cotizacion_id) ||
           (otActualizada.cotizacion_numero && cc.cotizacion_numero === otActualizada.cotizacion_numero)
         );
@@ -2232,7 +2534,7 @@ export const App: React.FC = () => {
 
     // 4. Sincronizar en la Venta Express de POS vinculada (si la OT proviene de POS)
     if (otActualizada.pos_venta_id || otActualizada.numero_ot) {
-      const ventaMatch = ventasExpress.find(v => 
+      const ventaMatch = ventasExpress.find(v =>
         (otActualizada.pos_venta_id && v.id === otActualizada.pos_venta_id) ||
         (v.ot_id && v.ot_id === otActualizada.id) ||
         (v.ot_numero && v.ot_numero === otActualizada.numero_ot)
@@ -2278,9 +2580,9 @@ export const App: React.FC = () => {
 
   // Handler para Eliminar o Cancelar una Orden de Trabajo (OT)
   const handleEliminarOT = (
-    otId: string, 
-    motivo: string, 
-    revertirCotizacion?: boolean, 
+    otId: string,
+    motivo: string,
+    revertirCotizacion?: boolean,
     nuevoEstadoCot?: EstadoCotizacion
   ) => {
     const otAEliminar = ordenes.find(o => o.id === otId);
@@ -2299,7 +2601,7 @@ export const App: React.FC = () => {
       const estadoDestino = nuevoEstadoCot || 'Rechazada';
       const updatedCots = cotizaciones.map(c => {
         const matches = (otAEliminar.cotizacion_id && c.id === otAEliminar.cotizacion_id) ||
-                        (otAEliminar.cotizacion_numero && c.numero_cot === otAEliminar.cotizacion_numero);
+          (otAEliminar.cotizacion_numero && c.numero_cot === otAEliminar.cotizacion_numero);
         if (!matches) return c;
 
         const timestamp = new Date().toISOString().slice(0, 10);
@@ -2315,7 +2617,7 @@ export const App: React.FC = () => {
       setCotizaciones(updatedCots);
       StorageService.saveCotizaciones(updatedCots);
 
-      const cotAfectada = updatedCots.find(c => 
+      const cotAfectada = updatedCots.find(c =>
         (otAEliminar.cotizacion_id && c.id === otAEliminar.cotizacion_id) ||
         (otAEliminar.cotizacion_numero && c.numero_cot === otAEliminar.cotizacion_numero)
       );
@@ -2332,7 +2634,7 @@ export const App: React.FC = () => {
     return (
       <div className="app-container" style={{ minHeight: '100vh', background: 'var(--bg-main)' }}>
         <main className="main-content" style={{ padding: '24px 16px', maxWidth: '850px', margin: '0 auto' }}>
-          <CustomerTrackingView 
+          <CustomerTrackingView
             ordenes={ordenes}
             cotizaciones={cotizaciones}
             config={config}
@@ -2346,7 +2648,7 @@ export const App: React.FC = () => {
   // Guardián Global de Autenticación (Auth Guard): Bloqueo estricto de rutas para usuarios anónimos
   if (!isStaffAuthenticated) {
     return (
-      <StaffAuthGuard 
+      <StaffAuthGuard
         onLoginSuccess={handleStaffLoginSuccess}
       />
     );
@@ -2355,7 +2657,7 @@ export const App: React.FC = () => {
   return (
     <div className="app-container">
       {/* Header Minimalista Mobile-First */}
-      <HeaderMinimal 
+      <HeaderMinimal
         cloudStatus={cloudSyncStatus}
         activeOperator={activeOperator}
         onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
@@ -2367,7 +2669,7 @@ export const App: React.FC = () => {
       />
 
       {/* Subpestañas contextuales al Hub activo */}
-      <HubNavigationController 
+      <HubNavigationController
         activeHub={activeHub}
         activeTab={activeTab}
         onSelectTab={setActiveTab}
@@ -2376,7 +2678,7 @@ export const App: React.FC = () => {
       {/* Contenido Principal según Pestaña con Suspense y Lazy Loading */}
       <main className="main-content">
         {!canAccessTab(activeTab) ? (
-          <AccessDeniedView 
+          <AccessDeniedView
             requiredArea={activeHub}
             operatorName={activeOperator}
             onGoBack={() => {
@@ -2385,310 +2687,313 @@ export const App: React.FC = () => {
             }}
           />
         ) : (
-        <ErrorBoundary fallbackTitle="Error al cargar la sección activa">
-          <React.Suspense fallback={<TabLoadingSkeleton />}>
-          {activeTab === 'cotizador' && (
-          <div>
-            <CotizadorForm 
-              resinas={resinas}
-              filamentos={filamentos}
-              maquinas={maquinas}
-              insumos={insumos}
-              personal={personal}
-              config={config}
-              tarifasTamanos={tarifasTamanos}
-              onAgregarPieza={handleAgregarPieza}
-              onOpenSTLViewer={() => setActiveTab('stl')}
-              onNavigateToCatalogos={() => setActiveTab('catalogos')}
-              initialPieceData={stlAppliedData}
-              piezaEnEdicion={pieceToEditInCalculator}
-              onCancelarEdicionPieza={() => setPieceToEditInCalculator(null)}
-            />
+          <ErrorBoundary fallbackTitle="Error al cargar la sección activa">
+            <React.Suspense fallback={<TabLoadingSkeleton />}>
+              {activeTab === 'cotizador' && (
+                <div>
+                  <CotizadorForm
+                    resinas={resinas}
+                    filamentos={filamentos}
+                    maquinas={maquinas}
+                    insumos={insumos}
+                    personal={personal}
+                    config={config}
+                    tarifasTamanos={tarifasTamanos}
+                    onAgregarPieza={handleAgregarPieza}
+                    onOpenSTLViewer={() => setActiveTab('stl')}
+                    onNavigateToCatalogos={() => setActiveTab('catalogos')}
+                    initialPieceData={stlAppliedData}
+                    piezaEnEdicion={pieceToEditInCalculator}
+                    onCancelarEdicionPieza={() => setPieceToEditInCalculator(null)}
+                  />
 
-            <CotizacionBuilder 
-              items={draftPieces}
-              clientes={clientes}
-              config={config}
-              cotizaciones={cotizaciones}
-              cotizacionEnEdicion={editingCotizacion}
-              resinas={resinas}
-              filamentos={filamentos}
-              maquinas={maquinas}
-              insumos={insumos}
-              personal={personal}
-              onCancelarEdicion={handleCancelarEdicion}
-              onRemoveItem={handleRemoveDraftPiece}
-              onUpdatePiece={handleUpdateDraftPiece}
-              onUpdatePieceQuantity={handleUpdateDraftPieceQuantity}
-              onUpdatePieceImage={handleUpdateDraftPieceImage}
-              onSaveCotizacion={handleSaveCotizacion}
-              onAddCliente={handleAddCliente}
-              onLoadPieceToCalculator={handleLoadPieceToCalculator}
-            />
-          </div>
-        )}
+                  <CotizacionBuilder
+                    items={draftPieces}
+                    clientes={clientes}
+                    config={config}
+                    cotizaciones={cotizaciones}
+                    cotizacionEnEdicion={editingCotizacion}
+                    resinas={resinas}
+                    filamentos={filamentos}
+                    maquinas={maquinas}
+                    insumos={insumos}
+                    personal={personal}
+                    onCancelarEdicion={handleCancelarEdicion}
+                    onRemoveItem={handleRemoveDraftPiece}
+                    onUpdatePiece={handleUpdateDraftPiece}
+                    onUpdatePieceQuantity={handleUpdateDraftPieceQuantity}
+                    onUpdatePieceImage={handleUpdateDraftPieceImage}
+                    onSaveCotizacion={handleSaveCotizacion}
+                    onAddCliente={handleAddCliente}
+                    onLoadPieceToCalculator={handleLoadPieceToCalculator}
+                  />
+                </div>
+              )}
 
-        {activeTab === 'workflow' && (
-          <WorkOrdersPipeline 
-            ordenes={ordenes}
-            config={config}
-            cotizaciones={cotizaciones}
-            tarifasTamanos={tarifasTamanos}
-            clientes={clientes}
-            onUpdateEstado={handleUpdateEstadoOT}
-            onGenerarCuentaCobro={handleGenerarCuentaCobro}
-            onCrearOrdenRapida={handleCrearOrdenRapida}
-            onActualizarOT={handleActualizarOT}
-            onEliminarOT={handleEliminarOT}
-            onNavigateToCotizaciones={(cotId) => {
-              setActiveTab('cotizaciones');
-            }}
-            onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
-          />
-        )}
+              {activeTab === 'workflow' && (
+                <WorkOrdersPipeline
+                  ordenes={ordenes}
+                  config={config}
+                  cotizaciones={cotizaciones}
+                  tarifasTamanos={tarifasTamanos}
+                  clientes={clientes}
+                  onUpdateEstado={handleUpdateEstadoOT}
+                  onGenerarCuentaCobro={handleGenerarCuentaCobro}
+                  onCrearOrdenRapida={handleCrearOrdenRapida}
+                  onActualizarOT={handleActualizarOT}
+                  onEliminarOT={handleEliminarOT}
+                  onNavigateToCotizaciones={(cotId) => {
+                    setActiveTab('cotizaciones');
+                  }}
+                  onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
+                />
+              )}
 
-        {activeTab === 'cotizaciones' && (
-          <CotizacionesList 
-            cotizaciones={cotizaciones}
-            config={config}
-            ordenes={ordenes}
-            ventas={ventasExpress}
-            onUpdateEstado={(id, st) => {
-              const u = cotizaciones.map(c => c.id === id ? { ...c, estado: st } : c);
-              setCotizaciones(u);
-              StorageService.saveCotizaciones(u);
-            }}
-            onEditarCotizacion={handleEditarCotizacion}
-            onAprobarCotizacion={handleAprobarCotizacion}
-            onActualizarPagoCotizacion={handleActualizarPagoCotizacion}
-            onEliminarCotizacion={handleEliminarCotizacion}
-            onNuevaCotizacion={handleNuevaCotizacion}
-          />
-        )}
+              {activeTab === 'cotizaciones' && (
+                <CotizacionesList
+                  cotizaciones={cotizaciones}
+                  config={config}
+                  ordenes={ordenes}
+                  ventas={ventasExpress}
+                  onUpdateEstado={(id, st) => {
+                    const u = cotizaciones.map(c => c.id === id ? { ...c, estado: st } : c);
+                    setCotizaciones(u);
+                    StorageService.saveCotizaciones(u);
+                  }}
+                  onEditarCotizacion={handleEditarCotizacion}
+                  onAprobarCotizacion={handleAprobarCotizacion}
+                  onActualizarPagoCotizacion={handleActualizarPagoCotizacion}
+                  onEliminarCotizacion={handleEliminarCotizacion}
+                  onNuevaCotizacion={handleNuevaCotizacion}
+                />
+              )}
 
-        {activeTab === 'pos' && (
-          <POSExpressView 
-            ventas={ventasExpress}
-            clientes={clientes}
-            config={config}
-            ordenes={ordenes}
-            productosStock={productosStock}
-            cotizaciones={cotizaciones}
-            onGuardarVenta={handleGuardarVentaExpress}
-            onActualizarVenta={handleActualizarVentaExpress}
-            onEliminarVenta={handleEliminarVentaExpress}
-            onCrearCliente={handleAddCliente}
-            onNavigateTab={setActiveTab}
-          />
-        )}
+              {activeTab === 'pos' && (
+                <POSExpressView
+                  ventas={ventasExpress}
+                  clientes={clientes}
+                  config={config}
+                  ordenes={ordenes}
+                  productosStock={productosStock}
+                  cotizaciones={cotizaciones}
+                  onGuardarVenta={handleGuardarVentaExpress}
+                  onActualizarVenta={handleActualizarVentaExpress}
+                  onEliminarVenta={handleEliminarVentaExpress}
+                  onCrearCliente={handleAddCliente}
+                  onNavigateTab={setActiveTab}
+                />
+              )}
 
-        {activeTab === 'cuentas' && (
-          <CuentasCobroList 
-            cuentas={cuentas}
-            ventasExpress={ventasExpress}
-            ordenes={ordenes}
-            clientes={clientes}
-            config={config}
-            onUpdatePago={handleUpdatePago}
-            onUpdateVentaExpress={handleActualizarVentaExpress}
-            onEliminarVentaExpress={handleEliminarVentaExpress}
-            onEliminarCuentaCobro={handleEliminarCuentaCobro}
-            onActualizarOT={handleActualizarOT}
-            onCrearCuentaCobro={handleCrearCuentaCobro}
-            onRegistrarPagoConsolidado={handleRegistrarPagoConsolidado}
-            onNavigateTab={setActiveTab}
-          />
-        )}
+              {activeTab === 'cuentas' && (
+                <CuentasCobroList
+                  cuentas={cuentas}
+                  ventasExpress={ventasExpress}
+                  ordenes={ordenes}
+                  clientes={clientes}
+                  config={config}
+                  onUpdatePago={handleUpdatePago}
+                  onUpdateVentaExpress={handleActualizarVentaExpress}
+                  onEliminarVentaExpress={handleEliminarVentaExpress}
+                  onEliminarCuentaCobro={handleEliminarCuentaCobro}
+                  onActualizarOT={handleActualizarOT}
+                  onCrearCuentaCobro={handleCrearCuentaCobro}
+                  onRegistrarPagoConsolidado={handleRegistrarPagoConsolidado}
+                  onNavigateTab={setActiveTab}
+                />
+              )}
 
-        {(activeTab === 'catalogos' || activeTab === 'materiales' || activeTab === 'directorio') && (
-          <CatalogosManager 
-            initialCategory={activeTab === 'materiales' ? 'materiales' : activeTab === 'directorio' ? 'directorio' : 'ajustes'}
-            resinas={resinas}
-            filamentos={filamentos}
-            insumos={insumos}
-            maquinas={maquinas}
-            personal={personal}
-            clientes={clientes}
-            proveedores={proveedores}
-            config={config}
-            tarifasTamanos={tarifasTamanos}
-            onUpdateResinas={r => { 
-              setResinas(r); 
-              StorageService.saveResinas(r); 
-              r.forEach(res => CloudSyncService.saveResina(res));
-            }}
-            onUpdateFilamentos={f => {
-              setFilamentos(f);
-              StorageService.saveFilamentos(f);
-              f.forEach(fil => CloudSyncService.saveFilamento(fil));
-            }}
-            onUpdateInsumos={i => { 
-              setInsumos(i); 
-              StorageService.saveInsumos(i); 
-              i.forEach(ins => CloudSyncService.saveInsumo(ins));
-            }}
-            onUpdateMaquinas={m => { 
-              setMaquinas(m); 
-              StorageService.saveMaquinas(m); 
-              m.forEach(maq => CloudSyncService.saveMaquina(maq));
-            }}
-            onUpdatePersonal={p => { 
-              setPersonal(p); 
-              StorageService.savePersonal(p); 
-              p.forEach(per => CloudSyncService.saveTarifaPersonal(per));
-            }}
-            onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
-            onUpdateProveedores={pr => { 
-              setProveedores(pr); 
-              StorageService.saveProveedores(pr); 
-              pr.forEach(prov => CloudSyncService.saveProveedor(prov));
-            }}
-            onUpdateConfig={cfg => { 
-              setConfig(cfg); 
-              StorageService.saveConfig(cfg); 
-              CloudSyncService.saveConfiguracion(cfg);
-            }}
-            onUpdateTarifasTamanos={t => { 
-              setTarifasTamanos(t); 
-              StorageService.saveTarifasTamanos(t); 
-              t.forEach(tar => CloudSyncService.saveTarifaTamano(tar));
-            }}
-            onRefreshCatalogos={async () => {
-              const [freshMaq, freshIns, freshRes, freshFil, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
-                CloudSyncService.fetchMaquinas(),
-                CloudSyncService.fetchInsumos(),
-                CloudSyncService.fetchResinas(),
-                CloudSyncService.fetchFilamentos(),
-                CloudSyncService.fetchConfiguracion(),
-                CloudSyncService.fetchTarifasPersonal(),
-                CloudSyncService.fetchProveedores(),
-                CloudSyncService.fetchTarifasTamanos()
-              ]);
-              if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
-              if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
-              if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
-              if (freshFil && freshFil.length > 0) { setFilamentos(freshFil); StorageService.saveFilamentos(freshFil); }
-              if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
-              if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
-              if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
-              if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
-            }}
-            onOpenBackup={() => setShowBackupModal(true)}
-          />
-        )}
+              {(activeTab === 'catalogos' || activeTab === 'materiales' || activeTab === 'directorio') && (
+                <CatalogosManager
+                  initialCategory={activeTab === 'materiales' ? 'materiales' : activeTab === 'directorio' ? 'directorio' : 'ajustes'}
+                  resinas={resinas}
+                  filamentos={filamentos}
+                  insumos={insumos}
+                  maquinas={maquinas}
+                  personal={personal}
+                  clientes={clientes}
+                  proveedores={proveedores}
+                  config={config}
+                  tarifasTamanos={tarifasTamanos}
+                  onUpdateResinas={r => {
+                    setResinas(r);
+                    StorageService.saveResinas(r);
+                    r.forEach(res => CloudSyncService.saveResina(res));
+                    recalcularCotizacionesNoAceptadas(r, filamentos, insumos, maquinas, personal, config);
+                  }}
+                  onUpdateFilamentos={f => {
+                    setFilamentos(f);
+                    StorageService.saveFilamentos(f);
+                    f.forEach(fil => CloudSyncService.saveFilamento(fil));
+                    recalcularCotizacionesNoAceptadas(resinas, f, insumos, maquinas, personal, config);
+                  }}
+                  onUpdateInsumos={i => {
+                    setInsumos(i);
+                    StorageService.saveInsumos(i);
+                    i.forEach(ins => CloudSyncService.saveInsumo(ins));
+                    recalcularCotizacionesNoAceptadas(resinas, filamentos, i, maquinas, personal, config);
+                  }}
+                  onUpdateMaquinas={m => {
+                    setMaquinas(m);
+                    StorageService.saveMaquinas(m);
+                    m.forEach(maq => CloudSyncService.saveMaquina(maq));
+                  }}
+                  onUpdatePersonal={p => {
+                    setPersonal(p);
+                    StorageService.savePersonal(p);
+                    p.forEach(per => CloudSyncService.saveTarifaPersonal(per));
+                  }}
+                  onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
+                  onUpdateProveedores={pr => {
+                    setProveedores(pr);
+                    StorageService.saveProveedores(pr);
+                    pr.forEach(prov => CloudSyncService.saveProveedor(prov));
+                  }}
+                  onUpdateConfig={cfg => {
+                    setConfig(cfg);
+                    StorageService.saveConfig(cfg);
+                    CloudSyncService.saveConfiguracion(cfg);
+                  }}
+                  onUpdateTarifasTamanos={t => {
+                    setTarifasTamanos(t);
+                    StorageService.saveTarifasTamanos(t);
+                    t.forEach(tar => CloudSyncService.saveTarifaTamano(tar));
+                  }}
+                  onRefreshCatalogos={async () => {
+                    const [freshMaq, freshIns, freshRes, freshFil, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+                      CloudSyncService.fetchMaquinas(),
+                      CloudSyncService.fetchInsumos(),
+                      CloudSyncService.fetchResinas(),
+                      CloudSyncService.fetchFilamentos(),
+                      CloudSyncService.fetchConfiguracion(),
+                      CloudSyncService.fetchTarifasPersonal(),
+                      CloudSyncService.fetchProveedores(),
+                      CloudSyncService.fetchTarifasTamanos()
+                    ]);
+                    if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
+                    if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
+                    if (freshRes && freshRes.length > 0) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+                    if (freshFil && freshFil.length > 0) { setFilamentos(freshFil); StorageService.saveFilamentos(freshFil); }
+                    if (freshCfg) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
+                    if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
+                    if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
+                    if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+                  }}
+                  onOpenBackup={() => setShowBackupModal(true)}
+                />
+              )}
 
-        {activeTab === 'plan' && (
-          <ProjectPlanView />
-        )}
+              {activeTab === 'plan' && (
+                <ProjectPlanView />
+              )}
 
-        {activeTab === 'stl' && (
-          <STLAnalyzer 
-            resinas={resinas}
-            onApplyToCotizador={(data) => {
-              setStlAppliedData(data);
-              setActiveTab('cotizador');
-            }}
-          />
-        )}
+              {activeTab === 'stl' && (
+                <STLAnalyzer
+                  resinas={resinas}
+                  onApplyToCotizador={(data) => {
+                    setStlAppliedData(data);
+                    setActiveTab('cotizador');
+                  }}
+                />
+              )}
 
-        {activeTab === 'stock' && (
-          <ProductosStockView 
-            productos={productosStock}
-            onUpdateProductos={handleUpdateProductosStock}
-            onAgregarACotizacion={(pieza) => {
-              handleAgregarPieza(pieza);
-            }}
-            onNavigateToCotizador={() => setActiveTab('cotizador')}
-            onRefreshStock={async () => {
-              const freshStock = await CloudSyncService.fetchProductosStock();
-              if (freshStock !== null) {
-                setProductosStock(freshStock);
-                StorageService.saveProductosStock(freshStock);
-              }
-              return freshStock;
-            }}
-            onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
-          />
-        )}
+              {activeTab === 'stock' && (
+                <ProductosStockView
+                  productos={productosStock}
+                  onUpdateProductos={handleUpdateProductosStock}
+                  onAgregarACotizacion={(pieza) => {
+                    handleAgregarPieza(pieza);
+                  }}
+                  onNavigateToCotizador={() => setActiveTab('cotizador')}
+                  onRefreshStock={async () => {
+                    const freshStock = await CloudSyncService.fetchProductosStock();
+                    if (freshStock !== null) {
+                      setProductosStock(freshStock);
+                      StorageService.saveProductosStock(freshStock);
+                    }
+                    return freshStock;
+                  }}
+                  onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
+                />
+              )}
 
-        {activeTab === 'finanzas' && (
-          <FinancialReportView 
-            cotizaciones={cotizaciones}
-            ordenes={ordenes}
-            cuentas={cuentas}
-            resinas={resinas}
-            ventasExpress={ventasExpress}
-            whatsappStatus={whatsappHealthStatus}
-            onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
-            onOpenBackup={() => setShowBackupModal(true)}
-          />
-        )}
+              {activeTab === 'finanzas' && (
+                <FinancialReportView
+                  cotizaciones={cotizaciones}
+                  ordenes={ordenes}
+                  cuentas={cuentas}
+                  resinas={resinas}
+                  ventasExpress={ventasExpress}
+                  whatsappStatus={whatsappHealthStatus}
+                  onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
+                  onOpenBackup={() => setShowBackupModal(true)}
+                />
+              )}
 
-        {activeTab === 'seguimiento' && (
-          <CustomerTrackingView 
-            ordenes={ordenes}
-            cotizaciones={cotizaciones}
-            config={config}
-          />
-        )}
+              {activeTab === 'seguimiento' && (
+                <CustomerTrackingView
+                  ordenes={ordenes}
+                  cotizaciones={cotizaciones}
+                  config={config}
+                />
+              )}
 
-        {activeTab === 'tareas' && (
-          <TeamTasksView 
-            tareas={tareas}
-            solicitudesInsumos={solicitudesInsumos}
-            insumosCatalogo={insumos}
-            config={config}
-            onGuardarTarea={handleGuardarTarea}
-            onActualizarTarea={handleActualizarTarea}
-            onEliminarTarea={handleEliminarTarea}
-            onCrearSolicitudInsumo={handleCrearSolicitudInsumo}
-            onActualizarSolicitudInsumo={handleActualizarSolicitudInsumo}
-            activeOperator={activeOperator}
-            currentUser={currentUser}
-          />
-        )}
+              {activeTab === 'tareas' && (
+                <TeamTasksView
+                  tareas={tareas}
+                  solicitudesInsumos={solicitudesInsumos}
+                  insumosCatalogo={insumos}
+                  config={config}
+                  onGuardarTarea={handleGuardarTarea}
+                  onActualizarTarea={handleActualizarTarea}
+                  onEliminarTarea={handleEliminarTarea}
+                  onCrearSolicitudInsumo={handleCrearSolicitudInsumo}
+                  onActualizarSolicitudInsumo={handleActualizarSolicitudInsumo}
+                  activeOperator={activeOperator}
+                  currentUser={currentUser}
+                />
+              )}
 
-        {activeTab === 'marketing' && (
-          <MarketingHubView 
-            productosStock={productosStock}
-            tarifasTamanos={tarifasTamanos}
-            config={config}
-            onUpdateProductoStock={(prod) => {
-              const updated = productosStock.map(p => p.id === prod.id ? prod : p);
-              handleUpdateProductosStock(updated);
-            }}
-          />
-        )}
+              {activeTab === 'marketing' && (
+                <MarketingHubView
+                  productosStock={productosStock}
+                  tarifasTamanos={tarifasTamanos}
+                  config={config}
+                  onUpdateProductoStock={(prod) => {
+                    const updated = productosStock.map(p => p.id === prod.id ? prod : p);
+                    handleUpdateProductosStock(updated);
+                  }}
+                />
+              )}
 
-        {activeTab === 'herramientas' && (
-          <ToolsHubView />
-        )}
+              {activeTab === 'herramientas' && (
+                <ToolsHubView />
+              )}
 
-        {activeTab === 'calendario' && (
-          <CalendarOperationalView 
-            ordenes={ordenes}
-            cuentas={cuentas}
-            cotizaciones={cotizaciones}
-            tareas={tareas}
-            solicitudesInsumos={solicitudesInsumos}
-            config={config}
-            onActualizarOT={handleActualizarOT}
-            onActualizarCuenta={handleUpdatePago ? (cuenta) => handleUpdatePago(cuenta.id, cuenta.abono) : undefined}
-            onActualizarTarea={handleActualizarTarea}
-            onNavigateTab={setActiveTab}
-          />
-        )}
+              {activeTab === 'calendario' && (
+                <CalendarOperationalView
+                  ordenes={ordenes}
+                  cuentas={cuentas}
+                  cotizaciones={cotizaciones}
+                  tareas={tareas}
+                  solicitudesInsumos={solicitudesInsumos}
+                  config={config}
+                  onActualizarOT={handleActualizarOT}
+                  onActualizarCuenta={handleUpdatePago ? (cuenta) => handleUpdatePago(cuenta.id, cuenta.abono) : undefined}
+                  onActualizarTarea={handleActualizarTarea}
+                  onNavigateTab={setActiveTab}
+                />
+              )}
 
-        {(activeTab === 'usuarios' || (activeTab as string) === 'personal') && (
-          <UsuariosManagerView />
-        )}
-          </React.Suspense>
-        </ErrorBoundary>
+              {(activeTab === 'usuarios' || (activeTab as string) === 'personal') && (
+                <UsuariosManagerView />
+              )}
+            </React.Suspense>
+          </ErrorBoundary>
         )}
       </main>
 
       {/* Barra de Navegación Inferior Fija de 4 Hubs con Filtrado RBAC */}
-      <BottomNavBar 
+      <BottomNavBar
         activeHub={activeHub}
         allowedHubs={permisos}
         onSelectHub={(hub) => {
@@ -2712,7 +3017,7 @@ export const App: React.FC = () => {
 
       {/* Modal de Respaldos y Google Drive */}
       <React.Suspense fallback={null}>
-        <BackupDriveModal 
+        <BackupDriveModal
           isOpen={showBackupModal}
           onClose={() => setShowBackupModal(false)}
           cloudStatus={cloudSyncStatus}
@@ -2720,7 +3025,7 @@ export const App: React.FC = () => {
       </React.Suspense>
 
       {/* Modal de Autenticación de Personal Staff */}
-      <StaffLoginModal 
+      <StaffLoginModal
         isOpen={showStaffModal}
         onClose={() => setShowStaffModal(false)}
         onLoginSuccess={handleStaffLoginSuccess}
@@ -2731,7 +3036,7 @@ export const App: React.FC = () => {
 
       {/* Modal de Daily Briefing y Monitor de WhatsApp */}
       <React.Suspense fallback={null}>
-        <DailyBriefingModal 
+        <DailyBriefingModal
           isOpen={showDailyBriefingModal}
           onClose={() => setShowDailyBriefingModal(false)}
           onSuccessDispatch={() => {
@@ -2742,13 +3047,13 @@ export const App: React.FC = () => {
 
       {/* Modal de Conexión de WhatsApp y Correo Oficial */}
       <React.Suspense fallback={null}>
-        <WhatsAppConnectModal 
+        <WhatsAppConnectModal
           isOpen={showWhatsAppModal}
           onClose={() => setShowWhatsAppModal(false)}
         />
       </React.Suspense>
       {/* Modal de Producción Interna, Pruebas & Exhibición */}
-      <ModalProduccionInterna 
+      <ModalProduccionInterna
         isOpen={showModalProduccionInterna}
         onClose={() => setShowModalProduccionInterna(false)}
         filamentos={filamentos}
@@ -2761,7 +3066,7 @@ export const App: React.FC = () => {
       />
 
       {/* Modal de Cambio de PIN de Operador */}
-      <CambiarPinModal 
+      <CambiarPinModal
         isOpen={showChangePinModal}
         onClose={() => setShowChangePinModal(false)}
         mode="internal"

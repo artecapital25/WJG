@@ -96,6 +96,8 @@ export interface Insumo {
   descripcion?: string;
   imagen_url?: string;
   stock_actual?: number;
+  permite_fraccion?: boolean;
+  unidad_medida?: string;
   activo?: boolean;
 }
 
@@ -219,12 +221,28 @@ export interface PiezaCotizada {
   modo_calculo_resina?: 'volumen' | 'manual';
   tipo_estructura?: 'solido' | 'ahuecado';
   porcentaje_relleno?: number;
-  lista_pinturas?: { nombre: string; cantidad_ml: number; costo: number }[];
-  lista_accesorios?: { nombre: string; cantidad: number; costo: number }[];
-  lista_empaques?: { nombre: string; cantidad: number; costo: number }[];
+  lista_pinturas?: { insumo_id?: string; nombre: string; cantidad_ml: number; costo: number }[];
+  lista_accesorios?: {
+    insumo_id?: string;
+    nombre: string;
+    cantidad: number; // Fracción o cantidad decimal equivalente en unidades (ej. 0.05 para 5%, 0.2 para 0.2 und)
+    modo_consumo?: 'unidad' | 'porcentaje';
+    valor_entrada?: number; // Ej: 5 (cuando es 5%) o 0.2 (cuando es fracción/unidad)
+    costo: number;
+  }[];
+  lista_empaques?: { insumo_id?: string; nombre: string; cantidad: number; costo: number }[];
   tiene_empaque?: boolean;
   va_pintado?: boolean;
   costo_empaque?: number;
+  requiere_curado?: boolean;
+  curado_maquina_id?: string;
+  tiempo_curado_min?: number;
+  tiempo_curado_personalizado?: boolean;
+  requiere_compresor_pintura?: boolean;
+  compresor_maquina_id?: string;
+  tiempo_compresor_min?: number;
+  tiempo_compresor_sincronizado?: boolean;
+  tiempo_impresion_modo?: 'auto' | 'manual';
   maquinas_involucradas?: MaquinaInvolucrada[];
   enlaces_compra?: EnlaceReferenciaCompra[];
   datos_pendientes?: boolean;
@@ -376,7 +394,16 @@ export interface OrdenTrabajo {
   maquina_nombre: string;
   maquinas_involucradas?: MaquinaInvolucrada[];
   enlaces_compra?: EnlaceReferenciaCompra[];
-  lista_empaques?: { nombre: string; cantidad: number; costo: number }[];
+  lista_empaques?: { insumo_id?: string; nombre: string; cantidad: number; costo: number }[];
+  lista_accesorios?: {
+    insumo_id?: string;
+    nombre: string;
+    cantidad: number;
+    modo_consumo?: 'unidad' | 'porcentaje';
+    valor_entrada?: number;
+    costo: number;
+  }[];
+  lista_pinturas?: { insumo_id?: string; nombre: string; cantidad_ml: number; costo: number }[];
   tiene_empaque?: boolean;
   va_pintado?: boolean;
   detalles_tecnicos: string;

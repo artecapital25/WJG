@@ -93,7 +93,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   }, [filamentos, filamentoId]);
 
   useEffect(() => {
-    if (filamentoActual && !piezaEnEdicion) {
+    if (filamentoActual) {
       setMaterialFilamento(`${filamentoActual.marca} ${filamentoActual.tipo} (${filamentoActual.color})`);
       setCostoRolloKg(Math.round(filamentoActual.costo_gramo * 1000));
     }
@@ -166,24 +166,38 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     }
   }, [initialPieceData]);
 
-  // Cargar datos si se está editando una pieza
+  // Cargar datos completos (100% de hidratación) si se está editando una pieza
   useEffect(() => {
     if (piezaEnEdicion) {
-      setNombreItem(piezaEnEdicion.nombre_item);
-      setCantidad(piezaEnEdicion.cantidad);
-      setAltoMm(piezaEnEdicion.alto_mm || 100);
-      setAnchoMm(piezaEnEdicion.ancho_mm || 60);
-      setProfundidadMm(piezaEnEdicion.profundidad_mm || 60);
-      if (piezaEnEdicion.tecnologia) setTecnologia(piezaEnEdicion.tecnologia);
-      if (piezaEnEdicion.filamento_id) setFilamentoId(piezaEnEdicion.filamento_id);
-      if (piezaEnEdicion.material_filamento) setMaterialFilamento(piezaEnEdicion.material_filamento);
-      if (piezaEnEdicion.peso_filamento_g) setPesoFilamentoG(piezaEnEdicion.peso_filamento_g);
-      if (piezaEnEdicion.costo_filamento_kg) setCostoRolloKg(piezaEnEdicion.costo_filamento_kg);
-      if (piezaEnEdicion.tiempo_impresion_min) {
+      setNombreItem(piezaEnEdicion.nombre_item || 'Figura Coleccionable 3D');
+      setCantidad(piezaEnEdicion.cantidad || 1);
+      setAltoMm(piezaEnEdicion.alto_mm ?? 100);
+      setAnchoMm(piezaEnEdicion.ancho_mm ?? 60);
+      setProfundidadMm(piezaEnEdicion.profundidad_mm ?? 60);
+      setTecnologia(piezaEnEdicion.tecnologia || 'SLA_RESINA');
+
+      if (piezaEnEdicion.filamento_id) {
+        setFilamentoId(piezaEnEdicion.filamento_id);
+      }
+      if (piezaEnEdicion.material_filamento) {
+        setMaterialFilamento(piezaEnEdicion.material_filamento);
+      }
+      if (piezaEnEdicion.peso_filamento_g !== undefined) {
+        setPesoFilamentoG(piezaEnEdicion.peso_filamento_g);
+      } else if (piezaEnEdicion.tecnologia === 'FDM_FILAMENTO' && piezaEnEdicion.peso_estimado_g !== undefined) {
+        setPesoFilamentoG(piezaEnEdicion.peso_estimado_g);
+      }
+      if (piezaEnEdicion.costo_filamento_kg !== undefined) {
+        setCostoRolloKg(piezaEnEdicion.costo_filamento_kg);
+      }
+      if (piezaEnEdicion.tiempo_impresion_min !== undefined && piezaEnEdicion.tiempo_impresion_min > 0) {
         setTiempoFDMMin(piezaEnEdicion.tiempo_impresion_min);
         setTiempoImpresionManualMin(piezaEnEdicion.tiempo_impresion_min);
-        setTiempoImpresionModo('manual');
+        setTiempoImpresionModo(piezaEnEdicion.tiempo_impresion_modo || 'auto');
+      } else {
+        setTiempoImpresionModo('auto');
       }
+
       if (piezaEnEdicion.merma_porcentaje !== undefined) {
         if (piezaEnEdicion.tecnologia === 'FDM_FILAMENTO') {
           setMermaPorcentajeFdm(piezaEnEdicion.merma_porcentaje);
@@ -191,6 +205,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
           setMermaPorcentajeResina(piezaEnEdicion.merma_porcentaje);
         }
       }
+
       if (piezaEnEdicion.material_lamina) setMaterialLamina(piezaEnEdicion.material_lamina);
       if (piezaEnEdicion.espesor_lamina_mm) setEspesorLaminaMm(piezaEnEdicion.espesor_lamina_mm);
       if (piezaEnEdicion.tiempo_laser_min) setTiempoLaserMin(piezaEnEdicion.tiempo_laser_min);
@@ -199,27 +214,140 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       if (piezaEnEdicion.tiempo_mecanizado_min) setTiempoMecanizadoMin(piezaEnEdicion.tiempo_mecanizado_min);
       if (piezaEnEdicion.resina_id) setResinaId(piezaEnEdicion.resina_id);
       if (piezaEnEdicion.maquina_id) setMaquinaId(piezaEnEdicion.maquina_id);
-      if (piezaEnEdicion.modo_calculo_resina) setModoCalculoResina(piezaEnEdicion.modo_calculo_resina);
-      if (piezaEnEdicion.gramos_resina_manual) setPesoResinaManualG(piezaEnEdicion.gramos_resina_manual);
-      if (piezaEnEdicion.tipo_estructura) setTipoEstructura(piezaEnEdicion.tipo_estructura);
-      if (piezaEnEdicion.porcentaje_relleno !== undefined) setPorcentajeRelleno(piezaEnEdicion.porcentaje_relleno);
+
+      setModoCalculoResina(piezaEnEdicion.modo_calculo_resina || 'volumen');
+      if (piezaEnEdicion.gramos_resina_manual !== undefined && piezaEnEdicion.gramos_resina_manual > 0) {
+        setPesoResinaManualG(piezaEnEdicion.gramos_resina_manual);
+      } else if (piezaEnEdicion.peso_estimado_g !== undefined && piezaEnEdicion.peso_estimado_g > 0) {
+        setPesoResinaManualG(piezaEnEdicion.peso_estimado_g);
+      }
+
+      setTipoEstructura(piezaEnEdicion.tipo_estructura || 'solido');
+      setPorcentajeRelleno(piezaEnEdicion.porcentaje_relleno ?? 35);
+
       if (piezaEnEdicion.imagen_url) {
         setImagenUrl(piezaEnEdicion.imagen_url);
         setTipoOrigenImagen('archivo');
+      } else {
+        setImagenUrl('');
+        setTipoOrigenImagen(null);
       }
+
       setEsParcial(Boolean(piezaEnEdicion.datos_pendientes));
       if (piezaEnEdicion.notas_pendientes) setNotasPendientes(piezaEnEdicion.notas_pendientes);
+
       setVaPintado(Boolean(piezaEnEdicion.va_pintado));
-      setTiempoPinturaMin(piezaEnEdicion.tiempo_pintura_min || 0);
-      setTiempoArmadoMin(piezaEnEdicion.tiempo_armado_min || 0);
-      if (piezaEnEdicion.costo_modelo_comprado !== undefined) {
-        setCostoModeloComprado(piezaEnEdicion.costo_modelo_comprado);
+      setTiempoDesarrolloMin(piezaEnEdicion.tiempo_desarrollo_min ?? 30);
+      setTiempoArmadoMin(piezaEnEdicion.tiempo_armado_min ?? 15);
+      setTiempoPinturaMin(piezaEnEdicion.tiempo_pintura_min ?? 0);
+
+      // Restaurar Curado y Compresor
+      const curadoProc = piezaEnEdicion.maquinas_involucradas?.find(m => m.proceso === 'Lavado y Curado UV');
+      if (piezaEnEdicion.requiere_curado !== undefined) {
+        setRequiereCurado(piezaEnEdicion.requiere_curado);
+      } else if (piezaEnEdicion.maquinas_involucradas) {
+        setRequiereCurado(Boolean(curadoProc));
       }
+      if (piezaEnEdicion.curado_maquina_id) {
+        setCuradoId(piezaEnEdicion.curado_maquina_id);
+      } else if (curadoProc?.maquina_id) {
+        setCuradoId(curadoProc.maquina_id);
+      }
+      if (piezaEnEdicion.tiempo_curado_min !== undefined) {
+        setTiempoCuradoMin(piezaEnEdicion.tiempo_curado_min);
+      } else if (curadoProc?.tiempo_min !== undefined) {
+        setTiempoCuradoMin(curadoProc.tiempo_min);
+      }
+      setTiempoCuradoPersonalizado(Boolean(piezaEnEdicion.tiempo_curado_personalizado));
+
+      const compProc = piezaEnEdicion.maquinas_involucradas?.find(m => m.proceso === 'Pintura y Aerografía');
+      if (piezaEnEdicion.requiere_compresor_pintura !== undefined) {
+        setRequiereCompresorPintura(piezaEnEdicion.requiere_compresor_pintura);
+      } else if (piezaEnEdicion.maquinas_involucradas) {
+        setRequiereCompresorPintura(Boolean(compProc));
+      }
+      if (piezaEnEdicion.compresor_maquina_id) {
+        setCompresorId(piezaEnEdicion.compresor_maquina_id);
+      } else if (compProc?.maquina_id) {
+        setCompresorId(compProc.maquina_id);
+      }
+      if (piezaEnEdicion.tiempo_compresor_min !== undefined) {
+        setTiempoCompresorMin(piezaEnEdicion.tiempo_compresor_min);
+      } else if (compProc?.tiempo_min !== undefined) {
+        setTiempoCompresorMin(compProc.tiempo_min);
+      }
+      if (piezaEnEdicion.tiempo_compresor_sincronizado !== undefined) {
+        setTiempoCompresorSincronizado(piezaEnEdicion.tiempo_compresor_sincronizado);
+      }
+
+      // Restaurar Costos, Márgenes y Tarifas
+      setCostoModeloComprado(piezaEnEdicion.costo_modelo_comprado ?? 0);
       if (piezaEnEdicion.margen_ganancia !== undefined) {
         setMargenGanancia(piezaEnEdicion.margen_ganancia);
       }
+      if (piezaEnEdicion.precio_fijado_tarifa && piezaEnEdicion.tarifa_tamano_aplicada) {
+        setPrecioFijadoTarifa(true);
+        setTarifaAplicada(piezaEnEdicion.tarifa_tamano_aplicada);
+        setPrecioUnitarioManual(piezaEnEdicion.tarifa_tamano_aplicada.precio_sugerido || piezaEnEdicion.precio_unitario);
+      } else if (piezaEnEdicion.precio_fijado_tarifa) {
+        setPrecioFijadoTarifa(true);
+        setTarifaAplicada(null);
+        setPrecioUnitarioManual(piezaEnEdicion.precio_unitario_original || piezaEnEdicion.precio_unitario);
+      } else {
+        setPrecioFijadoTarifa(false);
+        setTarifaAplicada(null);
+        setPrecioUnitarioManual(0);
+      }
+
       setAplicaDescuentoVolumen(piezaEnEdicion.aplica_descuento_volumen ?? true);
       setDescuentoVolumenManual(piezaEnEdicion.descuento_volumen_porcentaje);
+
+      // Restaurar Pinturas
+      if (Array.isArray(piezaEnEdicion.lista_pinturas)) {
+        setPinturasSeleccionadas(piezaEnEdicion.lista_pinturas.map((p, idx) => {
+          const matchIns = insumos.find(i => i.id === p.insumo_id || i.nombre.toLowerCase().trim() === (p.nombre || '').toLowerCase().trim());
+          return {
+            tempId: `p-edit-${Date.now()}-${idx}`,
+            insumoId: matchIns?.id || p.insumo_id || '',
+            cantidadMl: Number(p.cantidad_ml) || 0
+          };
+        }));
+      } else {
+        setPinturasSeleccionadas([]);
+      }
+
+      // Restaurar Herrajes / Insumos Porcionados y Porcentuales
+      if (Array.isArray(piezaEnEdicion.lista_accesorios)) {
+        setHerrajesSeleccionados(piezaEnEdicion.lista_accesorios.map((a, idx) => {
+          const matchIns = insumos.find(i => i.id === a.insumo_id || i.nombre.toLowerCase().trim() === (a.nombre || '').toLowerCase().trim());
+          const modo = a.modo_consumo || 'unidad';
+          const cant = Number(a.cantidad) || 0;
+          const val = a.valor_entrada !== undefined ? Number(a.valor_entrada) : (modo === 'porcentaje' ? Number((cant * 100).toFixed(2)) : cant);
+          return {
+            tempId: `h-edit-${Date.now()}-${idx}`,
+            insumoId: matchIns?.id || a.insumo_id || '',
+            cantidad: cant,
+            modoConsumo: modo,
+            valorEntrada: val
+          };
+        }));
+      } else {
+        setHerrajesSeleccionados([]);
+      }
+
+      // Restaurar Empaques
+      if (Array.isArray(piezaEnEdicion.lista_empaques)) {
+        setEmpaquesSeleccionados(piezaEnEdicion.lista_empaques.map((e, idx) => {
+          const matchIns = insumos.find(i => i.id === e.insumo_id || i.nombre.toLowerCase().trim() === (e.nombre || '').toLowerCase().trim());
+          return {
+            tempId: `emp-edit-${Date.now()}-${idx}`,
+            insumoId: matchIns?.id || e.insumo_id || '',
+            cantidad: Number(e.cantidad) || 1
+          };
+        }));
+      } else {
+        setEmpaquesSeleccionados([]);
+      }
 
       if (piezaEnEdicion.enlaces_compra && piezaEnEdicion.enlaces_compra.length > 0) {
         setEnlacesCompra(piezaEnEdicion.enlaces_compra.map((enl, idx) => ({
@@ -234,7 +362,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
       if (piezaEnEdicion.maquinas_involucradas) {
         const extras: ItemMaquinaExtraForm[] = piezaEnEdicion.maquinas_involucradas
-          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV')
+          .filter(m => m.proceso !== 'Impresión 3D' && m.proceso !== 'Lavado y Curado UV' && m.proceso !== 'Pintura y Aerografía')
           .map((m, idx) => ({
             tempId: `extra-${Date.now()}-${idx}`,
             maquinaId: m.maquina_id,
@@ -243,6 +371,8 @@ export function useCotizadorForm(props: CotizadorFormProps) {
             mostrarEnCliente: Boolean(m.mostrar_en_cliente)
           }));
         setMaquinasAdicionales(extras);
+      } else {
+        setMaquinasAdicionales([]);
       }
     }
   }, [piezaEnEdicion]);
@@ -406,12 +536,21 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setPinturasSeleccionadas(prev => prev.map(p => p.tempId === tempId ? { ...p, [field]: val } : p));
   };
 
-  // Handlers para Herrajes
+  // Handlers para Herrajes / Insumos Porcionados y Porcentuales
   const handleAddHerraje = () => {
-    const defaultHerraje = insumos.find(i => !i.categoria.toLowerCase().includes('pintura') && !i.categoria.toLowerCase().includes('quimic'));
+    const defaultHerraje = insumos.find(i => !i.categoria.toLowerCase().includes('pintura'));
+    const defaultModo: 'unidad' | 'porcentaje' = defaultHerraje?.permite_fraccion ? 'porcentaje' : 'unidad';
+    const defaultVal = defaultModo === 'porcentaje' ? 10 : 1;
+    const defaultCant = defaultModo === 'porcentaje' ? 0.1 : 1;
     setHerrajesSeleccionados(prev => [
       ...prev,
-      { tempId: `h-${Date.now()}`, insumoId: defaultHerraje?.id || '', cantidad: 1 }
+      {
+        tempId: `h-${Date.now()}-${Math.random().toString(36).slice(2, 5)}`,
+        insumoId: defaultHerraje?.id || '',
+        cantidad: defaultCant,
+        modoConsumo: defaultModo,
+        valorEntrada: defaultVal
+      }
     ]);
   };
 
@@ -419,8 +558,42 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setHerrajesSeleccionados(prev => prev.filter(h => h.tempId !== tempId));
   };
 
-  const handleUpdateHerraje = (tempId: string, field: 'insumoId' | 'cantidad', val: any) => {
-    setHerrajesSeleccionados(prev => prev.map(h => h.tempId === tempId ? { ...h, [field]: val } : h));
+  const handleUpdateHerraje = (
+    tempId: string,
+    field: 'insumoId' | 'cantidad' | 'modoConsumo' | 'valorEntrada',
+    val: any
+  ) => {
+    setHerrajesSeleccionados(prev => prev.map(h => {
+      if (h.tempId !== tempId) return h;
+      if (field === 'modoConsumo') {
+        const nuevoModo: 'unidad' | 'porcentaje' = val;
+        const actualModo = h.modoConsumo || 'unidad';
+        if (nuevoModo === actualModo) return h;
+        const actualValor = h.valorEntrada !== undefined ? h.valorEntrada : h.cantidad;
+        if (nuevoModo === 'porcentaje') {
+          const nuevoPct = (actualValor > 0 && actualValor <= 1) ? Number((actualValor * 100).toFixed(2)) : 10;
+          return { ...h, modoConsumo: 'porcentaje', valorEntrada: nuevoPct, cantidad: Number((nuevoPct / 100).toFixed(4)) };
+        } else {
+          const nuevaFracc = actualValor > 0 ? Number((actualValor / 100).toFixed(4)) : 0.2;
+          return { ...h, modoConsumo: 'unidad', valorEntrada: nuevaFracc, cantidad: nuevaFracc };
+        }
+      }
+      if (field === 'valorEntrada' || field === 'cantidad') {
+        const numVal = Math.max(0, Number(val) || 0);
+        const modo = h.modoConsumo || 'unidad';
+        const cantEquiv = modo === 'porcentaje' ? Number((numVal / 100).toFixed(4)) : numVal;
+        return { ...h, valorEntrada: numVal, cantidad: cantEquiv };
+      }
+      if (field === 'insumoId') {
+        const ins = insumos.find(i => i.id === val);
+        const esCintaOPorcionado = ins?.permite_fraccion || (ins?.nombre || '').toLowerCase().includes('cinta');
+        if (esCintaOPorcionado && (!h.valorEntrada || h.valorEntrada === 1)) {
+          return { ...h, insumoId: val, modoConsumo: 'porcentaje', valorEntrada: 10, cantidad: 0.1 };
+        }
+        return { ...h, insumoId: val };
+      }
+      return { ...h, [field]: val };
+    }));
   };
 
   // Handlers para Máquinas y Procesos Adicionales
@@ -521,9 +694,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
   const insumosHerrajes = useMemo(() => {
     return insumos.filter(i => 
-      !i.categoria.toLowerCase().includes('pintura') && 
-      !i.categoria.toLowerCase().includes('quimic') &&
-      !i.categoria.toLowerCase().includes('empaque')
+      !i.categoria.toLowerCase().includes('pintura')
     );
   }, [insumos]);
 
@@ -545,9 +716,13 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     const accesoriosValidos = herrajesSeleccionados
       .map(h => {
         const ins = insumos.find(i => i.id === h.insumoId);
-        return ins ? { insumo: ins, cantidad: Number(h.cantidad) || 0 } : null;
+        if (!ins) return null;
+        const modo: 'unidad' | 'porcentaje' = h.modoConsumo || 'unidad';
+        const val = h.valorEntrada !== undefined ? Number(h.valorEntrada) : Number(h.cantidad);
+        const cant = modo === 'porcentaje' ? (val / 100) : val;
+        return cant > 0 ? { insumo: ins, cantidad: cant, modo_consumo: modo, valor_entrada: val } : null;
       })
-      .filter((h): h is { insumo: Insumo; cantidad: number } => h !== null && h.cantidad > 0);
+      .filter((h): h is { insumo: Insumo; cantidad: number; modo_consumo: 'unidad' | 'porcentaje'; valor_entrada: number } => h !== null);
 
     const empaquesValidos = empaquesSeleccionados
       .map(e => {
@@ -609,13 +784,16 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       costoBloqueMaterial: Number(costoBloqueMaterial) || 35000,
       tiempoMecanizadoMin: Number(tiempoMecanizadoMin) || 45,
       tiempoImpresionManualMin: tiempoImpresionModo === 'manual' ? Number(tiempoImpresionManualMin) : undefined,
+      tiempoImpresionModo,
       requiereCurado,
       estacionCurado,
       tiempoCuradoMin: tiempoCuradoPersonalizado ? Number(tiempoCuradoMin) : undefined,
+      tiempoCuradoPersonalizado,
       insumoCurado,
       requiereCompresorPintura: vaPintado ? requiereCompresorPintura : false,
       maquinaPintura: maquinaCompresor,
       tiempoCompresorMin: tiempoCompresorSincronizado ? Number(tiempoPinturaMin) : Number(tiempoCompresorMin) || 0,
+      tiempoCompresorSincronizado,
       maquinasAdicionales: maquinasExtrasValidas,
       enlacesCompra: enlacesValidos,
       tiempoDesarrolloMin: Number(tiempoDesarrolloMin) || 0,
@@ -691,6 +869,10 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     precioUnitarioManual,
     tarifaAplicada,
     tecnologia,
+    filamentoId,
+    filamentoActual,
+    mermaPorcentajeFdm,
+    mermaPorcentajeResina,
     materialFilamento,
     pesoFilamentoG,
     costoRolloKg,

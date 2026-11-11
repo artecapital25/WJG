@@ -49,19 +49,22 @@ export interface ParametrosPiezaInput {
   desgasteFresaCosto?: number;
 
   tiempoImpresionManualMin?: number;
+  tiempoImpresionModo?: 'auto' | 'manual';
   requiereCurado?: boolean;
   estacionCurado?: Maquina;
   tiempoCuradoMin?: number;
+  tiempoCuradoPersonalizado?: boolean;
   insumoCurado?: Insumo;
   requiereCompresorPintura?: boolean;
   maquinaPintura?: Maquina;
   tiempoCompresorMin?: number;
+  tiempoCompresorSincronizado?: boolean;
   maquinasAdicionales?: { maquina: Maquina; proceso: string; tiempo_min: number; mostrar_en_cliente?: boolean }[];
   enlacesCompra?: EnlaceReferenciaCompra[];
   tiempoDesarrolloMin: number;
   tiempoArmadoMin: number;
   tiempoPinturaMin: number;
-  accesorios: { insumo: Insumo; cantidad: number }[];
+  accesorios: { insumo: Insumo; cantidad: number; modo_consumo?: 'unidad' | 'porcentaje'; valor_entrada?: number }[];
   pinturas: { insumo: Insumo; cantidad_ml: number }[];
   empaques?: { insumo: Insumo; cantidad: number }[];
   vaPintadoManual?: boolean;
@@ -88,6 +91,45 @@ export interface DesgloseTarifaMaquina {
   costoMinutoEnergia: number;
   costoMinutoRepuestos: number;
   costoMinutoTotal: number;
+}
+
+/**
+ * Calcula el costo y la fracción equivalente en inventario para un insumo (soporta modo unidad, fracción decimal ej. 0.2 y porcentaje ej. 5%)
+ */
+export function calcularCostoInsumoItem(
+  insumo: Insumo,
+  cantidad: number,
+  modoConsumo?: 'unidad' | 'porcentaje',
+  valorEntrada?: number
+): { costo: number; cantidadEquivalente: number; modo: 'unidad' | 'porcentaje'; valor: number } {
+  const modo = modoConsumo || 'unidad';
+  const costoTotalEmpaque = insumo.costo_total > 0 ? insumo.costo_total : insumo.costo_unitario;
+  const costoUnitario = insumo.costo_unitario > 0 ? insumo.costo_unitario : costoTotalEmpaque;
+
+  if (modo === 'porcentaje') {
+    const pct = Math.max(0, Number(valorEntrada !== undefined ? valorEntrada : cantidad * 100) || 0);
+    const fraccion = pct / 100;
+    const costo = fraccion * costoTotalEmpaque;
+    return {
+      costo: Math.round(costo),
+      cantidadEquivalente: Number(fraccion.toFixed(4)),
+      modo: 'porcentaje',
+      valor: pct
+    };
+  }
+
+  const cant = Math.max(0, Number(valorEntrada !== undefined ? valorEntrada : cantidad) || 0);
+  // Si el usuario ingresa un decimal menor a 1 (ej. 0.2 de cinta), calcula esa fracción sobre el total del rollo/empaque
+  const costo = (cant > 0 && cant < 1)
+    ? cant * costoTotalEmpaque
+    : cant * costoUnitario;
+
+  return {
+    costo: Math.round(costo),
+    cantidadEquivalente: Number(cant.toFixed(4)),
+    modo: 'unidad',
+    valor: cant
+  };
 }
 
 /**
@@ -332,19 +374,38 @@ export function calcularPieza3D(
     costo_resina = peso_estimado_g * costoGramoResina * factorMerma;
   }
 
-  // 7. Insumos Adicionales (Accesorios, bisutería, empaque, pinturas)
-  const costoAccesorios = input.accesorios.reduce(
-    (acc, item) => acc + (item.insumo.costo_unitario * item.cantidad),
-    0
-  );
-  const costoPinturas = input.pinturas.reduce(
-    (acc, item) => acc + (item.insumo.costo_unitario * item.cantidad_ml),
-    0
-  );
-  const costoEmpaques = (input.empaques || []).reduce(
-    (acc, item) => acc + (item.insumo.costo_unitario * item.cantidad),
-    0
-  );
+  // 7. Insumos Adicionales (Accesorios, cintas, porcionados, bisutería, empaque, pinturas - Uso Interno Taller)
+  const accesoriosCalculados = input.accesorios.map(item => {
+    const calc = calcularCostoInsumoItem(item.insumo, item.cantidad, item.modo_consumo, item.valor_entrada);
+    return {
+      insumo_id: item.insumo.id,
+      nombre: item.insumo.nombre,
+      cantidad: calc.cantidadEquivalente,
+      modo_consumo: calc.modo,
+      valor_entrada: calc.valor,
+      costo: calc.costo
+    };
+  });
+  const costoAccesorios = accesoriosCalculados.reduce((acc, item) => acc + item.costo, 0);
+
+  const pinturasCalculadas = input.pinturas.map(p => ({
+    insumo_id: p.insumo.id,
+    nombre: p.insumo.nombre,
+    cantidad_ml: p.cantidad_ml,
+    costo: Math.round(p.insumo.costo_unitario * p.cantidad_ml)
+  }));
+  const costoPinturas = pinturasCalculadas.reduce((acc, item) => acc + item.costo, 0);
+
+  const empaquesCalculados = (input.empaques || []).map(e => {
+    const calc = calcularCostoInsumoItem(e.insumo, e.cantidad, 'unidad', e.cantidad);
+    return {
+      insumo_id: e.insumo.id,
+      nombre: e.insumo.nombre,
+      cantidad: calc.cantidadEquivalente,
+      costo: calc.costo
+    };
+  });
+  const costoEmpaques = empaquesCalculados.reduce((acc, item) => acc + item.costo, 0);
   const costo_insumos = costoAccesorios + costoPinturas + costoEmpaques;
 
   // 8. Tarifas de Mano de Obra (Personal)
@@ -419,12 +480,8 @@ export function calcularPieza3D(
     ? input.vaPintadoManual
     : (input.tiempoPinturaMin > 0 || input.pinturas.length > 0 || Boolean(input.requiereCompresorPintura));
 
-  const tiene_empaque = Boolean(input.empaques && input.empaques.length > 0);
-  const lista_empaques = (input.empaques || []).map(e => ({
-    nombre: e.insumo.nombre,
-    cantidad: e.cantidad,
-    costo: Math.round(e.insumo.costo_unitario * e.cantidad)
-  }));
+  const tiene_empaque = Boolean(empaquesCalculados.length > 0);
+  const lista_empaques = empaquesCalculados;
 
   const descMedidas = esParcial && (!alto || !ancho || !prof)
     ? 'Dimensiones: [Pendiente de verificar en Software/Slicer 3D]'
@@ -493,11 +550,22 @@ export function calcularPieza3D(
     tiempo_entrega,
     descripcion_tecnica,
     imagen_url: input.imagen_url,
-    gramos_resina_manual: input.pesoResinaManualG,
-    modo_calculo_resina: input.modoCalculoResina,
+    gramos_resina_manual: input.modoCalculoResina === 'manual' ? input.pesoResinaManualG : undefined,
+    modo_calculo_resina: input.modoCalculoResina || 'volumen',
+    merma_porcentaje: input.mermaPorcentajeResina,
     tipo_estructura: input.tipoEstructura || 'solido',
     porcentaje_relleno: input.porcentajeRelleno || (input.tipoEstructura === 'ahuecado' ? 35 : 100),
     datos_pendientes: esParcial,
+    notas_pendientes: input.notasPendientes,
+    requiere_curado: requiereCurado,
+    curado_maquina_id: input.estacionCurado?.id,
+    tiempo_curado_min: tiempo_curado_min,
+    tiempo_curado_personalizado: input.tiempoCuradoPersonalizado,
+    requiere_compresor_pintura: input.requiereCompresorPintura,
+    compresor_maquina_id: input.maquinaPintura?.id,
+    tiempo_compresor_min: tiempo_compresor_min,
+    tiempo_compresor_sincronizado: input.tiempoCompresorSincronizado,
+    tiempo_impresion_modo: input.tiempoImpresionModo || (input.tiempoImpresionManualMin !== undefined ? 'manual' : 'auto'),
     maquinas_involucradas,
     enlaces_compra: input.enlacesCompra && input.enlacesCompra.length > 0 ? input.enlacesCompra : undefined,
     va_pintado,
@@ -505,16 +573,8 @@ export function calcularPieza3D(
     costo_empaque: Math.round(costoEmpaques),
     lista_empaques,
     tecnologia: 'SLA_RESINA',
-    lista_pinturas: input.pinturas.map(p => ({
-      nombre: p.insumo.nombre,
-      cantidad_ml: p.cantidad_ml,
-      costo: Math.round(p.insumo.costo_unitario * p.cantidad_ml)
-    })),
-    lista_accesorios: input.accesorios.map(a => ({
-      nombre: a.insumo.nombre,
-      cantidad: a.cantidad,
-      costo: Math.round(a.insumo.costo_unitario * a.cantidad)
-    }))
+    lista_pinturas: pinturasCalculadas,
+    lista_accesorios: accesoriosCalculados
   };
 }
 
@@ -562,18 +622,51 @@ export function calcularPiezaFDM(
       : (Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 1.25))
   );
 
-  // 4. Mano de obra operario (Slicing, cama, retiro soportes)
+  // 4. Mano de obra operario (Slicing, cama, retiro soportes + pintura si aplica)
+  const va_pintado = typeof input.vaPintadoManual === 'boolean'
+    ? input.vaPintadoManual
+    : (input.tiempoPinturaMin > 0 || (input.pinturas && input.pinturas.length > 0));
+  const tiempoPinturaMin = va_pintado ? (input.tiempoPinturaMin || 0) : 0;
   const operador = personal[0];
   const costoMinutoOperario = operador?.costo_minuto || 130.21;
-  const tiempoOperario = (input.tiempoDesarrolloMin || 0) + (input.tiempoArmadoMin || 0);
+  const tiempoOperario = (input.tiempoDesarrolloMin || 0) + (input.tiempoArmadoMin || 0) + tiempoPinturaMin;
   const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
 
-  // 5. Insumos y Empaques
-  const costoEmpaques = (input.empaques || []).reduce((acc, e) => acc + (e.insumo.costo_unitario * e.cantidad), 0);
-  const costoAccesorios = (input.accesorios || []).reduce((acc, a) => acc + (a.insumo.costo_unitario * a.cantidad), 0);
+  // 5. Insumos, Pinturas y Empaques (con soporte de fracción decimal y porcentaje)
+  const accesoriosCalculados = (input.accesorios || []).map(a => {
+    const calc = calcularCostoInsumoItem(a.insumo, a.cantidad, a.modo_consumo, a.valor_entrada);
+    return {
+      insumo_id: a.insumo.id,
+      nombre: a.insumo.nombre,
+      cantidad: calc.cantidadEquivalente,
+      modo_consumo: calc.modo,
+      valor_entrada: calc.valor,
+      costo: calc.costo
+    };
+  });
+  const costoAccesorios = accesoriosCalculados.reduce((acc, item) => acc + item.costo, 0);
+
+  const pinturasCalculadas = (va_pintado ? (input.pinturas || []) : []).map(p => ({
+    insumo_id: p.insumo.id,
+    nombre: p.insumo.nombre,
+    cantidad_ml: p.cantidad_ml,
+    costo: Math.round(p.insumo.costo_unitario * p.cantidad_ml)
+  }));
+  const costoPinturas = pinturasCalculadas.reduce((acc, item) => acc + item.costo, 0);
+
+  const empaquesCalculados = (input.empaques || []).map(e => {
+    const calc = calcularCostoInsumoItem(e.insumo, e.cantidad, 'unidad', e.cantidad);
+    return {
+      insumo_id: e.insumo.id,
+      nombre: e.insumo.nombre,
+      cantidad: calc.cantidadEquivalente,
+      costo: calc.costo
+    };
+  });
+  const costoEmpaques = empaquesCalculados.reduce((acc, item) => acc + item.costo, 0);
 
   // 6. Costo Base de Producción Industrial (3DPCC)
-  const costoBaseProduccion = costoFilamento + costoEnergia + costoRepuestos + costoManoObra + costoEmpaques + costoAccesorios + (input.costoModeloComprado || 0);
+  const costoBaseProduccion = costoFilamento + costoEnergia + costoRepuestos + costoManoObra + costoEmpaques + costoAccesorios + costoPinturas + (input.costoModeloComprado || 0);
 
   // 7. Margen de ganancia
   const margen = Number(input.margenGanancia) || 0.40;
@@ -626,12 +719,12 @@ export function calcularPiezaFDM(
     tiempo_impresion_min: tiempoMinutos,
     tiempo_desarrollo_min: input.tiempoDesarrolloMin || 0,
     tiempo_armado_min: input.tiempoArmadoMin || 0,
-    tiempo_pintura_min: 0,
+    tiempo_pintura_min: tiempoPinturaMin,
     costo_energia: costoEnergia,
     costo_repuestos_maquina: costoRepuestos,
     costo_resina: costoFilamento,
     costo_curado: 0,
-    costo_insumos: costoAccesorios,
+    costo_insumos: costoAccesorios + costoPinturas + costoEmpaques,
     costo_mano_obra: costoManoObra,
     costo_modelo_comprado: input.costoModeloComprado || 0,
     costo_base_produccion: costoBaseProduccion,
@@ -642,14 +735,20 @@ export function calcularPiezaFDM(
     descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
     descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
     precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    tarifa_tamano_aplicada: input.tarifaTamanoAplicada,
+    precio_fijado_tarifa: input.precioFijadoTarifa,
     tiempo_entrega: tiempoMinutos > 360 ? '(2 a 3) Días hábiles' : '(1 a 2) Días hábiles',
     descripcion_tecnica: descTecnica,
     imagen_url: input.imagen_url,
-    tiene_empaque: (input.empaques || []).length > 0,
+    datos_pendientes: Boolean(input.datosPendientes),
+    notas_pendientes: input.notasPendientes,
+    enlaces_compra: input.enlacesCompra && input.enlacesCompra.length > 0 ? input.enlacesCompra : undefined,
+    va_pintado,
+    tiene_empaque: empaquesCalculados.length > 0,
     costo_empaque: costoEmpaques,
-    lista_empaques: (input.empaques || []).map(e => ({ nombre: e.insumo.nombre, cantidad: e.cantidad, costo: e.insumo.costo_unitario * e.cantidad })),
-    lista_pinturas: [],
-    lista_accesorios: (input.accesorios || []).map(a => ({ nombre: a.insumo.nombre, cantidad: a.cantidad, costo: a.insumo.costo_unitario * a.cantidad }))
+    lista_empaques: empaquesCalculados,
+    lista_pinturas: pinturasCalculadas,
+    lista_accesorios: accesoriosCalculados
   };
 }
 

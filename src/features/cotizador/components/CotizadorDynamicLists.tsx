@@ -16,6 +16,7 @@ import {
   ItemEmpaqueForm, 
   ItemEnlaceCompraForm 
 } from '../types/cotizador.types';
+import { calcularCostoInsumoItem } from '../utils/pricingCalculator';
 import { detect3DPlatform } from '../../../services/platformUtils';
 
 interface CotizadorDynamicListsProps {
@@ -30,7 +31,7 @@ interface CotizadorDynamicListsProps {
   herrajesSeleccionados: ItemAccesorioForm[];
   handleAddHerraje: () => void;
   handleRemoveHerraje: (tempId: string) => void;
-  handleUpdateHerraje: (tempId: string, field: 'insumoId' | 'cantidad', val: any) => void;
+  handleUpdateHerraje: (tempId: string, field: 'insumoId' | 'cantidad' | 'modoConsumo' | 'valorEntrada', val: any) => void;
   insumosHerrajes: Insumo[];
 
   empaquesSeleccionados: ItemEmpaqueForm[];
@@ -147,66 +148,192 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
         </div>
       )}
 
-      {/* 2. Herrajes y Ensamble */}
-      <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border-subtle)' }}>
+      {/* 2. Herrajes, Cintas, Insumos Porcionados & Ensamble (Uso Interno Taller) */}
+      <div style={{ background: 'rgba(0, 0, 0, 0.2)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '6px' }}>
-          <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
-            <Layers size={14} color="var(--brand-cyan)" />
-            Herrajes, Bisutería & Ensamble ({herrajesSeleccionados.length})
-          </label>
+          <div>
+            <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <Layers size={14} color="var(--brand-cyan)" />
+              Herrajes, Cintas, Insumos Porcionados & Ensamble ({herrajesSeleccionados.length})
+              <span style={{ fontSize: '0.68rem', background: 'rgba(56, 189, 248, 0.14)', color: 'var(--brand-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 700 }}>
+                Uso Interno Taller
+              </span>
+            </label>
+            <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+              Puedes ingresar por <strong>Porcentaje (% del rollo/total, ej: 5%)</strong> o por <strong>Fracción / Unidad decimal (ej: 0.2 o 1)</strong>.
+            </div>
+          </div>
           <button 
             type="button" 
             className="btn btn-secondary btn-sm"
             onClick={handleAddHerraje}
-            style={{ fontSize: '0.74rem', padding: '3px 8px' }}
+            style={{ fontSize: '0.74rem', padding: '4px 10px' }}
           >
             <Plus size={12} />
-            <span>+ Agregar Herraje</span>
+            <span>+ Agregar Insumo / Cinta / Herraje</span>
           </button>
         </div>
 
         {herrajesSeleccionados.length === 0 ? (
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Sin herrajes ni accesorios de ensamble adicionales.</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Sin cintas, pegantes ni herrajes adicionales en esta pieza.</p>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-            {herrajesSeleccionados.map(h => (
-              <div key={h.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <select 
-                  className="form-select"
-                  value={h.insumoId}
-                  onChange={e => handleUpdateHerraje(h.tempId, 'insumoId', e.target.value)}
-                  style={{ flex: 1 }}
-                >
-                  <option value="">Selecciona herraje / insumo...</option>
-                  {insumosHerrajes.map(ins => (
-                    <option key={ins.id} value={ins.id}>
-                      {ins.nombre} (${ins.costo_unitario}/und)
-                    </option>
-                  ))}
-                </select>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            {herrajesSeleccionados.map(h => {
+              const insSeleccionado = insumosHerrajes.find(i => i.id === h.insumoId);
+              const modo = h.modoConsumo || 'unidad';
+              const valActual = h.valorEntrada !== undefined ? h.valorEntrada : h.cantidad;
+              const calculo = insSeleccionado
+                ? calcularCostoInsumoItem(insSeleccionado, h.cantidad, modo, valActual)
+                : { costo: 0, cantidadEquivalente: 0, modo, valor: valActual };
 
-                <div className="input-with-unit" style={{ width: '90px' }}>
-                  <input 
-                    type="number" 
-                    className="form-input" 
-                    value={h.cantidad}
-                    onChange={e => handleUpdateHerraje(h.tempId, 'cantidad', parseInt(e.target.value) || 1)}
-                    placeholder="und"
-                    min="1"
-                  />
-                  <span className="input-unit-badge">und</span>
+              return (
+                <div 
+                  key={h.tempId} 
+                  style={{ 
+                    display: 'flex', 
+                    flexDirection: 'column', 
+                    gap: '6px', 
+                    background: 'rgba(255, 255, 255, 0.03)', 
+                    padding: '10px', 
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}
+                >
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <select 
+                      className="form-select"
+                      value={h.insumoId}
+                      onChange={e => handleUpdateHerraje(h.tempId, 'insumoId', e.target.value)}
+                      style={{ flex: 1, minWidth: '180px' }}
+                    >
+                      <option value="">Selecciona cinta, insumo o herraje...</option>
+                      {insumosHerrajes.map(ins => (
+                        <option key={ins.id} value={ins.id}>
+                          {ins.nombre} (Total: ${(ins.costo_total || ins.costo_unitario).toLocaleString('es-CO')} | Und: ${Math.round(ins.costo_unitario).toLocaleString('es-CO')})
+                        </option>
+                      ))}
+                    </select>
+
+                    {/* Toggle Modo Dual: Fracción/Und vs Porcentaje (%) */}
+                    <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(56, 189, 248, 0.35)', flexShrink: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateHerraje(h.tempId, 'modoConsumo', 'unidad')}
+                        style={{
+                          padding: '5px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: modo === 'unidad' ? 'var(--brand-cyan)' : 'rgba(15, 23, 42, 0.8)',
+                          color: modo === 'unidad' ? '#000' : 'var(--text-muted)'
+                        }}
+                        title="Ingresar por unidad o fracción decimal (ej: 0.2 de cinta o 2 argollas)"
+                      >
+                        Und / Fracc
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleUpdateHerraje(h.tempId, 'modoConsumo', 'porcentaje')}
+                        style={{
+                          padding: '5px 8px',
+                          fontSize: '0.72rem',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: modo === 'porcentaje' ? '#f59e0b' : 'rgba(15, 23, 42, 0.8)',
+                          color: modo === 'porcentaje' ? '#000' : 'var(--text-muted)'
+                        }}
+                        title="Ingresar por porcentaje del producto total (ej: 5% del rollo de cinta)"
+                      >
+                        % Total
+                      </button>
+                    </div>
+
+                    <div className="input-with-unit" style={{ width: '105px' }}>
+                      <input 
+                        type="number" 
+                        step="any"
+                        min="0"
+                        className="form-input" 
+                        value={valActual}
+                        onChange={e => handleUpdateHerraje(h.tempId, 'valorEntrada', e.target.value === '' ? 0 : parseFloat(e.target.value))}
+                        placeholder={modo === 'porcentaje' ? 'Ej: 5' : 'Ej: 0.2'}
+                      />
+                      <span className="input-unit-badge" style={{ color: modo === 'porcentaje' ? '#fbbf24' : 'var(--brand-cyan)', fontWeight: 700 }}>
+                        {modo === 'porcentaje' ? '%' : 'und'}
+                      </span>
+                    </div>
+
+                    {/* Costo en tiempo real de lo que se va a consumir */}
+                    <div 
+                      style={{ 
+                        minWidth: '90px', 
+                        textAlign: 'right', 
+                        background: 'rgba(34, 197, 94, 0.12)', 
+                        border: '1px solid rgba(34, 197, 94, 0.3)', 
+                        padding: '4px 8px', 
+                        borderRadius: '6px',
+                        fontSize: '0.8rem', 
+                        fontWeight: 700, 
+                        color: '#4ade80' 
+                      }}
+                      title="Costo calculado del consumo para uso interno del taller"
+                    >
+                      +${calculo.costo.toLocaleString('es-CO')}
+                    </div>
+
+                    <button 
+                      type="button" 
+                      className="btn btn-danger btn-sm"
+                      onClick={() => handleRemoveHerraje(h.tempId)}
+                      title="Eliminar insumo"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+
+                  {/* Atajos rápidos para porcionado (5%, 10%, 20%, 0.2, 0.5, 1) y equivalencia en bodega */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '6px', fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span>Atajos rápidos:</span>
+                      {[
+                        { label: '5%', modo: 'porcentaje' as const, val: 5 },
+                        { label: '10%', modo: 'porcentaje' as const, val: 10 },
+                        { label: '20% (0.2)', modo: 'unidad' as const, val: 0.2 },
+                        { label: '50% (0.5)', modo: 'unidad' as const, val: 0.5 },
+                        { label: '1 und', modo: 'unidad' as const, val: 1 }
+                      ].map(preset => (
+                        <button
+                          key={preset.label}
+                          type="button"
+                          onClick={() => {
+                            handleUpdateHerraje(h.tempId, 'modoConsumo', preset.modo);
+                            handleUpdateHerraje(h.tempId, 'valorEntrada', preset.val);
+                          }}
+                          style={{
+                            background: (modo === preset.modo && Number(valActual) === preset.val) ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255,255,255,0.05)',
+                            border: '1px solid rgba(255,255,255,0.12)',
+                            color: '#e2e8f0',
+                            borderRadius: '4px',
+                            padding: '1px 6px',
+                            fontSize: '0.68rem',
+                            cursor: 'pointer'
+                          }}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                    {insSeleccionado && (
+                      <span>
+                        Descuento bodega: <strong>{calculo.cantidadEquivalente} und</strong> • Costo consumo: <strong style={{ color: '#4ade80' }}>${calculo.costo.toLocaleString('es-CO')} COP</strong>
+                      </span>
+                    )}
+                  </div>
                 </div>
-
-                <button 
-                  type="button" 
-                  className="btn btn-danger btn-sm"
-                  onClick={() => handleRemoveHerraje(h.tempId)}
-                  title="Eliminar herraje"
-                >
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -293,11 +420,12 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
                   <div className="input-with-unit" style={{ width: '90px' }}>
                     <input 
                       type="number" 
+                      step="any"
                       className="form-input" 
                       value={emp.cantidad}
-                      onChange={e => handleUpdateEmpaque(emp.tempId, 'cantidad', Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={e => handleUpdateEmpaque(emp.tempId, 'cantidad', e.target.value === '' ? 0 : parseFloat(e.target.value))}
                       placeholder="Cant"
-                      min="1"
+                      min="0.01"
                     />
                     <span className="input-unit-badge">und</span>
                   </div>

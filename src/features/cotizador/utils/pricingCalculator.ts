@@ -10,16 +10,19 @@ import {
   calcularPiezaFDM, 
   calcularPiezaLaser, 
   calcularPiezaCNC, 
-  calcularCotizacionIntegral 
+  calcularCotizacionIntegral,
+  calcularCostoInsumoItem
 } from '../../../services/calculationEngine';
 
 export {
   calcularCotizacionIntegral,
+  calcularCostoInsumoItem,
   calcularPieza3D,
   calcularPiezaFDM,
   calcularPiezaLaser,
   calcularPiezaCNC
 };
+export type { ParametrosPiezaInput };
 
 /**
  * Calcula el volumen de la pieza en cm3 (ml)

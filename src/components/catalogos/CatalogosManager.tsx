@@ -343,16 +343,24 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // -----------------------------------------------------------------
   const handleOpenModalInsumo = (ins?: Insumo) => {
     if (ins) {
-      setItemEnEdicion({ ...ins, isEdit: true, imagen_url: ins.imagen_url || '' });
+      setItemEnEdicion({ 
+        ...ins, 
+        isEdit: true, 
+        imagen_url: ins.imagen_url || '',
+        stock_actual: ins.stock_actual !== undefined ? ins.stock_actual : ins.presentacion,
+        permite_fraccion: ins.permite_fraccion ?? ((ins.nombre || '').toLowerCase().includes('cinta') || (ins.nombre || '').toLowerCase().includes('velcro'))
+      });
     } else {
       setItemEnEdicion({
         id: ensureValidUuid(),
         codigo: insumos.length + 1,
         nombre: '',
         marca: 'Genérico',
-        categoria: 'Pintura',
-        presentacion: 60,
-        costo_total: 6000,
+        categoria: 'Ferretería',
+        presentacion: 1,
+        stock_actual: 1,
+        permite_fraccion: true,
+        costo_total: 12000,
         enlace_compra: '',
         imagen_url: '',
         isEdit: false
@@ -363,9 +371,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
   const handleSaveInsumo = (e: React.FormEvent) => {
     e.preventDefault();
-    const costo_unitario = itemEnEdicion.presentacion > 0 
-      ? (itemEnEdicion.costo_total / itemEnEdicion.presentacion) 
-      : 0;
+    const presentacionNum = Number(itemEnEdicion.presentacion) || 1;
+    const costoTotalNum = Number(itemEnEdicion.costo_total) || 0;
+    const costo_unitario = presentacionNum > 0 
+      ? (costoTotalNum / presentacionNum) 
+      : costoTotalNum;
 
     const insumoGuardado: Insumo = {
       id: itemEnEdicion.id,
@@ -373,8 +383,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       nombre: itemEnEdicion.nombre,
       marca: itemEnEdicion.marca,
       categoria: itemEnEdicion.categoria,
-      presentacion: Number(itemEnEdicion.presentacion),
-      costo_total: Number(itemEnEdicion.costo_total),
+      presentacion: Number(presentacionNum.toFixed(2)),
+      stock_actual: itemEnEdicion.stock_actual !== undefined ? Number(Number(itemEnEdicion.stock_actual).toFixed(2)) : Number(presentacionNum.toFixed(2)),
+      permite_fraccion: Boolean(itemEnEdicion.permite_fraccion),
+      costo_total: costoTotalNum,
       costo_unitario: Number(costo_unitario.toFixed(2)),
       enlace_compra: itemEnEdicion.enlace_compra,
       imagen_url: itemEnEdicion.imagen_url || ''
@@ -1427,18 +1439,23 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                       )}
 
                       <div style={{ minWidth: 0, flex: 1 }}>
-                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc', lineHeight: '1.25' }}>
-                          {ins.nombre}
+                        <div style={{ fontWeight: 600, fontSize: '0.9rem', color: '#f8fafc', lineHeight: '1.25', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span>{ins.nombre}</span>
+                          {(ins.permite_fraccion || (ins.nombre || '').toLowerCase().includes('cinta')) && (
+                            <span style={{ fontSize: '0.65rem', background: 'rgba(245, 158, 11, 0.18)', color: '#fbbf24', border: '1px solid rgba(245, 158, 11, 0.35)', padding: '1px 5px', borderRadius: '4px', fontWeight: 700 }}>
+                              Fraccionable / %
+                            </span>
+                          )}
                         </div>
                         <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          Marca: {ins.marca} | Presentación: {ins.presentacion}
+                          Marca: {ins.marca} | Presentación: {ins.presentacion} {ins.stock_actual !== undefined ? `| Stock Bodega: ${Number(ins.stock_actual).toFixed(2)}` : ''}
                         </div>
                       </div>
                     </div>
                   </div>
 
                   <div style={{ marginTop: '10px', fontWeight: 700, color: 'var(--accent-success)', fontSize: '0.88rem', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-                    ${ins.costo_unitario.toLocaleString('es-CO')} / unidad <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Total: ${ins.costo_total.toLocaleString('es-CO')})</span>
+                    ${ins.costo_unitario.toLocaleString('es-CO')} / unidad <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Total: ${ins.costo_total.toLocaleString('es-CO')} • 10%: ${Math.round(ins.costo_total * 0.1).toLocaleString('es-CO')})</span>
                   </div>
                 </div>
               ))}
@@ -2494,11 +2511,12 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     />
                   </div>
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px' }}>
                   <div className="form-group">
-                    <label className="form-label">Costo Total ($)</label>
+                    <label className="form-label">Costo Total ($ COP)</label>
                     <input 
                       type="number" 
+                      step="any"
                       className="form-input" 
                       value={itemEnEdicion.costo_total}
                       onChange={e => setItemEnEdicion({ ...itemEnEdicion, costo_total: parseFloat(e.target.value) || 0 })}
@@ -2506,14 +2524,44 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Presentación (ml, g, und)</label>
+                    <label className="form-label">Presentación (ml, g, rollo, und)</label>
                     <input 
                       type="number" 
+                      step="any"
                       className="form-input" 
                       value={itemEnEdicion.presentacion}
-                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, presentacion: parseFloat(e.target.value) || 1 })}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, presentacion: parseFloat(e.target.value) || 0.01 })}
                       required
                     />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label">Stock Bodega (Decimal)</label>
+                    <input 
+                      type="number" 
+                      step="any"
+                      className="form-input" 
+                      value={itemEnEdicion.stock_actual !== undefined ? itemEnEdicion.stock_actual : itemEnEdicion.presentacion}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, stock_actual: parseFloat(e.target.value) || 0 })}
+                      placeholder="Ej: 4.8"
+                    />
+                  </div>
+                </div>
+
+                {/* Configuración de Porcionado / Porcentaje (Uso Interno Taller) */}
+                <div style={{ background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.3)', borderRadius: '8px', padding: '10px 12px', marginBottom: '12px' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.82rem', fontWeight: 700, color: '#fbbf24' }}>
+                    <input
+                      type="checkbox"
+                      checked={Boolean(itemEnEdicion.permite_fraccion)}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, permite_fraccion: e.target.checked })}
+                    />
+                    <span>Permitir consumo porcionado o por porcentaje (ej: 5% o 0.2 de Cinta / Pegante / Rollo)</span>
+                  </label>
+                  <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', marginTop: '6px', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+                    <span>• <strong>5%:</strong> ${Math.round((Number(itemEnEdicion.costo_total) || 0) * 0.05).toLocaleString('es-CO')} COP</span>
+                    <span>• <strong>10%:</strong> ${Math.round((Number(itemEnEdicion.costo_total) || 0) * 0.10).toLocaleString('es-CO')} COP</span>
+                    <span>• <strong>20% (0.2):</strong> ${Math.round((Number(itemEnEdicion.costo_total) || 0) * 0.20).toLocaleString('es-CO')} COP</span>
+                    <span>• <strong>50% (0.5):</strong> ${Math.round((Number(itemEnEdicion.costo_total) || 0) * 0.50).toLocaleString('es-CO')} COP</span>
                   </div>
                 </div>
                 <div className="form-group">

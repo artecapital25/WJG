@@ -18,7 +18,9 @@ export interface ItemPinturaForm {
 export interface ItemAccesorioForm {
   tempId: string;
   insumoId: string;
-  cantidad: number;
+  cantidad: number; // Fracción decimal o unidades (ej. 0.2, 1, 0.05)
+  modoConsumo?: 'unidad' | 'porcentaje'; // 'unidad' (ej. 0.2 o 1 und) o 'porcentaje' (ej. 5% del total)
+  valorEntrada?: number; // Valor ingresado en el input (ej. 5 cuando es 5%, o 0.2 cuando es fracción)
 }
 
 export interface ItemMaquinaExtraForm {
