@@ -1,6 +1,6 @@
 // Service Worker Oficial de WJGEEKS 3D PRO (PWA)
-// Versión 2.1 - Estrategia Network-First con Fallback Offline para actualización instantánea (sin F5)
-const CACHE_NAME = 'wjgeeks-3d-v2.1';
+// Versión 3.2 - Estrategia Network-First con Purga Inmediata de Caché para Producción (Vercel)
+const CACHE_NAME = 'wjgeeks-3d-v3.2-pro-max';
 
 const STATIC_ASSETS = [
   '/',
@@ -77,7 +77,10 @@ self.addEventListener('fetch', (event) => {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 2500);
 
-          const networkResponse = await fetch(event.request, { signal: controller.signal });
+          const networkResponse = await fetch(event.request, {
+            cache: 'no-store',
+            signal: controller.signal
+          });
           clearTimeout(timeoutId);
 
           if (networkResponse && networkResponse.status === 200) {

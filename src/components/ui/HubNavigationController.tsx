@@ -54,12 +54,13 @@ export const HubNavigationController: React.FC<HubNavigationControllerProps> = (
       style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
+        gap: '8px',
         padding: '8px 12px',
         overflowX: 'auto',
         whiteSpace: 'nowrap',
-        backgroundColor: 'rgba(15, 23, 42, 0.65)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+        backgroundColor: 'rgba(13, 19, 31, 0.88)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
         scrollbarWidth: 'none',
       }}
     >
@@ -72,16 +73,26 @@ export const HubNavigationController: React.FC<HubNavigationControllerProps> = (
             type="button"
             onClick={() => onSelectTab(tab.id)}
             style={{
-              padding: '6px 14px',
+              minHeight: '38px',
+              padding: '7px 15px',
               borderRadius: '9999px',
-              fontSize: '0.8rem',
-              fontWeight: isActive ? 700 : 500,
-              border: isActive ? '1px solid rgba(56, 189, 248, 0.4)' : '1px solid rgba(255, 255, 255, 0.08)',
-              backgroundColor: isActive ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.03)',
-              color: isActive ? '#38bdf8' : 'rgba(255, 255, 255, 0.7)',
+              fontSize: '0.82rem',
+              fontWeight: isActive ? 800 : 600,
+              fontFamily: isActive ? 'var(--font-display)' : 'var(--font-body)',
+              border: isActive
+                ? '1px solid rgba(56, 189, 248, 0.55)'
+                : '1px solid rgba(255, 255, 255, 0.09)',
+              background: isActive
+                ? 'linear-gradient(135deg, rgba(27, 98, 177, 0.85) 0%, rgba(37, 119, 208, 0.75) 100%)'
+                : 'rgba(41, 42, 47, 0.65)',
+              color: isActive ? '#ffffff' : 'rgba(248, 250, 252, 0.75)',
+              boxShadow: isActive ? '0 4px 12px rgba(27, 98, 177, 0.35)' : 'none',
               cursor: 'pointer',
               transition: 'all 0.15s ease',
               flexShrink: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
             }}
           >
             {tab.label}

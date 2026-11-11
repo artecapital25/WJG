@@ -29,7 +29,7 @@ interface CotizadorDynamicListsProps {
   insumosPinturas: Insumo[];
 
   herrajesSeleccionados: ItemAccesorioForm[];
-  handleAddHerraje: () => void;
+  handleAddHerraje: (presetModo?: 'unidad' | 'porcentaje', presetVal?: number) => void;
   handleRemoveHerraje: (tempId: string) => void;
   handleUpdateHerraje: (tempId: string, field: 'insumoId' | 'cantidad' | 'modoConsumo' | 'valorEntrada', val: any) => void;
   insumosHerrajes: Insumo[];
@@ -166,16 +166,64 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
           <button 
             type="button" 
             className="btn btn-secondary btn-sm"
-            onClick={handleAddHerraje}
-            style={{ fontSize: '0.74rem', padding: '4px 10px' }}
+            onClick={() => handleAddHerraje()}
+            style={{ fontSize: '0.76rem', padding: '6px 12px', minHeight: '38px', borderColor: 'rgba(56, 189, 248, 0.45)', background: 'rgba(27, 98, 177, 0.28)', color: '#fff', fontWeight: 700 }}
           >
-            <Plus size={12} />
+            <Plus size={13} />
             <span>+ Agregar Insumo / Cinta / Herraje</span>
           </button>
         </div>
 
+        {/* Barra de Inserción Rápida de Consumo Parcial (% o Fracción) Siempre Visible */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '6px',
+          background: 'rgba(27, 98, 177, 0.14)',
+          border: '1px solid rgba(56, 189, 248, 0.28)',
+          borderRadius: '8px',
+          padding: '8px 10px',
+          marginBottom: '10px'
+        }}>
+          <span style={{ fontSize: '0.73rem', fontWeight: 700, color: '#38bdf8' }}>
+            ⚡ Agregar consumo parcial directo:
+          </span>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {[
+              { label: '+ 5% Total', modo: 'porcentaje' as const, val: 5 },
+              { label: '+ 10% Total', modo: 'porcentaje' as const, val: 10 },
+              { label: '+ 20% (0.2)', modo: 'unidad' as const, val: 0.2 },
+              { label: '+ 50% (0.5)', modo: 'unidad' as const, val: 0.5 },
+              { label: '+ 1 Unidad', modo: 'unidad' as const, val: 1 }
+            ].map(quick => (
+              <button
+                key={quick.label}
+                type="button"
+                onClick={() => handleAddHerraje(quick.modo, quick.val)}
+                style={{
+                  background: quick.modo === 'porcentaje' ? 'rgba(245, 158, 11, 0.18)' : 'rgba(56, 189, 248, 0.15)',
+                  border: quick.modo === 'porcentaje' ? '1px solid rgba(245, 158, 11, 0.45)' : '1px solid rgba(56, 189, 248, 0.4)',
+                  color: quick.modo === 'porcentaje' ? '#fbbf24' : '#38bdf8',
+                  borderRadius: '6px',
+                  padding: '4px 9px',
+                  minHeight: '32px',
+                  fontSize: '0.72rem',
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                {quick.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {herrajesSeleccionados.length === 0 ? (
-          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>Sin cintas, pegantes ni herrajes adicionales en esta pieza.</p>
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', margin: 0 }}>
+            Toca cualquiera de los botones superiores (ej. <strong>+ 5% Total</strong> o <strong>+ 20% (0.2)</strong>) para asignar cinta, pegante, imanes o herrajes a esta pieza.
+          </p>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
             {herrajesSeleccionados.map(h => {

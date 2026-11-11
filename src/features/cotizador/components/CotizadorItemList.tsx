@@ -196,6 +196,16 @@ export const CotizadorItemList: React.FC<CotizadorItemListProps> = React.memo(({
               ) : (
                 `Medidas: ${item.alto_mm}x${item.ancho_mm}x${item.profundidad_mm}mm • Resina: ${item.resina_nombre} (${item.peso_estimado_g}g)`
               )}
+              {item.lista_accesorios && item.lista_accesorios.length > 0 && (
+                <span style={{ color: '#fbbf24', fontWeight: 600 }}>
+                  {' '}• Insumos/Partes: {item.lista_accesorios.map(a => {
+                    const etiquetaCant = a.modo_consumo === 'porcentaje'
+                      ? `${a.valor_entrada ?? Math.round(a.cantidad * 100)}%`
+                      : `x${a.cantidad}`;
+                    return `${a.nombre} (${etiquetaCant} = $${Math.round(a.costo).toLocaleString('es-CO')})`;
+                  }).join(', ')}
+                </span>
+              )}
               {item.lista_empaques && item.lista_empaques.length > 0 && (
                 <span style={{ color: '#4ade80' }}> • Empaque: {item.lista_empaques.map(e => `${e.nombre} (x${e.cantidad})`).join(', ')}</span>
               )}

@@ -537,11 +537,11 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   };
 
   // Handlers para Herrajes / Insumos Porcionados y Porcentuales
-  const handleAddHerraje = () => {
+  const handleAddHerraje = (presetModo?: 'unidad' | 'porcentaje', presetVal?: number) => {
     const defaultHerraje = insumos.find(i => !i.categoria.toLowerCase().includes('pintura'));
-    const defaultModo: 'unidad' | 'porcentaje' = defaultHerraje?.permite_fraccion ? 'porcentaje' : 'unidad';
-    const defaultVal = defaultModo === 'porcentaje' ? 10 : 1;
-    const defaultCant = defaultModo === 'porcentaje' ? 0.1 : 1;
+    const defaultModo: 'unidad' | 'porcentaje' = presetModo || (defaultHerraje?.permite_fraccion ? 'porcentaje' : 'unidad');
+    const defaultVal = presetVal !== undefined ? presetVal : (defaultModo === 'porcentaje' ? 10 : 1);
+    const defaultCant = defaultModo === 'porcentaje' ? Number((defaultVal / 100).toFixed(4)) : defaultVal;
     setHerrajesSeleccionados(prev => [
       ...prev,
       {

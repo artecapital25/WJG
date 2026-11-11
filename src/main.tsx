@@ -12,6 +12,8 @@ if ('serviceWorker' in navigator) {
         .register('/sw.js')
         .then((reg) => {
           console.log('✓ WJGEEKS PWA Service Worker activo con alcance:', reg.scope);
+          // Forzar chequeo inmediato de nueva versión en producción al cargar la app
+          reg.update().catch(() => {});
 
           // Verificar si hay actualizaciones cuando el usuario regrese a la app
           window.addEventListener('focus', () => {

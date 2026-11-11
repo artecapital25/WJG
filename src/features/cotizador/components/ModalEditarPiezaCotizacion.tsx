@@ -368,6 +368,58 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
             </label>
           </div>
 
+          {/* 5.1 Insumos de Taller / Consumos Parciales (%) */}
+          <div style={{
+            background: 'linear-gradient(135deg, rgba(27, 98, 177, 0.14) 0%, rgba(41, 42, 47, 0.5) 100%)',
+            border: '1px solid rgba(56, 189, 248, 0.3)',
+            borderRadius: '10px',
+            padding: '12px',
+            marginBottom: '14px'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '8px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <span>🔩 Insumos Parciales / Porcentajes ({piezaEditando.lista_accesorios?.length || 0})</span>
+              </div>
+              {onLoadPieceToCalculator && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  style={{ fontSize: '0.72rem', padding: '4px 10px', color: '#38bdf8', borderColor: 'rgba(56, 189, 248, 0.4)', minHeight: '32px' }}
+                  onClick={() => {
+                    onLoadPieceToCalculator(piezaEditando);
+                    onClose();
+                  }}
+                >
+                  ⚙️ Ajustar % o Insumos en Calculadora
+                </button>
+              )}
+            </div>
+            {piezaEditando.lista_accesorios && piezaEditando.lista_accesorios.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                {piezaEditando.lista_accesorios.map((acc, idx) => (
+                  <span
+                    key={idx}
+                    style={{
+                      fontSize: '0.74rem',
+                      padding: '4px 10px',
+                      borderRadius: '8px',
+                      background: 'rgba(27, 98, 177, 0.25)',
+                      border: '1px solid rgba(56, 189, 248, 0.35)',
+                      color: '#e0f2fe',
+                      fontWeight: 600
+                    }}
+                  >
+                    {acc.modo_calculo === 'porcentaje' ? `📊 ${acc.porcentaje || acc.cantidad}%` : `🔢 x${acc.cantidad}`} {acc.nombre} (${Math.round(acc.subtotal || 0).toLocaleString('es-CO')})
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
+                Sin insumos parciales o herrajes asignados. Usa el botón superior para agregar porcentajes (5%, 10%, 20%, 50%) o fracciones desde la Calculadora 3D.
+              </div>
+            )}
+          </div>
+
           {/* 6. Maquinaria y Procesos Extras */}
           <div style={{
             background: 'rgba(0, 0, 0, 0.3)',

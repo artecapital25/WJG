@@ -62,10 +62,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
         bottom: 0,
         left: 0,
         right: 0,
-        height: '64px',
-        backgroundColor: 'rgba(10, 15, 29, 0.96)',
-        backdropFilter: 'blur(16px)',
-        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+        height: '66px',
+        backgroundColor: 'rgba(7, 10, 16, 0.96)',
+        backdropFilter: 'blur(18px)',
+        borderTop: '1px solid rgba(255, 255, 255, 0.09)',
+        boxShadow: '0 -8px 24px rgba(0, 0, 0, 0.55)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-around',
@@ -88,13 +89,16 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: '4px',
+              gap: '3px',
               height: '100%',
-              background: 'none',
+              minHeight: '48px',
+              background: isActive
+                ? 'radial-gradient(circle at 50% 0%, rgba(27, 98, 177, 0.28) 0%, transparent 72%)'
+                : 'none',
               border: 'none',
-              color: isActive ? '#38bdf8' : 'rgba(255, 255, 255, 0.5)',
+              color: isActive ? '#38bdf8' : 'rgba(248, 250, 252, 0.55)',
               cursor: 'pointer',
-              transition: 'color 0.15s ease, transform 0.1s ease',
+              transition: 'color 0.15s ease, transform 0.1s ease, background 0.2s ease',
               padding: '6px 0',
               position: 'relative',
             }}
@@ -106,18 +110,22 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                   style={{
                     position: 'absolute',
                     top: '-6px',
-                    right: '-10px',
-                    backgroundColor: isActive ? '#38bdf8' : '#ef4444',
-                    color: isActive ? '#000' : '#fff',
+                    right: '-11px',
+                    background: isActive
+                      ? 'linear-gradient(135deg, #1b62b1 0%, #38bdf8 100%)'
+                      : '#ef4444',
+                    color: '#ffffff',
                     borderRadius: '9999px',
-                    fontSize: '0.65rem',
+                    fontSize: '0.66rem',
                     fontWeight: 800,
-                    minWidth: '16px',
-                    height: '16px',
+                    fontVariantNumeric: 'tabular-nums',
+                    minWidth: '17px',
+                    height: '17px',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
                     padding: '0 4px',
+                    border: '1px solid rgba(7, 10, 16, 0.85)',
                   }}
                 >
                   {hub.badge}
@@ -126,9 +134,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
             </div>
             <span
               style={{
-                fontSize: '0.72rem',
-                fontWeight: isActive ? 700 : 500,
+                fontSize: '0.74rem',
+                fontFamily: isActive ? 'var(--font-display)' : 'var(--font-body)',
+                fontWeight: isActive ? 800 : 500,
                 letterSpacing: '-0.01em',
+                color: isActive ? '#ffffff' : 'rgba(248, 250, 252, 0.6)',
               }}
             >
               {hub.label}
@@ -138,11 +148,11 @@ export const BottomNavBar: React.FC<BottomNavBarProps> = ({
                 style={{
                   position: 'absolute',
                   top: 0,
-                  width: '32px',
+                  width: '36px',
                   height: '3px',
-                  backgroundColor: '#38bdf8',
-                  borderRadius: '0 0 4px 4px',
-                  boxShadow: '0 2px 8px rgba(56, 189, 248, 0.5)',
+                  background: 'linear-gradient(90deg, #1b62b1 0%, #38bdf8 100%)',
+                  borderRadius: '0 0 6px 6px',
+                  boxShadow: '0 2px 10px rgba(56, 189, 248, 0.65)',
                 }}
               />
             )}
