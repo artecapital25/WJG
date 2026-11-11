@@ -5,7 +5,6 @@
 
 import { Resina, Maquina, Insumo, Personal, ConfiguracionTaller, PiezaCotizada } from '../../../types';
 import { 
-  ParametrosPiezaInput, 
   calcularPieza3D, 
   calcularPiezaFDM, 
   calcularPiezaLaser, 
@@ -22,7 +21,7 @@ export {
   calcularPiezaLaser,
   calcularPiezaCNC
 };
-export type { ParametrosPiezaInput };
+export type { ParametrosPiezaInput } from '../../../services/calculationEngine';
 
 /**
  * Calcula el volumen de la pieza en cm3 (ml)
@@ -293,4 +292,3 @@ export function limpiarNotasObservaciones(notas: string, esParcial: boolean = fa
   return cleanNotas;
 }
 
-export type { ParametrosPiezaInput };

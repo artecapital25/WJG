@@ -92,8 +92,8 @@ body {
   top: 0;
   z-index: 50;
   background: rgba(13, 18, 28, 0.85);
-  backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
   border-bottom: 1px solid var(--border-subtle);
   padding: 12px 20px;
   display: flex;
@@ -178,8 +178,8 @@ body {
   justify-content: space-between;
   padding: 0 16px;
   background-color: rgba(10, 15, 29, 0.95);
-  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   position: sticky;
   top: 0;
@@ -441,8 +441,8 @@ body {
   right: 0;
   z-index: 60;
   background: rgba(11, 15, 23, 0.94);
-  backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
   border-top: 1px solid var(--border-subtle);
   display: flex;
   justify-content: center;
@@ -546,8 +546,8 @@ body {
   inset: 0;
   z-index: 990;
   background: rgba(0, 0, 0, 0.78);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -642,8 +642,8 @@ body {
 /* Tarjetas Glassmórficas — UI/UX Pro Max Tactile Industrial Dark */
 .glass-card {
   background: linear-gradient(180deg, rgba(19, 28, 46, 0.92) 0%, rgba(13, 19, 31, 0.96) 100%);
-  backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
   border: 1px solid var(--border-subtle);
   border-top-color: var(--border-specular);
   border-radius: var(--radius-lg);
@@ -988,8 +988,8 @@ body {
   inset: 0;
   z-index: 1000;
   background: rgba(0, 0, 0, 0.82);
-  backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
   display: flex;
   align-items: flex-start; /* En móvil se posiciona en la parte superior para fácil acceso */
   justify-content: center;

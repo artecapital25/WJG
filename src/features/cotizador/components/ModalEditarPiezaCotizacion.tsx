@@ -396,22 +396,28 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
             </div>
             {piezaEditando.lista_accesorios && piezaEditando.lista_accesorios.length > 0 ? (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                {piezaEditando.lista_accesorios.map((acc, idx) => (
-                  <span
-                    key={idx}
-                    style={{
-                      fontSize: '0.74rem',
-                      padding: '4px 10px',
-                      borderRadius: '8px',
-                      background: 'rgba(27, 98, 177, 0.25)',
-                      border: '1px solid rgba(56, 189, 248, 0.35)',
-                      color: '#e0f2fe',
-                      fontWeight: 600
-                    }}
-                  >
-                    {acc.modo_calculo === 'porcentaje' ? `📊 ${acc.porcentaje || acc.cantidad}%` : `🔢 x${acc.cantidad}`} {acc.nombre} (${Math.round(acc.subtotal || 0).toLocaleString('es-CO')})
-                  </span>
-                ))}
+                {piezaEditando.lista_accesorios.map((acc, idx) => {
+                  const labelConsumo = acc.modo_consumo === 'porcentaje'
+                    ? `📊 ${acc.valor_entrada ?? Math.round(acc.cantidad * 100)}%`
+                    : `🔢 x${acc.cantidad}`;
+                  const costoCop = Math.round(acc.costo || 0).toLocaleString('es-CO');
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        fontSize: '0.74rem',
+                        padding: '4px 10px',
+                        borderRadius: '8px',
+                        background: 'rgba(27, 98, 177, 0.25)',
+                        border: '1px solid rgba(56, 189, 248, 0.35)',
+                        color: '#e0f2fe',
+                        fontWeight: 600
+                      }}
+                    >
+                      {labelConsumo} {acc.nombre} (${costoCop})
+                    </span>
+                  );
+                })}
               </div>
             ) : (
               <div style={{ fontSize: '0.74rem', color: 'var(--text-subtle)' }}>
