@@ -37,6 +37,7 @@ export function useCotizadorBuilder({
   insumos = [],
   personal = [],
   onCancelarEdicion,
+  onLimpiarBorrador,
   onRemoveItem,
   onUpdatePiece,
   onUpdatePieceQuantity,
@@ -45,26 +46,22 @@ export function useCotizadorBuilder({
   onAddCliente,
   onLoadPieceToCalculator
 }: CotizacionBuilderProps) {
-  const draftMeta = useMemo(() => (!cotizacionEnEdicion ? StorageService.getDraftBuilderMeta() : null), [cotizacionEnEdicion]);
-
   const [clienteId, setClienteId] = useState<string>(() => {
-    return cotizacionEnEdicion?.cliente?.id || draftMeta?.clienteId || clientes[0]?.id || '';
+    return cotizacionEnEdicion?.cliente?.id || clientes[0]?.id || '';
   });
   const [vendedorNombre, setVendedorNombre] = useState<string>(() => {
-    return draftMeta?.vendedor || 'Wendy';
+    return cotizacionEnEdicion?.vendedor || 'Wendy';
   });
   const [descuentoPorcentaje, setDescuentoPorcentaje] = useState<number>(() => {
-    return cotizacionEnEdicion?.descuento_porcentaje || draftMeta?.descuentoPorcentaje || 0;
+    return cotizacionEnEdicion?.descuento_porcentaje || 0;
   });
   const [ivaPorcentaje, setIvaPorcentaje] = useState<number>(() => {
     return cotizacionEnEdicion?.iva_porcentaje !== undefined 
       ? cotizacionEnEdicion.iva_porcentaje 
-      : draftMeta?.ivaPorcentaje !== undefined 
-      ? draftMeta.ivaPorcentaje 
       : 0;
   });
   const [notas, setNotas] = useState<string>(() => {
-    return cotizacionEnEdicion?.notas || draftMeta?.notas || 'No incluye transporte fuera del perímetro urbano.';
+    return cotizacionEnEdicion?.notas || 'No incluye transporte fuera del perímetro urbano.';
   });
 
   // Tiempo Estimado de Fabricación y Entrega (Slider 3-30 días hábiles + Calendario)
@@ -73,12 +70,11 @@ export function useCotizadorBuilder({
       const match = cotizacionEnEdicion.tiempo_entrega_estimado.match(/\((\d+)\)/);
       if (match) return parseInt(match[1], 10) || 3;
     }
-    return draftMeta?.diasEntrega || 3;
+    return 3;
   });
 
   const [fechaEntrega, setFechaEntrega] = useState<string>(() => {
-    if (draftMeta?.fechaEntrega) return draftMeta.fechaEntrega;
-    return calcularFechaEstimada(cotizacionEnEdicion ? diasEntrega : (draftMeta?.diasEntrega || 3));
+    return calcularFechaEstimada(cotizacionEnEdicion ? diasEntrega : 3);
   });
 
   const handleCambiarDiasEntrega = (dias: number) => {
@@ -157,7 +153,22 @@ export function useCotizadorBuilder({
     return cotizacionEnEdicion?.comprobante_pago || '';
   });
 
-  // Precargar datos si viene una cotización en edición
+  const resetearConstructorABlanco = () => {
+    setClienteId(clientes[0]?.id || '');
+    setVendedorNombre('Wendy');
+    setDescuentoPorcentaje(0);
+    setIvaPorcentaje(0);
+    setNotas('No incluye transporte fuera del perímetro urbano.');
+    setDiasEntrega(3);
+    setFechaEntrega(calcularFechaEstimada(3));
+    setTipoEstado('Enviada');
+    setEstadoPagoInicial('Pendiente');
+    setAbonoInicial(0);
+    setMetodoPagoInicial('Bre-B');
+    setComprobantePagoInicial('');
+  };
+
+  // Precargar datos si viene una cotización en edición o limpiar al volver a nueva cotización
   useEffect(() => {
     if (cotizacionEnEdicion) {
       if (cotizacionEnEdicion.cliente?.id) {
@@ -169,6 +180,15 @@ export function useCotizadorBuilder({
       setDescuentoPorcentaje(cotizacionEnEdicion.descuento_porcentaje || 0);
       setIvaPorcentaje(cotizacionEnEdicion.iva_porcentaje || 0);
       setNotas(limpiarNotasObservaciones(cotizacionEnEdicion.notas || ''));
+      if (cotizacionEnEdicion.tiempo_entrega_estimado) {
+        const match = cotizacionEnEdicion.tiempo_entrega_estimado.match(/\((\d+)\)/);
+        const diasEdit = match ? (parseInt(match[1], 10) || 3) : 3;
+        setDiasEntrega(diasEdit);
+        setFechaEntrega(calcularFechaEstimada(diasEdit));
+      } else {
+        setDiasEntrega(3);
+        setFechaEntrega(calcularFechaEstimada(3));
+      }
       if (cotizacionEnEdicion.estado) {
         setTipoEstado(cotizacionEnEdicion.estado as any);
       }
@@ -177,8 +197,19 @@ export function useCotizadorBuilder({
       const mp = cotizacionEnEdicion.metodo_pago;
       setMetodoPagoInicial((mp && mp !== 'Daviplata' && mp !== 'Bancolombia') ? mp : 'Bre-B');
       setComprobantePagoInicial(cotizacionEnEdicion.comprobante_pago || '');
+    } else {
+      resetearConstructorABlanco();
     }
   }, [cotizacionEnEdicion]);
+
+  const handleLimpiarConstructor = () => {
+    resetearConstructorABlanco();
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
+    if (onLimpiarBorrador) {
+      onLimpiarBorrador();
+    }
+  };
 
   // Si hay piezas parciales, marcar automáticamente Parcial
   useEffect(() => {
@@ -496,6 +527,8 @@ export function useCotizadorBuilder({
     }
 
     onSaveCotizacion(cotizacionFinal);
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
     confetti({ particleCount: 80, spread: 70, origin: { y: 0.6 } });
     compartirPDFWhatsApp(cotizacionFinal, config);
   };
@@ -735,6 +768,7 @@ export function useCotizadorBuilder({
     handleCompartirPDF,
     handleCrearNuevoCliente,
     handleRecalcularTarifasVigentes,
+    handleLimpiarConstructor,
     cotizacionParaConfirmarWhatsApp,
     setCotizacionParaConfirmarWhatsApp,
     ejecutarGuardadoFinalCotizacion

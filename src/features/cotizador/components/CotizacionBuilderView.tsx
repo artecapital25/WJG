@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, User, Plus, Edit, X, RotateCw, Lock } from 'lucide-react';
+import { Tag, User, Plus, Edit, X, RotateCw, Lock, Trash2 } from 'lucide-react';
 import { CotizacionBuilderProps } from '../types/cotizador.types';
 import { useCotizadorBuilder } from '../hooks/useCotizadorBuilder';
 import { CotizadorItemList } from './CotizadorItemList';
@@ -90,7 +90,7 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
       )}
 
       {/* Cabecera */}
-      <div className="section-header">
+      <div className="section-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
         <div>
           <h2 className="section-title">
             <Tag size={20} color="var(--brand-cyan)" />
@@ -100,6 +100,19 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             {b.esEdicion ? `Modificando registro oficial ${b.numeroCotFinal}` : `N° Sugerido: ${b.numeroCotSugerido}`}
           </span>
         </div>
+
+        {!b.esEdicion && props.items.length > 0 && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={b.handleLimpiarConstructor}
+            title="Vaciar todas las piezas actuales e iniciar una cotización totalmente en blanco"
+            style={{ borderColor: 'rgba(239, 68, 68, 0.45)', color: '#f87171', background: 'rgba(239, 68, 68, 0.08)', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <Trash2 size={14} />
+            <span>Limpiar / Nueva en Blanco</span>
+          </button>
+        )}
       </div>
 
       {/* Selector de Cliente */}

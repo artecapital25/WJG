@@ -277,10 +277,15 @@ export const App: React.FC = () => {
     anchoMm: number;
     profundidadMm: number;
     pesoResinaG: number;
+    pesoFilamentoG?: number;
+    tecnologia?: import('./types').TecnologiaFabricacion;
+    resinaId?: string;
+    filamentoId?: string;
     nombrePieza: string;
     imagenUrl?: string;
     tipoEstructura?: 'solido' | 'ahuecado';
     porcentajeRelleno?: number;
+    enlacesCompra?: { titulo: string; url: string; costo_estimado?: number }[];
   } | null>(null);
 
   // Datos Maestros
@@ -296,16 +301,22 @@ export const App: React.FC = () => {
   const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>(() => StorageService.getTarifasTamanos());
   const [productosStock, setProductosStock] = useState<ProductoStock[]>(() => StorageService.getProductosStock());
 
-  // Estado Transaccional
-  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>(() => StorageService.getDraftPieces());
-
-  // Auto-guardado de piezas del borrador en almacenamiento persistente (previene pérdida en PC y móvil)
-  useEffect(() => {
-    StorageService.saveDraftPieces(draftPieces);
-  }, [draftPieces]);
+  // Estado Transaccional: Siempre inicia en blanco cuando no se ha seleccionado editar una cotización
+  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>(() => {
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
+    return [];
+  });
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
   const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(null);
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
+
+  // Auto-guardado de piezas del borrador solo cuando NO se está editando una cotización existente
+  useEffect(() => {
+    if (!editingCotizacion) {
+      StorageService.saveDraftPieces(draftPieces);
+    }
+  }, [draftPieces, editingCotizacion]);
   const [ordenes, setOrdenes] = useState<OrdenTrabajo[]>(() => StorageService.getOrdenes());
   const [cuentas, setCuentas] = useState<CuentaCobro[]>(() => StorageService.getCuentas());
   const [ventasExpress, setVentasExpress] = useState<VentaExpress[]>(() => StorageService.getVentasExpress());
@@ -1059,23 +1070,32 @@ export const App: React.FC = () => {
       toast.warning(`La cotización ${cot.numero_cot} ya fue aprobada y cuenta con valores comerciales pactados. No puede modificarse.`);
       return;
     }
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
     setEditingCotizacion(cot);
     setDraftPieces([...cot.items]);
     setPieceToEditInCalculator(null);
+    setStlAppliedData(null);
     setActiveTab('cotizador');
   };
 
   const handleCancelarEdicion = () => {
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
     setEditingCotizacion(null);
     setDraftPieces([]);
     setPieceToEditInCalculator(null);
+    setStlAppliedData(null);
     setActiveTab('cotizaciones');
   };
 
   const handleNuevaCotizacion = () => {
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
     setEditingCotizacion(null);
     setDraftPieces([]);
     setPieceToEditInCalculator(null);
+    setStlAppliedData(null);
     setActiveTab('cotizador');
   };
 
@@ -1092,8 +1112,12 @@ export const App: React.FC = () => {
     }
     setCotizaciones(updated);
     StorageService.saveCotizaciones(updated);
+    StorageService.clearDraftPieces();
+    StorageService.clearDraftBuilderMeta();
     setDraftPieces([]); // Limpiar borrador
     setEditingCotizacion(null);
+    setPieceToEditInCalculator(null);
+    setStlAppliedData(null);
     setActiveTab('cotizaciones');
 
     // Sincronizar en la nube Supabase con notificación operativa
@@ -2719,6 +2743,14 @@ export const App: React.FC = () => {
                     insumos={insumos}
                     personal={personal}
                     onCancelarEdicion={handleCancelarEdicion}
+                    onLimpiarBorrador={() => {
+                      StorageService.clearDraftPieces();
+                      StorageService.clearDraftBuilderMeta();
+                      setDraftPieces([]);
+                      setPieceToEditInCalculator(null);
+                      setStlAppliedData(null);
+                      toast.info('Constructor reiniciado para una nueva cotización en blanco.');
+                    }}
                     onRemoveItem={handleRemoveDraftPiece}
                     onUpdatePiece={handleUpdateDraftPiece}
                     onUpdatePieceQuantity={handleUpdateDraftPieceQuantity}
@@ -2889,6 +2921,8 @@ export const App: React.FC = () => {
               {activeTab === 'stl' && (
                 <STLAnalyzer
                   resinas={resinas}
+                  filamentos={filamentos}
+                  maquinas={maquinas}
                   onApplyToCotizador={(data) => {
                     setStlAppliedData(data);
                     setActiveTab('cotizador');

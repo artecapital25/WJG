@@ -60,10 +60,15 @@ export interface CotizadorFormProps {
     anchoMm?: number;
     profundidadMm?: number;
     pesoResinaG?: number;
+    pesoFilamentoG?: number;
+    tecnologia?: import('../../../types').TecnologiaFabricacion;
+    resinaId?: string;
+    filamentoId?: string;
     nombrePieza?: string;
     imagenUrl?: string;
     tipoEstructura?: 'solido' | 'ahuecado';
     porcentajeRelleno?: number;
+    enlacesCompra?: { titulo: string; url: string; costo_estimado?: number }[];
   } | null;
   piezaEnEdicion?: PiezaCotizada | null;
   onCancelarEdicionPieza?: () => void;
@@ -81,6 +86,7 @@ export interface CotizacionBuilderProps {
   insumos?: Insumo[];
   personal?: import('../../../types').Personal[];
   onCancelarEdicion?: () => void;
+  onLimpiarBorrador?: () => void;
   onRemoveItem: (id: string) => void;
   onUpdatePiece?: (item: PiezaCotizada) => void;
   onUpdatePieceQuantity?: (id: string, newCantidad: number) => void;

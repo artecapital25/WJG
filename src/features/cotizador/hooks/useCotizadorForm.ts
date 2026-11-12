@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, ChangeEvent, FormEvent } from 'react';
+import { useState, useEffect, useMemo, useRef, ChangeEvent, FormEvent } from 'react';
 import { 
   Resina, 
   Filamento,
@@ -149,6 +149,15 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   // Sincronizar datos iniciales desde el visor STL
   useEffect(() => {
     if (initialPieceData) {
+      if (initialPieceData.tecnologia) {
+        setTecnologiaSegura(initialPieceData.tecnologia);
+      }
+      if (initialPieceData.resinaId) {
+        setResinaId(initialPieceData.resinaId);
+      }
+      if (initialPieceData.filamentoId) {
+        setFilamentoId(initialPieceData.filamentoId);
+      }
       if (initialPieceData.altoMm) setAltoMm(initialPieceData.altoMm);
       if (initialPieceData.anchoMm) setAnchoMm(initialPieceData.anchoMm);
       if (initialPieceData.profundidadMm) setProfundidadMm(initialPieceData.profundidadMm);
@@ -163,8 +172,52 @@ export function useCotizadorForm(props: CotizadorFormProps) {
         setModoCalculoResina('manual');
         setPesoResinaManualG(initialPieceData.pesoResinaG);
       }
+      if (initialPieceData.pesoFilamentoG && initialPieceData.pesoFilamentoG > 0) {
+        setPesoFilamentoG(initialPieceData.pesoFilamentoG);
+      }
+      if (initialPieceData.enlacesCompra && initialPieceData.enlacesCompra.length > 0) {
+        setEnlacesCompra(initialPieceData.enlacesCompra.map((enl, idx) => ({
+          tempId: `enl-stl-${Date.now()}-${idx}`,
+          titulo: enl.titulo || 'Referencia 3D',
+          url: enl.url || '',
+          costoEstimado: enl.costo_estimado || 0
+        })));
+      }
     }
   }, [initialPieceData]);
+
+  const prevPiezaEnEdicionRef = useRef<PiezaCotizada | null | undefined>(piezaEnEdicion);
+
+  const resetCalculadoraValoresBase = () => {
+    setNombreItem('Figura Coleccionable 3D');
+    setCantidad(1);
+    setAltoMm(100);
+    setAnchoMm(60);
+    setProfundidadMm(60);
+    setTecnologiaSegura('SLA_RESINA');
+    setModoCalculoResina('volumen');
+    setPesoResinaManualG(85);
+    setPesoFilamentoG(45);
+    setTipoEstructura('solido');
+    setPorcentajeRelleno(35);
+    setImagenUrl('');
+    setTipoOrigenImagen(null);
+    setEsParcial(false);
+    setVaPintado(false);
+    setTiempoDesarrolloMin(30);
+    setTiempoArmadoMin(15);
+    setTiempoPinturaMin(0);
+    setTiempoImpresionModo('auto');
+    setCostoModeloComprado(0);
+    setPrecioFijadoTarifa(false);
+    setTarifaAplicada(null);
+    setPrecioUnitarioManual(0);
+    setPinturasSeleccionadas([]);
+    setHerrajesSeleccionados([]);
+    setEmpaquesSeleccionados([]);
+    setEnlacesCompra([]);
+    setMaquinasAdicionales([]);
+  };
 
   // Cargar datos completos (100% de hidratación) si se está editando una pieza
   useEffect(() => {
@@ -374,6 +427,10 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       } else {
         setMaquinasAdicionales([]);
       }
+      prevPiezaEnEdicionRef.current = piezaEnEdicion;
+    } else if (prevPiezaEnEdicionRef.current) {
+      resetCalculadoraValoresBase();
+      prevPiezaEnEdicionRef.current = null;
     }
   }, [piezaEnEdicion]);
 
@@ -895,13 +952,7 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       ? { ...calculoEnVivo, id: piezaEnEdicion.id }
       : calculoEnVivo;
     onAgregarPieza(piezaFinal);
-    setImagenUrl('');
-    setTipoOrigenImagen(null);
-    setPrecioFijadoTarifa(false);
-    setTarifaAplicada(null);
-    setPrecioUnitarioManual(0);
-    setEnlacesCompra([]);
-    setEmpaquesSeleccionados([]);
+    resetCalculadoraValoresBase();
   };
 
   return {

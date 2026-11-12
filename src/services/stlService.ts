@@ -27,12 +27,55 @@ export interface STLAnalysisResult {
   };
   originalVolumeMm3: number;
   originalVolumeCm3: number;
+  surfaceAreaCm2: number;
   bboxVolumeCm3: number;
   isVolumeEstimated: boolean;
   wasConvertedFromMeters: boolean;
   wasLikelyInCentimeters: boolean;
   geometry: THREE.BufferGeometry;
   meshHealth: MeshHealthReport;
+}
+
+/**
+ * Calcula el área superficial total de la malla (en mm²)
+ */
+export function calculateGeometrySurfaceArea(geometry: THREE.BufferGeometry): number {
+  const position = geometry.attributes.position;
+  if (!position) return 0;
+
+  let totalArea = 0;
+  const p1 = new THREE.Vector3();
+  const p2 = new THREE.Vector3();
+  const p3 = new THREE.Vector3();
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  const cross = new THREE.Vector3();
+
+  if (geometry.index) {
+    const indices = geometry.index;
+    for (let i = 0; i < indices.count; i += 3) {
+      p1.fromBufferAttribute(position, indices.getX(i));
+      p2.fromBufferAttribute(position, indices.getX(i + 1));
+      p3.fromBufferAttribute(position, indices.getX(i + 2));
+      e1.subVectors(p2, p1);
+      e2.subVectors(p3, p1);
+      cross.crossVectors(e1, e2);
+      totalArea += 0.5 * cross.length();
+    }
+  } else {
+    const count = position.count;
+    for (let i = 0; i < count; i += 3) {
+      p1.fromBufferAttribute(position, i);
+      p2.fromBufferAttribute(position, i + 1);
+      p3.fromBufferAttribute(position, i + 2);
+      e1.subVectors(p2, p1);
+      e2.subVectors(p3, p1);
+      cross.crossVectors(e1, e2);
+      totalArea += 0.5 * cross.length();
+    }
+  }
+
+  return totalArea;
 }
 
 /**
@@ -142,6 +185,8 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
   }
 
   const volumeCm3 = volumeMm3 / 1000;
+  const surfaceAreaMm2 = calculateGeometrySurfaceArea(geometry);
+  const surfaceAreaCm2 = Number((surfaceAreaMm2 / 100).toFixed(2));
   const trianglesCount = (geometry.index ? geometry.index.count : geometry.attributes.position.count) / 3;
 
   // 3. Inspección minuciosa de salud de la malla (caras abiertas, aristas no manifold y hermeticidad)
@@ -158,6 +203,7 @@ export function analyzeSTLFile(buffer: ArrayBuffer, fileName: string): STLAnalys
     },
     originalVolumeMm3: Number(volumeMm3.toFixed(2)),
     originalVolumeCm3: volumeCm3 < 0.01 ? Number(volumeCm3.toFixed(4)) : Number(volumeCm3.toFixed(2)),
+    surfaceAreaCm2,
     bboxVolumeCm3: bboxVolumeCm3 < 0.01 ? Number(bboxVolumeCm3.toFixed(4)) : Number(bboxVolumeCm3.toFixed(2)),
     isVolumeEstimated,
     wasConvertedFromMeters,
@@ -439,4 +485,192 @@ export function exportGeometryToSTL(geometry: THREE.BufferGeometry, baseFileName
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+/**
+ * Calcula la caja envolvente orientada (AABB tras rotación Euler XYZ) y el porcentaje de voladizos (> 45°)
+ * sin clonar la geometría en memoria.
+ */
+export function computeOrientedMetrics(
+  geometry: THREE.BufferGeometry,
+  rotXDeg: number,
+  rotYDeg: number,
+  rotZDeg: number
+): {
+  size: { x: number; y: number; z: number };
+  minY: number;
+  maxY: number;
+  overhangPercentage: number;
+} {
+  const position = geometry.attributes.position;
+  if (!position || position.count === 0) {
+    return { size: { x: 0, y: 0, z: 0 }, minY: 0, maxY: 0, overhangPercentage: 0 };
+  }
+
+  const euler = new THREE.Euler(
+    (rotXDeg * Math.PI) / 180,
+    (rotYDeg * Math.PI) / 180,
+    (rotZDeg * Math.PI) / 180,
+    'XYZ'
+  );
+  const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
+
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+
+  const vA = new THREE.Vector3();
+  const vB = new THREE.Vector3();
+  const vC = new THREE.Vector3();
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+
+  let totalArea = 0;
+  let overhangArea = 0;
+  // Umbral de voladizo > 45° con respecto a la cama (eje Y vertical en escena Three.js): normal.y < -cos(45°) = -0.7071
+  const overhangThreshold = -0.7071;
+
+  const updateBounds = (v: THREE.Vector3) => {
+    if (v.x < minX) minX = v.x;
+    if (v.y < minY) minY = v.y;
+    if (v.z < minZ) minZ = v.z;
+    if (v.x > maxX) maxX = v.x;
+    if (v.y > maxY) maxY = v.y;
+    if (v.z > maxZ) maxZ = v.z;
+  };
+
+  if (geometry.index) {
+    const index = geometry.index;
+    for (let i = 0; i < index.count; i += 3) {
+      vA.fromBufferAttribute(position, index.getX(i)).applyMatrix4(rotMatrix);
+      vB.fromBufferAttribute(position, index.getX(i + 1)).applyMatrix4(rotMatrix);
+      vC.fromBufferAttribute(position, index.getX(i + 2)).applyMatrix4(rotMatrix);
+
+      updateBounds(vA);
+      updateBounds(vB);
+      updateBounds(vC);
+
+      e1.subVectors(vB, vA);
+      e2.subVectors(vC, vA);
+      normal.crossVectors(e1, e2);
+      const area2 = normal.length();
+      if (area2 > 1e-6) {
+        totalArea += area2;
+        const ny = normal.y / area2;
+        // Ignorar la primera capa apoyada directamente en la cama
+        if (ny < overhangThreshold) {
+          overhangArea += area2;
+        }
+      }
+    }
+  } else {
+    const count = position.count;
+    for (let i = 0; i < count; i += 3) {
+      vA.fromBufferAttribute(position, i).applyMatrix4(rotMatrix);
+      vB.fromBufferAttribute(position, i + 1).applyMatrix4(rotMatrix);
+      vC.fromBufferAttribute(position, i + 2).applyMatrix4(rotMatrix);
+
+      updateBounds(vA);
+      updateBounds(vB);
+      updateBounds(vC);
+
+      e1.subVectors(vB, vA);
+      e2.subVectors(vC, vA);
+      normal.crossVectors(e1, e2);
+      const area2 = normal.length();
+      if (area2 > 1e-6) {
+        totalArea += area2;
+        const ny = normal.y / area2;
+        if (ny < overhangThreshold) {
+          overhangArea += area2;
+        }
+      }
+    }
+  }
+
+  // En la convención de dimensiones del visor:
+  // X = Ancho (eje X de Three.js), Y = Fondo (eje Z de Three.js), Z = Altura vertical (eje Y de Three.js o Z nativo)
+  // Nota: STL nativo suele venir con Z vertical o Y vertical; mantenemos compatibilidad exacta con size.x, size.y, size.z
+  // donde size.z es Alto, size.x es Ancho, size.y es Fondo.
+  const sizeX = Number(Math.max(0, maxX - minX).toFixed(2));
+  const sizeY = Number(Math.max(0, maxY - minY).toFixed(2));
+  const sizeZ = Number(Math.max(0, maxZ - minZ).toFixed(2));
+
+  const overhangPercentage = totalArea > 0 ? Number(((overhangArea / totalArea) * 100).toFixed(1)) : 0;
+
+  return {
+    size: {
+      x: sizeX,
+      y: sizeY,
+      z: sizeZ
+    },
+    minY,
+    maxY,
+    overhangPercentage
+  };
+}
+
+/**
+ * Genera un atributo de colores por vértice (Float32BufferAttribute) resaltando en rojo/naranja
+ * las caras en voladizo (> 45° respecto a la cama de impresión).
+ */
+export function buildOverhangColorAttribute(
+  geometry: THREE.BufferGeometry,
+  rotXDeg: number,
+  rotYDeg: number,
+  rotZDeg: number,
+  baseColorHex: string
+): THREE.BufferGeometry {
+  const nonIndexed = geometry.index ? geometry.toNonIndexed() : geometry.clone();
+  const position = nonIndexed.attributes.position;
+  const count = position.count;
+  const colors = new Float32Array(count * 3);
+
+  const baseColor = new THREE.Color(baseColorHex);
+  const warnColor = new THREE.Color(0xf97316); // Naranja alerta (45° - 60°)
+  const critColor = new THREE.Color(0xef4444); // Rojo crítico (> 60° requiere soporte denso)
+
+  const euler = new THREE.Euler(
+    (rotXDeg * Math.PI) / 180,
+    (rotYDeg * Math.PI) / 180,
+    (rotZDeg * Math.PI) / 180,
+    'XYZ'
+  );
+  const rotMatrix = new THREE.Matrix4().makeRotationFromEuler(euler);
+
+  const vA = new THREE.Vector3();
+  const vB = new THREE.Vector3();
+  const vC = new THREE.Vector3();
+  const e1 = new THREE.Vector3();
+  const e2 = new THREE.Vector3();
+  const normal = new THREE.Vector3();
+
+  for (let i = 0; i < count; i += 3) {
+    vA.fromBufferAttribute(position, i).applyMatrix4(rotMatrix);
+    vB.fromBufferAttribute(position, i + 1).applyMatrix4(rotMatrix);
+    vC.fromBufferAttribute(position, i + 2).applyMatrix4(rotMatrix);
+
+    e1.subVectors(vB, vA);
+    e2.subVectors(vC, vA);
+    normal.crossVectors(e1, e2);
+    const len = normal.length();
+    const ny = len > 1e-6 ? normal.y / len : 0;
+
+    let c = baseColor;
+    if (ny < -0.85) {
+      c = critColor;
+    } else if (ny < -0.7071) {
+      c = warnColor;
+    }
+
+    for (let k = 0; k < 3; k++) {
+      colors[(i + k) * 3 + 0] = c.r;
+      colors[(i + k) * 3 + 1] = c.g;
+      colors[(i + k) * 3 + 2] = c.b;
+    }
+  }
+
+  nonIndexed.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  nonIndexed.computeVertexNormals();
+  return nonIndexed;
 }

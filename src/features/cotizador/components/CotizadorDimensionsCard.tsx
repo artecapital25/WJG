@@ -4,6 +4,7 @@ import {
   Box, 
   Info, 
   Camera, 
+  Image as ImageIcon,
   Eye, 
   Check, 
   Trash2,
@@ -377,8 +378,19 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
               <label className="btn btn-primary btn-sm" style={{ cursor: 'pointer', padding: '8px 14px' }}>
+                <ImageIcon size={15} />
+                <span>Galería / Archivo Existente</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  style={{ display: 'none' }} 
+                />
+              </label>
+
+              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer', padding: '8px 14px', borderColor: 'rgba(56, 189, 248, 0.35)' }}>
                 <Camera size={15} />
-                <span>Subir Foto (Celular / Archivo)</span>
+                <span>Tomar Foto (Cámara)</span>
                 <input 
                   type="file" 
                   accept="image/*" 
@@ -488,7 +500,17 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
               </button>
 
               <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
-                <span>Cambiar</span>
+                <span>Cambiar (Galería)</span>
+                <input 
+                  type="file" 
+                  accept="image/*" 
+                  onChange={handleImageUpload} 
+                  style={{ display: 'none' }} 
+                />
+              </label>
+
+              <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }} title="Tomar nueva foto con la cámara">
+                <Camera size={14} />
                 <input 
                   type="file" 
                   accept="image/*" 

@@ -140,24 +140,6 @@ export function getQuickSearchUrls(term: string = ''): QuickSearchPlatform[] {
   const q = encodeURIComponent((term || 'figura 3d').trim());
   return [
     {
-      name: 'Cults3D',
-      url: `https://cults3d.com/es/busqueda?q=${q}`,
-      icon: '🎨',
-      color: '#ec4899'
-    },
-    {
-      name: 'CGTrader',
-      url: `https://www.cgtrader.com/3d-models?keywords=${q}`,
-      icon: '💎',
-      color: '#06b6d4'
-    },
-    {
-      name: 'Thingiverse',
-      url: `https://www.thingiverse.com/search?q=${q}`,
-      icon: '🌀',
-      color: '#3b82f6'
-    },
-    {
       name: 'MakerWorld',
       url: `https://makerworld.com/es/search/models?keyword=${q}`,
       icon: '🚀',
@@ -168,6 +150,36 @@ export function getQuickSearchUrls(term: string = ''): QuickSearchPlatform[] {
       url: `https://www.printables.com/search/models?q=${q}`,
       icon: '🟠',
       color: '#f97316'
+    },
+    {
+      name: 'Cults3D',
+      url: `https://cults3d.com/es/busqueda?q=${q}`,
+      icon: '🎨',
+      color: '#ec4899'
+    },
+    {
+      name: 'Thingiverse',
+      url: `https://www.thingiverse.com/search?q=${q}`,
+      icon: '🌀',
+      color: '#3b82f6'
+    },
+    {
+      name: 'Thangs',
+      url: `https://thangs.com/search/${q}?scope=all`,
+      icon: '📐',
+      color: '#6366f1'
+    },
+    {
+      name: 'CGTrader',
+      url: `https://www.cgtrader.com/3d-models?keywords=${q}`,
+      icon: '💎',
+      color: '#06b6d4'
+    },
+    {
+      name: 'MyMiniFactory',
+      url: `https://www.myminifactory.com/search#/?{%22searchString%22:%22${q}%22}`,
+      icon: '🏰',
+      color: '#8b5cf6'
     }
   ];
 }

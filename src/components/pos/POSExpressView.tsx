@@ -539,23 +539,39 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </div>
               ) : (
                 <div 
-                  onClick={() => fileInputRef.current?.click()}
                   style={{
                     border: '2px dashed var(--border-subtle)',
                     borderRadius: '12px',
-                    padding: '24px 16px',
+                    padding: '18px 16px',
                     textAlign: 'center',
-                    cursor: 'pointer',
                     background: 'rgba(255, 255, 255, 0.02)',
                     transition: 'all 0.2s ease'
                   }}
-                  className="hover-card"
                 >
-                  <Camera size={32} color="var(--brand-cyan)" style={{ margin: '0 auto 8px auto', opacity: 0.8 }} />
-                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff' }}>
-                    {isProcessingImg ? 'Optimizando foto...' : 'Toma una foto o sube imagen'}
+                  <Camera size={28} color="var(--brand-cyan)" style={{ margin: '0 auto 8px auto', opacity: 0.8 }} />
+                  <div style={{ fontWeight: 700, fontSize: '0.9rem', color: '#fff', marginBottom: '10px' }}>
+                    {isProcessingImg ? 'Optimizando foto...' : 'Adjuntar foto de la pieza'}
                   </div>
-                  <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  <div style={{ display: 'flex', gap: '8px', justifyContent: 'center', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-primary btn-sm"
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      📁 Elegir de Galería / Archivo
+                    </button>
+                    <label className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                      📷 Tomar con Cámara
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        style={{ display: 'none' }}
+                        onChange={handleImageUpload}
+                      />
+                    </label>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '8px' }}>
                     Se comprime automáticamente para que el sistema sea ultra rápido
                   </div>
                 </div>
@@ -564,7 +580,6 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 type="file" 
                 ref={fileInputRef} 
                 accept="image/*" 
-                capture="environment"
                 style={{ display: 'none' }} 
                 onChange={handleImageUpload} 
               />
