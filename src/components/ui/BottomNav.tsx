@@ -9,7 +9,6 @@ import {
   Box, 
   Menu, 
   X, 
-  Download, 
   ChevronRight, 
   Check,
   Package,

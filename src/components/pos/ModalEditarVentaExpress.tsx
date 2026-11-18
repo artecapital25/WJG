@@ -7,12 +7,8 @@ import {
   UploadCloud, 
   DollarSign, 
   User, 
-  Calendar, 
-  Clock, 
   AlertTriangle, 
-  CheckCircle, 
   Save,
-  Phone,
   Tag,
   Wrench,
   Sparkles,
@@ -36,7 +32,6 @@ interface ModalEditarVentaExpressProps {
 export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = ({
   isOpen,
   venta,
-  clientes = [],
   onClose,
   onGuardarCambios,
   onEliminarVenta
@@ -53,7 +48,7 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
   const [metodoPago, setMetodoPago] = useState(venta.metodo_pago || 'Nequi');
   const [notas, setNotas] = useState(venta.notas || '');
   const [fotoUrl, setFotoUrl] = useState(venta.foto_url || '');
-  const [isProcessingImg, setIsProcessingImg] = useState(false);
+  const [, setIsProcessingImg] = useState(false);
 
   // Validación y Producción de Diseño 3D (OT)
   const [requiereOT, setRequiereOT] = useState<boolean>(Boolean(venta.requiere_ot));
@@ -412,11 +407,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                   </label>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="input-field"
                     value={total}
-                    onChange={e => setTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                    min="1"
-                    step="1000"
+                    onChange={e => setTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                    min="0"
+                    step="any"
                     required
                     style={{ fontSize: '1rem', fontWeight: 800 }}
                   />
@@ -428,11 +424,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                   </label>
                   <input
                     type="number"
+                    inputMode="numeric"
                     className="input-field"
                     value={abono}
                     onChange={e => setAbono(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
                     min="0"
-                    step="1000"
+                    step="any"
                     style={{ fontSize: '1rem', fontWeight: 800 }}
                   />
                 </div>

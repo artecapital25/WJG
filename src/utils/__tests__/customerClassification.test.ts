@@ -3,7 +3,6 @@ import {
   normalizarTelefono, 
   normalizarTexto, 
   CatalogoClientesStats, 
-  clasificarCliente, 
   coincideBusquedaCliente 
 } from '../customerClassification';
 import { Cotizacion } from '../../types';

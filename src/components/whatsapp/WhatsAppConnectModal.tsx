@@ -9,9 +9,6 @@ import {
   Send, 
   Mail, 
   Settings2, 
-  ExternalLink,
-  ShieldCheck,
-  Server,
   KeyRound,
   RotateCcw,
   Loader2

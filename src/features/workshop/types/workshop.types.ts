@@ -4,11 +4,8 @@ import {
   ConfiguracionTaller, 
   TarifaTamano, 
   Cliente, 
-  EstadoSTL, 
   Cotizacion, 
-  EstadoCotizacion,
-  EnlaceReferenciaCompra,
-  DatosPagoRegistro
+  EstadoCotizacion
 } from '../../../types';
 
 export interface WorkOrdersPipelineProps {

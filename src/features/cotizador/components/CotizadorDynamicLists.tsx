@@ -48,7 +48,6 @@ interface CotizadorDynamicListsProps {
 
 export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
   vaPintado,
-  setVaPintado,
   pinturasSeleccionadas,
   handleAddPintura,
   handleRemovePintura,

@@ -1,11 +1,7 @@
 import React, { useState } from 'react';
 import { 
-  AlertCircle, 
-  CheckCircle2, 
   DollarSign, 
-  Clock, 
   Share2, 
-  MessageCircle, 
   ChevronRight,
   ShieldAlert
 } from 'lucide-react';

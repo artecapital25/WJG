@@ -3,11 +3,9 @@ import {
   CreditCard, 
   CheckCircle2, 
   Clock, 
-  AlertCircle, 
   X, 
   DollarSign, 
   Smartphone, 
-  FileText, 
   Sparkles,
   ArrowRight,
   Copy
@@ -44,7 +42,6 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
   subtitulo,
   referenciaDoc,
   clienteNombre,
-  clienteTelefono,
   montoTotal,
   pagoActual,
   esAprobacionCotizacion = false,
@@ -559,9 +556,10 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
                       </span>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min="0"
                         max={saldoRestantePrevio}
-                        step="1000"
+                        step="any"
                         value={montoIncremental}
                         onChange={(e) => setMontoIncremental(parseFloat(e.target.value) || 0)}
                         className="form-input"
@@ -610,9 +608,10 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
                       </span>
                       <input
                         type="number"
+                        inputMode="numeric"
                         min="0"
                         max={montoTotal}
-                        step="1000"
+                        step="any"
                         value={montoAbono}
                         onChange={(e) => setMontoAbono(parseFloat(e.target.value) || 0)}
                         className="form-input"
@@ -693,9 +692,10 @@ export const ModalRegistrarPago: React.FC<ModalRegistrarPagoProps> = ({
                   </span>
                   <input
                     type="number"
+                    inputMode="numeric"
                     min="0"
                     max={montoTotal}
-                    step="1000"
+                    step="any"
                     value={montoAbono}
                     onChange={(e) => setMontoAbono(parseFloat(e.target.value) || 0)}
                     className="form-input"

@@ -12,16 +12,13 @@ import {
   Trash2, 
   Edit3,
   ExternalLink,
-  Phone,
   Database,
   Truck,
-  Check,
   X,
   Cloud,
   CheckCircle2,
   Sparkles,
   Camera,
-  Eye,
   Zap
 } from 'lucide-react';
 import { 
@@ -1191,9 +1188,25 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     </div>
                   </div>
 
-                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-                    Marca: {res.marca} | Densidad: {res.densidad_g_cm3} g/cm³ | Peso: {res.peso_g}g
-                  </div>
+                  {(() => {
+                    const pesoActual = Number(res.peso_g) || 0;
+                    const pctRes = Math.min(100, Math.max(0, (pesoActual / 1000) * 100));
+                    const statusClass = pesoActual < 250 ? 'stock-empty' : pesoActual < 500 ? 'stock-low' : 'stock-ok';
+                    const barColor = pesoActual < 250 ? '#ef4444' : pesoActual < 500 ? '#f59e0b' : '#10b981';
+                    return (
+                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+                          <span>Marca: {res.marca} • {res.densidad_g_cm3} g/cm³</span>
+                          <span className={`wjg-stock-pill ${statusClass}`}>
+                            {pesoActual < 250 ? '🔴 Crítico' : pesoActual < 500 ? '🟡 Bajo' : '🟢 Óptimo'}: {pesoActual}g
+                          </span>
+                        </div>
+                        <div className="wjg-progress-track">
+                          <div className="wjg-progress-fill" style={{ width: `${pctRes}%`, background: barColor }} />
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1303,24 +1316,29 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                         <span>{fil.densidad_g_cm3 || 1.24} g/cm³</span>
                       </div>
                       
-                      {/* Barra de Stock */}
-                      <div style={{ marginTop: '4px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.72rem', marginBottom: '2px' }}>
-                          <span style={{ color: fil.stock_actual_g < 200 ? '#f87171' : 'var(--text-main)', fontWeight: 600 }}>
-                            Stock en bodega: {fil.stock_actual_g}g
-                          </span>
-                          <span style={{ color: 'var(--text-subtle)' }}>
-                            {((fil.stock_actual_g / (fil.peso_bobina_g || 1000)) * 100).toFixed(0)}% de rollo
-                          </span>
-                        </div>
-                        <div style={{ width: '100%', height: '5px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', overflow: 'hidden' }}>
-                          <div style={{ 
-                            width: `${Math.min(100, Math.max(0, (fil.stock_actual_g / (fil.peso_bobina_g || 1000)) * 100))}%`, 
-                            height: '100%', 
-                            background: fil.stock_actual_g < 200 ? '#ef4444' : 'var(--brand-cyan)' 
-                          }} />
-                        </div>
-                      </div>
+                      {/* Barra de Stock con Semáforo */}
+                      {(() => {
+                        const gramosFil = Number(fil.stock_actual_g) || 0;
+                        const pesoBobina = fil.peso_bobina_g || 1000;
+                        const pctFil = Math.min(100, Math.max(0, (gramosFil / pesoBobina) * 100));
+                        const pillCls = gramosFil < 250 ? 'stock-empty' : gramosFil < 450 ? 'stock-low' : 'stock-ok';
+                        const fillCol = gramosFil < 250 ? '#ef4444' : gramosFil < 450 ? '#f59e0b' : '#10b981';
+                        return (
+                          <div style={{ marginTop: '6px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', marginBottom: '2px', gap: '6px' }}>
+                              <span className={`wjg-stock-pill ${pillCls}`}>
+                                {gramosFil < 250 ? '🔴 Crítico' : gramosFil < 450 ? '🟡 Bajo' : '🟢 Stock'}: {gramosFil}g
+                              </span>
+                              <span style={{ color: 'var(--text-subtle)' }}>
+                                {pctFil.toFixed(0)}% de bobina ({pesoBobina}g)
+                              </span>
+                            </div>
+                            <div className="wjg-progress-track">
+                              <div className="wjg-progress-fill" style={{ width: `${pctFil}%`, background: fillCol }} />
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
 

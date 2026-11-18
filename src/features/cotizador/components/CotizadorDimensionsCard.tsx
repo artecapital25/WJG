@@ -9,8 +9,7 @@ import {
   Check, 
   Trash2,
   Search,
-  ExternalLink,
-  Globe
+  ExternalLink
 } from 'lucide-react';
 import { getQuickSearchUrls } from '../../../services/platformUtils';
 
@@ -55,7 +54,6 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
   onOpenSTLViewer,
   imagenUrl,
   tipoOrigenImagen,
-  isOptimizingImage,
   showImagePreviewModal,
   setShowImagePreviewModal,
   handleImageUpload,

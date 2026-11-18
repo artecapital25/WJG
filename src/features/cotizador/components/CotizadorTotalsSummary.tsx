@@ -47,7 +47,7 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
             </span>
           )}
         </label>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(115px, 1fr))', gap: '8px' }}>
           <button
             type="button"
             className={`btn btn-sm ${tipoEstado === 'Enviada' ? 'btn-primary' : 'btn-secondary'}`}
@@ -61,7 +61,7 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
             style={tipoEstado === 'Parcial' ? { background: '#ca8a04', color: '#fff', borderColor: '#eab308' } : {}}
             onClick={() => setTipoEstado('Parcial')}
           >
-            🟡 Parcial (Pendiente)
+            🟡 Parcial
           </button>
           <button
             type="button"
@@ -70,6 +70,26 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
           >
             Borrador
           </button>
+          {esEdicion && (
+            <>
+              <button
+                type="button"
+                className={`btn btn-sm ${tipoEstado === 'Aceptada' ? 'btn-cyan' : 'btn-secondary'}`}
+                style={tipoEstado === 'Aceptada' ? { background: '#10b981', color: '#fff', borderColor: '#10b981' } : {}}
+                onClick={() => setTipoEstado('Aceptada')}
+              >
+                🟢 Aceptada
+              </button>
+              <button
+                type="button"
+                className={`btn btn-sm ${tipoEstado === 'Facturada' ? 'btn-cyan' : 'btn-secondary'}`}
+                style={tipoEstado === 'Facturada' ? { background: '#0ea5e9', color: '#fff', borderColor: '#38bdf8' } : {}}
+                onClick={() => setTipoEstado('Facturada')}
+              >
+                🧾 Facturada
+              </button>
+            </>
+          )}
         </div>
       </div>
 

@@ -7,7 +7,6 @@ import {
   Copy, 
   Check, 
   Send, 
-  ExternalLink,
   Printer
 } from 'lucide-react';
 import { toast } from '../ui/ToastProvider';
@@ -37,7 +36,6 @@ export const ModalVisualizadorDocumento: React.FC<ModalVisualizadorDocumentoProp
   nombreArchivoPDF,
   textoDescriptivo,
   onEnviarWhatsApp,
-  clienteTelefono,
   selectorFormatoPOS
 }) => {
   const [tabActiva, setTabActiva] = useState<'pdf' | 'texto'>('pdf');

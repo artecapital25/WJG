@@ -3,33 +3,19 @@ import { HubType } from '../components/ui/BottomNavBar';
 import { TabType } from '../types';
 import { HubAreaPermission, UsuarioTaller } from '../types/usuarios.types';
 
-const TAB_TO_HUB_MAP: Record<TabType, HubAreaPermission> = {
-  cotizador: 'ventas',
-  cotizaciones: 'ventas',
-  pos: 'ventas',
-  workflow: 'taller',
-  stl: 'taller',
-  stock: 'taller',
-  materiales: 'taller',
-  calendario: 'taller',
-  seguimiento: 'taller',
-  cuentas: 'finanzas',
-  finanzas: 'finanzas',
-  plan: 'finanzas',
-  tareas: 'gestion',
-  usuarios: 'gestion',
-  marketing: 'gestion',
-  directorio: 'gestion',
-  catalogos: 'gestion',
-  herramientas: 'gestion'
-};
+const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion'];
 
 export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: UsuarioTaller[] = []) {
   // Encontrar el usuario activo en la lista o aplicar fallback seguro por nombre oficial
   const currentUser = useMemo(() => {
     const cleanName = (activeOperatorName || '').trim().toLowerCase();
     const found = usuarios.find(u => u.nombre.toLowerCase().includes(cleanName));
-    if (found) return found;
+    if (found) {
+      return {
+        ...found,
+        permisos_areas: ALL_AREAS
+      };
+    }
 
     // Fallbacks predeterminados para los miembros base
     if (cleanName.includes('german') || cleanName.includes('germán')) {
@@ -39,7 +25,7 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
         rol: 'ADMIN_COBRANZAS',
         telefono: '3503443140',
         telefono_notificaciones: '573503443140',
-        permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[],
+        permisos_areas: ALL_AREAS,
         activo: true
       };
     }
@@ -51,43 +37,38 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
         rol: 'ADMIN_COBRANZAS',
         telefono: '3204814702',
         telefono_notificaciones: '573204814702',
-        permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[],
+        permisos_areas: ALL_AREAS,
         activo: true
       };
     }
 
-    // Default Juan: Administrador completo
+    // Default Juan o cualquier operador activo: Acceso total transversal
     return {
       id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
-      nombre: 'Juan',
+      nombre: activeOperatorName ? activeOperatorName.trim() : 'Juan',
       rol: 'ADMIN_COBRANZAS',
       telefono: '3217273025',
       telefono_notificaciones: '573217273025',
-      permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[],
+      permisos_areas: ALL_AREAS,
       activo: true
     };
   }, [activeOperatorName, usuarios]);
 
   const permisos: HubAreaPermission[] = useMemo(() => {
     if (!currentUser.activo) return [];
-    return currentUser.permisos_areas || ['ventas', 'taller', 'finanzas', 'gestion'];
+    return ALL_AREAS;
   }, [currentUser]);
 
-  const hasPermission = (area: HubAreaPermission): boolean => {
-    return permisos.includes(area);
+  const hasPermission = (_area: HubAreaPermission): boolean => {
+    return Boolean(currentUser.activo);
   };
 
-  const canAccessHub = (hub: HubType): boolean => {
-    return hasPermission(hub);
+  const canAccessHub = (_hub: HubType): boolean => {
+    return Boolean(currentUser.activo);
   };
 
-  const canAccessTab = (tab: TabType): boolean => {
-    // Tareas es un módulo transversal y operativo (PUBLIC_INTERNAL) accesible para todo el equipo del taller (Juan, Wendy, Germán)
-    if (tab === 'tareas') return true;
-
-    const requiredArea = TAB_TO_HUB_MAP[tab];
-    if (!requiredArea) return true;
-    return hasPermission(requiredArea);
+  const canAccessTab = (_tab: TabType): boolean => {
+    return Boolean(currentUser.activo);
   };
 
   return {
@@ -96,6 +77,6 @@ export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: 
     hasPermission,
     canAccessHub,
     canAccessTab,
-    isGermanAdmin: currentUser.rol === 'ADMIN_COBRANZAS' || (currentUser.permisos_areas && currentUser.permisos_areas.includes('gestion'))
+    isGermanAdmin: Boolean(currentUser.activo)
   };
 }

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Tag, User, Plus, Edit, X, RotateCw, Lock, Trash2 } from 'lucide-react';
+import { Tag, User, Plus, Edit, X, RotateCw, Trash2 } from 'lucide-react';
 import { CotizacionBuilderProps } from '../types/cotizador.types';
 import { useCotizadorBuilder } from '../hooks/useCotizadorBuilder';
 import { CotizadorItemList } from './CotizadorItemList';
@@ -46,7 +46,7 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
               alignItems: 'center', 
               justifyContent: 'center' 
             }}>
-              {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? <Lock size={18} /> : <Edit size={18} />}
+              <Edit size={18} />
             </div>
             <div>
               <div style={{ 
@@ -54,30 +54,28 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
                 color: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#86efac' : '#fbbf24', 
                 fontSize: '0.98rem' 
               }}>
-                {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob')
-                  ? `Cotización Aprobada (Valores Protegidos): N° ${props.cotizacionEnEdicion.numero_cot}`
+                {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') || (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('factur')
+                  ? `Modo Edición Activo (Sincroniza OT y Cuenta de Cobro): N° ${props.cotizacionEnEdicion.numero_cot}`
                   : `Modo Edición Activo: Cotización N° ${props.cotizacionEnEdicion.numero_cot}`
                 }
               </div>
               <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                Cliente: <strong style={{ color: 'var(--text-main)' }}>{props.cotizacionEnEdicion.cliente?.nombre}</strong>
+                Cliente: <strong style={{ color: 'var(--text-main)' }}>{props.cotizacionEnEdicion.cliente?.nombre}</strong> • Los cambios permanecerán guardados en la nube.
               </div>
             </div>
           </div>
           
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            {!(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') && (
-              <button 
-                type="button" 
-                className="btn btn-secondary btn-sm" 
-                onClick={b.handleRecalcularTarifasVigentes}
-                title="Recalcular todas las piezas de este borrador con los precios actuales de resina, maquinaria e insumos del taller"
-                style={{ borderColor: 'rgba(56, 189, 248, 0.45)', color: 'var(--brand-cyan)', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
-              >
-                <RotateCw size={14} />
-                <span>Actualizar a Tarifas Vigentes</span>
-              </button>
-            )}
+            <button 
+              type="button" 
+              className="btn btn-secondary btn-sm" 
+              onClick={b.handleRecalcularTarifasVigentes}
+              title="Recalcular todas las piezas de esta cotización con los precios actuales de resina, filamento, maquinaria e insumos del taller"
+              style={{ borderColor: 'rgba(56, 189, 248, 0.45)', color: 'var(--brand-cyan)', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
+            >
+              <RotateCw size={14} />
+              <span>Actualizar a Tarifas Vigentes</span>
+            </button>
 
             {props.onCancelarEdicion && (
               <button type="button" className="btn btn-secondary btn-sm" onClick={props.onCancelarEdicion} style={{ borderColor: 'rgba(239, 68, 68, 0.5)', color: '#f87171' }}>

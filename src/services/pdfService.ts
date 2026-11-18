@@ -251,19 +251,20 @@ export function crearDocPDFCotizacion(
       valign: 'middle',
       minCellHeight: hasImages ? 24 : 8
     },
+    margin: { left: 15, right: 15 },
     columnStyles: hasImages ? {
       0: { halign: 'center', cellWidth: 8 },
       1: { halign: 'center', cellWidth: 26 },
-      2: { cellWidth: 78 },
+      2: { cellWidth: 'auto' },
       3: { halign: 'center', cellWidth: 14 },
-      4: { halign: 'right', cellWidth: 30 },
-      5: { halign: 'right', cellWidth: 30 }
+      4: { halign: 'right', cellWidth: 29 },
+      5: { halign: 'right', cellWidth: 29 }
     } : {
       0: { halign: 'center', cellWidth: 10 },
-      1: { cellWidth: 95 },
+      1: { cellWidth: 'auto' },
       2: { halign: 'center', cellWidth: 15 },
-      3: { halign: 'right', cellWidth: 32 },
-      4: { halign: 'right', cellWidth: 34 }
+      3: { halign: 'right', cellWidth: 31 },
+      4: { halign: 'right', cellWidth: 33 }
     },
     didDrawCell: (data) => {
       if (hasImages && data.section === 'body' && data.column.index === 1) {
@@ -536,10 +537,11 @@ export function crearDocPDFCuentaCobro(
       cellPadding: 6,
       valign: 'middle'
     },
+    margin: { left: 15, right: 15 },
     columnStyles: {
       0: { halign: 'center', cellWidth: 15 },
-      1: { cellWidth: 125 },
-      2: { halign: 'right', cellWidth: 46 }
+      1: { cellWidth: 'auto' },
+      2: { halign: 'right', cellWidth: 45 }
     }
   });
 
@@ -903,9 +905,10 @@ export function crearDocPDFReciboPOS(
       cellPadding: 6,
       valign: 'middle'
     },
+    margin: { left: 15, right: 15 },
     columnStyles: {
       0: { halign: 'center', cellWidth: 15 },
-      1: { cellWidth: 100 },
+      1: { cellWidth: 'auto' },
       2: { halign: 'center', cellWidth: 20 },
       3: { halign: 'right', cellWidth: 26 },
       4: { halign: 'right', cellWidth: 26 }

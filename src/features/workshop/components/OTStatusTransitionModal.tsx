@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, Check, X, ArrowRight, UserCheck } from 'lucide-react';
+import { Send, Check, X, ArrowRight } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../../types';
 import { HandoffConfig } from '../types/workshop.types';
 

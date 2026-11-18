@@ -20,9 +20,8 @@ if (typeof (globalThis as any).window === 'undefined') {
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { WhatsAppGatewayService } from '../whatsappGatewayService';
-import { WhatsAppNotificationService } from '../whatsappNotificationService';
 import { openWhatsApp } from '../whatsappService';
-import { EmailNotificationService, LINEA_CENTRAL_EMPRESA } from '../emailNotificationService';
+import { LINEA_CENTRAL_EMPRESA } from '../emailNotificationService';
 
 describe('WhatsApp Gateway & Notificaciones Automáticas (WJGEEKS 3D PRO)', () => {
   beforeEach(() => {

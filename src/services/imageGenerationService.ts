@@ -180,7 +180,7 @@ export async function renderizarCanvasConBranding(
   overlay: BrandingOverlayConfig,
   formato: FormatoPreset
 ): Promise<string> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const img = new Image();
     img.crossOrigin = 'Anonymous';
 

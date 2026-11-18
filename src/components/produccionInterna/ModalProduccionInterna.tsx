@@ -2,16 +2,8 @@ import React, { useState, useMemo } from 'react';
 import { 
   X, 
   FlaskConical, 
-  Sparkles, 
   Trash2, 
-  Calendar, 
-  Scale, 
-  Clock, 
-  DollarSign, 
-  CheckCircle,
-  AlertTriangle,
-  Layers,
-  Info
+  CheckCircle
 } from 'lucide-react';
 import { 
   RegistroProduccionInterna, 

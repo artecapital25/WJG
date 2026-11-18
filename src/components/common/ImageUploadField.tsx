@@ -1,6 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Camera, Upload, Trash2, Eye, Link, RefreshCw, X, Image as ImageIcon } from 'lucide-react';
-import { processAndOptimizeImage } from '../../services/imageService';
+import { Camera, Upload, Trash2, Eye, Link, RefreshCw, X } from 'lucide-react';
 import { CloudSyncService } from '../../services/cloudSyncService';
 import { toast } from '../ui/ToastProvider';
 
@@ -18,10 +17,7 @@ export const ImageUploadField: React.FC<ImageUploadFieldProps> = ({
   value = '',
   onChange,
   label = 'Fotografía del Producto / Ítem',
-  helperText = 'Sube una foto desde tu galería, tómala con la cámara del celular o pega un enlace.',
-  maxWidth = 800,
-  maxHeight = 800,
-  quality = 0.85
+  helperText = 'Sube una foto desde tu galería, tómala con la cámara del celular o pega un enlace.'
 }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [showUrlInput, setShowUrlInput] = useState(false);

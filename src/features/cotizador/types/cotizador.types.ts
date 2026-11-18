@@ -6,7 +6,8 @@ import {
   Personal, 
   ConfiguracionTaller, 
   PiezaCotizada,
-  TarifaTamano 
+  TarifaTamano,
+  EstadoCotizacion 
 } from '../../../types';
 
 export interface ItemPinturaForm {
@@ -61,6 +62,7 @@ export interface CotizadorFormProps {
     profundidadMm?: number;
     pesoResinaG?: number;
     pesoFilamentoG?: number;
+    tiempoImpresionMin?: number;
     tecnologia?: import('../../../types').TecnologiaFabricacion;
     resinaId?: string;
     filamentoId?: string;
@@ -129,8 +131,8 @@ export interface CotizadorTotalsSummaryProps {
   ivaMonto: number;
   ahorroVolumenTotal: number;
   total: number;
-  tipoEstado: 'Enviada' | 'Parcial' | 'Borrador';
-  setTipoEstado: (tipo: 'Enviada' | 'Parcial' | 'Borrador') => void;
+  tipoEstado: EstadoCotizacion;
+  setTipoEstado: (tipo: EstadoCotizacion) => void;
   vendedorNombre: string;
   setVendedorNombre: (nombre: string) => void;
   notas: string;

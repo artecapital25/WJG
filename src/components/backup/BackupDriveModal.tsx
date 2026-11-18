@@ -1,26 +1,18 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  Database, 
   Download, 
   Upload, 
   ExternalLink, 
   CheckCircle2, 
   AlertCircle, 
   X, 
-  FolderSync, 
   Cloud, 
   Share2, 
-  Table, 
   FileSpreadsheet, 
   Copy, 
   Check, 
   RefreshCw, 
   Code2, 
-  Layers, 
-  ChevronDown, 
-  ChevronUp, 
-  FileJson, 
-  Sparkles,
   Clock,
   HardDrive
 } from 'lucide-react';
@@ -48,7 +40,6 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
   const [isSettingTrigger, setIsSettingTrigger] = useState(false);
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
-  const [copiedUrl, setCopiedUrl] = useState(false);
 
   // Configuración de Google Sheets / Apps Script
   const [sheetsConfig, setSheetsConfig] = useState<GoogleSheetsConfig>(() => GoogleSheetsSyncService.getConfig());
@@ -78,7 +69,6 @@ export const BackupDriveModal: React.FC<BackupDriveModalProps> = ({
   const totalVentasPOS = backupData.ventas_express?.length || 0;
   const totalOTs = backupData.ordenes?.length || 0;
   const totalStock = backupData.productos_stock?.length || 0;
-  const totalTareas = backupData.tareas?.length || 0;
   const totalInsumos = backupData.insumos?.length || 0;
   const totalResinas = backupData.resinas?.length || 0;
   const totalHerramientas = backupData.herramientas?.length || 0;

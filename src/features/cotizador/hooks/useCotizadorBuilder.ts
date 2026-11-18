@@ -6,7 +6,8 @@ import {
   Cotizacion, 
   MaquinaInvolucrada, 
   EnlaceReferenciaCompra, 
-  EstadoPago 
+  EstadoPago,
+  EstadoCotizacion 
 } from '../../../types';
 import { CotizacionBuilderProps } from '../types/cotizador.types';
 import { 
@@ -18,7 +19,7 @@ import {
 import { calcularFechaEstimada, calcularDiasHabilesEntre, formatearTiempoEntrega } from '../../../utils/businessDays';
 import { calcularCotizacionIntegral, ParametrosPiezaInput } from '../../../services/calculationEngine';
 import { generarPDFCotizacion, compartirPDFWhatsApp, obtenerBlobURLCotizacion } from '../../../services/pdfService';
-import { generateCotizacionWhatsAppUrl, generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
+import { generateCotizacionWhatsAppText } from '../../../services/whatsappService';
 import { processAndOptimizeImage } from '../../../services/imageService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { toast } from '../../../components/ui/ToastProvider';
@@ -36,15 +37,11 @@ export function useCotizadorBuilder({
   maquinas = [],
   insumos = [],
   personal = [],
-  onCancelarEdicion,
   onLimpiarBorrador,
-  onRemoveItem,
   onUpdatePiece,
-  onUpdatePieceQuantity,
   onUpdatePieceImage,
   onSaveCotizacion,
-  onAddCliente,
-  onLoadPieceToCalculator
+  onAddCliente
 }: CotizacionBuilderProps) {
   const [clienteId, setClienteId] = useState<string>(() => {
     return cotizacionEnEdicion?.cliente?.id || clientes[0]?.id || '';
@@ -136,7 +133,7 @@ export function useCotizadorBuilder({
 
   // Tipo de cotización
   const tieneItemsPendientes = useMemo(() => items.some(it => it.datos_pendientes), [items]);
-  const [tipoEstado, setTipoEstado] = useState<'Enviada' | 'Parcial' | 'Borrador'>('Enviada');
+  const [tipoEstado, setTipoEstado] = useState<EstadoCotizacion>(() => cotizacionEnEdicion?.estado || 'Enviada');
 
   // Estado de Pago y Anticipos Iniciales
   const [estadoPagoInicial, setEstadoPagoInicial] = useState<EstadoPago>(() => {
@@ -211,12 +208,12 @@ export function useCotizadorBuilder({
     }
   };
 
-  // Si hay piezas parciales, marcar automáticamente Parcial
+  // Si hay piezas parciales en una cotización nueva, marcar automáticamente Parcial
   useEffect(() => {
-    if (tieneItemsPendientes) {
+    if (tieneItemsPendientes && !cotizacionEnEdicion) {
       setTipoEstado('Parcial');
     }
-  }, [tieneItemsPendientes]);
+  }, [tieneItemsPendientes, cotizacionEnEdicion]);
 
   // Cálculos puros y reactivos de totales
   const { 

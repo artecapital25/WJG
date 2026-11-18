@@ -3,33 +3,15 @@ import {
   Calendar as CalendarIcon, 
   ChevronLeft, 
   ChevronRight, 
-  Plus, 
-  Filter, 
-  Clock, 
   CheckCircle2, 
-  AlertTriangle, 
-  DollarSign, 
-  Package, 
-  Users, 
-  Wrench, 
-  Send, 
-  Sparkles,
-  Search,
-  Tag,
-  ArrowRight,
   ExternalLink,
   X,
-  Layers,
-  ChevronDown,
   CalendarDays,
-  ListTodo,
-  SlidersHorizontal,
-  Sun
+  SlidersHorizontal
 } from 'lucide-react';
 import { 
   CalendarEvent, 
   TipoEventoCalendario, 
-  EstadoEventoCalendario,
   FiltrosCalendario,
   OrdenTrabajo, 
   CuentaCobro, 
@@ -39,7 +21,6 @@ import {
   ConfiguracionTaller,
   TabType
 } from '../../types';
-import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
 import { toast } from '../ui/ToastProvider';
 import { useDateNavigation } from './useDateNavigation';
 import { MobileWeekStrip } from './MobileWeekStrip';
@@ -79,18 +60,14 @@ const AVATARES_RESPONSABLE: Record<string, { color: string; badge: string }> = {
 export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = ({
   ordenes,
   cuentas,
-  cotizaciones,
   tareas,
   solicitudesInsumos,
-  config,
   onActualizarOT,
-  onActualizarCuenta,
   onActualizarTarea,
   onNavigateTab
 }) => {
   // Hook de navegación de fechas y adaptabilidad táctil
   const {
-    currentDate,
     selectedDateStr,
     isMobile,
     weekDays,

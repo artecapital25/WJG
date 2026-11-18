@@ -5,9 +5,7 @@ import {
   Send, 
   MessageSquare, 
   Plus, 
-  Clock, 
   Flame, 
-  AlertTriangle,
   TrendingUp
 } from 'lucide-react';
 import { TareaEquipo } from '../../types/tasks';

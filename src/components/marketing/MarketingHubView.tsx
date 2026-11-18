@@ -8,20 +8,16 @@ import {
   MessageCircle, 
   ShoppingBag, 
   Sparkles, 
-  ExternalLink, 
   FileSpreadsheet, 
   Tag, 
   Layers,
   HelpCircle,
   Eye,
-  CheckCircle2,
-  ArrowRight,
   Send,
   Wand2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ProductoStock, TarifaTamano, ConfiguracionTaller } from '../../types';
-import { openWhatsApp } from '../../services/whatsappService';
 import { NanoBananaStudio } from './NanoBananaStudio';
 
 interface MarketingHubViewProps {
@@ -68,7 +64,7 @@ Acabamos de terminar esta pieza de "${item.nombre}" con un nivel de micro-detall
     categoria: 'tarifario',
     titulo: '📏 Tarifario Oficial por Centímetros (Sin Vueltas)',
     descripcion: 'Comunica precios transparentes y claros para que los clientes coticen al instante.',
-    generarCopy: (item, tel) =>
+    generarCopy: (_item, tel) =>
 `📏 ¿CUÁNTO CUESTA TU FIGURA FAVORITA EN RESINA 3D? 📏
 En WJGEEKS 3D te lo ponemos fácil y transparente. Precios claros por altura:
 
@@ -175,7 +171,6 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
   // Estados del Exportador Meta Commerce
   const [incluirStockEnFeed, setIncluirStockEnFeed] = useState<boolean>(true);
   const [incluirTarifarioEnFeed, setIncluirTarifarioEnFeed] = useState<boolean>(true);
-  const [feedUrlCopied, setFeedUrlCopied] = useState<boolean>(false);
 
   const telefonoOficial = config.telefono_contacto?.replace(/[^0-9]/g, '') || '573202796115';
 

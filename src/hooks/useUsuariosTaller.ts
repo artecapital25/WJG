@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { UsuarioTaller, UsuarioTallerInput, parseDispositivoInfo } from '../types/usuarios.types';
+import { HubAreaPermission, UsuarioTaller, UsuarioTallerInput, parseDispositivoInfo } from '../types/usuarios.types';
 import { toast } from '../components/ui/ToastProvider';
 import { AuthSecurityService } from '../services/authSecurityService';
 
 const LOCAL_STORAGE_USERS_KEY = 'wjg_usuarios_taller_cache';
+const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion'];
 
 const DEFAULT_USERS_SEED: UsuarioTaller[] = [
   {
@@ -55,7 +56,13 @@ export function useUsuariosTaller() {
         const cached = localStorage.getItem(LOCAL_STORAGE_USERS_KEY);
         if (cached) {
           const parsed = JSON.parse(cached);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed.map((u: any) => ({
+              ...u,
+              rol: u.rol || 'ADMIN_COBRANZAS',
+              permisos_areas: ALL_AREAS
+            }));
+          }
         }
       } catch (e) {
         // fallback
@@ -104,13 +111,31 @@ export function useUsuariosTaller() {
       }
 
       if (data && data.length > 0) {
-        // Normalizar permisos_areas a Array de strings
-        const normalized: UsuarioTaller[] = data.map(item => ({
-          ...item,
-          permisos_areas: Array.isArray(item.permisos_areas) ? item.permisos_areas : ['taller'],
-          dispositivo_info: parseDispositivoInfo(item.dispositivo_info)
-        }));
+        // Normalizar permisos_areas para garantizar acceso universal a los 4 Hubs en todo dispositivo
+        const idsToUpgrade: string[] = [];
+        const normalized: UsuarioTaller[] = data.map(item => {
+          const prevPermisos = Array.isArray(item.permisos_areas) ? item.permisos_areas : [];
+          if (item.activo !== false && prevPermisos.length < ALL_AREAS.length && item.id) {
+            idsToUpgrade.push(item.id);
+          }
+          return {
+            ...item,
+            rol: item.rol || 'ADMIN_COBRANZAS',
+            permisos_areas: ALL_AREAS,
+            dispositivo_info: parseDispositivoInfo(item.dispositivo_info)
+          };
+        });
         persistCache(normalized);
+
+        if (idsToUpgrade.length > 0) {
+          supabase
+            .from('usuarios_taller')
+            .update({ permisos_areas: ALL_AREAS })
+            .in('id', idsToUpgrade)
+            .then(({ error: upgErr }) => {
+              if (upgErr) console.warn('Aviso actualizando permisos_areas universales:', upgErr.message);
+            });
+        }
       } else {
         // Si data es [] vacía, intentar sembrar Juan, Wendy y Germán automáticamente
         await autoSeedMiembrosOficiales();
@@ -254,7 +279,7 @@ export function useUsuariosTaller() {
       telefono_notificaciones: cleanNotif,
       email: input.email?.trim().toLowerCase() || null,
       cedula: input.cedula?.trim() || null,
-      permisos_areas: input.permisos_areas && input.permisos_areas.length > 0 ? input.permisos_areas : ['taller'],
+      permisos_areas: input.permisos_areas && input.permisos_areas.length > 0 ? input.permisos_areas : ALL_AREAS,
       pin_acceso: pin,
       password_hash: pinHash,
       pin_hash: pinHash,

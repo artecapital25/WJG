@@ -3,11 +3,9 @@ import {
   AlertTriangle, 
   Trash2, 
   X, 
-  DollarSign, 
   Calendar, 
   Hash, 
   User, 
-  CheckCircle2,
   Receipt
 } from 'lucide-react';
 

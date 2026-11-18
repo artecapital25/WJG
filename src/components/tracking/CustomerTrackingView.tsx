@@ -10,11 +10,10 @@ import {
   Send, 
   Copy, 
   Check, 
-  ExternalLink,
-  ShieldCheck,
+  ShieldCheck, 
   Sparkles
 } from 'lucide-react';
-import { OrdenTrabajo, Cotizacion, EstadoOT, ConfiguracionTaller } from '../../types';
+import { OrdenTrabajo, Cotizacion, ConfiguracionTaller } from '../../types';
 
 interface CustomerTrackingViewProps {
   ordenes: OrdenTrabajo[];

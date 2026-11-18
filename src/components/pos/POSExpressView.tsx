@@ -1,25 +1,17 @@
 import React, { useState, useRef, useMemo } from 'react';
 import { 
   Camera, 
-  UploadCloud, 
   DollarSign, 
-  User, 
   UserPlus,
   UserCheck,
   Users,
-  Calendar, 
   AlertTriangle, 
-  CheckCircle, 
-  Clock, 
   Send, 
   Sparkles, 
   Trash2, 
   Plus, 
   Search, 
   Receipt,
-  Phone,
-  Tag,
-  CreditCard,
   RotateCcw,
   Edit3,
   Wrench,
@@ -78,7 +70,6 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   ventas,
   clientes,
   config,
-  ordenes = [],
   productosStock = [],
   cotizaciones = [],
   onGuardarVenta,
@@ -146,11 +137,13 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [enlaceDiseno, setEnlaceDiseno] = useState<string>('');
   const [notasDiseno, setNotasDiseno] = useState<string>('');
 
-  // Modales de Edición, Eliminación y Abono Rápido
+  // Modales de Edición, Eliminación y Gestión / Corrección de Pago Rápido
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [ventaParaAbono, setVentaParaAbono] = useState<VentaExpress | null>(null);
-  const [montoNuevoAbono, setMontoNuevoAbono] = useState<number>(0);
+  const [estadoPagoModal, setEstadoPagoModal] = useState<EstadoPagoExpress>('Abono Parcial');
+  const [abonoTotalModal, setAbonoTotalModal] = useState<number>(0);
+  const [metodoPagoModal, setMetodoPagoModal] = useState<string>('Bre-B');
   const [ventaParaConfirmarWhatsApp, setVentaParaConfirmarWhatsApp] = useState<VentaExpress | null>(null);
   const [ivaPorcentajePOS, setIvaPorcentajePOS] = useState<number>(0);
 
@@ -385,28 +378,51 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     setVentaParaConfirmarWhatsApp(null);
   };
 
-  // Guardar abono en modal
+  // Abrir modal de gestión / corrección de pago (permite incrementar, corregir a la baja o reversar a $0)
+  const abrirModalGestionPagoPOS = (venta: VentaExpress) => {
+    setVentaParaAbono(venta);
+    const esPagadoTotal = venta.saldo_pendiente <= 0 && venta.total > 0;
+    const estadoInicial: EstadoPagoExpress = esPagadoTotal
+      ? 'Pagado Total'
+      : (venta.abono > 0 ? 'Abono Parcial' : 'Pendiente');
+    setEstadoPagoModal(estadoInicial);
+    setAbonoTotalModal(venta.abono || 0);
+    setMetodoPagoModal(venta.metodo_pago || 'Bre-B');
+  };
+
+  // Guardar abono o corrección de pago en modal
   const handleGuardarAbonoModal = (e: React.FormEvent) => {
     e.preventDefault();
     if (!ventaParaAbono) return;
 
-    const extraAbono = Number(montoNuevoAbono) || 0;
-    if (extraAbono <= 0) return;
+    let nuevoAbonoTotal = 0;
+    if (estadoPagoModal === 'Pagado Total') {
+      nuevoAbonoTotal = ventaParaAbono.total;
+    } else if (estadoPagoModal === 'Pendiente') {
+      nuevoAbonoTotal = 0;
+    } else {
+      nuevoAbonoTotal = Math.min(ventaParaAbono.total, Math.max(0, Number(abonoTotalModal) || 0));
+    }
 
-    const nuevoAbonoTotal = Math.min(ventaParaAbono.total, ventaParaAbono.abono + extraAbono);
     const nuevoSaldo = Math.max(0, ventaParaAbono.total - nuevoAbonoTotal);
+    const nuevoEstadoPago: EstadoPagoExpress = nuevoSaldo <= 0 && ventaParaAbono.total > 0
+      ? 'Pagado Total'
+      : (nuevoAbonoTotal > 0 ? 'Abono Parcial' : 'Pendiente');
 
     const updated: VentaExpress = {
       ...ventaParaAbono,
       abono: nuevoAbonoTotal,
       saldo_pendiente: nuevoSaldo,
-      estado_pago: nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial'
+      estado_pago: nuevoEstadoPago,
+      metodo_pago: metodoPagoModal || ventaParaAbono.metodo_pago || 'Bre-B'
     };
 
     onActualizarVenta(updated);
     setVentaParaAbono(null);
 
-    confetti({ particleCount: 50, spread: 50 });
+    if (nuevoSaldo <= 0 && ventaParaAbono.total > 0) {
+      confetti({ particleCount: 50, spread: 50 });
+    }
   };
 
   // Filtrado de ventas recientes con búsqueda y segmentación por tipo de cliente
@@ -437,8 +453,6 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   });
 
   // Métricas rápidas del POS
-  const totalVendido = ventas.reduce((sum, v) => sum + v.total, 0);
-  const totalRecaudado = ventas.reduce((sum, v) => sum + v.abono, 0);
   const totalPorCobrar = ventas.reduce((sum, v) => sum + v.saldo_pendiente, 0);
   const totalAlertasUrgentes = ventas.filter(v => {
     const a = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
@@ -749,10 +763,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </label>
                 <input 
                   type="number" 
+                  inputMode="numeric"
                   className="form-input"
                   value={total}
-                  onChange={e => setTotal(e.target.value === '' ? '' : Number(e.target.value))}
-                  step="5000"
+                  onChange={e => setTotal(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  min="0"
+                  step="any"
                   required
                 />
               </div>
@@ -763,10 +779,12 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </label>
                 <input 
                   type="number" 
+                  inputMode="numeric"
                   className="form-input"
                   value={abono}
-                  onChange={e => setAbono(e.target.value === '' ? '' : Number(e.target.value))}
-                  step="5000"
+                  onChange={e => setAbono(e.target.value === '' ? '' : Math.max(0, Number(e.target.value)))}
+                  min="0"
+                  step="any"
                 />
               </div>
             </div>
@@ -1455,21 +1473,22 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                               <span>Recibo PDF</span>
                             </button>
 
-                            {/* Botón Registrar Abono */}
-                            {!esPagado && (
-                              <button
-                                type="button"
-                                className="btn btn-secondary btn-sm"
-                                onClick={() => {
-                                  setVentaParaAbono(venta);
-                                  setMontoNuevoAbono(venta.saldo_pendiente);
-                                }}
-                                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                              >
-                                <DollarSign size={13} color="#4ade80" />
-                                <span>Abonar</span>
-                              </button>
-                            )}
+                            {/* Botón Siempre Visible: Abonar o Cambiar / Corregir Pago */}
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              onClick={() => abrirModalGestionPagoPOS(venta)}
+                              style={{
+                                fontSize: '0.75rem',
+                                padding: '4px 10px',
+                                borderColor: esPagado ? 'rgba(245, 158, 11, 0.45)' : 'rgba(74, 222, 128, 0.4)',
+                                color: esPagado ? '#fbbf24' : '#4ade80'
+                              }}
+                              title={esPagado ? 'Corregir o cambiar abono / estado de pago' : 'Registrar abono o liquidar saldo'}
+                            >
+                              {esPagado ? <RotateCcw size={13} color="#fbbf24" /> : <DollarSign size={13} color="#4ade80" />}
+                              <span>{esPagado ? 'Cambiar Pago' : 'Abonar'}</span>
+                            </button>
 
                             {/* Botón WhatsApp Comprobante / Cobro */}
                             <button
@@ -1512,137 +1531,261 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
         </div>
       </div>
 
-      {/* MODAL DE ABONO RÁPIDO */}
-      {ventaParaAbono && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
-            backdropFilter: 'blur(6px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 99999,
-            padding: '16px'
-          }}
-          onClick={() => setVentaParaAbono(null)}
-        >
-          <div 
-            className="glass-card" 
-            style={{ maxWidth: '400px', width: '100%', margin: 0, padding: '24px' }}
-            onClick={e => e.stopPropagation()}
+      {/* MODAL DE GESTIÓN Y CORRECCIÓN DE PAGO POS */}
+      {ventaParaAbono && (() => {
+        const abonoObjetivoPreview = estadoPagoModal === 'Pagado Total'
+          ? ventaParaAbono.total
+          : estadoPagoModal === 'Pendiente'
+            ? 0
+            : Math.min(ventaParaAbono.total, Math.max(0, Number(abonoTotalModal) || 0));
+        const nuevoSaldoPreview = Math.max(0, ventaParaAbono.total - abonoObjetivoPreview);
+        const esReversion = abonoObjetivoPreview < (ventaParaAbono.abono || 0);
+        return (
+          <div
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              background: 'rgba(0, 0, 0, 0.85)',
+              backdropFilter: 'blur(6px)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              zIndex: 99999,
+              padding: '16px'
+            }}
+            onClick={() => setVentaParaAbono(null)}
           >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#fff' }}>
-                Registrar Abono • {ventaParaAbono.numero_venta}
-              </h3>
-              <button 
-                type="button" 
-                onClick={() => setVentaParaAbono(null)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '14px' }}>
-              Cliente: <strong style={{ color: '#fff' }}>{ventaParaAbono.cliente_nombre}</strong><br />
-              Figura: <strong>{ventaParaAbono.nombre_producto}</strong><br />
-              Saldo actual adeudado: <strong style={{ color: '#fbbf24' }}>${ventaParaAbono.saldo_pendiente.toLocaleString('es-CO')} COP</strong>
-            </div>
-
-            <form onSubmit={handleGuardarAbonoModal}>
-              <div style={{ marginBottom: '16px' }}>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  MONTO DEL NUEVO ABONO (COP):
-                </label>
-                <input 
-                  type="number"
-                  className="form-input"
-                  value={montoNuevoAbono}
-                  onChange={e => setMontoNuevoAbono(Number(e.target.value))}
-                  step="5000"
-                  max={ventaParaAbono.saldo_pendiente}
-                  autoFocus
-                  required
-                  style={{ fontSize: '1.2rem', fontWeight: 800, padding: '10px' }}
-                />
-              </div>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+            <div
+              className="glass-card"
+              style={{ maxWidth: '460px', width: '100%', margin: 0, padding: '24px', maxHeight: '92vh', overflowY: 'auto' }}
+              onClick={e => e.stopPropagation()}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                <h3 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 800, color: '#fff' }}>
+                  💳 Gestionar / Corregir Pago • {ventaParaAbono.numero_venta}
+                </h3>
                 <button
                   type="button"
-                  className="btn btn-secondary btn-sm"
-                  onClick={() => setMontoNuevoAbono(ventaParaAbono.saldo_pendiente)}
+                  onClick={() => setVentaParaAbono(null)}
+                  style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: '1.2rem', cursor: 'pointer', minWidth: '32px', minHeight: '32px' }}
                 >
-                  Pagar Todo (${ventaParaAbono.saldo_pendiente.toLocaleString('es-CO')})
+                  ✕
                 </button>
-                {ventaParaAbono.saldo_pendiente > 20000 && (
+              </div>
+
+              <div style={{ fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px', padding: '10px 12px', borderRadius: '10px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)' }}>
+                <div>Cliente: <strong style={{ color: '#fff' }}>{ventaParaAbono.cliente_nombre}</strong></div>
+                <div>Producto: <strong style={{ color: '#e2e8f0' }}>{ventaParaAbono.nombre_producto}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '6px', paddingTop: '6px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                  <span>Total Venta: <strong style={{ color: '#fff' }}>${ventaParaAbono.total.toLocaleString('es-CO')}</strong></span>
+                  <span>Abonado Actual: <strong style={{ color: '#38bdf8' }}>${(ventaParaAbono.abono || 0).toLocaleString('es-CO')}</strong></span>
+                </div>
+              </div>
+
+              <form onSubmit={handleGuardarAbonoModal}>
+                {/* Selector de 3 estados para corregir libremente */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                    ESTADO DE PAGO REAL:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEstadoPagoModal('Pendiente');
+                        setAbonoTotalModal(0);
+                      }}
+                      className="btn btn-sm"
+                      style={{
+                        minHeight: '42px',
+                        fontWeight: 700,
+                        fontSize: '0.76rem',
+                        background: estadoPagoModal === 'Pendiente' ? 'rgba(239, 68, 68, 0.22)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${estadoPagoModal === 'Pendiente' ? '#ef4444' : 'rgba(255,255,255,0.12)'}`,
+                        color: estadoPagoModal === 'Pendiente' ? '#fca5a5' : 'var(--text-muted)'
+                      }}
+                    >
+                      Sin Pago ($0)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEstadoPagoModal('Abono Parcial');
+                        if (abonoTotalModal <= 0 || abonoTotalModal >= ventaParaAbono.total) {
+                          setAbonoTotalModal(Math.round(ventaParaAbono.total / 2));
+                        }
+                      }}
+                      className="btn btn-sm"
+                      style={{
+                        minHeight: '42px',
+                        fontWeight: 700,
+                        fontSize: '0.76rem',
+                        background: estadoPagoModal === 'Abono Parcial' ? 'rgba(245, 158, 11, 0.22)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${estadoPagoModal === 'Abono Parcial' ? '#f59e0b' : 'rgba(255,255,255,0.12)'}`,
+                        color: estadoPagoModal === 'Abono Parcial' ? '#fcd34d' : 'var(--text-muted)'
+                      }}
+                    >
+                      Abono Parcial
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEstadoPagoModal('Pagado Total');
+                        setAbonoTotalModal(ventaParaAbono.total);
+                      }}
+                      className="btn btn-sm"
+                      style={{
+                        minHeight: '42px',
+                        fontWeight: 700,
+                        fontSize: '0.76rem',
+                        background: estadoPagoModal === 'Pagado Total' ? 'rgba(16, 185, 129, 0.22)' : 'rgba(255,255,255,0.04)',
+                        border: `1px solid ${estadoPagoModal === 'Pagado Total' ? '#10b981' : 'rgba(255,255,255,0.12)'}`,
+                        color: estadoPagoModal === 'Pagado Total' ? '#6ee7b7' : 'var(--text-muted)'
+                      }}
+                    >
+                      Pagado 100%
+                    </button>
+                  </div>
+                </div>
+
+                {/* Monto total abonado acumulado (sin step restrictivo) */}
+                {estadoPagoModal === 'Abono Parcial' && (
+                  <div style={{ marginBottom: '14px' }}>
+                    <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                      ABONO TOTAL RECIBIDO ACUMULADO (COP):
+                    </label>
+                    <input
+                      type="number"
+                      className="form-input"
+                      value={abonoTotalModal === 0 ? '' : abonoTotalModal}
+                      onChange={e => setAbonoTotalModal(e.target.value === '' ? 0 : Number(e.target.value))}
+                      min="0"
+                      step="any"
+                      max={ventaParaAbono.total}
+                      autoFocus
+                      required
+                      style={{ fontSize: '1.15rem', fontWeight: 800, padding: '10px 12px' }}
+                    />
+                    <div style={{ display: 'flex', gap: '8px', marginTop: '8px', flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => setAbonoTotalModal(Math.round(ventaParaAbono.total * 0.5))}
+                      >
+                        50% (${Math.round(ventaParaAbono.total * 0.5).toLocaleString('es-CO')})
+                      </button>
+                      {ventaParaAbono.saldo_pendiente > 0 && ventaParaAbono.abono > 0 && (
+                        <button
+                          type="button"
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => setAbonoTotalModal(ventaParaAbono.total)}
+                        >
+                          Completar Saldo (+${ventaParaAbono.saldo_pendiente.toLocaleString('es-CO')})
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Método de pago */}
+                <div style={{ marginBottom: '14px' }}>
+                  <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
+                    MÉTODO DE PAGO:
+                  </label>
+                  <select
+                    className="form-select"
+                    value={metodoPagoModal}
+                    onChange={e => setMetodoPagoModal(e.target.value)}
+                  >
+                    <option value="Bre-B">Bre-B / Llave</option>
+                    <option value="Nequi">Nequi</option>
+                    <option value="Efectivo">Efectivo</option>
+                    <option value="Transferencia">Transferencia Bancaria</option>
+                    <option value="Tarjeta">Tarjeta / Datafono</option>
+                  </select>
+                </div>
+
+                {/* Resumen de impacto y alerta si es reversión */}
+                <div style={{
+                  marginBottom: '14px',
+                  padding: '10px 12px',
+                  borderRadius: '10px',
+                  background: esReversion ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.08)',
+                  border: `1px solid ${esReversion ? 'rgba(245, 158, 11, 0.35)' : 'rgba(16, 185, 129, 0.25)'}`,
+                  fontSize: '0.78rem'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Nuevo Abono Total:</span>
+                    <strong style={{ color: '#fff' }}>${abonoObjetivoPreview.toLocaleString('es-CO')} COP</strong>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Nuevo Saldo Pendiente:</span>
+                    <strong style={{ color: nuevoSaldoPreview > 0 ? '#fbbf24' : '#34d399' }}>
+                      ${nuevoSaldoPreview.toLocaleString('es-CO')} COP
+                    </strong>
+                  </div>
+                  {esReversion && (
+                    <div style={{ marginTop: '6px', color: '#fcd34d', fontSize: '0.72rem' }}>
+                      ⚠️ Reversión detectada: el libro contable (<code>abonos_pagos</code>) y cuentas asociadas se ajustarán al instante.
+                    </div>
+                  )}
+                </div>
+
+                {/* Llave Bre-B en Modal de Abono */}
+                <div style={{
+                  marginBottom: '16px',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'rgba(6, 182, 212, 0.1)',
+                  border: '1px solid rgba(6, 182, 212, 0.3)',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
+                    Llave <strong style={{ color: '#06b6d4' }}>Bre-B</strong>: <span style={{ color: '#38bdf8', fontWeight: 800 }}>0090778625</span>
+                  </div>
                   <button
                     type="button"
-                    className="btn btn-secondary btn-sm"
-                    onClick={() => setMontoNuevoAbono(Math.round(ventaParaAbono.saldo_pendiente / 2))}
+                    onClick={handleCopiarLlaveBreB}
+                    className="btn btn-sm"
+                    style={{
+                      background: copiadoLlavePOS ? 'rgba(16, 185, 129, 0.25)' : 'rgba(6, 182, 212, 0.2)',
+                      border: `1px solid ${copiadoLlavePOS ? '#10b981' : '#06b6d4'}`,
+                      color: copiadoLlavePOS ? '#34d399' : '#38bdf8',
+                      fontSize: '0.72rem',
+                      fontWeight: 700,
+                      padding: '3px 8px'
+                    }}
                   >
-                    La Mitad
+                    {copiadoLlavePOS ? '¡Copiada!' : 'Copiar'}
                   </button>
-                )}
-              </div>
-
-              {/* Llave Bre-B en Modal de Abono */}
-              <div style={{
-                marginBottom: '16px',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                background: 'rgba(6, 182, 212, 0.1)',
-                border: '1px solid rgba(6, 182, 212, 0.3)',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center'
-              }}>
-                <div style={{ fontSize: '0.74rem', color: '#94a3b8' }}>
-                  Llave <strong style={{ color: '#06b6d4' }}>Bre-B</strong>: <span style={{ color: '#38bdf8', fontWeight: 800 }}>0090778625</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCopiarLlaveBreB}
-                  className="btn btn-sm"
-                  style={{
-                    background: copiadoLlavePOS ? 'rgba(16, 185, 129, 0.25)' : 'rgba(6, 182, 212, 0.2)',
-                    border: `1px solid ${copiadoLlavePOS ? '#10b981' : '#06b6d4'}`,
-                    color: copiadoLlavePOS ? '#34d399' : '#38bdf8',
-                    fontSize: '0.72rem',
-                    fontWeight: 700,
-                    padding: '3px 8px'
-                  }}
-                >
-                  {copiadoLlavePOS ? '¡Copiada!' : 'Copiar'}
-                </button>
-              </div>
 
-              <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
-                <button 
-                  type="button" 
-                  className="btn btn-secondary"
-                  onClick={() => setVentaParaAbono(null)}
-                >
-                  Cancelar
-                </button>
-                <button 
-                  type="submit" 
-                  className="btn btn-primary"
-                  style={{ fontWeight: 800 }}
-                >
-                  Guardar Abono
-                </button>
-              </div>
-            </form>
+                <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+                  <button
+                    type="button"
+                    className="btn btn-secondary"
+                    onClick={() => setVentaParaAbono(null)}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    style={{ fontWeight: 800 }}
+                  >
+                    {esReversion ? 'Aplicar Corrección' : 'Guardar Pago'}
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL EDITAR VENTA EXPRESS */}
       {ventaParaEditar && (

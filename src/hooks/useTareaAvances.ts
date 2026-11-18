@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
-import { TareaAvance, TareaAvanceInput } from '../types/tasks';
+import { TareaAvance } from '../types/tasks';
 import { toast } from '../components/ui/ToastProvider';
 
 const CACHE_PREFIX = 'wjg_tarea_avances_';

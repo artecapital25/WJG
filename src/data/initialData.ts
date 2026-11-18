@@ -849,57 +849,6 @@ export const MAQUINAS_INICIALES: Maquina[] = [
   }
 ];
 
-const _OLD_CONFIGS: any[] = [
-  {
-    "id": "maq-1",
-    "nombre": "Anycubic MONO 4",
-    "tipo": "Impresora 3D Resina",
-    "consumo_kwh": 0.45,
-    "costo_minuto": 6.255,
-    "estado": "Disponible"
-  },
-  {
-    "id": "maq-2",
-    "nombre": "Anycubic Wash y cure 3",
-    "tipo": "Estación de Curado",
-    "consumo_kwh": 0.36,
-    "costo_minuto": 5.004,
-    "estado": "Disponible"
-  },
-  {
-    "id": "maq-3",
-    "nombre": "Compresor Paasche S220R",
-    "tipo": "Aerógrafo / Pintura",
-    "consumo_kwh": 0.36,
-    "costo_minuto": 5.004,
-    "estado": "Disponible"
-  },
-  {
-    "id": "maq-4",
-    "nombre": "Anycubic Kobra 2 Neo",
-    "tipo": "Impresora 3D Filamento (FDM)",
-    "consumo_kwh": 0.35,
-    "costo_minuto": 4.865,
-    "estado": "Disponible"
-  },
-  {
-    "id": "maq-5",
-    "nombre": "Dremel 4000 / Pulidora",
-    "tipo": "Herramienta Eléctrica",
-    "consumo_kwh": 0.175,
-    "costo_minuto": 2.432,
-    "estado": "Disponible"
-  },
-  {
-    "id": "maq-6",
-    "nombre": "Anycubic Photon Mono X 6Ks",
-    "tipo": "Impresora 3D Resina",
-    "consumo_kwh": 0.55,
-    "costo_minuto": 7.645,
-    "estado": "Disponible"
-  }
-];
-
 export const PERSONAL_INICIAL: Personal[] = [
   {
     "id": "per-1",

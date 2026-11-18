@@ -4,28 +4,20 @@ import {
   Send, 
   FileDown, 
   CheckCircle2, 
-  Clock, 
   AlertCircle, 
-  ChevronRight,
   Plus,
   Search,
   ArrowUpDown,
-  Filter,
   X,
   User,
   UserPlus,
   UserCheck,
   Users,
-  Hash,
-  Sparkles,
   Image as ImageIcon,
   Edit,
   RotateCw,
   Check,
-  ShoppingCart,
-  ExternalLink,
   CreditCard,
-  DollarSign,
   Trash2,
   Lock
 } from 'lucide-react';
@@ -59,7 +51,6 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   config,
   ordenes = [],
   ventas = [],
-  onUpdateEstado,
   onEditarCotizacion,
   onAprobarCotizacion,
   onActualizarPagoCotizacion,
@@ -698,37 +689,18 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   <span>Descargar PDF</span>
                 </button>
 
-                {/* Modificar Cotización (Protección: Bloqueado si ya está aprobada o facturada) */}
-                {(() => {
-                  const esAprobada = (cot.estado || '').toLowerCase().includes('aprob') || (cot.estado || '').toLowerCase().includes('factur');
-                  if (esAprobada) {
-                    return (
-                      <button 
-                        disabled
-                        className="btn btn-secondary btn-sm"
-                        style={{ opacity: 0.5, cursor: 'not-allowed', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '5px' }}
-                        title="Cotización Aprobada: Valores comerciales pactados bloqueados contra modificación."
-                      >
-                        <Lock size={13} />
-                        <span>Aprobada (Bloqueada)</span>
-                      </button>
-                    );
-                  }
-                  if (onEditarCotizacion) {
-                    return (
-                      <button 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => onEditarCotizacion(cot)}
-                        style={{ borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)' }}
-                        title="Modificar esta cotización en borrador"
-                      >
-                        <Edit size={14} />
-                        <span>Modificar</span>
-                      </button>
-                    );
-                  }
-                  return null;
-                })()}
+                {/* Modificar Cotización (Habilitado en todos los estados con sincronización de OTs y Cuentas) */}
+                {onEditarCotizacion && (
+                  <button 
+                    className="btn btn-secondary btn-sm"
+                    onClick={() => onEditarCotizacion(cot)}
+                    style={{ borderColor: 'rgba(245, 158, 11, 0.45)', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)' }}
+                    title="Modificar esta cotización y mantener los cambios sincronizados"
+                  >
+                    <Edit size={14} />
+                    <span>Modificar</span>
+                  </button>
+                )}
 
                 {/* Eliminar Cotización (Protección: Bloqueado si ya está aprobada o facturada) */}
                 {(() => {

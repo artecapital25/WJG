@@ -5,11 +5,7 @@ import {
   Trash2, 
   Edit, 
   Camera, 
-  Eye, 
-  Box, 
-  Layers, 
-  Tag, 
-  ExternalLink 
+  Eye
 } from 'lucide-react';
 import { CotizadorItemListProps } from '../types/cotizador.types';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';

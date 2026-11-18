@@ -29,8 +29,8 @@ export const StaffAuthGuard: React.FC<StaffAuthGuardProps> = ({ onLoginSuccess }
   const [showResetModal, setShowResetModal] = useState<boolean>(false);
   const [showPinRecoveryModal, setShowPinRecoveryModal] = useState<boolean>(false);
   const [showMustChangeModal, setShowMustChangeModal] = useState<boolean>(false);
-  const [mustChangeUserId, setMustChangeUserId] = useState<string>('');
-  const [pendingSuccessLabel, setPendingSuccessLabel] = useState<string>('');
+  const [mustChangeUserId] = useState<string>('');
+  const [pendingSuccessLabel] = useState<string>('');
 
   const defaultStaffProfiles = [
     { id: '08c6c49a-0422-414b-813e-8f58fa651bd5', name: 'Germán', role: 'Administrador Global', avatar: 'G', phone: '3503443140', email: 'german@wjgeeks.com' },

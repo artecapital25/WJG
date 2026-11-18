@@ -4,12 +4,7 @@ import {
   Copy, 
   Check, 
   MessageCircle, 
-  Download, 
-  Camera,
-  Send, 
-  X,
-  Layers,
-  ImageIcon
+  X
 } from 'lucide-react';
 import { ProductoStock } from '../../types';
 import { openWhatsApp } from '../../services/whatsappService';

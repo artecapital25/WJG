@@ -31,9 +31,7 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
   cantidad,
   piezaEnEdicion,
   aplicaDescuentoVolumen = true,
-  setAplicaDescuentoVolumen,
-  descuentoVolumenManual,
-  setDescuentoVolumenManual
+  setAplicaDescuentoVolumen
 }) => {
   return (
     <>

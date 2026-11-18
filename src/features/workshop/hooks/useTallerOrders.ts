@@ -17,7 +17,6 @@ import { CloudSyncService } from '../../../services/cloudSyncService';
 import { EmailNotificationService } from '../../../services/emailNotificationService';
 import { WorkOrdersPipelineProps, ModalLinkItem } from '../types/workshop.types';
 import { 
-  ETAPAS, 
   getSiguienteEstado,
   getHandoffConfig, 
   buildClienteNotificationMessage, 
@@ -31,11 +30,9 @@ export function useTallerOrders({
   tarifasTamanos = [],
   clientes = [],
   onUpdateEstado,
-  onGenerarCuentaCobro,
   onCrearOrdenRapida,
   onActualizarOT,
-  onEliminarOT,
-  onNavigateToCotizaciones
+  onEliminarOT
 }: WorkOrdersPipelineProps) {
   // Filtros
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
@@ -113,21 +110,9 @@ export function useTallerOrders({
     };
     onActualizarOT(updatedOT);
 
-    // Asentar en Ledger Inmutable Core V3 (abonos_pagos) de manera asíncrona sin bloquear el render
+    // Notificar por correo si hubo un incremento de pago (la reconciliación del Ledger se ejecuta en App.tsx -> handleActualizarOT)
     const delta = Math.max(0, datos.abono - (otParaPago.abono || 0));
     if (delta > 0) {
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: delta,
-        metodo_pago: datos.metodo_pago || 'Bre-B',
-        comprobante_url: datos.comprobante_pago,
-        cotizacion_id: otParaPago.cotizacion_id,
-        orden_trabajo_id: otParaPago.id,
-        pos_venta_id: otParaPago.pos_venta_id,
-        origen_modulo: 'taller',
-        nota: `Abono de $${delta.toLocaleString('es-CO')} registrado en taller para OT ${otParaPago.numero_ot}`
-      });
-
       // Disparo de correo de recibo si el cliente tiene correo registrado
       const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === otParaPago.cliente_nombre.toLowerCase().trim());
       if (clienteMatch?.correo) {

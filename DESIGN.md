@@ -1,0 +1,73 @@
+# DESIGN.md — WJGEEKS 3D PRO
+
+Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO** (formato inspirado en **VoltAgent/awesome-design-md**). Define la dirección visual, tokens de color, jerarquía tipográfica, elevación glassmorphism y reglas de componentes UI para escritorio y móvil.
+
+---
+
+## 1. Visual Theme & Atmosphere
+- **Personalidad:** *Cyber-Tech Industrial Dark Mode* de precisión técnica. Diseñado para uso diario en taller 3D (cotización SLA/FDM/Láser/CNC, visor STL WebGL, POS Express y control financiero en tiempo real), priorizando alta legibilidad, fatiga visual mínima y visibilidad inmediata de alertas de pago y producción.
+- **Principio 90/10:** 90% superficies pizarra oscuras con profundidad por capas y transparencia sutil; 10% acentos de marca azul/cyan y semántica financiera de alto contraste.
+
+---
+
+## 2. Color Palette & Surface Elevation
+
+### Superficies y Elevación (`src/index.css`)
+| Rol | Token / Valor | Uso Principal |
+| :--- | :--- | :--- |
+| Fondo Principal (Nivel 0) | `#070a10` (`--bg-main`) | Canvas global de la aplicación |
+| Superficie Elevada (Nivel 1) | `#0d131f` | Contenedores, tablas, barras laterales |
+| Superficie Tarjeta Glass (Nivel 2) | `#131c2e` | Tarjetas `.glass-card` y modales |
+| Superficie Activa / Hover (Nivel 3) | `#19253d` | Filas activas, selectores e inputs en foco |
+| Borde Glass Sutil | `rgba(255, 255, 255, 0.08)` | Delimitación limpia sin ruido visual |
+
+### Marca y Acentos
+| Rol | Valor Hex | Uso |
+| :--- | :--- | :--- |
+| Azul Institucional (Primary) | `#1b62b1` | Botones primarios, encabezados activos |
+| Azul Acento (Interactive) | `#2577d0` | Estados hover, enlaces destacados |
+| Cyan Técnico (Highlight) | `#38bdf8` (`--brand-cyan`) | SLA/FDM highlights, KPIs, botones `.btn-cyan` |
+| Gris Corporativo | `#292a2f` | Superficies neutras y documentos PDF |
+
+### Semántica Operativa y Financiera
+| Estado / Significado | Valor Hex | Aplicación |
+| :--- | :--- | :--- |
+| Pagado Total / Aprobado / Éxito | `#10b981` | Badges pagado 100%, confirmaciones |
+| Abono Parcial / Advertencia / Reversión | `#f59e0b` (`#fbbf24`) | Abonos parciales, alertas de saldo/edición |
+| Producción / Proceso Especial / STL | `#8b5cf6` | Estados técnicos, taller y visor 3D |
+| Pendiente Crítico / Vencido / Peligro | `#ef4444` | Saldo vencido, eliminación, estado $0 |
+
+---
+
+## 3. Typography & Numeric Hierarchy
+- **Display & Títulos / KPIs:** `'Outfit', sans-serif` (pesos `700–800`), optimizada para escaneo rápido de precios COP, totales y números de orden (`#COT`, `#POS`, `#OT`).
+- **UI, Tablas y Formularios:** `'Inter', sans-serif` (pesos `400–600`), alta claridad en etiquetas pequeñas (`0.72rem–0.85rem`).
+- **Formato Monetario:** Pesos colombianos (`COP`) con `toLocaleString('es-CO')` (ej. `$80.000 COP`).
+- **Inputs Móviles:** Tamaño mínimo `16px` en viewports móviles (`<= 768px`) para evitar zoom automático de navegadores iOS/Android.
+
+---
+
+## 4. Layout Rhythm, Components & Patterns
+
+### Cards y Bento Grid (`.glass-card`)
+- Padding interno estándar `16px–24px`, esquinas redondeadas `12px–16px`, backdrop blur moderado (`6px–12px` en modales y tarjetas principales).
+- **Banners de Desglose 3DPCC (SLA y FDM):** Bloque informativo en tinte cyan translúcido (`rgba(56, 189, 248, 0.08)`, borde `rgba(56, 189, 248, 0.2)`) que muestra en tiempo real duración (`Xh Ym — Z min`) y costos de material, energía, repuestos (FEP/LCD o Boquilla/PEI) y lavado/curado UV.
+
+### Ergonomía de Botones y Modales
+- **Targets Táctiles:** Controles primarios y segmentadores con altura mínima `42px–44px` en móvil.
+- **Acciones siempre alcanzables:**
+  - En **Cotizaciones**, el botón `Modificar` permanece habilitado en todos los estados (`Borrador`, `Enviada`, `Parcial`, `Aceptada`, `Facturada`).
+  - En **POS Express**, toda venta muestra el botón `Abonar` (si tiene saldo) o `Cambiar Pago` (si ya está pagada) para corregir pagos o revertir estados de inmediato.
+- **Modal de Corrección de Pagos (3 Estados):** Selector directo `Sin Pago ($0)` | `Abono Parcial` | `Pagado 100%`, monto libre acumulado sin bloqueo de múltiplos, selector de método (`Bre-B`, `Nequi`, `Efectivo`, `Transferencia`, `Tarjeta`) y alerta visual ámbar cuando la modificación reduce el abono y ajusta el ledger `abonos_pagos`.
+
+### Regla Estricta para `<input type="number">`
+- **Prohibido** colocar atributos `step="500"`, `step="1000"` o `step="5000"` sobre montos financieros: provocan errores nativos HTML5 de validez modular al ingresar valores exactos (ej. `$80.000` con `min="1"` o `$78.500`).
+- **Obligatorio:** Usar `min="0" step="any"` (o `min="1" step="any"` en minutos positivos) y permitir borrado limpio (`value === 0 ? '' : value`).
+
+---
+
+## 5. Do's & Don'ts
+- **DO:** Mantener paridad entre tecnologías (SLA y FDM con campo directo de minutos editable + desglose en vivo).
+- **DO:** Conservar comentarios de procesos y feedback inmediato (toasts + indicadores visuales) durante la sincronización Supabase.
+- **DON'T:** Usar colores de alto brillo fuera del 10% de acentos semánticos ni ocultar botones de corrección en registros ya cerrados/pagados.
+

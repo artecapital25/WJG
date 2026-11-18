@@ -1,5 +1,8 @@
 import { Cotizacion, CuentaCobro, ConfiguracionTaller } from '../types';
 import { LEYENDA_IVA_CERO } from '../features/cotizador/utils/pricingCalculator';
+import { WhatsAppGatewayService } from './whatsappGatewayService';
+import { WhatsAppNotificationService } from './whatsappNotificationService';
+import { toast } from '../components/ui/ToastProvider';
 
 export function formatWhatsAppPhone(phone: string): string {
   // Strip non-digits
@@ -175,17 +178,14 @@ export async function openWhatsApp(
   // Si el envío automático está habilitado, intentar despachar en segundo plano
   if (targetPhone && targetMsg) {
     try {
-      const { WhatsAppGatewayService } = await import('./whatsappGatewayService');
       const cfg = WhatsAppGatewayService.getConfig();
       if (cfg.autoSendEnabled) {
         const res = await WhatsAppGatewayService.sendTextMessage(targetPhone, targetMsg);
         if (res.success) {
-          const { toast } = await import('../components/ui/ToastProvider');
           toast.success(`WhatsApp despachado automáticamente (+57 320 2796115)`);
 
           // Registrar en auditoría de base de datos
           try {
-            const { WhatsAppNotificationService } = await import('./whatsappNotificationService');
             await WhatsAppNotificationService.registrarAuditoriaEnvio(
               {
                 destinatarioTelefono: targetPhone,

@@ -50,6 +50,7 @@ interface STLAnalyzerProps {
     profundidadMm: number;
     pesoResinaG: number;
     pesoFilamentoG?: number;
+    tiempoImpresionMin?: number;
     tecnologia?: TecnologiaFabricacion;
     resinaId?: string;
     filamentoId?: string;
@@ -404,6 +405,19 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
       costoAproxCOP
     };
   }, [volumenEscaladoCm3, areaSuperficialEscaladaCm2, filamentoActual, infillFdmPorcentaje, grosorParedFdmMm, factorSoportesFdm]);
+
+  // Estimación orientativa de tiempo de impresión en minutos para SLA y FDM
+  const tiempoEstimadoSlaMin = useMemo(() => {
+    if (!dimensionesEscaladas.z || dimensionesEscaladas.z <= 0) return 0;
+    const velMmH = (resinaActual as Resina).velocidad_impresion_mm_h || 20;
+    return Math.max(15, Math.round((dimensionesEscaladas.z / velMmH) * 60));
+  }, [dimensionesEscaladas.z, resinaActual]);
+
+  const tiempoEstimadoFdmMin = useMemo(() => {
+    if (!estimacionFilamento.gramosTotales || estimacionFilamento.gramosTotales <= 0) return 0;
+    // Estimación base volumétrica (~9 g/h promedio con paredes, viajes y soportes + 15 min de calibración/calentamiento)
+    return Math.max(20, Math.round((estimacionFilamento.gramosTotales / 9) * 60 + 15));
+  }, [estimacionFilamento.gramosTotales]);
 
   // Ajustar escala proporcional al escribir en cualquiera de los ejes
   const handleCambioAlturaZ = (valStr: string) => {
@@ -762,6 +776,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
         profundidadMm: dimensionesEscaladas.y,
         pesoResinaG: 0,
         pesoFilamentoG: estimacionFilamento.gramosTotales,
+        tiempoImpresionMin: tiempoEstimadoFdmMin,
         tecnologia: 'FDM_FILAMENTO',
         filamentoId: filamentoSeleccionadoId,
         nombrePieza: nombreBase,
@@ -776,6 +791,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
         anchoMm: dimensionesEscaladas.x,
         profundidadMm: dimensionesEscaladas.y,
         pesoResinaG: estimacionResina.gramosTotales,
+        tiempoImpresionMin: tiempoEstimadoSlaMin,
         tecnologia: 'SLA_RESINA',
         resinaId: resinaSeleccionadaId,
         nombrePieza: nombreBase,
@@ -1759,11 +1775,15 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Costo estimado de resina:</span>
                   <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>
                     ${estimacionResina.costoAproxCOP.toLocaleString('es-CO')} COP
                   </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', fontSize: '0.8rem', color: 'var(--brand-cyan)' }}>
+                  <span>⏱️ Tiempo estimado impresión SLA:</span>
+                  <strong>{Math.floor(tiempoEstimadoSlaMin / 60)}h {tiempoEstimadoSlaMin % 60}m ({tiempoEstimadoSlaMin} min)</strong>
                 </div>
               </>
             ) : (
@@ -1851,11 +1871,15 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                   </div>
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
                   <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Costo estimado de filamento:</span>
                   <span style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff' }}>
                     ${estimacionFilamento.costoAproxCOP.toLocaleString('es-CO')} COP
                   </span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', fontSize: '0.8rem', color: '#fb923c' }}>
+                  <span>⏱️ Tiempo estimado impresión FDM:</span>
+                  <strong>{Math.floor(tiempoEstimadoFdmMin / 60)}h {tiempoEstimadoFdmMin % 60}m ({tiempoEstimadoFdmMin} min)</strong>
                 </div>
               </>
             )}
@@ -1896,8 +1920,8 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                 <Sparkles size={16} />
                 <span>
                   {tecnologiaSeleccionada === 'FDM_FILAMENTO'
-                    ? `✓ Enviar al Cotizador en FDM Filamento (${estimacionFilamento.gramosTotales}g)`
-                    : `✓ Enviar al Cotizador en SLA Resina (${estimacionResina.gramosTotales}g)`}
+                    ? `✓ Enviar al Cotizador en FDM (${estimacionFilamento.gramosTotales}g · ${tiempoEstimadoFdmMin} min)`
+                    : `✓ Enviar al Cotizador en SLA (${estimacionResina.gramosTotales}g · ${tiempoEstimadoSlaMin} min)`}
                 </span>
                 <ArrowRight size={16} />
               </button>

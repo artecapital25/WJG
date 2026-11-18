@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Calendar as CalendarIcon, Filter, CheckCircle2 } from 'lucide-react';
+import { X, Calendar as CalendarIcon, CheckCircle2 } from 'lucide-react';
 import { CalendarEvent } from '../../types';
 import { MobileEventCard } from './MobileEventCard';
 
@@ -17,7 +17,6 @@ type TabFiltroSheet = 'todos' | 'cobros' | 'taller' | 'tareas' | 'insumos';
 
 export const MobileBottomSheet: React.FC<MobileBottomSheetProps> = ({
   isOpen,
-  dateStr,
   dayLabel,
   eventos,
   onClose,

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Lock, User, ShieldCheck, X, Eye, EyeOff, Sparkles, LogOut, Smartphone } from 'lucide-react';
+import { Lock, User, ShieldCheck, X, Eye, EyeOff, LogOut, Smartphone } from 'lucide-react';
 import { supabase, isSupabaseConfigured } from '../../services/supabaseClient';
 import { AuthSecurityService } from '../../services/authSecurityService';
 import { toast } from '../ui/ToastProvider';

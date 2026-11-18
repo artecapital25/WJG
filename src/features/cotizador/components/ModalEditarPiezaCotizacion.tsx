@@ -191,8 +191,9 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
               <label className="form-label" style={{ fontWeight: 600 }}>Precio Unitario (COP) *</label>
               <input 
                 type="number" 
+                inputMode="numeric"
                 min="0"
-                step="500"
+                step="any"
                 className="form-input" 
                 value={editPrecioUnitario}
                 onChange={e => setEditPrecioUnitario(Math.max(0, parseFloat(e.target.value) || 0))}

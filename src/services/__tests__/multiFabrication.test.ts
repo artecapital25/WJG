@@ -1,9 +1,5 @@
 import { describe, it, expect } from 'vitest';
 import { 
-  calcularPieza3D, 
-  calcularPiezaFDM, 
-  calcularPiezaLaser, 
-  calcularPiezaCNC, 
   calcularCotizacionIntegral,
   ParametrosPiezaInput 
 } from '../calculationEngine';

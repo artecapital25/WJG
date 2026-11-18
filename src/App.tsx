@@ -217,10 +217,7 @@ export const App: React.FC = () => {
     setIsClientPortalMode(Boolean(isExplicitPortal || hasTrackingParam));
   };
 
-  // Estado PWA (Instalación nativa en navegador / móvil - Se muestra solo una vez si no está instalada)
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
-  const [isInstallable, setIsInstallable] = useState(false);
-
+  // Estado PWA: interceptar prompt nativo del navegador si la app aún no está instalada
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
@@ -230,21 +227,16 @@ export const App: React.FC = () => {
 
     // Si la app ya está instalada en el dispositivo, no interceptar ni mostrar avisos
     if (isStandalone || isAlreadyInstalled) {
-      setIsInstallable(false);
       return;
     }
 
     const handleBeforeInstall = (e: Event) => {
       // Prevenir el banner invasivo automático solo si no está instalada
       e.preventDefault();
-      setDeferredPrompt(e);
-      setIsInstallable(true);
     };
 
     const handleAppInstalled = () => {
       localStorage.setItem('wjg_pwa_installed', 'true');
-      setIsInstallable(false);
-      setDeferredPrompt(null);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstall);
@@ -256,28 +248,13 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  const handleInstallPwa = async () => {
-    if (deferredPrompt) {
-      deferredPrompt.prompt();
-      const choice = await deferredPrompt.userChoice;
-      if (choice && choice.outcome === 'accepted') {
-        localStorage.setItem('wjg_pwa_installed', 'true');
-        setIsInstallable(false);
-        setDeferredPrompt(null);
-      }
-    } else {
-      alert("📲 Para instalar WJGEEKS 3D Pro en tu dispositivo:\n\n1. En Chrome / Android: Toca el menú (⋮) y selecciona 'Instalar aplicación' o 'Agregar a pantalla principal'.\n2. En iPhone / Safari: Toca el botón Compartir y elige 'Agregar al inicio'.");
-      localStorage.setItem('wjg_pwa_installed', 'true');
-      setIsInstallable(false);
-    }
-  };
-
   const [stlAppliedData, setStlAppliedData] = useState<{
     altoMm: number;
     anchoMm: number;
     profundidadMm: number;
     pesoResinaG: number;
     pesoFilamentoG?: number;
+    tiempoImpresionMin?: number;
     tecnologia?: import('./types').TecnologiaFabricacion;
     resinaId?: string;
     filamentoId?: string;
@@ -301,15 +278,24 @@ export const App: React.FC = () => {
   const [tarifasTamanos, setTarifasTamanos] = useState<TarifaTamano[]>(() => StorageService.getTarifasTamanos());
   const [productosStock, setProductosStock] = useState<ProductoStock[]>(() => StorageService.getProductosStock());
 
-  // Estado Transaccional: Siempre inicia en blanco cuando no se ha seleccionado editar una cotización
-  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>(() => {
-    StorageService.clearDraftPieces();
-    StorageService.clearDraftBuilderMeta();
-    return [];
-  });
+  // Estado Transaccional: Restaura automáticamente la cotización o borrador activo ante recargas en celular
   const [cotizaciones, setCotizaciones] = useState<Cotizacion[]>(() => StorageService.getCotizaciones());
-  const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(null);
+  const [editingCotizacion, setEditingCotizacion] = useState<Cotizacion | null>(() =>
+    StorageService.getEditingCotizacion()
+  );
+  const [draftPieces, setDraftPieces] = useState<PiezaCotizada[]>(() => {
+    const editing = StorageService.getEditingCotizacion();
+    if (editing && Array.isArray(editing.items) && editing.items.length > 0) {
+      return editing.items;
+    }
+    return StorageService.getDraftPieces();
+  });
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
+
+  // Sincronizar cotización en edición en caché local para sobrevivir cambios de pestaña / cámara móvil
+  useEffect(() => {
+    StorageService.saveEditingCotizacion(editingCotizacion);
+  }, [editingCotizacion]);
 
   // Auto-guardado de piezas del borrador solo cuando NO se está editando una cotización existente
   useEffect(() => {
@@ -323,6 +309,10 @@ export const App: React.FC = () => {
   const [tareas, setTareas] = useState<TareaEquipo[]>(() => StorageService.getTareas());
   const [solicitudesInsumos, setSolicitudesInsumos] = useState<SolicitudInsumo[]>(() => StorageService.getSolicitudesInsumos());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
+  const lastLocalMutationRef = React.useRef<number>(0);
+  const markLocalMutation = () => {
+    lastLocalMutationRef.current = Date.now();
+  };
 
   // Cargar datos iniciales y sincronizar bidireccionalmente con Supabase
   useEffect(() => {
@@ -396,13 +386,25 @@ export const App: React.FC = () => {
         ]);
 
         const pagosLedger = cloudPayments || [];
+        const outbox = CloudSyncService.getOutboxQueue();
+        const pendingCotNums = new Set(outbox.filter(t => t.type === 'cotizacion').map(t => t.payload?.numero_cot).filter(Boolean));
+        const pendingVentaIds = new Set(outbox.filter(t => t.type === 'venta_express').map(t => t.payload?.id).filter(Boolean));
+        const pendingOTNums = new Set(outbox.filter(t => t.type === 'orden').map(t => t.payload?.numero_ot).filter(Boolean));
 
         if (cloudCots !== null) {
           setCotizaciones(prev => {
             const mergedMap = new Map<string, Cotizacion>();
-            cloudCots.forEach(c => mergedMap.set(c.numero_cot, c));
+            cloudCots.forEach(c => {
+              const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
+              mergedMap.set(c.numero_cot, recentLocal || c);
+            });
             prev.forEach(c => {
-              if (!mergedMap.has(c.numero_cot)) {
+              const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
+              if (recentLocal) {
+                mergedMap.set(c.numero_cot, recentLocal);
+              } else if (!mergedMap.has(c.numero_cot) || pendingCotNums.has(c.numero_cot)) {
                 mergedMap.set(c.numero_cot, c);
               }
             });
@@ -420,8 +422,11 @@ export const App: React.FC = () => {
         }
 
         if (cloudOTs !== null) {
-          // Conciliación Automática de Órdenes de Trabajo contra el Ledger Canónico (abonos_pagos)
+          // Respetar los valores guardados en ordenes_trabajo (y usar abonos_pagos solo si el registro no tiene datos de pago definidos)
           const reconciledOTs = cloudOTs.map(ot => {
+            if (ot.abono !== undefined && ot.estado_pago !== undefined) {
+              return ot;
+            }
             const pagosDeOT = pagosLedger.filter(p =>
               (p.orden_trabajo_id && (p.orden_trabajo_id === ot.id || p.orden_trabajo_id === ot.numero_ot)) ||
               (ot.pos_venta_id && p.pos_venta_id === ot.pos_venta_id) ||
@@ -431,33 +436,46 @@ export const App: React.FC = () => {
             const totalRef = ot.precio_cobrado || (ot.abono || 0) + (ot.saldo_pendiente || 0);
 
             if (sumPagos > 0 && totalRef > 0) {
-              if (sumPagos >= totalRef) {
-                return {
-                  ...ot,
-                  abono: totalRef,
-                  saldo_pendiente: 0,
-                  estado_pago: 'Pagado Total' as EstadoPago
-                };
-              } else if (sumPagos > (ot.abono || 0)) {
-                const nuevoSaldo = Math.max(0, totalRef - sumPagos);
-                return {
-                  ...ot,
-                  abono: sumPagos,
-                  saldo_pendiente: nuevoSaldo,
-                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
-                };
-              }
+              const abonoCalc = Math.min(totalRef, sumPagos);
+              const nuevoSaldo = Math.max(0, totalRef - abonoCalc);
+              return {
+                ...ot,
+                abono: abonoCalc,
+                saldo_pendiente: nuevoSaldo,
+                estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
+              };
             }
             return ot;
           });
 
-          setOrdenes(reconciledOTs);
-          StorageService.saveOrdenes(reconciledOTs);
+          setOrdenes(prev => {
+            const merged = reconciledOTs.map(ot => {
+              const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
+                StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id);
+              if (recentLocal) return recentLocal;
+              if (pendingOTNums.has(ot.numero_ot)) {
+                return prev.find(p => p.numero_ot === ot.numero_ot) || ot;
+              }
+              return ot;
+            });
+            prev.forEach(p => {
+              const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', p.numero_ot) ||
+                StorageService.getRecentMutation<OrdenTrabajo>('orden', p.id);
+              if ((recentLocal || pendingOTNums.has(p.numero_ot)) && !merged.some(m => m.numero_ot === p.numero_ot || m.id === p.id)) {
+                merged.unshift(recentLocal || p);
+              }
+            });
+            StorageService.saveOrdenes(merged);
+            return merged;
+          });
         }
 
         if (cloudVentas !== null) {
-          // Conciliación Canónica de Ventas Express contra el Ledger Inmutable (abonos_pagos)
+          // Respetar el abono/saldo guardado en ventas_express (nunca pisar correcciones de pago con historial viejo)
           const reconciledVentas = cloudVentas.map(v => {
+            if (v.abono !== undefined && v.estado_pago !== undefined) {
+              return v;
+            }
             const pagosDeVenta = pagosLedger.filter(p =>
               (p.pos_venta_id && (p.pos_venta_id === v.id || p.pos_venta_id === v.numero_venta)) ||
               (v.ot_id && p.orden_trabajo_id === v.ot_id) ||
@@ -467,33 +485,45 @@ export const App: React.FC = () => {
             const sumPagos = pagosDeVenta.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
 
             if (sumPagos > 0 && v.total > 0) {
-              if (sumPagos >= v.total) {
-                return {
-                  ...v,
-                  abono: v.total,
-                  saldo_pendiente: 0,
-                  estado_pago: 'Pagado Total' as any
-                };
-              } else if (sumPagos > (v.abono || 0)) {
-                const nuevoSaldo = Math.max(0, v.total - sumPagos);
-                return {
-                  ...v,
-                  abono: sumPagos,
-                  saldo_pendiente: nuevoSaldo,
-                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as any
-                };
-              }
+              const abonoCalc = Math.min(v.total, sumPagos);
+              const nuevoSaldo = Math.max(0, v.total - abonoCalc);
+              return {
+                ...v,
+                abono: abonoCalc,
+                saldo_pendiente: nuevoSaldo,
+                estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as any
+              };
             }
             return v;
           });
 
-          setVentasExpress(reconciledVentas);
-          StorageService.saveVentasExpress(reconciledVentas);
+          setVentasExpress(prev => {
+            const merged = reconciledVentas.map(v => {
+              const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
+                StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta);
+              if (recentLocal) return recentLocal;
+              if (pendingVentaIds.has(v.id)) {
+                return prev.find(p => p.id === v.id) || v;
+              }
+              return v;
+            });
+            prev.forEach(p => {
+              const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', p.id) ||
+                StorageService.getRecentMutation<VentaExpress>('venta', p.numero_venta);
+              if ((recentLocal || pendingVentaIds.has(p.id)) && !merged.some(m => m.id === p.id)) {
+                merged.unshift(recentLocal || p);
+              }
+            });
+            StorageService.saveVentasExpress(merged);
+            return merged;
+          });
         }
 
         if (cloudCCs !== null) {
-          // Conciliación Automática de Cuentas de Cobro contra el Ledger Canónico (abonos_pagos)
           const reconciledCCs = cloudCCs.map(cc => {
+            if (cc.abono !== undefined && cc.estado_pago !== undefined) {
+              return cc;
+            }
             const pagosDeCC = pagosLedger.filter(p =>
               (p.cuenta_cobro_id && p.cuenta_cobro_id === cc.id) ||
               (cc.cotizacion_numero && p.nota && p.nota.includes(cc.cotizacion_numero)) ||
@@ -502,28 +532,42 @@ export const App: React.FC = () => {
             const sumPagos = pagosDeCC.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
 
             if (sumPagos > 0 && cc.total > 0) {
-              if (sumPagos >= cc.total) {
-                return {
-                  ...cc,
-                  abono: cc.total,
-                  saldo_pendiente: 0,
-                  estado_pago: 'Pagado Total' as EstadoPago
-                };
-              } else if (sumPagos > (cc.abono || 0)) {
-                const nuevoSaldo = Math.max(0, cc.total - sumPagos);
-                return {
-                  ...cc,
-                  abono: sumPagos,
-                  saldo_pendiente: nuevoSaldo,
-                  estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
-                };
-              }
+              const abonoCalc = Math.min(cc.total, sumPagos);
+              const nuevoSaldo = Math.max(0, cc.total - abonoCalc);
+              return {
+                ...cc,
+                abono: abonoCalc,
+                saldo_pendiente: nuevoSaldo,
+                estado_pago: (nuevoSaldo <= 0 ? 'Pagado Total' : 'Abono Parcial') as EstadoPago
+              };
             }
             return cc;
           });
 
-          setCuentas(reconciledCCs);
-          StorageService.saveCuentas(reconciledCCs);
+          setCuentas(prev => {
+            const merged = reconciledCCs.map(cc => {
+              const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
+                StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc);
+              return recentLocal || cc;
+            });
+            prev.forEach(localCC => {
+              const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.id) ||
+                StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.numero_cc);
+              const alreadyIn = merged.some(m =>
+                m.id === localCC.id ||
+                m.numero_cc === localCC.numero_cc ||
+                (localCC.cotizacion_numero && m.cotizacion_numero === localCC.cotizacion_numero)
+              );
+              if (!alreadyIn) {
+                merged.push(recentLocal || localCC);
+              } else if (recentLocal) {
+                const idx = merged.findIndex(m => m.id === localCC.id || m.numero_cc === localCC.numero_cc);
+                if (idx !== -1) merged[idx] = recentLocal;
+              }
+            });
+            StorageService.saveCuentas(merged);
+            return merged;
+          });
         }
 
         if (cloudTareas !== null) {
@@ -626,46 +670,139 @@ export const App: React.FC = () => {
     syncCloudData();
 
     // 3. Suscripción reactiva en tiempo real a cambios de taller entre todos los dispositivos
+    const isInMutationGracePeriod = () => Date.now() - lastLocalMutationRef.current < 8000;
+
+    const mergeCotizacionesConLocales = (freshCots: Cotizacion[]) => {
+      const pendingCotNums = new Set(
+        CloudSyncService.getOutboxQueue()
+          .filter(t => t.type === 'cotizacion')
+          .map(t => t.payload?.numero_cot)
+          .filter(Boolean)
+      );
+      setCotizaciones(prev => {
+        const mergedMap = new Map<string, Cotizacion>();
+        freshCots.forEach(c => {
+          const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
+          mergedMap.set(c.numero_cot, recentLocal || c);
+        });
+        prev.forEach(c => {
+          const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
+          if (recentLocal) {
+            mergedMap.set(c.numero_cot, recentLocal);
+          } else if (!mergedMap.has(c.numero_cot) || pendingCotNums.has(c.numero_cot)) {
+            mergedMap.set(c.numero_cot, c);
+          }
+        });
+        const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
+          b.numero_cot.localeCompare(a.numero_cot)
+        );
+        StorageService.saveCotizaciones(mergedList);
+        return mergedList;
+      });
+    };
+
+    const mergeOrdenesConLocales = (freshOTs: OrdenTrabajo[]) => {
+      const pendingOTNums = new Set(
+        CloudSyncService.getOutboxQueue()
+          .filter(t => t.type === 'orden')
+          .map(t => t.payload?.numero_ot)
+          .filter(Boolean)
+      );
+      setOrdenes(prev => {
+        const merged = freshOTs.map(ot => {
+          const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
+            StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id);
+          if (recentLocal) return recentLocal;
+          if (pendingOTNums.has(ot.numero_ot)) return prev.find(p => p.numero_ot === ot.numero_ot) || ot;
+          return ot;
+        });
+        prev.forEach(p => {
+          const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', p.numero_ot) ||
+            StorageService.getRecentMutation<OrdenTrabajo>('orden', p.id);
+          if ((recentLocal || pendingOTNums.has(p.numero_ot)) && !merged.some(m => m.numero_ot === p.numero_ot || m.id === p.id)) {
+            merged.unshift(recentLocal || p);
+          }
+        });
+        StorageService.saveOrdenes(merged);
+        return merged;
+      });
+    };
+
+    const mergeCuentasConLocales = (freshCCs: CuentaCobro[]) => {
+      setCuentas(prev => {
+        const merged = freshCCs.map(cc => {
+          const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
+            StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc);
+          return recentLocal || cc;
+        });
+        prev.forEach(localCC => {
+          const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.id) ||
+            StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.numero_cc);
+          const alreadyIn = merged.some(m =>
+            m.id === localCC.id ||
+            m.numero_cc === localCC.numero_cc ||
+            (localCC.cotizacion_numero && m.cotizacion_numero === localCC.cotizacion_numero)
+          );
+          if (!alreadyIn) {
+            merged.push(recentLocal || localCC);
+          } else if (recentLocal) {
+            const idx = merged.findIndex(m => m.id === localCC.id || m.numero_cc === localCC.numero_cc);
+            if (idx !== -1) merged[idx] = recentLocal;
+          }
+        });
+        StorageService.saveCuentas(merged);
+        return merged;
+      });
+    };
+
+    const mergeVentasConLocales = (freshVentas: VentaExpress[]) => {
+      const pendingVentaIds = new Set(
+        CloudSyncService.getOutboxQueue()
+          .filter(t => t.type === 'venta_express')
+          .map(t => t.payload?.id)
+          .filter(Boolean)
+      );
+      setVentasExpress(prev => {
+        const merged = freshVentas.map(v => {
+          const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
+            StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta);
+          if (recentLocal) return recentLocal;
+          return pendingVentaIds.has(v.id) ? (prev.find(p => p.id === v.id) || v) : v;
+        });
+        prev.forEach(p => {
+          const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', p.id) ||
+            StorageService.getRecentMutation<VentaExpress>('venta', p.numero_venta);
+          if ((recentLocal || pendingVentaIds.has(p.id)) && !merged.some(m => m.id === p.id)) {
+            merged.unshift(recentLocal || p);
+          }
+        });
+        StorageService.saveVentasExpress(merged);
+        return merged;
+      });
+    };
+
     const channel = CloudSyncService.subscribeRealtime(
       async () => {
+        if (isInMutationGracePeriod()) return;
         const freshCots = await CloudSyncService.fetchCotizaciones();
-        if (freshCots !== null) {
-          setCotizaciones(prev => {
-            const mergedMap = new Map<string, Cotizacion>();
-            freshCots.forEach(c => mergedMap.set(c.numero_cot, c));
-            prev.forEach(c => {
-              if (!mergedMap.has(c.numero_cot)) {
-                mergedMap.set(c.numero_cot, c);
-              }
-            });
-            const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
-              b.numero_cot.localeCompare(a.numero_cot)
-            );
-            StorageService.saveCotizaciones(mergedList);
-            return mergedList;
-          });
-        }
+        if (freshCots !== null) mergeCotizacionesConLocales(freshCots);
       },
       async () => {
+        if (isInMutationGracePeriod()) return;
         const freshOTs = await CloudSyncService.fetchOrdenes();
-        if (freshOTs !== null) {
-          setOrdenes(freshOTs);
-          StorageService.saveOrdenes(freshOTs);
-        }
+        if (freshOTs !== null) mergeOrdenesConLocales(freshOTs);
       },
       async () => {
+        if (isInMutationGracePeriod()) return;
         const freshCCs = await CloudSyncService.fetchCuentas();
-        if (freshCCs !== null) {
-          setCuentas(freshCCs);
-          StorageService.saveCuentas(freshCCs);
-        }
+        if (freshCCs !== null) mergeCuentasConLocales(freshCCs);
       },
       async () => {
+        if (isInMutationGracePeriod()) return;
         const freshVentas = await CloudSyncService.fetchVentasExpress();
-        if (freshVentas !== null) {
-          setVentasExpress(freshVentas);
-          StorageService.saveVentasExpress(freshVentas);
-        }
+        if (freshVentas !== null) mergeVentasConLocales(freshVentas);
       },
       async () => {
         const freshTareas = await CloudSyncService.fetchTareasEquipo();
@@ -682,17 +819,17 @@ export const App: React.FC = () => {
         }
       },
       async () => {
-        // Sincronización Transaccional Global al recibir mutaciones en la tabla payments
+        if (isInMutationGracePeriod()) return;
         const [cots, ots, ccs, vts] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchOrdenes(),
           CloudSyncService.fetchCuentas(),
           CloudSyncService.fetchVentasExpress()
         ]);
-        if (cots) { setCotizaciones(cots); StorageService.saveCotizaciones(cots); }
-        if (ots) { setOrdenes(ots); StorageService.saveOrdenes(ots); }
-        if (ccs) { setCuentas(ccs); StorageService.saveCuentas(ccs); }
-        if (vts) { setVentasExpress(vts); StorageService.saveVentasExpress(vts); }
+        if (cots) mergeCotizacionesConLocales(cots);
+        if (ots) mergeOrdenesConLocales(ots);
+        if (ccs) mergeCuentasConLocales(ccs);
+        if (vts) mergeVentasConLocales(vts);
       },
       async () => {
         // Sincronización en tiempo real de productos_stock
@@ -741,8 +878,9 @@ export const App: React.FC = () => {
     };
     window.addEventListener('wjg:outbox-flushed', handleOutboxFlushed);
 
-    // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC
+    // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC (respetando 15s tras mutaciones locales)
     const handleVisibilityOrFocus = () => {
+      if (Date.now() - lastLocalMutationRef.current < 15000) return;
       if (typeof document !== 'undefined' && document.visibilityState === 'visible' && CloudSyncService.isAvailable()) {
         syncCloudData();
       }
@@ -759,13 +897,10 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Helper para persistir de inmediato cualquier edición de pieza dentro de una cotización activa (no aprobada)
+  // Helper para persistir de inmediato cualquier edición de pieza dentro de una cotización activa (en cualquier estado)
   const sincronizarPiezasEnCotizacionActiva = (nuevasPiezas: PiezaCotizada[]) => {
     if (!editingCotizacion) return;
-    const estadoLower = (editingCotizacion.estado || '').toLowerCase();
-    if (estadoLower.includes('acept') || estadoLower.includes('aprob') || estadoLower.includes('factur')) {
-      return;
-    }
+    markLocalMutation();
 
     const subtotal = nuevasPiezas.reduce((sum, it) => sum + it.precio_total, 0);
     const descuentoMonto = editingCotizacion.descuento_porcentaje
@@ -795,7 +930,8 @@ export const App: React.FC = () => {
       StorageService.saveCotizaciones(updated);
       return updated;
     });
-    CloudSyncService.saveCotizacion(cotActualizada);
+    StorageService.markEntityMutated('cotizacion', cotActualizada.numero_cot, cotActualizada);
+    CloudSyncService.saveCotizacion(cotActualizada).then(() => markLocalMutation());
   };
 
   // Recalcular automáticamente las cotizaciones NO aceptadas cuando cambian tarifas/costos de insumos o materiales
@@ -1065,11 +1201,6 @@ export const App: React.FC = () => {
   };
 
   const handleEditarCotizacion = (cot: Cotizacion) => {
-    const esAprobada = (cot.estado || '').toLowerCase().includes('aprob') || (cot.estado || '').toLowerCase().includes('factur');
-    if (esAprobada) {
-      toast.warning(`La cotización ${cot.numero_cot} ya fue aprobada y cuenta con valores comerciales pactados. No puede modificarse.`);
-      return;
-    }
     StorageService.clearDraftPieces();
     StorageService.clearDraftBuilderMeta();
     setEditingCotizacion(cot);
@@ -1099,8 +1230,13 @@ export const App: React.FC = () => {
     setActiveTab('cotizador');
   };
 
-  // Guardar Cotización (nueva o modificada con Reconciliación Transaccional de OTs)
+  // Guardar Cotización (nueva o modificada con Reconciliación Transaccional de OTs, Cuentas y Ledger)
   const handleSaveCotizacion = async (cotizacion: Cotizacion) => {
+    markLocalMutation();
+    const prevCot = editingCotizacion && editingCotizacion.id === cotizacion.id
+      ? editingCotizacion
+      : cotizaciones.find(c => c.id === cotizacion.id || c.numero_cot === cotizacion.numero_cot);
+
     let updated: Cotizacion[];
     if (editingCotizacion && editingCotizacion.id === cotizacion.id) {
       if (editingCotizacion.total !== cotizacion.total) {
@@ -1112,16 +1248,33 @@ export const App: React.FC = () => {
     }
     setCotizaciones(updated);
     StorageService.saveCotizaciones(updated);
+    StorageService.markEntityMutated('cotizacion', cotizacion.numero_cot, cotizacion);
     StorageService.clearDraftPieces();
     StorageService.clearDraftBuilderMeta();
+    StorageService.saveEditingCotizacion(null);
     setDraftPieces([]); // Limpiar borrador
     setEditingCotizacion(null);
     setPieceToEditInCalculator(null);
     setStlAppliedData(null);
     setActiveTab('cotizaciones');
 
+    // Sincronizar abono en abonos_pagos si cambió o es nuevo abono
+    const nuevoAbonoCot = Number(cotizacion.abono) || 0;
+    const prevAbonoCot = Number(prevCot?.abono) || 0;
+    if (nuevoAbonoCot !== prevAbonoCot || (nuevoAbonoCot > 0 && !prevCot)) {
+      await CloudSyncService.reconciliarPagoEnLedger({
+        cotizacion_id: cotizacion.id,
+        numero_cot: cotizacion.numero_cot,
+        nuevoAbonoTotal: nuevoAbonoCot,
+        metodo_pago: cotizacion.metodo_pago || 'Bre-B',
+        comprobante_url: cotizacion.comprobante_pago,
+        nota: `Pago en Cotización ${cotizacion.numero_cot}: $${nuevoAbonoCot.toLocaleString('es-CO')} COP`
+      });
+    }
+
     // Sincronizar en la nube Supabase con notificación operativa
     const ok = await CloudSyncService.saveCotizacion(cotizacion);
+    markLocalMutation();
     if (!ok) {
       toast.warning(`Cotización ${cotizacion.numero_cot} guardada localmente. Sincronización en la nube pendiente.`);
     } else {
@@ -1136,8 +1289,18 @@ export const App: React.FC = () => {
 
     if (otsAsociadas.length > 0) {
       let maxConsecutive = StorageService.getNextOTConsecutive(currentOrders);
-      let otsActualizadas = [...currentOrders];
       const items = cotizacion.items || [];
+      const itemNombresSet = new Set(items.map(it => it.nombre_item?.trim().toLowerCase()).filter(Boolean));
+
+      // Eliminar OTs de piezas removidas de la cotización
+      const otsAEliminar = otsAsociadas.filter(o =>
+        o.item_nombre && !itemNombresSet.has(o.item_nombre.trim().toLowerCase())
+      );
+      let otsActualizadas = currentOrders.filter(o => !otsAEliminar.some(del => del.id === o.id));
+      otsAEliminar.forEach(del => CloudSyncService.deleteOrdenTrabajo(del.id, del.numero_ot));
+
+      const totalAbonoCot = Number(cotizacion.abono) || 0;
+      let abonoRestanteOT = totalAbonoCot;
 
       items.forEach((item, idx) => {
         const indexExistente = otsActualizadas.findIndex(o =>
@@ -1145,8 +1308,25 @@ export const App: React.FC = () => {
           o.item_nombre?.trim().toLowerCase() === item.nombre_item?.trim().toLowerCase()
         );
 
+        const itemPrecio = item.precio_total || (items.length === 1 ? cotizacion.total : 0);
+        let itemAbono = 0;
+        if (items.length <= 1) {
+          itemAbono = Math.min(itemPrecio, totalAbonoCot);
+        } else if (cotizacion.total > 0) {
+          if (idx === items.length - 1) {
+            itemAbono = Math.min(itemPrecio, Math.max(0, abonoRestanteOT));
+          } else {
+            itemAbono = Math.min(itemPrecio, Math.round(totalAbonoCot * (itemPrecio / cotizacion.total)));
+            abonoRestanteOT = Math.max(0, abonoRestanteOT - itemAbono);
+          }
+        }
+        const itemSaldo = Math.max(0, itemPrecio - itemAbono);
+        const itemEstadoPago: EstadoPago = itemSaldo <= 0 && itemPrecio > 0
+          ? 'Pagado Total'
+          : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
+
         if (indexExistente !== -1) {
-          // Actualizar OT existente con nuevos parámetros
+          // Actualizar OT existente con nuevos parámetros y montos recalculados
           const otActual = otsActualizadas[indexExistente];
           const otModificada: OrdenTrabajo = {
             ...otActual,
@@ -1161,13 +1341,18 @@ export const App: React.FC = () => {
             lista_accesorios: item.lista_accesorios || otActual.lista_accesorios,
             lista_pinturas: item.lista_pinturas || otActual.lista_pinturas,
             lista_empaques: item.lista_empaques || otActual.lista_empaques,
-            precio_cobrado: item.precio_total || otActual.precio_cobrado,
+            precio_cobrado: itemPrecio,
+            abono: itemAbono,
+            saldo_pendiente: itemSaldo,
+            estado_pago: itemEstadoPago,
+            metodo_pago: cotizacion.metodo_pago || otActual.metodo_pago,
+            comprobante_pago: cotizacion.comprobante_pago || otActual.comprobante_pago,
             imagen_url: item.imagen_url || otActual.imagen_url
           };
           otsActualizadas[indexExistente] = otModificada;
           CloudSyncService.saveOrdenTrabajo(otModificada);
         } else {
-          // Nueva pieza agregada a la cotización aprobada: crear su OT
+          // Nueva pieza agregada a la cotización: crear su OT
           maxConsecutive++;
           const numOT = `OT-${maxConsecutive.toString().padStart(4, '0')}`;
           const nuevaOT: OrdenTrabajo = {
@@ -1195,8 +1380,12 @@ export const App: React.FC = () => {
             lista_empaques: item.lista_empaques,
             detalles_tecnicos: item.descripcion_tecnica,
             imagen_url: item.imagen_url,
-            precio_cobrado: item.precio_total,
-            estado_pago: cotizacion.estado_pago || 'Pendiente'
+            precio_cobrado: itemPrecio,
+            abono: itemAbono,
+            saldo_pendiente: itemSaldo,
+            estado_pago: itemEstadoPago,
+            metodo_pago: cotizacion.metodo_pago,
+            comprobante_pago: cotizacion.comprobante_pago
           };
           otsActualizadas = [nuevaOT, ...otsActualizadas];
           CloudSyncService.saveOrdenTrabajo(nuevaOT);
@@ -1205,61 +1394,64 @@ export const App: React.FC = () => {
 
       setOrdenes(otsActualizadas);
       StorageService.saveOrdenes(otsActualizadas);
-      toast.info(`Se sincronizaron ${otsAsociadas.length} órdenes de trabajo en el taller`);
+      toast.info(`Se sincronizaron las órdenes de trabajo asociadas en el taller`);
     }
 
-    // Si la cotización tiene abono o pago registrado, crear o actualizar automáticamente Cuenta de Cobro
-    if (cotizacion.estado_pago && cotizacion.estado_pago !== 'Pendiente') {
-      const ccExistente = cuentas.find(c =>
-        c.cotizacion_id === cotizacion.id || c.cotizacion_numero === cotizacion.numero_cot
-      );
-      if (ccExistente) {
-        const updatedCCs = cuentas.map(c =>
-          c.id === ccExistente.id ? {
-            ...c,
-            total: cotizacion.total,
-            abono: cotizacion.abono || 0,
-            saldo_pendiente: cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - (cotizacion.abono || 0)),
-            estado_pago: cotizacion.estado_pago!,
-            metodo_pago: cotizacion.metodo_pago || c.metodo_pago,
-            comprobante_url: cotizacion.comprobante_pago || c.comprobante_url
-          } : c
-        );
-        setCuentas(updatedCCs);
-        StorageService.saveCuentas(updatedCCs);
-        const ccActualizada = updatedCCs.find(c => c.id === ccExistente.id);
-        if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
-      } else {
-        const nuevaCC: CuentaCobro = {
-          id: `cc-${Date.now()}`,
-          numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
-          cotizacion_id: cotizacion.id,
-          cotizacion_numero: cotizacion.numero_cot,
+    // Actualizar siempre la Cuenta de Cobro existente o crear una nueva si hay abono/pago registrado
+    const ccExistente = cuentas.find(c =>
+      c.cotizacion_id === cotizacion.id || c.cotizacion_numero === cotizacion.numero_cot
+    );
+    if (ccExistente) {
+      const abonoCC = cotizacion.abono || 0;
+      const saldoCC = cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - abonoCC);
+      const estadoPagoCC: EstadoPago = cotizacion.estado_pago || (saldoCC <= 0 && cotizacion.total > 0 ? 'Pagado Total' : abonoCC > 0 ? 'Abono Parcial' : 'Pendiente');
+      const updatedCCs = cuentas.map(c =>
+        c.id === ccExistente.id ? {
+          ...c,
           cliente: cotizacion.cliente,
-          fecha_emision: cotizacion.fecha || new Date().toISOString().slice(0, 10),
-          items_resumen: cotizacion.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || 'Piezas 3D',
+          items_resumen: cotizacion.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || c.items_resumen,
           total: cotizacion.total,
-          abono: cotizacion.abono || 0,
-          saldo_pendiente: cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - (cotizacion.abono || 0)),
-          estado_pago: cotizacion.estado_pago,
-          metodo_pago: cotizacion.metodo_pago,
-          comprobante_url: cotizacion.comprobante_pago
-        };
-        const updatedCCs = [nuevaCC, ...cuentas];
-        setCuentas(updatedCCs);
-        StorageService.saveCuentas(updatedCCs);
-        CloudSyncService.saveCuentaCobro(nuevaCC);
-      }
+          abono: abonoCC,
+          saldo_pendiente: saldoCC,
+          estado_pago: estadoPagoCC,
+          metodo_pago: cotizacion.metodo_pago || c.metodo_pago,
+          comprobante_url: cotizacion.comprobante_pago || c.comprobante_url
+        } : c
+      );
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      const ccActualizada = updatedCCs.find(c => c.id === ccExistente.id);
+      if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+    } else if (cotizacion.estado_pago && cotizacion.estado_pago !== 'Pendiente') {
+      const nuevaCC: CuentaCobro = {
+        id: `cc-${Date.now()}`,
+        numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
+        cotizacion_id: cotizacion.id,
+        cotizacion_numero: cotizacion.numero_cot,
+        cliente: cotizacion.cliente,
+        fecha_emision: cotizacion.fecha || new Date().toISOString().slice(0, 10),
+        items_resumen: cotizacion.items?.map(i => `${i.nombre_item} (x${i.cantidad})`).join(', ') || 'Piezas 3D',
+        total: cotizacion.total,
+        abono: cotizacion.abono || 0,
+        saldo_pendiente: cotizacion.saldo_pendiente ?? Math.max(0, cotizacion.total - (cotizacion.abono || 0)),
+        estado_pago: cotizacion.estado_pago,
+        metodo_pago: cotizacion.metodo_pago,
+        comprobante_url: cotizacion.comprobante_pago
+      };
+      const updatedCCs = [nuevaCC, ...cuentas];
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      CloudSyncService.saveCuentaCobro(nuevaCC);
     }
-    toast.success('Cotización guardada exitosamente');
   };
 
   // Aprobar Cotización -> Dispara automáticamente Órdenes de Trabajo (OT) y registra pagos / cuentas de cobro
-  const handleAprobarCotizacion = (
+  const handleAprobarCotizacion = async (
     cot: Cotizacion,
     datosPago?: DatosPagoRegistro,
     redirigirTaller: boolean = true
   ) => {
+    markLocalMutation();
     // 1. Obtener datos de pago (si no se pasan, tomar los de la cotización o 'Pendiente')
     const estadoPagoFinal: EstadoPago = datosPago?.estado_pago || cot.estado_pago || 'Pendiente';
     const abonoFinal: number = datosPago?.abono !== undefined ? datosPago.abono : (cot.abono ?? 0);
@@ -1395,10 +1587,16 @@ export const App: React.FC = () => {
 
     if (nuevasOTs.length > 0) {
       updatedOTs = [...nuevasOTs, ...updatedOTs];
-      nuevasOTs.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
     }
     setOrdenes(updatedOTs);
     StorageService.saveOrdenes(updatedOTs);
+    StorageService.markEntityMutated('cotizacion', cotActualizada.numero_cot, cotActualizada);
+    updatedOTs
+      .filter(o => o.cotizacion_id === cot.id || o.cotizacion_numero === cot.numero_cot)
+      .forEach(ot => {
+        StorageService.markEntityMutated('orden', ot.numero_ot, ot);
+        CloudSyncService.saveOrdenTrabajo(ot);
+      });
 
     // 5. Crear o Actualizar automáticamente la Cuenta de Cobro (CuentaCobro)
     const ccExistente = cuentas.find(c =>
@@ -1419,7 +1617,10 @@ export const App: React.FC = () => {
         } : c
       );
       const ccActualizada = updatedCuentas.find(c => c.id === ccExistente.id);
-      if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+      if (ccActualizada) {
+        StorageService.markEntityMutated('cuenta', ccActualizada.id, ccActualizada);
+        CloudSyncService.saveCuentaCobro(ccActualizada);
+      }
     } else {
       const nuevaCC: CuentaCobro = {
         id: `cc-${Date.now()}`,
@@ -1437,13 +1638,25 @@ export const App: React.FC = () => {
         comprobante_url: comprobanteFinal
       };
       updatedCuentas = [nuevaCC, ...cuentas];
+      StorageService.markEntityMutated('cuenta', nuevaCC.id, nuevaCC);
       CloudSyncService.saveCuentaCobro(nuevaCC);
     }
     setCuentas(updatedCuentas);
     StorageService.saveCuentas(updatedCuentas);
 
-    // 6. Sincronizar cotización aceptada en Supabase
-    CloudSyncService.saveCotizacion(cotActualizada);
+    // 6. Reconciliar pago en Ledger y sincronizar cotización aceptada en Supabase
+    if (abonoFinal !== (cot.abono || 0) || abonoFinal > 0) {
+      await CloudSyncService.reconciliarPagoEnLedger({
+        cotizacion_id: cot.id,
+        numero_cot: cot.numero_cot,
+        nuevoAbonoTotal: abonoFinal,
+        metodo_pago: metodoPagoFinal || 'Bre-B',
+        comprobante_url: comprobanteFinal,
+        nota: `Pago en aprobación Cotización ${cot.numero_cot}: $${abonoFinal.toLocaleString('es-CO')} COP`
+      });
+    }
+    await CloudSyncService.saveCotizacion(cotActualizada);
+    markLocalMutation();
 
     // 7. Redirigir a vista de taller si corresponde
     if (redirigirTaller) {
@@ -1452,7 +1665,8 @@ export const App: React.FC = () => {
   };
 
   // Actualizar solo el pago de una Cotización (sin alterar estado de aprobación ni redirigir)
-  const handleActualizarPagoCotizacion = (cotId: string, datosPago: DatosPagoRegistro) => {
+  const handleActualizarPagoCotizacion = async (cotId: string, datosPago: DatosPagoRegistro) => {
+    markLocalMutation();
     const targetCot = cotizaciones.find(c => c.id === cotId);
     if (!targetCot) return;
 
@@ -1468,9 +1682,10 @@ export const App: React.FC = () => {
     const updatedCots = cotizaciones.map(c => c.id === cotId ? cotActualizada : c);
     setCotizaciones(updatedCots);
     StorageService.saveCotizaciones(updatedCots);
-    CloudSyncService.saveCotizacion(cotActualizada);
+    StorageService.markEntityMutated('cotizacion', cotActualizada.numero_cot, cotActualizada);
 
-    // Actualizar OTs asociadas
+    // Actualizar OTs asociadas y sincronizar en nube
+    const otsModificadas: OrdenTrabajo[] = [];
     const updatedOTs = ordenes.map(o => {
       if (o.cotizacion_id === targetCot.id || o.cotizacion_numero === targetCot.numero_cot) {
         const itemPrecio = o.precio_cobrado || targetCot.total;
@@ -1479,7 +1694,7 @@ export const App: React.FC = () => {
         const itemSaldo = Math.max(0, itemPrecio - itemAbono);
         const itemEstado: EstadoPago = itemSaldo === 0 ? 'Pagado Total' : (itemAbono > 0 ? 'Abono Parcial' : 'Pendiente');
 
-        return {
+        const otUpd = {
           ...o,
           precio_cobrado: itemPrecio,
           estado_pago: itemEstado,
@@ -1488,11 +1703,14 @@ export const App: React.FC = () => {
           metodo_pago: datosPago.metodo_pago || o.metodo_pago,
           comprobante_pago: datosPago.comprobante_pago || o.comprobante_pago
         };
+        otsModificadas.push(otUpd);
+        return otUpd;
       }
       return o;
     });
     setOrdenes(updatedOTs);
     StorageService.saveOrdenes(updatedOTs);
+    otsModificadas.forEach(ot => StorageService.markEntityMutated('orden', ot.numero_ot, ot));
 
     // Actualizar o crear Cuenta de Cobro
     const ccExistente = cuentas.find(c =>
@@ -1513,8 +1731,11 @@ export const App: React.FC = () => {
       setCuentas(updatedCCs);
       StorageService.saveCuentas(updatedCCs);
       const ccActualizada = updatedCCs.find(c => c.id === ccExistente.id);
-      if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
-    } else {
+      if (ccActualizada) {
+        StorageService.markEntityMutated('cuenta', ccActualizada.id, ccActualizada);
+        CloudSyncService.saveCuentaCobro(ccActualizada);
+      }
+    } else if (datosPago.estado_pago !== 'Pendiente') {
       const nuevaCC: CuentaCobro = {
         id: `cc-${Date.now()}`,
         numero_cc: `CC-${(cuentas.length + 1).toString().padStart(3, '0')}`,
@@ -1533,12 +1754,28 @@ export const App: React.FC = () => {
       const updatedCCs = [nuevaCC, ...cuentas];
       setCuentas(updatedCCs);
       StorageService.saveCuentas(updatedCCs);
+      StorageService.markEntityMutated('cuenta', nuevaCC.id, nuevaCC);
       CloudSyncService.saveCuentaCobro(nuevaCC);
     }
+
+    await CloudSyncService.reconciliarPagoEnLedger({
+      cotizacion_id: targetCot.id,
+      numero_cot: targetCot.numero_cot,
+      orden_trabajo_id: otsModificadas[0]?.id,
+      numero_ot: otsModificadas[0]?.numero_ot,
+      nuevoAbonoTotal: Number(datosPago.abono) || 0,
+      metodo_pago: datosPago.metodo_pago || 'Bre-B',
+      comprobante_url: datosPago.comprobante_pago,
+      nota: `Actualización de pago en Cotización ${targetCot.numero_cot}: $${(Number(datosPago.abono) || 0).toLocaleString('es-CO')} COP`
+    });
+    await CloudSyncService.saveCotizacion(cotActualizada);
+    otsModificadas.forEach(ot => CloudSyncService.saveOrdenTrabajo(ot));
+    markLocalMutation();
   };
 
   // Actualizar Estado de OT con Descuento Automático de Inventario
   const handleUpdateEstadoOT = (otId: string, nuevoEstado: EstadoOT) => {
+    markLocalMutation();
     const targetOT = ordenes.find(o => o.id === otId);
     if (!targetOT) return;
 
@@ -1661,7 +1898,8 @@ export const App: React.FC = () => {
 
     const updatedTargetOT = updated.find(o => o.id === otId);
     if (updatedTargetOT) {
-      CloudSyncService.saveOrdenTrabajo(updatedTargetOT);
+      StorageService.markEntityMutated('orden', updatedTargetOT.numero_ot, updatedTargetOT);
+      CloudSyncService.saveOrdenTrabajo(updatedTargetOT).then(() => markLocalMutation());
       if (nuevoEstado === 'Entregado') {
         toast.success(`🎉 Orden ${updatedTargetOT.numero_ot} entregada y archivada en el historial.`);
       }
@@ -1743,10 +1981,10 @@ export const App: React.FC = () => {
 
   // Actualizar Pago en Cuenta de Cobro y sincronizar multi-módulo
   const handleUpdatePago = (cuentaId: string, nuevoAbono: number) => {
+    markLocalMutation();
     const cuentaPrevia = cuentas.find(c => c.id === cuentaId);
     if (!cuentaPrevia) return;
 
-    const deltaAbono = Math.max(0, nuevoAbono - (cuentaPrevia.abono || 0));
     const saldo = Math.max(0, cuentaPrevia.total - nuevoAbono);
     const estadoPago = saldo === 0 ? ('Pagado Total' as const) : (nuevoAbono > 0 ? ('Abono Parcial' as const) : ('Pendiente' as const));
 
@@ -1766,8 +2004,7 @@ export const App: React.FC = () => {
 
     const targetCC = updated.find(c => c.id === cuentaId);
     if (targetCC) {
-      CloudSyncService.saveCuentaCobro(targetCC);
-
+      StorageService.markEntityMutated('cuenta', targetCC.id, targetCC);
       // Sincronizar Cotización vinculada
       if (targetCC.cotizacion_id || targetCC.cotizacion_numero) {
         const updatedCots = cotizaciones.map(cot => {
@@ -1789,7 +2026,10 @@ export const App: React.FC = () => {
           (targetCC.cotizacion_id && c.id === targetCC.cotizacion_id) ||
           (targetCC.cotizacion_numero && c.numero_cot === targetCC.cotizacion_numero)
         );
-        if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+        if (cotAfectada) {
+          StorageService.markEntityMutated('cotizacion', cotAfectada.numero_cot, cotAfectada);
+          CloudSyncService.saveCotizacion(cotAfectada);
+        }
       }
 
       // Sincronizar OTs vinculadas
@@ -1832,23 +2072,30 @@ export const App: React.FC = () => {
         StorageService.saveOrdenes(updatedOTs);
         matchingOTs.forEach(m => {
           const u = updatedOTs.find(o => o.id === m.id);
-          if (u) CloudSyncService.saveOrdenTrabajo(u);
+          if (u) {
+            StorageService.markEntityMutated('orden', u.numero_ot, u);
+            CloudSyncService.saveOrdenTrabajo(u);
+          }
         });
       }
 
-      // Asentar en Ledger Central SOLO si hubo un incremento real (delta > 0)
-      if (deltaAbono > 0) {
-        CloudSyncService.savePayment({
-          id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-          monto: deltaAbono,
-          metodo_pago: targetCC.metodo_pago || 'Bre-B',
-          comprobante_url: targetCC.comprobante_url,
+      // Reconciliar en Ledger Central tanto si el abono subió como si bajó o pasó a 0
+      if (Math.round(nuevoAbono) !== Math.round(cuentaPrevia.abono || 0)) {
+        CloudSyncService.reconciliarPagoEnLedger({
           cotizacion_id: targetCC.cotizacion_id,
+          numero_cot: targetCC.cotizacion_numero,
           cuenta_cobro_id: targetCC.id,
           orden_trabajo_id: matchingOTs[0]?.id,
-          origen_modulo: 'cuenta_cobro',
-          nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} en Cuenta de Cobro ${targetCC.numero_cc}`
+          numero_ot: matchingOTs[0]?.numero_ot,
+          nuevoAbonoTotal: nuevoAbono,
+          metodo_pago: targetCC.metodo_pago || 'Bre-B',
+          comprobante_url: targetCC.comprobante_url,
+          nota: `Pago actualizado a $${nuevoAbono.toLocaleString('es-CO')} en Cuenta de Cobro ${targetCC.numero_cc}`
+        }).then(() => {
+          CloudSyncService.saveCuentaCobro(targetCC).then(() => markLocalMutation());
         });
+      } else {
+        CloudSyncService.saveCuentaCobro(targetCC).then(() => markLocalMutation());
       }
     }
   };
@@ -1931,8 +2178,10 @@ export const App: React.FC = () => {
     items.forEach(prod => CloudSyncService.saveProductoStock(prod));
   };
 
-  const handleGuardarVentaExpress = (nuevaVenta: VentaExpress) => {
+  const handleGuardarVentaExpress = async (nuevaVenta: VentaExpress) => {
+    markLocalMutation();
     let ventaFinal: VentaExpress = { ...nuevaVenta };
+    let nuevaOTGenerada: OrdenTrabajo | null = null;
 
     // Conciliación y descuento inmediato de stock físico si aplica
     if (ventaFinal.descontar_stock && ventaFinal.producto_stock_id) {
@@ -1964,7 +2213,7 @@ export const App: React.FC = () => {
       const nuevaOT: OrdenTrabajo = {
         id: otId,
         numero_ot: numOT,
-        cotizacion_id: ventaFinal.id,
+        cotizacion_id: '',
         cotizacion_numero: ventaFinal.numero_venta,
         pos_venta_id: ventaFinal.id,
         cliente_nombre: ventaFinal.cliente_nombre,
@@ -1996,40 +2245,49 @@ export const App: React.FC = () => {
         metodo_pago: ventaFinal.metodo_pago
       };
 
+      nuevaOTGenerada = nuevaOT;
       const updatedOTs = [nuevaOT, ...ordenes];
       setOrdenes(updatedOTs);
       StorageService.saveOrdenes(updatedOTs);
-      CloudSyncService.saveOrdenTrabajo(nuevaOT);
+      StorageService.markEntityMutated('orden', nuevaOT.numero_ot, nuevaOT);
     }
 
     const updated = [ventaFinal, ...ventasExpress];
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
+    StorageService.markEntityMutated('venta', ventaFinal.id, ventaFinal);
 
-    // Asentar en Ledger Inmutable (abonos_pagos) el abono inicial recibido en el POS
+    // Secuencia síncrona estricta en nube: OT -> Ledger -> Venta Express (evita race condition Realtime)
+    if (nuevaOTGenerada) {
+      await CloudSyncService.saveOrdenTrabajo(nuevaOTGenerada);
+    }
+
     if (Number(ventaFinal.abono) > 0) {
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: Number(ventaFinal.abono),
-        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
+      await CloudSyncService.reconciliarPagoEnLedger({
         pos_venta_id: ventaFinal.id,
-        orden_trabajo_id: ventaFinal.ot_numero || ventaFinal.ot_id || undefined,
-        origen_modulo: 'pos',
+        numero_venta: ventaFinal.numero_venta,
+        orden_trabajo_id: ventaFinal.ot_id || ventaFinal.ot_numero || undefined,
+        numero_ot: ventaFinal.ot_numero,
+        nuevoAbonoTotal: Number(ventaFinal.abono),
+        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
         nota: `Abono inicial de $${Number(ventaFinal.abono).toLocaleString('es-CO')} en Venta ${ventaFinal.numero_venta} (${ventaFinal.nombre_producto})`
       });
     }
 
-    CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
-      if (res && !res.success && res.error) {
-        toast.warning(`Venta guardada localmente. Pendiente en nube: ${res.error}`);
-      } else {
-        toast.success(`Venta ${ventaFinal.numero_venta} registrada correctamente.`);
-      }
-    });
+    const res = await CloudSyncService.saveVentaExpress(ventaFinal);
+    markLocalMutation();
+    if (res && !res.success && res.error) {
+      toast.warning(`Venta guardada localmente. Pendiente en nube: ${res.error}`);
+    } else {
+      toast.success(`Venta ${ventaFinal.numero_venta} registrada correctamente.`);
+    }
   };
 
-  const handleActualizarVentaExpress = (ventaActualizada: VentaExpress) => {
+  const handleActualizarVentaExpress = async (ventaActualizada: VentaExpress) => {
+    markLocalMutation();
     let ventaFinal: VentaExpress = { ...ventaActualizada };
+    const prevVenta = ventasExpress.find(v => v.id === ventaFinal.id);
+    let otModificadaParaGuardar: OrdenTrabajo | null = null;
 
     // Si antes no tenía OT y ahora se activa "requiere_ot", generarla
     if (ventaFinal.requiere_ot && !ventaFinal.ot_id && !ventaFinal.ot_numero) {
@@ -2043,7 +2301,7 @@ export const App: React.FC = () => {
       const nuevaOT: OrdenTrabajo = {
         id: otId,
         numero_ot: numOT,
-        cotizacion_id: ventaFinal.id,
+        cotizacion_id: '',
         cotizacion_numero: ventaFinal.numero_venta,
         pos_venta_id: ventaFinal.id,
         cliente_nombre: ventaFinal.cliente_nombre,
@@ -2078,10 +2336,10 @@ export const App: React.FC = () => {
       const updatedOTs = [nuevaOT, ...ordenes];
       setOrdenes(updatedOTs);
       StorageService.saveOrdenes(updatedOTs);
-      CloudSyncService.saveOrdenTrabajo(nuevaOT);
+      StorageService.markEntityMutated('orden', nuevaOT.numero_ot, nuevaOT);
+      otModificadaParaGuardar = nuevaOT;
     } else if (ventaFinal.ot_id || ventaFinal.ot_numero) {
       // Sincronizar la OT asociada con los datos actualizados de pago y diseño
-      let otModificada: OrdenTrabajo | null = null;
       const updatedOTs = ordenes.map(o => {
         if (
           (ventaFinal.ot_id && o.id === ventaFinal.ot_id) ||
@@ -2104,48 +2362,72 @@ export const App: React.FC = () => {
             stl_url: ventaFinal.enlace_diseno || o.stl_url,
             stl_notas: ventaFinal.notas_diseno || o.stl_notas
           };
-          otModificada = modif;
+          otModificadaParaGuardar = modif;
           return modif;
         }
         return o;
       });
 
-      if (otModificada) {
+      if (otModificadaParaGuardar) {
         setOrdenes(updatedOTs);
         StorageService.saveOrdenes(updatedOTs);
-        CloudSyncService.saveOrdenTrabajo(otModificada);
+        StorageService.markEntityMutated('orden', (otModificadaParaGuardar as OrdenTrabajo).numero_ot, otModificadaParaGuardar);
       }
+    }
+
+    // Sincronizar también CuentaCobro si está vinculada
+    const matchingCC = cuentas.find(c => ventaMatchesCuenta(ventaFinal, c));
+    if (matchingCC) {
+      const ccActualizada: CuentaCobro = {
+        ...matchingCC,
+        total: ventaFinal.total,
+        abono: ventaFinal.abono,
+        saldo_pendiente: ventaFinal.saldo_pendiente,
+        estado_pago: ventaFinal.estado_pago as EstadoPago,
+        metodo_pago: ventaFinal.metodo_pago || matchingCC.metodo_pago
+      };
+      const updatedCCs = cuentas.map(c => c.id === matchingCC.id ? ccActualizada : c);
+      setCuentas(updatedCCs);
+      StorageService.saveCuentas(updatedCCs);
+      StorageService.markEntityMutated('cuenta', ccActualizada.id, ccActualizada);
     }
 
     const updated = ventasExpress.map(v => v.id === ventaFinal.id ? ventaFinal : v);
     setVentasExpress(updated);
     StorageService.saveVentasExpress(updated);
+    StorageService.markEntityMutated('venta', ventaFinal.id, ventaFinal);
 
-    // Asentar en Ledger Central si hubo un incremento real en el abono (delta > 0)
-    const prevVenta = ventasExpress.find(v => v.id === ventaFinal.id);
-    const deltaAbonoVenta = Math.max(0, (ventaFinal.abono || 0) - (prevVenta?.abono || 0));
-    if (deltaAbonoVenta > 0) {
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: deltaAbonoVenta,
-        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
+    // 1. Reconciliar Ledger Central (abonos_pagos) tanto si el abono sube, baja o pasa a $0
+    const nuevoAbono = Number(ventaFinal.abono) || 0;
+    const prevAbono = Number(prevVenta?.abono) || 0;
+    if (Math.round(nuevoAbono) !== Math.round(prevAbono)) {
+      await CloudSyncService.reconciliarPagoEnLedger({
         pos_venta_id: ventaFinal.id,
-        orden_trabajo_id: ventaFinal.ot_numero || ventaFinal.ot_id || undefined,
-        origen_modulo: 'pos',
-        nota: `Abono de $${deltaAbonoVenta.toLocaleString('es-CO')} registrado en POS Express ${ventaFinal.numero_venta}`
+        numero_venta: ventaFinal.numero_venta,
+        orden_trabajo_id: ventaFinal.ot_id || ventaFinal.ot_numero,
+        numero_ot: ventaFinal.ot_numero,
+        cuenta_cobro_id: matchingCC?.id,
+        nuevoAbonoTotal: nuevoAbono,
+        metodo_pago: ventaFinal.metodo_pago || 'Bre-B',
+        nota: `Pago actualizado a $${nuevoAbono.toLocaleString('es-CO')} en POS Express ${ventaFinal.numero_venta} (${ventaFinal.nombre_producto})`
       });
     }
 
-    CloudSyncService.saveVentaExpress(ventaFinal).then(res => {
-      if (res && !res.success && res.error) {
-        toast.warning(`Cambios guardados localmente. Sincronización pendiente: ${res.error}`);
-      } else {
-        toast.success(`Venta ${ventaFinal.numero_venta} actualizada.`);
-      }
-    });
+    // 2. Persistir Venta Express y OT vinculada después de reconciliar el ledger (protege contra triggers antiguos)
+    if (otModificadaParaGuardar) {
+      await CloudSyncService.saveOrdenTrabajo(otModificadaParaGuardar);
+    }
+    const res = await CloudSyncService.saveVentaExpress(ventaFinal);
+    markLocalMutation();
+    if (res && !res.success && res.error) {
+      toast.warning(`Cambios guardados localmente. Sincronización pendiente: ${res.error}`);
+    } else {
+      toast.success(`Venta ${ventaFinal.numero_venta} actualizada y sincronizada.`);
+    }
   };
 
   const handleEliminarVentaExpress = (ventaId: string) => {
+    markLocalMutation();
     const ventaAEliminar = ventasExpress.find(v => v.id === ventaId);
 
     // 1. Si la venta descontó stock físico, reponerlo al inventario
@@ -2206,6 +2488,7 @@ export const App: React.FC = () => {
   };
 
   const handleEliminarCotizacion = (cotId: string, numeroCot?: string) => {
+    markLocalMutation();
     const cotAEliminar = cotizaciones.find(c => c.id === cotId || (numeroCot && c.numero_cot === numeroCot));
 
     // GUARDIA: Una cotización aprobada o facturada no puede eliminarse por trazabilidad contable
@@ -2297,8 +2580,9 @@ export const App: React.FC = () => {
     CloudSyncService.saveSolicitudInsumo(solicitud);
   };
 
-  // Handler para Crear Orden Rápida desde Tarifario Express (vinculación bidireccional inmediata sin duplicación)
+  // Handler para Crear Orden Rápida desde Tarifario Express (vinculación bidireccional inmediata sin contaminar cotizacion_id)
   const handleCrearOrdenRapida = (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => {
+    markLocalMutation();
     let otFinal: OrdenTrabajo = { ...nuevaOT };
     let nuevaVenta: VentaExpress | null = null;
 
@@ -2325,28 +2609,30 @@ export const App: React.FC = () => {
       };
 
       otFinal.pos_venta_id = ventaId;
-      otFinal.cotizacion_id = ventaId;
       otFinal.cotizacion_numero = numVenta;
     }
 
     const updatedOTs = [otFinal, ...ordenes];
     setOrdenes(updatedOTs);
     StorageService.saveOrdenes(updatedOTs);
-    CloudSyncService.saveOrdenTrabajo(otFinal);
+    StorageService.markEntityMutated('orden', otFinal.numero_ot, otFinal);
+    CloudSyncService.saveOrdenTrabajo(otFinal).then(() => markLocalMutation());
 
     if (nuevaVenta) {
       const updatedVentas = [nuevaVenta, ...ventasExpress];
       setVentasExpress(updatedVentas);
       StorageService.saveVentasExpress(updatedVentas);
-      CloudSyncService.saveVentaExpress(nuevaVenta);
+      StorageService.markEntityMutated('venta', nuevaVenta.id, nuevaVenta);
+      CloudSyncService.saveVentaExpress(nuevaVenta).then(() => markLocalMutation());
     }
   };
 
   // Handler Central Unificado de Pagos desde Cobranzas (Ledger Único Inmutable en abonos_pagos)
-  const handleRegistrarPagoConsolidado = (
+  const handleRegistrarPagoConsolidado = async (
     item: ItemDeudaConsolidado,
     datos: DatosPagoRegistro
   ) => {
+    markLocalMutation();
     // 0. Encontrar y vincular bidireccionalmente todas las entidades relacionadas
     const targetVenta = item.rawVenta || ventasExpress.find(v =>
       (item.rawOT && otMatchesVenta(item.rawOT, v)) ||
@@ -2375,19 +2661,20 @@ export const App: React.FC = () => {
     const prevAbonoItem = item.abono || targetOT?.abono || targetVenta?.abono || targetCuenta?.abono || 0;
     const deltaAbono = Math.max(0, abonoFinal - prevAbonoItem);
 
-    // 1. Asentar en Ledger Inmutable Core V3 (abonos_pagos) EXACTAMENTE UNA VEZ si hubo incremento real
-    if (deltaAbono > 0) {
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: deltaAbono,
-        metodo_pago: datos.metodo_pago || 'Bre-B',
-        comprobante_url: datos.comprobante_pago,
-        cotizacion_id: targetOT?.cotizacion_id || targetCuenta?.cotizacion_id || targetVenta?.id,
+    // 1. Reconciliar Ledger Central (abonos_pagos) ante incrementos, correcciones o reversos
+    if (Math.round(abonoFinal) !== Math.round(prevAbonoItem)) {
+      await CloudSyncService.reconciliarPagoEnLedger({
+        cotizacion_id: targetOT?.cotizacion_id || targetCuenta?.cotizacion_id,
+        numero_cot: targetOT?.cotizacion_numero || targetCuenta?.cotizacion_numero,
         cuenta_cobro_id: targetCuenta?.id,
         orden_trabajo_id: targetOT?.id || targetOT?.numero_ot,
+        numero_ot: targetOT?.numero_ot,
         pos_venta_id: targetVenta?.id,
-        origen_modulo: 'cuenta_cobro',
-        nota: `Abono de $${deltaAbono.toLocaleString('es-CO')} recibido en Cobranzas para ${item.codigo} (${datos.metodo_pago || 'Bre-B'})`
+        numero_venta: targetVenta?.numero_venta,
+        nuevoAbonoTotal: abonoFinal,
+        metodo_pago: datos.metodo_pago || 'Bre-B',
+        comprobante_url: datos.comprobante_pago,
+        nota: `Pago actualizado a $${abonoFinal.toLocaleString('es-CO')} en Cobranzas para ${item.codigo} (${datos.metodo_pago || 'Bre-B'})`
       });
     }
 
@@ -2409,7 +2696,8 @@ export const App: React.FC = () => {
       const updatedOTs = ordenes.map(o => o.id === updatedOT.id ? updatedOT : o);
       setOrdenes(updatedOTs);
       StorageService.saveOrdenes(updatedOTs);
-      CloudSyncService.saveOrdenTrabajo(updatedOT);
+      StorageService.markEntityMutated('orden', updatedOT.numero_ot, updatedOT);
+      await CloudSyncService.saveOrdenTrabajo(updatedOT);
     }
 
     // 3. Sincronizar en la Cuenta de Cobro formal (si existe o coincide)
@@ -2425,7 +2713,8 @@ export const App: React.FC = () => {
       const updatedCCs = cuentas.map(c => c.id === updatedCC.id ? updatedCC : c);
       setCuentas(updatedCCs);
       StorageService.saveCuentas(updatedCCs);
-      CloudSyncService.saveCuentaCobro(updatedCC);
+      StorageService.markEntityMutated('cuenta', updatedCC.id, updatedCC);
+      await CloudSyncService.saveCuentaCobro(updatedCC);
     }
 
     // 4. Sincronizar en la Venta Express de POS (si existe o coincide)
@@ -2440,7 +2729,8 @@ export const App: React.FC = () => {
       const updatedVentas = ventasExpress.map(v => v.id === updatedVenta.id ? updatedVenta : v);
       setVentasExpress(updatedVentas);
       StorageService.saveVentasExpress(updatedVentas);
-      CloudSyncService.saveVentaExpress(updatedVenta);
+      StorageService.markEntityMutated('venta', updatedVenta.id, updatedVenta);
+      await CloudSyncService.saveVentaExpress(updatedVenta);
     }
 
     // 5. Sincronizar en Cotización vinculada si existe
@@ -2463,14 +2753,21 @@ export const App: React.FC = () => {
       setCotizaciones(updatedCots);
       StorageService.saveCotizaciones(updatedCots);
       const cotAfectada = updatedCots.find(c => (cotId && c.id === cotId) || (cotNum && c.numero_cot === cotNum));
-      if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+      if (cotAfectada) {
+        StorageService.markEntityMutated('cotizacion', cotAfectada.numero_cot, cotAfectada);
+        await CloudSyncService.saveCotizacion(cotAfectada);
+      }
     }
 
-    toast.success(`Pago de $${deltaAbono > 0 ? deltaAbono.toLocaleString('es-CO') : abonoFinal.toLocaleString('es-CO')} COP registrado correctamente.`);
+    markLocalMutation();
+    toast.success(`Pago actualizado ($${abonoFinal.toLocaleString('es-CO')} COP abonados${deltaAbono > 0 ? ` • +$${deltaAbono.toLocaleString('es-CO')}` : ''}) correctamente.`);
   };
 
   // Handler para Actualizar Trazabilidad STL, detalles de OT y Pagos
-  const handleActualizarOT = (otActualizada: OrdenTrabajo) => {
+  const handleActualizarOT = async (otActualizada: OrdenTrabajo) => {
+    markLocalMutation();
+    const prevOT = ordenes.find(o => o.id === otActualizada.id);
+
     // 1. Si la OT actualizó estado_pago, replicarlo también en las demás OTs de la misma cotización
     const updated = ordenes.map(o => {
       if (o.id === otActualizada.id) return otActualizada;
@@ -2490,7 +2787,7 @@ export const App: React.FC = () => {
     });
     setOrdenes(updated);
     StorageService.saveOrdenes(updated);
-    CloudSyncService.saveOrdenTrabajo(otActualizada);
+    StorageService.markEntityMutated('orden', otActualizada.numero_ot, otActualizada);
 
     // 2. Sincronizar en la cotización padre (enlaces_compra y estado_pago)
     if (otActualizada.cotizacion_numero || otActualizada.cotizacion_id) {
@@ -2526,7 +2823,10 @@ export const App: React.FC = () => {
         (otActualizada.cotizacion_id && c.id === otActualizada.cotizacion_id) ||
         (otActualizada.cotizacion_numero && c.numero_cot === otActualizada.cotizacion_numero)
       );
-      if (cotAfectada) CloudSyncService.saveCotizacion(cotAfectada);
+      if (cotAfectada) {
+        StorageService.markEntityMutated('cotizacion', cotAfectada.numero_cot, cotAfectada);
+        CloudSyncService.saveCotizacion(cotAfectada);
+      }
 
       // 3. Sincronizar también en la Cuenta de Cobro
       if (otActualizada.estado_pago) {
@@ -2551,12 +2851,16 @@ export const App: React.FC = () => {
           setCuentas(updatedCCs);
           StorageService.saveCuentas(updatedCCs);
           const ccActualizada = updatedCCs.find(cc => cc.id === ccMatch.id);
-          if (ccActualizada) CloudSyncService.saveCuentaCobro(ccActualizada);
+          if (ccActualizada) {
+            StorageService.markEntityMutated('cuenta', ccActualizada.id, ccActualizada);
+            CloudSyncService.saveCuentaCobro(ccActualizada);
+          }
         }
       }
     }
 
     // 4. Sincronizar en la Venta Express de POS vinculada (si la OT proviene de POS)
+    let ventaMatchActualizada: VentaExpress | null = null;
     if (otActualizada.pos_venta_id || otActualizada.numero_ot) {
       const ventaMatch = ventasExpress.find(v =>
         (otActualizada.pos_venta_id && v.id === otActualizada.pos_venta_id) ||
@@ -2565,41 +2869,44 @@ export const App: React.FC = () => {
       );
 
       if (ventaMatch && otActualizada.estado_pago) {
-        const updatedVentas = ventasExpress.map(v => {
-          if (v.id === ventaMatch.id) {
-            return {
-              ...v,
-              abono: otActualizada.abono !== undefined ? otActualizada.abono : v.abono,
-              saldo_pendiente: otActualizada.saldo_pendiente !== undefined ? otActualizada.saldo_pendiente : v.saldo_pendiente,
-              estado_pago: (otActualizada.estado_pago as any) || v.estado_pago,
-              metodo_pago: otActualizada.metodo_pago || v.metodo_pago
-            };
-          }
-          return v;
-        });
+        const vUpd: VentaExpress = {
+          ...ventaMatch,
+          abono: otActualizada.abono !== undefined ? otActualizada.abono : ventaMatch.abono,
+          saldo_pendiente: otActualizada.saldo_pendiente !== undefined ? otActualizada.saldo_pendiente : ventaMatch.saldo_pendiente,
+          estado_pago: (otActualizada.estado_pago as any) || ventaMatch.estado_pago,
+          metodo_pago: otActualizada.metodo_pago || ventaMatch.metodo_pago
+        };
+        ventaMatchActualizada = vUpd;
+        const updatedVentas = ventasExpress.map(v => v.id === ventaMatch.id ? vUpd : v);
         setVentasExpress(updatedVentas);
         StorageService.saveVentasExpress(updatedVentas);
-        const vActualizada = updatedVentas.find(v => v.id === ventaMatch.id);
-        if (vActualizada) CloudSyncService.saveVentaExpress(vActualizada);
+        StorageService.markEntityMutated('venta', vUpd.id, vUpd);
       }
     }
 
-    // 5. Asentar en Ledger Central (abonos_pagos) SOLO si hubo un incremento real en el abono (delta > 0)
-    const prevOT = ordenes.find(o => o.id === otActualizada.id);
-    const deltaAbonoOT = Math.max(0, (otActualizada.abono || 0) - (prevOT?.abono || 0));
-    if (deltaAbonoOT > 0) {
-      CloudSyncService.savePayment({
-        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        monto: deltaAbonoOT,
+    // 5. Reconciliar Ledger Central (abonos_pagos) si el abono cambió (subió, bajó o se reversó)
+    const nuevoAbonoOT = Number(otActualizada.abono) || 0;
+    const prevAbonoOT = Number(prevOT?.abono) || 0;
+    if (Math.round(nuevoAbonoOT) !== Math.round(prevAbonoOT)) {
+      await CloudSyncService.reconciliarPagoEnLedger({
+        cotizacion_id: otActualizada.cotizacion_id,
+        numero_cot: otActualizada.cotizacion_numero,
+        orden_trabajo_id: otActualizada.id,
+        numero_ot: otActualizada.numero_ot,
+        pos_venta_id: otActualizada.pos_venta_id,
+        numero_venta: ventaMatchActualizada?.numero_venta,
+        nuevoAbonoTotal: nuevoAbonoOT,
         metodo_pago: otActualizada.metodo_pago || 'Bre-B',
         comprobante_url: otActualizada.comprobante_pago,
-        cotizacion_id: otActualizada.cotizacion_id,
-        orden_trabajo_id: otActualizada.id,
-        pos_venta_id: otActualizada.pos_venta_id,
-        origen_modulo: 'taller',
-        nota: `Abono de $${deltaAbonoOT.toLocaleString('es-CO')} registrado desde Taller OT ${otActualizada.numero_ot}`
+        nota: `Pago actualizado a $${nuevoAbonoOT.toLocaleString('es-CO')} desde Taller OT ${otActualizada.numero_ot}`
       });
     }
+
+    await CloudSyncService.saveOrdenTrabajo(otActualizada);
+    if (ventaMatchActualizada) {
+      await CloudSyncService.saveVentaExpress(ventaMatchActualizada);
+    }
+    markLocalMutation();
   };
 
   // Handler para Eliminar o Cancelar una Orden de Trabajo (OT)
@@ -2774,7 +3081,7 @@ export const App: React.FC = () => {
                   onCrearOrdenRapida={handleCrearOrdenRapida}
                   onActualizarOT={handleActualizarOT}
                   onEliminarOT={handleEliminarOT}
-                  onNavigateToCotizaciones={(cotId) => {
+                  onNavigateToCotizaciones={() => {
                     setActiveTab('cotizaciones');
                   }}
                   onOpenProduccionInterna={() => setShowModalProduccionInterna(true)}
@@ -2788,9 +3095,21 @@ export const App: React.FC = () => {
                   ordenes={ordenes}
                   ventas={ventasExpress}
                   onUpdateEstado={(id, st) => {
-                    const u = cotizaciones.map(c => c.id === id ? { ...c, estado: st } : c);
+                    markLocalMutation();
+                    let cotActualizada: Cotizacion | undefined;
+                    const u = cotizaciones.map(c => {
+                      if (c.id === id) {
+                        cotActualizada = { ...c, estado: st };
+                        return cotActualizada;
+                      }
+                      return c;
+                    });
                     setCotizaciones(u);
                     StorageService.saveCotizaciones(u);
+                    if (cotActualizada) {
+                      StorageService.markEntityMutated('cotizacion', cotActualizada.numero_cot, cotActualizada);
+                      CloudSyncService.saveCotizacion(cotActualizada).then(() => markLocalMutation());
+                    }
                   }}
                   onEditarCotizacion={handleEditarCotizacion}
                   onAprobarCotizacion={handleAprobarCotizacion}

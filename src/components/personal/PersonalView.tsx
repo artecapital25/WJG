@@ -2,12 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { 
   Users, UserPlus, Shield, ShieldCheck, Smartphone, 
   KeyRound, RefreshCw, Power, MessageSquare, Edit3, 
-  AlertCircle, Check, CheckCircle2, Lock, Sparkles, Send,
-  Hash, Mail, Phone, ShoppingBag, Box, TrendingUp, Settings,
-  Eye, EyeOff, Laptop, Tablet, Clock, AlertTriangle, Fingerprint
+  AlertCircle,
+  Mail, Phone,
+  Eye, EyeOff, Laptop, Tablet, Clock, AlertTriangle
 } from 'lucide-react';
 import { useUsuariosTaller } from '../../hooks/useUsuariosTaller';
-import { UsuarioTaller, UsuarioTallerInput, HubAreaPermission, HUB_PERMISSIONS_CONFIG, parseDispositivoInfo } from '../../types/usuarios.types';
+import { UsuarioTaller, HubAreaPermission, HUB_PERMISSIONS_CONFIG, parseDispositivoInfo } from '../../types/usuarios.types';
 import { CambiarPinModal } from '../auth/CambiarPinModal';
 import { ModalDispositivosUsuario } from './ModalDispositivosUsuario';
 import { toast } from '../ui/ToastProvider';
@@ -49,18 +49,18 @@ export const PersonalView: React.FC = () => {
 
   // Formulario
   const [nombre, setNombre] = useState('');
-  const [rol, setRol] = useState<string>('IMPRESION_MANTENIMIENTO');
+  const [rol, setRol] = useState<string>('ADMIN_COBRANZAS');
   const [telefono, setTelefono] = useState('');
   const [telefonoNotif, setTelefonoNotif] = useState('');
   const [email, setEmail] = useState('');
   const [cedula, setCedula] = useState('');
-  const [permisos, setPermisos] = useState<HubAreaPermission[]>(['taller']);
+  const [permisos, setPermisos] = useState<HubAreaPermission[]>(['ventas', 'taller', 'finanzas', 'gestion']);
   const [pinInicial, setPinInicial] = useState('1234');
   const [showPinForm, setShowPinForm] = useState(false);
 
   // Validación de duplicados en tiempo real
   const [duplicadoWarn, setDuplicadoWarn] = useState<{ campo: string; nombre: string } | null>(null);
-  const [isCheckingDuplicado, setIsCheckingDuplicado] = useState(false);
+  const [, setIsCheckingDuplicado] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   // Debounced check para teléfono
@@ -123,12 +123,12 @@ export const PersonalView: React.FC = () => {
   const handleOpenCrear = () => {
     setEditingUser(null);
     setNombre('');
-    setRol('IMPRESION_MANTENIMIENTO');
+    setRol('ADMIN_COBRANZAS');
     setTelefono('');
     setTelefonoNotif('');
     setEmail('');
     setCedula('');
-    setPermisos(['taller']);
+    setPermisos(['ventas', 'taller', 'finanzas', 'gestion']);
     setPinInicial('1234');
     setDuplicadoWarn(null);
     setShowModalForm(true);
@@ -137,12 +137,12 @@ export const PersonalView: React.FC = () => {
   const handleOpenEditar = (user: UsuarioTaller) => {
     setEditingUser(user);
     setNombre(user.nombre);
-    setRol(user.rol);
+    setRol(user.rol || 'ADMIN_COBRANZAS');
     setTelefono(user.telefono);
     setTelefonoNotif(user.telefono_notificaciones);
     setEmail(user.email || '');
     setCedula(user.cedula || '');
-    setPermisos(user.permisos_areas && user.permisos_areas.length > 0 ? user.permisos_areas : ['taller']);
+    setPermisos(user.permisos_areas && user.permisos_areas.length >= 4 ? user.permisos_areas : ['ventas', 'taller', 'finanzas', 'gestion']);
     setPinInicial('');
     setDuplicadoWarn(null);
     setShowModalForm(true);

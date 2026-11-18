@@ -280,18 +280,18 @@ export const CloudSyncService = {
 
         const itemsMapeados: PiezaCotizada[] = (row.items || []).map((it: any): PiezaCotizada => ({
           id: it.id,
-          nombre_item: it.nombre_item,
+          nombre_item: it.nombre_item || it.nombre_pieza || 'Pieza 3D',
           cantidad: Number(it.cantidad) || 1,
           alto_mm: Number(it.alto_mm) || 0,
           ancho_mm: Number(it.ancho_mm) || 0,
           profundidad_mm: Number(it.profundidad_mm) || 0,
           volumen_cm3: Number(it.volumen_cm3) || 0,
-          peso_estimado_g: Number(it.peso_estimado_g) || 0,
-          resina_id: 'res-1',
-          resina_nombre: 'Resina Standard',
-          maquina_id: 'maq-1',
-          maquina_nombre: 'Anycubic MONO 4',
-          tiempo_impresion_min: Number(it.tiempo_impresion_min) || 0,
+          peso_estimado_g: Number(it.peso_estimado_g ?? it.peso_gramos) || 0,
+          resina_id: it.resina_id || 'res-1',
+          resina_nombre: it.resina_nombre || 'Resina Standard',
+          maquina_id: it.maquina_id || 'maq-1',
+          maquina_nombre: it.maquina_nombre || 'Anycubic MONO 4',
+          tiempo_impresion_min: Number(it.tiempo_impresion_min) || Math.round((Number(it.tiempo_horas) || 0) * 60),
           tiempo_desarrollo_min: Number(it.tiempo_desarrollo_min) || 0,
           tiempo_armado_min: Number(it.tiempo_armado_min) || 0,
           tiempo_pintura_min: Number(it.tiempo_pintura_min) || 0,
@@ -304,7 +304,7 @@ export const CloudSyncService = {
           costo_base_produccion: Number(it.costo_base_produccion) || 0,
           margen_ganancia: Number(it.margen_ganancia) || 0.4,
           precio_unitario: Number(it.precio_unitario) || 0,
-          precio_total: Number(it.precio_total) || 0,
+          precio_total: Number(it.precio_total ?? it.subtotal) || 0,
           tiempo_entrega: row.tiempo_entrega_estimado || '(3) Días hábiles',
           descripcion_tecnica: it.descripcion_tecnica || '',
           imagen_url: it.imagen_url || undefined
@@ -312,7 +312,24 @@ export const CloudSyncService = {
 
         let notasLimpia = row.notas || 'No incluye transporte fuera del perímetro urbano.';
         let itemsRestaurados: PiezaCotizada[] | null = null;
-        let metaFinanciera: { iva_porcentaje?: number; iva_monto?: number; descuento_monto?: number; ahorro_volumen_total?: number } = {};
+        let metaFinanciera: {
+          iva_porcentaje?: number;
+          iva_monto?: number;
+          descuento_porcentaje?: number;
+          descuento_monto?: number;
+          ahorro_volumen_total?: number;
+          subtotal?: number;
+          total?: number;
+          estado_ui?: EstadoCotizacion;
+          vendedor?: string;
+          fecha?: string;
+          tiempo_entrega_estimado?: string;
+          estado_pago?: any;
+          abono?: number;
+          saldo_pendiente?: number;
+          metodo_pago?: string;
+          comprobante_pago?: string;
+        } = {};
         if (row.notas && row.notas.includes('<!-- WJ_ITEMS_SNAPSHOT:')) {
           try {
             const start = row.notas.indexOf('<!-- WJ_ITEMS_SNAPSHOT:') + '<!-- WJ_ITEMS_SNAPSHOT:'.length;
@@ -329,8 +346,20 @@ export const CloudSyncService = {
                 metaFinanciera = {
                   iva_porcentaje: parsed.iva_porcentaje,
                   iva_monto: parsed.iva_monto,
+                  descuento_porcentaje: parsed.descuento_porcentaje,
                   descuento_monto: parsed.descuento_monto,
-                  ahorro_volumen_total: parsed.ahorro_volumen_total
+                  ahorro_volumen_total: parsed.ahorro_volumen_total,
+                  subtotal: parsed.subtotal,
+                  total: parsed.total,
+                  estado_ui: parsed.estado_ui,
+                  vendedor: parsed.vendedor,
+                  fecha: parsed.fecha,
+                  tiempo_entrega_estimado: parsed.tiempo_entrega_estimado,
+                  estado_pago: parsed.estado_pago,
+                  abono: parsed.abono,
+                  saldo_pendiente: parsed.saldo_pendiente,
+                  metodo_pago: parsed.metodo_pago,
+                  comprobante_pago: parsed.comprobante_pago
                 };
               }
               notasLimpia = row.notas.replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
@@ -343,37 +372,44 @@ export const CloudSyncService = {
         const normalizarEstadoDbParaUI = (dbEstado?: string): EstadoCotizacion => {
           if (!dbEstado) return 'Borrador';
           const e = dbEstado.toUpperCase().trim();
-          if (e === 'APROBADA' || e === 'ACEPTADA' || e.includes('APROB') || e.includes('ACEPT')) return 'Aceptada';
           if (e === 'FACTURADA' || e.includes('FACTUR')) return 'Facturada';
-          if (e === 'ENVIADA' || e.includes('ENVIAD')) return 'Enviada';
+          if (e === 'APROBADA' || e === 'ACEPTADA' || e.includes('APROB') || e.includes('ACEPT')) return 'Aceptada';
           if (e === 'PARCIAL' || e.includes('PARCIAL')) return 'Parcial';
+          if (e === 'ENVIADA' || e.includes('ENVIAD')) return 'Enviada';
           if (e === 'CANCELADA' || e === 'RECHAZADA' || e.includes('RECHAZ')) return 'Rechazada';
           return 'Borrador';
         };
+
+        const totalFinal = metaFinanciera.total !== undefined ? Number(metaFinanciera.total) : (Number(row.total) || 0);
+        const abonoFinal = metaFinanciera.abono !== undefined ? Number(metaFinanciera.abono) : (row.abono !== undefined ? Number(row.abono) : 0);
+        const saldoFinal = metaFinanciera.saldo_pendiente !== undefined
+          ? Number(metaFinanciera.saldo_pendiente)
+          : (row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, totalFinal - abonoFinal));
+        const estadoPagoFinal = metaFinanciera.estado_pago || row.estado_pago || (abonoFinal > 0 ? (abonoFinal >= totalFinal && totalFinal > 0 ? 'Pagado Total' : 'Abono Parcial') : 'Pendiente');
 
         return {
           id: row.id,
           numero_cot: row.numero_cot,
           cliente: clienteMapeado,
-          vendedor: row.vendedor_nombre || 'Equipo WJGEEKS',
-          fecha: row.fecha_emision || row.fecha || new Date().toISOString().slice(0, 10),
-          estado: normalizarEstadoDbParaUI(row.estado),
+          vendedor: metaFinanciera.vendedor || row.vendedor_nombre || 'Equipo WJGEEKS',
+          fecha: metaFinanciera.fecha || row.fecha_emision || row.fecha || new Date().toISOString().slice(0, 10),
+          estado: metaFinanciera.estado_ui || normalizarEstadoDbParaUI(row.estado),
           items: (itemsRestaurados && itemsRestaurados.length > 0) ? itemsRestaurados : itemsMapeados,
-          subtotal: Number(row.subtotal) || 0,
+          subtotal: metaFinanciera.subtotal !== undefined ? Number(metaFinanciera.subtotal) : (Number(row.subtotal) || 0),
           iva_porcentaje: metaFinanciera.iva_porcentaje !== undefined ? metaFinanciera.iva_porcentaje : (Number(row.iva_porcentaje) || 0),
           iva_monto: metaFinanciera.iva_monto,
-          descuento_porcentaje: Number(row.descuento_porcentaje) || 0,
+          descuento_porcentaje: metaFinanciera.descuento_porcentaje !== undefined ? Number(metaFinanciera.descuento_porcentaje) : (Number(row.descuento_porcentaje) || 0),
           descuento_monto: metaFinanciera.descuento_monto,
           ahorro_volumen_total: metaFinanciera.ahorro_volumen_total,
-          total: Number(row.total) || 0,
-          tiempo_entrega_estimado: row.tiempo_entrega_estimado || '(3) Días hábiles',
+          total: totalFinal,
+          tiempo_entrega_estimado: metaFinanciera.tiempo_entrega_estimado || row.tiempo_entrega_estimado || '(3) Días hábiles',
           notas: notasLimpia,
           // Sincronización Financiera Unificada
-          abono: row.abono !== undefined ? Number(row.abono) : 0,
-          saldo_pendiente: row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Number(row.total || 0),
-          estado_pago: row.estado_pago || (row.abono > 0 ? (row.abono >= row.total ? 'Pagado Total' : 'Abono Parcial') : 'Pendiente'),
-          metodo_pago: row.metodo_pago || 'Bre-B',
-          comprobante_pago: row.comprobante_pago || undefined
+          abono: abonoFinal,
+          saldo_pendiente: saldoFinal,
+          estado_pago: estadoPagoFinal,
+          metodo_pago: metaFinanciera.metodo_pago || row.metodo_pago || 'Bre-B',
+          comprobante_pago: metaFinanciera.comprobante_pago || row.comprobante_pago || undefined
         };
       });
     } catch (e) {
@@ -436,41 +472,80 @@ export const CloudSyncService = {
         'Entregado': 'Entregado'
       };
 
+      const parseOtMeta = (rawText?: string | null): { clean: string; meta: Record<string, any> } => {
+        if (!rawText || typeof rawText !== 'string') return { clean: '', meta: {} };
+        const prefix = '<!-- WJ_OT_META:';
+        const suffix = ':WJ_OT_META -->';
+        const start = rawText.indexOf(prefix);
+        const end = rawText.indexOf(suffix);
+        if (start !== -1 && end > start) {
+          try {
+            const parsed = JSON.parse(decodeURIComponent(rawText.substring(start + prefix.length, end)));
+            const clean = rawText.replace(/<!-- WJ_OT_META:[\s\S]*?:WJ_OT_META -->/g, '').trim();
+            return { clean, meta: parsed || {} };
+          } catch (_) {}
+        }
+        return { clean: rawText, meta: {} };
+      };
+
       return data.map((row: any): OrdenTrabajo => {
-        const rawEstado = row.estado_actual || row.estado || 'EN_COLA_OT';
-        const estadoFinal: EstadoOT = dbToUiEstadoMap[rawEstado] || 'En Cola';
-        const total = Number(row.total_ot) || Number(row.precio_cobrado) || 0;
-        const abono = Number(row.total_abonado) || Number(row.abono) || 0;
-        const saldo = row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, total - abono);
+        const descParsed = parseOtMeta(row.item_descripcion);
+        const obsParsed = parseOtMeta(row.observaciones);
+        const meta = { ...obsParsed.meta, ...descParsed.meta };
+
+        const rawEstado = meta.estado_ui || row.estado_actual || row.estado || 'EN_COLA_OT';
+        const estadoFinal: EstadoOT = dbToUiEstadoMap[rawEstado] || (meta.estado_ui as EstadoOT) || 'En Cola';
+
+        const rawTotal = meta.total !== undefined
+          ? Number(meta.total)
+          : (row.total_ot !== null && row.total_ot !== undefined ? Number(row.total_ot) : (Number(row.precio_cobrado) || 0));
+        // Resolución estricta de abono preservando exactamente el 0 tras reversiones (nunca usar `||`)
+        const rawAbono = meta.abono !== undefined
+          ? Number(meta.abono)
+          : (row.total_abonado !== null && row.total_abonado !== undefined
+            ? Number(row.total_abonado)
+            : (row.abono !== null && row.abono !== undefined ? Number(row.abono) : 0));
+        const total = isNaN(rawTotal) ? 0 : rawTotal;
+        const abono = isNaN(rawAbono) ? 0 : Math.max(0, rawAbono);
+        const saldo = meta.saldo_pendiente !== undefined
+          ? Math.max(0, Number(meta.saldo_pendiente))
+          : (row.saldo_pendiente !== null && row.saldo_pendiente !== undefined ? Math.max(0, Number(row.saldo_pendiente)) : Math.max(0, total - abono));
+
+        const estadoPagoFinal: any = meta.estado_pago || row.estado_pago || (saldo <= 0 && total > 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente'));
 
         return {
           id: row.id,
           numero_ot: row.numero_ot,
-          cotizacion_id: row.cotizacion_id || '',
-          cotizacion_numero: (row.numero_ot || '').replace(/^OT-/, 'COT-'),
+          cotizacion_id: meta.cotizacion_id || row.cotizacion_id || '',
+          cotizacion_numero: meta.cotizacion_numero || row.cotizacion_numero || '',
           cliente_nombre: row.cliente_nombre || 'Cliente General',
           cliente_telefono: row.cliente_telefono || '',
-          item_nombre: row.item_nombre || row.item_descripcion || 'Pieza 3D',
+          item_nombre: row.item_nombre || descParsed.clean || 'Pieza 3D',
           cantidad: Number(row.cantidad) || 1,
           estado: estadoFinal,
           operador_asignado: row.operador_asignado || 'Operador 3D',
           tracking_token: row.tracking_token || undefined,
           stl_url: row.stl_url || undefined,
           fecha_creacion: row.created_at || new Date().toISOString(),
-          tiempo_impresion_min: 0,
-          tiempo_armado_min: 0,
-          tiempo_pintura_min: 0,
-          resina_nombre: 'Resina Standard',
-          maquina_nombre: 'Anycubic MONO 4',
-          va_pintado: false,
-          tiene_empaque: false,
-          detalles_tecnicos: row.item_descripcion || row.observaciones || '',
-          pos_venta_id: row.pos_venta_id || undefined,
+          tiempo_impresion_min: meta.tiempo_impresion_min !== undefined ? Number(meta.tiempo_impresion_min) : 0,
+          tiempo_armado_min: meta.tiempo_armado_min !== undefined ? Number(meta.tiempo_armado_min) : 0,
+          tiempo_pintura_min: meta.tiempo_pintura_min !== undefined ? Number(meta.tiempo_pintura_min) : 0,
+          peso_estimado_g: meta.peso_estimado_g !== undefined ? Number(meta.peso_estimado_g) : 0,
+          tecnologia: meta.tecnologia || undefined,
+          resina_id: meta.resina_id || undefined,
+          resina_nombre: meta.resina_nombre || 'Resina Standard',
+          filamento_id: meta.filamento_id || undefined,
+          filamento_nombre: meta.filamento_nombre || undefined,
+          maquina_nombre: meta.maquina_nombre || 'Anycubic MONO 4',
+          va_pintado: Boolean(meta.va_pintado),
+          tiene_empaque: Boolean(meta.tiene_empaque),
+          detalles_tecnicos: descParsed.clean || obsParsed.clean || '',
+          pos_venta_id: meta.pos_venta_id || row.pos_venta_id || undefined,
           precio_cobrado: total,
           abono,
           saldo_pendiente: saldo,
-          estado_pago: row.estado_pago || (saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
-          metodo_pago: row.metodo_pago || 'Bre-B',
+          estado_pago: estadoPagoFinal,
+          metodo_pago: meta.metodo_pago || row.metodo_pago || 'Bre-B',
           comprobante_pago: row.comprobante_pago || undefined
         };
       });
@@ -480,11 +555,10 @@ export const CloudSyncService = {
     }
   },
 
-  // 5. Traer Cuentas de Cobro desde la Nube (Ledger Unificado con ordenes_trabajo)
+  // 5. Traer Cuentas de Cobro desde la Nube (Ledger Unificado con ordenes_trabajo sin falsos cruces)
   async fetchCuentas(): Promise<CuentaCobro[] | null> {
     if (!this.isAvailable()) return null;
     try {
-      // 1. Intento primario: Consultar directamente ordenes_trabajo (Fuente de verdad)
       const { data: otData, error: otErr } = await supabase!
         .from('ordenes_trabajo')
         .select('*')
@@ -492,17 +566,40 @@ export const CloudSyncService = {
 
       if (!otErr && otData) {
         return otData.map((row: any): CuentaCobro => {
-          const total = Number(row.total_ot) || Number(row.precio_cobrado) || 0;
-          const abono = Number(row.total_abonado) || Number(row.abono) || 0;
-          const saldo = row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, total - abono);
+          let meta: Record<string, any> = {};
+          const rawText = row.item_descripcion || row.observaciones || '';
+          const prefix = '<!-- WJ_OT_META:';
+          const suffix = ':WJ_OT_META -->';
+          const s = rawText.indexOf(prefix);
+          const eIdx = rawText.indexOf(suffix);
+          if (s !== -1 && eIdx > s) {
+            try {
+              meta = JSON.parse(decodeURIComponent(rawText.substring(s + prefix.length, eIdx))) || {};
+            } catch (_) {}
+          }
+          const cleanDesc = rawText.replace(/<!-- WJ_OT_META:[\s\S]*?:WJ_OT_META -->/g, '').trim();
+
+          const rawTotal = meta.total !== undefined
+            ? Number(meta.total)
+            : (row.total_ot !== null && row.total_ot !== undefined ? Number(row.total_ot) : (Number(row.precio_cobrado) || 0));
+          const rawAbono = meta.abono !== undefined
+            ? Number(meta.abono)
+            : (row.total_abonado !== null && row.total_abonado !== undefined
+              ? Number(row.total_abonado)
+              : (row.abono !== null && row.abono !== undefined ? Number(row.abono) : 0));
+          const total = isNaN(rawTotal) ? 0 : rawTotal;
+          const abono = isNaN(rawAbono) ? 0 : Math.max(0, rawAbono);
+          const saldo = meta.saldo_pendiente !== undefined
+            ? Math.max(0, Number(meta.saldo_pendiente))
+            : (row.saldo_pendiente !== null && row.saldo_pendiente !== undefined ? Math.max(0, Number(row.saldo_pendiente)) : Math.max(0, total - abono));
           const numOT = row.numero_ot || 'OT-000';
           const numCC = numOT.startsWith('CC-') ? numOT : `CC-${numOT.replace(/^OT-/, '')}`;
 
           return {
             id: row.id,
             numero_cc: numCC,
-            cotizacion_id: row.cotizacion_id || '',
-            cotizacion_numero: numOT.replace(/^OT-/, 'COT-'),
+            cotizacion_id: meta.cotizacion_id || row.cotizacion_id || '',
+            cotizacion_numero: meta.cotizacion_numero || row.cotizacion_numero || '',
             cliente: {
               id: row.cliente_id || `cli-${row.id}`,
               codigo: 1,
@@ -512,11 +609,12 @@ export const CloudSyncService = {
               correo: ''
             },
             fecha_emision: (row.created_at || new Date().toISOString()).slice(0, 10),
-            items_resumen: row.item_nombre || row.item_descripcion || 'Servicios de Impresión 3D y Manufactura',
+            items_resumen: row.item_nombre || cleanDesc || 'Servicios de Impresión 3D y Manufactura',
             total,
             abono,
             saldo_pendiente: saldo,
-            estado_pago: (row.estado_pago as any) || (saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
+            estado_pago: (meta.estado_pago as any) || (row.estado_pago as any) || (saldo <= 0 && total > 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente')),
+            metodo_pago: meta.metodo_pago || row.metodo_pago || 'Bre-B',
             comprobante_url: row.comprobante_pago || undefined
           };
         });
@@ -575,40 +673,58 @@ export const CloudSyncService = {
         return 'BORRADOR';
       };
 
-      // Serializar snapshot de items y metadatos financieros dentro de notas de forma segura para conservar el 100% de detalles técnicos
+      // Serializar snapshot completo de items y metadatos financieros/estado dentro de notas para garantizar permanencia 100%
       const snapshotPrefix = '<!-- WJ_ITEMS_SNAPSHOT:';
       const snapshotSuffix = ':WJ_ITEMS_SNAPSHOT -->';
       const rawNotas = (cot.notas || '').replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
+      const totalCot = Number(cot.total) || 0;
+      const abonoCot = Number(cot.abono) || 0;
+      const saldoCot = cot.saldo_pendiente !== undefined ? Number(cot.saldo_pendiente) : Math.max(0, totalCot - abonoCot);
+      // Light-weight safety check para ítems con imágenes inline extremadamente grandes en redes móviles
+      const itemsParaSnapshot = (cot.items || []).map(it => {
+        if (it.imagen_url && it.imagen_url.startsWith('data:image/') && it.imagen_url.length > 400000) {
+          return { ...it, imagen_url: undefined };
+        }
+        return it;
+      });
       const payloadSnapshot = {
-        items: cot.items || [],
+        items: itemsParaSnapshot,
         iva_porcentaje: cot.iva_porcentaje || 0,
         iva_monto: cot.iva_monto || 0,
+        descuento_porcentaje: cot.descuento_porcentaje || 0,
         descuento_monto: cot.descuento_monto || 0,
-        ahorro_volumen_total: cot.ahorro_volumen_total || 0
+        ahorro_volumen_total: cot.ahorro_volumen_total || 0,
+        subtotal: Number(cot.subtotal) || 0,
+        total: totalCot,
+        estado_ui: cot.estado,
+        vendedor: cot.vendedor || 'Equipo WJGEEKS',
+        fecha: cot.fecha || new Date().toISOString().slice(0, 10),
+        tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '(3) Días hábiles',
+        estado_pago: cot.estado_pago || (saldoCot <= 0 && totalCot > 0 ? 'Pagado Total' : abonoCot > 0 ? 'Abono Parcial' : 'Pendiente'),
+        abono: abonoCot,
+        saldo_pendiente: saldoCot,
+        metodo_pago: cot.metodo_pago || 'Bre-B',
+        comprobante_pago: cot.comprobante_pago || undefined
       };
       const encodedSnapshot = encodeURIComponent(JSON.stringify(payloadSnapshot));
       const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedSnapshot}${snapshotSuffix}`;
 
-      // 5.2 Upsert de la cotización por numero_cot con columnas canónicas
+      // 5.2 Upsert directo con columnas canónicas compatibles (evita errores 400 PGRST204 en consola)
+      const canonicalPayload = {
+        numero_cot: cot.numero_cot,
+        cliente_id: clienteId,
+        fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
+        estado: normalizarEstadoCotizacion(cot.estado),
+        subtotal: Number(cot.subtotal) || 0,
+        descuento_porcentaje: cot.descuento_porcentaje || 0,
+        total: totalCot,
+        tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '3 a 5 días hábiles',
+        notas: notasConSnapshot
+      };
+
       const { data: cotData, error: cotErr } = await supabase!
         .from('cotizaciones')
-        .upsert({
-          numero_cot: cot.numero_cot,
-          cliente_id: clienteId,
-          cliente_nombre: cot.cliente?.nombre || 'Cliente General',
-          cliente_telefono: cot.cliente?.telefono || '3000000000',
-          fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
-          estado: normalizarEstadoCotizacion(cot.estado),
-          subtotal: Number(cot.subtotal) || 0,
-          descuento_porcentaje: cot.descuento_porcentaje || 0,
-          total: Number(cot.total) || 0,
-          tiempo_entrega_estimado: cot.tiempo_entrega_estimado || '3 a 5 días hábiles',
-          notas: notasConSnapshot,
-          abono: Number(cot.abono) || 0,
-          estado_pago: cot.estado_pago || 'Pendiente',
-          metodo_pago: cot.metodo_pago || 'Bre-B',
-          comprobante_pago: cot.comprobante_pago || null
-        }, { onConflict: 'numero_cot' })
+        .upsert(canonicalPayload, { onConflict: 'numero_cot' })
         .select('id')
         .single();
 
@@ -619,28 +735,30 @@ export const CloudSyncService = {
       }
 
       // 5.3 Actualizar piezas / items de la cotización
-      if (cotData?.id && cot.items && cot.items.length > 0) {
-        // Limpiar ítems anteriores de esta cotización para evitar duplicados
+      if (cotData?.id) {
+        // Limpiar ítems anteriores de esta cotización para evitar duplicados o piezas borradas
         await supabase!.from('cotizacion_items').delete().eq('cotizacion_id', cotData.id);
 
-        const itemsPayload = cot.items.map(it => ({
-          cotizacion_id: cotData.id,
-          nombre_pieza: it.nombre_item || 'Pieza 3D',
-          cantidad: Number(it.cantidad) || 1,
-          precio_unitario: Number(it.precio_unitario) || 0,
-          subtotal: Number(it.precio_total) || 0,
-          tiempo_horas: Number(((it.tiempo_impresion_min || 0) / 60).toFixed(2)),
-          peso_gramos: Number((it.peso_estimado_g || 0).toFixed(2)),
-          tecnologia: it.tecnologia === 'FDM_FILAMENTO'
-            ? 'FDM'
-            : (it.tecnologia === 'CORTE_LASER' || it.tecnologia === 'GRABADO_LASER')
-            ? 'LASER'
-            : it.tecnologia === 'CNC_ROUTER'
-            ? 'CNC'
-            : 'SLA'
-        }));
+        if (cot.items && cot.items.length > 0) {
+          const itemsPayload = cot.items.map(it => ({
+            cotizacion_id: cotData.id,
+            nombre_pieza: it.nombre_item || 'Pieza 3D',
+            cantidad: Number(it.cantidad) || 1,
+            precio_unitario: Number(it.precio_unitario) || 0,
+            subtotal: Number(it.precio_total) || 0,
+            tiempo_horas: Number(((it.tiempo_impresion_min || 0) / 60).toFixed(2)),
+            peso_gramos: Number((it.peso_estimado_g || 0).toFixed(2)),
+            tecnologia: it.tecnologia === 'FDM_FILAMENTO'
+              ? 'FDM'
+              : (it.tecnologia === 'CORTE_LASER' || it.tecnologia === 'GRABADO_LASER')
+              ? 'LASER'
+              : it.tecnologia === 'CNC_ROUTER'
+              ? 'CNC'
+              : 'SLA'
+          }));
 
-        await supabase!.from('cotizacion_items').insert(itemsPayload);
+          await supabase!.from('cotizacion_items').insert(itemsPayload);
+        }
       }
 
       return true;
@@ -651,7 +769,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 6. Guardar o Actualizar una Orden de Trabajo (OT) en Supabase (Core V3 Compatible)
+  // 6. Guardar o Actualizar una Orden de Trabajo (OT) en Supabase (Core V3 Compatible + Metadatos anti-cruce)
   async saveOrdenTrabajo(ot: OrdenTrabajo, isFlushingQueue: boolean = false): Promise<boolean> {
     if (!this.isAvailable()) {
       if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'orden', payload: ot });
@@ -659,8 +777,8 @@ export const CloudSyncService = {
     }
     try {
       const totalOtCalc = Number(ot.precio_cobrado || (ot.abono || 0) + (ot.saldo_pendiente || 0) || 0);
-      const totalAbonadoCalc = Number(ot.abono || 0);
-      const saldoCalc = Math.max(0, totalOtCalc - totalAbonadoCalc);
+      const totalAbonadoCalc = Math.max(0, Number(ot.abono ?? 0));
+      const saldoCalc = ot.saldo_pendiente !== undefined ? Math.max(0, Number(ot.saldo_pendiente)) : Math.max(0, totalOtCalc - totalAbonadoCalc);
 
       const estadoMap: Record<string, string> = {
         'En Cola': 'EN_COLA_OT',
@@ -679,17 +797,44 @@ export const CloudSyncService = {
         estadoDb = 'CONTROL_CALIDAD';
       }
 
+      const rawDesc = (ot.detalles_tecnicos || ot.item_nombre || 'Pieza 3D').replace(/<!-- WJ_OT_META:[\s\S]*?:WJ_OT_META -->/g, '').trim();
+      const otMeta = {
+        cotizacion_id: ot.cotizacion_id || '',
+        cotizacion_numero: ot.cotizacion_numero || '',
+        pos_venta_id: ot.pos_venta_id || '',
+        total: totalOtCalc,
+        abono: totalAbonadoCalc,
+        saldo_pendiente: saldoCalc,
+        estado_ui: ot.estado,
+        estado_pago: ot.estado_pago || (saldoCalc <= 0 && totalOtCalc > 0 ? 'Pagado Total' : (totalAbonadoCalc > 0 ? 'Abono Parcial' : 'Pendiente')),
+        metodo_pago: ot.metodo_pago || 'Bre-B',
+        tiempo_impresion_min: ot.tiempo_impresion_min || 0,
+        tiempo_armado_min: ot.tiempo_armado_min || 0,
+        tiempo_pintura_min: ot.tiempo_pintura_min || 0,
+        peso_estimado_g: ot.peso_estimado_g || 0,
+        tecnologia: ot.tecnologia || undefined,
+        resina_id: ot.resina_id || undefined,
+        resina_nombre: ot.resina_nombre || undefined,
+        filamento_id: ot.filamento_id || undefined,
+        filamento_nombre: ot.filamento_nombre || undefined,
+        maquina_nombre: ot.maquina_nombre || undefined,
+        va_pintado: Boolean(ot.va_pintado),
+        tiene_empaque: Boolean(ot.tiene_empaque)
+      };
+      const metaTag = `<!-- WJ_OT_META:${encodeURIComponent(JSON.stringify(otMeta))}:WJ_OT_META -->`;
+      const descConMeta = `${rawDesc}\n${metaTag}`.trim();
+
       const payloadV3: any = {
         numero_ot: ot.numero_ot,
         cliente_nombre: ot.cliente_nombre || 'Cliente',
         cliente_telefono: ot.cliente_telefono || 'Sin teléfono',
         item_nombre: ot.item_nombre || null,
-        item_descripcion: ot.item_nombre || 'Pieza 3D',
+        item_descripcion: descConMeta,
         cantidad: Number(ot.cantidad) || 1,
         total_ot: totalOtCalc,
         total_abonado: totalAbonadoCalc,
         estado_actual: estadoDb,
-        estado_pago: ot.estado_pago || (saldoCalc <= 0 ? 'Pagado Total' : (totalAbonadoCalc > 0 ? 'Abono Parcial' : 'Pendiente')),
+        estado_pago: otMeta.estado_pago,
         pos_venta_id: ot.pos_venta_id || null,
         stl_url: ot.stl_url || null,
         cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null
@@ -715,12 +860,12 @@ export const CloudSyncService = {
         cantidad: ot.cantidad,
         estado: ot.estado,
         operador_asignado: ot.operador_asignado || 'Operador 3D',
-        observaciones: ot.detalles_tecnicos || null,
+        observaciones: descConMeta,
         cotizacion_id: (ot.cotizacion_id && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ot.cotizacion_id)) ? ot.cotizacion_id : null,
         pos_venta_id: ot.pos_venta_id || null,
         precio_cobrado: ot.precio_cobrado || null,
-        abono: ot.abono ?? 0,
-        estado_pago: ot.estado_pago || 'Pendiente',
+        abono: totalAbonadoCalc,
+        estado_pago: otMeta.estado_pago,
         metodo_pago: ot.metodo_pago || 'Bre-B',
         comprobante_pago: ot.comprobante_pago || null
       };
@@ -767,27 +912,47 @@ export const CloudSyncService = {
     }
   },
 
-  // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase (sincronizada en ordenes_trabajo)
+  // 7. Guardar o Actualizar una Cuenta de Cobro en Supabase (vinculación exacta sin inventar códigos OT)
   async saveCuentaCobro(cc: CuentaCobro, isFlushingQueue: boolean = false): Promise<boolean> {
     if (!this.isAvailable()) {
       if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
       return false;
     }
     try {
-      const numOT = cc.numero_cc.replace(/^CC-/, 'OT-');
-      const { error } = await supabase!
-        .from('ordenes_trabajo')
-        .update({
-          total_abonado: cc.abono,
-          estado_pago: cc.estado_pago,
-          updated_at: new Date().toISOString()
-        })
-        .eq('numero_ot', numOT);
+      const updatePayload: any = {
+        total_abonado: Math.max(0, Number(cc.abono) || 0),
+        estado_pago: cc.estado_pago,
+        updated_at: new Date().toISOString()
+      };
 
-      if (error && !isFlushingQueue) {
-        this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
+      const isUuidId = Boolean(cc.id && UUID_REGEX.test(cc.id));
+      const explicitOtInResumen = cc.items_resumen?.match(/\b(OT-\d+)\b/i)?.[1];
+      const explicitNumeroOt = cc.numero_cc?.startsWith('OT-') ? cc.numero_cc : explicitOtInResumen;
+
+      if (isUuidId) {
+        const { error } = await supabase!
+          .from('ordenes_trabajo')
+          .update(updatePayload)
+          .eq('id', cc.id);
+        if (error && !isFlushingQueue) {
+          this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
+        }
+        return !error;
       }
-      return !error;
+
+      if (explicitNumeroOt) {
+        const { error } = await supabase!
+          .from('ordenes_trabajo')
+          .update(updatePayload)
+          .eq('numero_ot', explicitNumeroOt);
+        if (error && !isFlushingQueue) {
+          this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
+        }
+        return !error;
+      }
+
+      // Cuenta de cobro independiente sin OT específica: no sobrescribir órdenes ajenas
+      return true;
     } catch (e) {
       console.warn('Exception saving CC to cloud:', e);
       if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'cuenta', payload: cc });
@@ -950,6 +1115,7 @@ export const CloudSyncService = {
         let ivaPorcentajeVal = Number(row.iva_porcentaje) || 0;
         let ivaMontoVal = Number(row.iva_monto) || 0;
         let notasLimpia = row.notas || '';
+        let snapshotMeta: Record<string, any> = {};
 
         if (row.notas && row.notas.includes('<!-- WJ_POS_FISCAL:')) {
           try {
@@ -957,6 +1123,7 @@ export const CloudSyncService = {
             const end = row.notas.indexOf(':WJ_POS_FISCAL -->');
             if (end > start) {
               const parsed = JSON.parse(decodeURIComponent(row.notas.substring(start, end)));
+              snapshotMeta = parsed || {};
               subtotalVal = parsed.subtotal ?? subtotalVal;
               ivaPorcentajeVal = parsed.iva_porcentaje ?? ivaPorcentajeVal;
               ivaMontoVal = parsed.iva_monto ?? ivaMontoVal;
@@ -965,32 +1132,42 @@ export const CloudSyncService = {
           } catch (_) {}
         }
 
+        const totalFinal = snapshotMeta.total !== undefined ? Number(snapshotMeta.total) : (Number(row.total) || 0);
+        const abonoFinal = snapshotMeta.abono !== undefined ? Number(snapshotMeta.abono) : (Number(row.abono) || 0);
+        const saldoFinal = snapshotMeta.saldo_pendiente !== undefined
+          ? Number(snapshotMeta.saldo_pendiente)
+          : (row.saldo_pendiente !== undefined ? Number(row.saldo_pendiente) : Math.max(0, totalFinal - abonoFinal));
+        const estadoPagoFinal = snapshotMeta.estado_pago || row.estado_pago || (saldoFinal <= 0 && totalFinal > 0 ? 'Pagado Total' : abonoFinal > 0 ? 'Abono Parcial' : 'Pendiente');
+
         return {
           id: row.id,
           numero_venta: row.numero_venta,
           foto_url: row.foto_url || undefined,
-          nombre_producto: row.nombre_producto,
-          cliente_nombre: row.cliente_nombre,
-          cliente_telefono: row.cliente_telefono || '',
+          nombre_producto: snapshotMeta.nombre_producto || row.nombre_producto,
+          cliente_nombre: snapshotMeta.cliente_nombre || row.cliente_nombre,
+          cliente_telefono: snapshotMeta.cliente_telefono ?? row.cliente_telefono ?? '',
           subtotal: subtotalVal,
           iva_porcentaje: ivaPorcentajeVal,
           iva_monto: ivaMontoVal,
           iva_regimen_nota: ivaPorcentajeVal === 0 ? 'Régimen Simple / No Responsable' : undefined,
-          total: Number(row.total) || 0,
-          abono: Number(row.abono) || 0,
-          saldo_pendiente: Number(row.saldo_pendiente) || 0,
-          estado_pago: row.estado_pago as any,
-          fecha_venta: row.fecha_venta || new Date().toISOString().slice(0, 10),
-          fecha_prometida_pago: row.fecha_prometida_pago || undefined,
+          total: totalFinal,
+          abono: abonoFinal,
+          saldo_pendiente: saldoFinal,
+          estado_pago: estadoPagoFinal as any,
+          fecha_venta: snapshotMeta.fecha_venta || row.fecha_venta || new Date().toISOString().slice(0, 10),
+          fecha_prometida_pago: snapshotMeta.fecha_prometida_pago !== undefined ? (snapshotMeta.fecha_prometida_pago || undefined) : (row.fecha_prometida_pago || undefined),
           notas: notasLimpia,
-          metodo_pago: row.metodo_pago || 'Nequi',
+          metodo_pago: snapshotMeta.metodo_pago || row.metodo_pago || 'Bre-B',
           creado_por: row.creado_por || 'Equipo WJGEEKS',
-          requiere_ot: Boolean(row.requiere_ot),
-          estado_diseno: row.estado_diseno || undefined,
-          ot_id: row.ot_id || undefined,
-          ot_numero: row.ot_numero || undefined,
+          requiere_ot: snapshotMeta.requiere_ot !== undefined ? Boolean(snapshotMeta.requiere_ot) : Boolean(row.requiere_ot),
+          estado_diseno: snapshotMeta.estado_diseno !== undefined ? (snapshotMeta.estado_diseno || undefined) : (row.estado_diseno || undefined),
+          ot_id: snapshotMeta.ot_id !== undefined ? (snapshotMeta.ot_id || undefined) : (row.ot_id || undefined),
+          ot_numero: snapshotMeta.ot_numero !== undefined ? (snapshotMeta.ot_numero || undefined) : (row.ot_numero || undefined),
           enlace_diseno: row.enlace_diseno || undefined,
-          notas_diseno: row.notas_diseno || undefined
+          notas_diseno: row.notas_diseno || undefined,
+          producto_stock_id: row.producto_stock_id || undefined,
+          descontar_stock: row.descontar_stock !== undefined ? Boolean(row.descontar_stock) : undefined,
+          cantidad_vendida: row.cantidad_vendida !== undefined ? Number(row.cantidad_vendida) : undefined
         };
       });
     } catch (e) {
@@ -1014,30 +1191,48 @@ export const CloudSyncService = {
         subtotal: venta.subtotal || venta.total,
         iva_porcentaje: venta.iva_porcentaje || 0,
         iva_monto: venta.iva_monto || 0,
-        iva_regimen_nota: venta.iva_regimen_nota || 'Régimen Simple / No Responsable'
+        iva_regimen_nota: venta.iva_regimen_nota || 'Régimen Simple / No Responsable',
+        total: Number(venta.total) || 0,
+        abono: Number(venta.abono) || 0,
+        saldo_pendiente: Number(venta.saldo_pendiente) || 0,
+        estado_pago: venta.estado_pago,
+        metodo_pago: venta.metodo_pago || 'Bre-B',
+        fecha_venta: venta.fecha_venta,
+        fecha_prometida_pago: venta.fecha_prometida_pago || null,
+        nombre_producto: venta.nombre_producto,
+        cliente_nombre: venta.cliente_nombre,
+        cliente_telefono: venta.cliente_telefono || '',
+        requiere_ot: Boolean(venta.requiere_ot),
+        estado_diseno: venta.estado_diseno || null,
+        ot_id: venta.ot_id || null,
+        ot_numero: venta.ot_numero || null
       };
       const notasConFiscal = `${rawNotas}\n${snapshotPrefix}${encodeURIComponent(JSON.stringify(fiscalData))}${snapshotSuffix}`;
 
-      const payload = {
+      const corePayload = {
         id: venta.id,
         numero_venta: venta.numero_venta,
         foto_url: venta.foto_url || null,
         nombre_producto: venta.nombre_producto,
         cliente_nombre: venta.cliente_nombre,
         cliente_telefono: venta.cliente_telefono || null,
-        total: venta.total,
-        abono: venta.abono,
-        saldo_pendiente: venta.saldo_pendiente,
+        total: Number(venta.total) || 0,
+        abono: Number(venta.abono) || 0,
+        saldo_pendiente: Number(venta.saldo_pendiente) || 0,
         estado_pago: venta.estado_pago,
         fecha_venta: venta.fecha_venta,
         fecha_prometida_pago: venta.fecha_prometida_pago || null,
         notas: notasConFiscal,
-        metodo_pago: venta.metodo_pago || 'Nequi',
+        metodo_pago: venta.metodo_pago || 'Bre-B',
         creado_por: venta.creado_por || 'Equipo WJGEEKS',
         requiere_ot: Boolean(venta.requiere_ot),
         estado_diseno: venta.estado_diseno || null,
         ot_id: venta.ot_id || null,
-        ot_numero: venta.ot_numero || null,
+        ot_numero: venta.ot_numero || null
+      };
+
+      const fullPayload = {
+        ...corePayload,
         enlace_diseno: venta.enlace_diseno || null,
         notas_diseno: venta.notas_diseno || null,
         producto_stock_id: venta.producto_stock_id || null,
@@ -1046,9 +1241,17 @@ export const CloudSyncService = {
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase!
+      let { error } = await supabase!
         .from('ventas_express')
-        .upsert(payload, { onConflict: 'id' });
+        .upsert(fullPayload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Primary upsert venta_express falló, intentando corePayload:', error.message);
+        const fallbackRes = await supabase!
+          .from('ventas_express')
+          .upsert(corePayload, { onConflict: 'id' });
+        error = fallbackRes.error;
+      }
 
       if (error) {
         console.warn('Error saving venta_express in Supabase:', error.message);
@@ -1187,7 +1390,7 @@ export const CloudSyncService = {
   },
 
   // Eliminar Cuenta de Cobro en Supabase (sincronizado con ordenes_trabajo / abonos_pagos)
-  async deleteCuentaCobro(id: string, numero_cc?: string): Promise<boolean> {
+  async deleteCuentaCobro(_id: string, numero_cc?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
       const numeroOT = numero_cc?.replace(/^CC-/, 'OT-') || numero_cc;
@@ -2095,8 +2298,8 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.1 Guardar transacción centralizada en Ledger Inmutable (abonos_pagos Core V3) con Anti-Double-Click 60s
-  async savePayment(payment: PaymentRecord): Promise<boolean> {
+  // 21.1 Guardar transacción centralizada en Ledger Inmutable (abonos_pagos Core V3) con Anti-Double-Click 5s
+  async savePayment(payment: PaymentRecord, skipDedup: boolean = false): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
       const montoNum = Number(payment.monto);
@@ -2105,21 +2308,23 @@ export const CloudSyncService = {
         return false;
       }
 
-      // Prevención de doble clic y cobros duplicados en intervalo menor a 5 segundos (antirrebote óptimo)
-      const dedupKey = `${payment.orden_trabajo_id || payment.cotizacion_id || payment.cuenta_cobro_id || payment.pos_venta_id || 'ot'}_${montoNum}_${(payment.referencia_pago || '').trim().toLowerCase()}`;
-      const lastSaved = recentPaymentsCache.get(dedupKey);
-      const now = Date.now();
-      if (lastSaved && (now - lastSaved) < 5000) {
-        const segRestantes = Math.round((5000 - (now - lastSaved)) / 1000);
-        console.warn(`[Anti-Double-Click] Cobro idéntico prevenido: ${dedupKey} (${segRestantes}s restantes antes de reintento).`);
-        return false;
-      }
-      recentPaymentsCache.set(dedupKey, now);
+      // Prevención de doble clic y cobros duplicados en intervalo menor a 5 segundos (excepto en reconciliación manual)
+      if (!skipDedup) {
+        const dedupKey = `${payment.orden_trabajo_id || payment.cotizacion_id || payment.cuenta_cobro_id || payment.pos_venta_id || 'ot'}_${montoNum}_${(payment.referencia_pago || '').trim().toLowerCase()}`;
+        const lastSaved = recentPaymentsCache.get(dedupKey);
+        const now = Date.now();
+        if (lastSaved && (now - lastSaved) < 5000) {
+          const segRestantes = Math.round((5000 - (now - lastSaved)) / 1000);
+          console.warn(`[Anti-Double-Click] Cobro idéntico prevenido: ${dedupKey} (${segRestantes}s restantes antes de reintento).`);
+          return false;
+        }
+        recentPaymentsCache.set(dedupKey, now);
 
-      // Limpieza periódica de llaves antiguas en caché
-      if (recentPaymentsCache.size > 200) {
-        for (const [key, ts] of recentPaymentsCache.entries()) {
-          if (now - ts > 10000) recentPaymentsCache.delete(key);
+        // Limpieza periódica de llaves antiguas en caché
+        if (recentPaymentsCache.size > 200) {
+          for (const [key, ts] of recentPaymentsCache.entries()) {
+            if (now - ts > 10000) recentPaymentsCache.delete(key);
+          }
         }
       }
 
@@ -2196,18 +2401,193 @@ export const CloudSyncService = {
         nota: payment.nota || null
       };
 
-      const { error: insertError } = await supabase!
+      let { error: insertError } = await supabase!
         .from('abonos_pagos')
         .insert(payload);
+
+      // Fallback compatible si pos_venta_id o cuenta_cobro_id aún no existen en el esquema
+      if (insertError && (insertError.code === 'PGRST204' || insertError.code === '42703' || /column/i.test(insertError.message || ''))) {
+        const corePayPayload = {
+          orden_trabajo_id: otUuid,
+          cotizacion_id: cotUuid,
+          monto: montoNum,
+          metodo_pago: metodoFinal,
+          referencia_transaccion: payment.referencia_pago || 'Registro Sistema',
+          comprobante_url: payment.comprobante_url || null,
+          cuenta_receptora: cuentaReceptora,
+          nota: payment.nota || null
+        };
+        const retryRes = await supabase!.from('abonos_pagos').insert(corePayPayload);
+        insertError = retryRes.error;
+      }
 
       if (insertError) {
         console.warn('Error asentando en abonos_pagos ledger:', insertError.message);
         return false;
       }
 
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      }
       return true;
     } catch (e: any) {
       console.warn('Exception saving payment in ledger:', e?.message || e);
+      return false;
+    }
+  },
+
+  // 21.1b Reconciliación Exacta de Abonos en abonos_pagos (Permite incrementar, corregir a la baja o reversar a $0)
+  async reconciliarPagoEnLedger(params: {
+    pos_venta_id?: string;
+    numero_venta?: string;
+    cotizacion_id?: string;
+    numero_cot?: string;
+    orden_trabajo_id?: string;
+    numero_ot?: string;
+    cuenta_cobro_id?: string;
+    nuevoAbonoTotal: number;
+    metodo_pago?: string;
+    comprobante_url?: string;
+    nota?: string;
+  }): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const nuevoAbono = Math.max(0, Math.round(Number(params.nuevoAbonoTotal) || 0));
+
+      // Resolver UUID real de OT si llegó numero_ot
+      let otUuid: string | undefined = (params.orden_trabajo_id && UUID_REGEX.test(params.orden_trabajo_id))
+        ? params.orden_trabajo_id
+        : undefined;
+      if (!otUuid && (params.numero_ot || (params.orden_trabajo_id && !UUID_REGEX.test(params.orden_trabajo_id)))) {
+        const numBuscar = params.numero_ot || params.orden_trabajo_id!;
+        try {
+          const { data: otRow } = await supabase!
+            .from('ordenes_trabajo')
+            .select('id')
+            .eq('numero_ot', numBuscar)
+            .maybeSingle();
+          if (otRow?.id && UUID_REGEX.test(otRow.id)) {
+            otUuid = otRow.id;
+          }
+        } catch (_) {}
+      }
+
+      // Resolver UUID real de Cotización si llegó numero_cot
+      let cotUuid: string | undefined = (params.cotizacion_id && UUID_REGEX.test(params.cotizacion_id))
+        ? params.cotizacion_id
+        : undefined;
+      if (!cotUuid && params.numero_cot) {
+        try {
+          const { data: cotRow } = await supabase!
+            .from('cotizaciones')
+            .select('id')
+            .eq('numero_cot', params.numero_cot)
+            .maybeSingle();
+          if (cotRow?.id && UUID_REGEX.test(cotRow.id)) {
+            cotUuid = cotRow.id;
+          }
+        } catch (_) {}
+      }
+
+      // Recolectar todos los asientos coincidentes en abonos_pagos sin duplicar por ID
+      const matchedMap = new Map<string, any>();
+      const conds: string[] = [];
+      if (params.pos_venta_id) conds.push(`pos_venta_id.eq.${params.pos_venta_id}`);
+      if (params.numero_venta) conds.push(`pos_venta_id.eq.${params.numero_venta}`);
+      if (otUuid) conds.push(`orden_trabajo_id.eq.${otUuid}`);
+      if (cotUuid) conds.push(`cotizacion_id.eq.${cotUuid}`);
+      if (params.cuenta_cobro_id && UUID_REGEX.test(params.cuenta_cobro_id)) {
+        conds.push(`cuenta_cobro_id.eq.${params.cuenta_cobro_id}`);
+      }
+
+      if (conds.length > 0) {
+        const { data: directRows, error: directErr } = await supabase!
+          .from('abonos_pagos')
+          .select('*')
+          .or(conds.join(','));
+        if (!directErr && directRows) {
+          directRows.forEach((r: any) => {
+            if (r?.id) matchedMap.set(r.id, r);
+          });
+        } else if (directErr) {
+          // Fallback compatible si pos_venta_id o cuenta_cobro_id no existen en la tabla
+          const safeConds: string[] = [];
+          if (otUuid) safeConds.push(`orden_trabajo_id.eq.${otUuid}`);
+          if (cotUuid) safeConds.push(`cotizacion_id.eq.${cotUuid}`);
+          if (safeConds.length > 0) {
+            const { data: fallbackRows } = await supabase!
+              .from('abonos_pagos')
+              .select('*')
+              .or(safeConds.join(','));
+            (fallbackRows || []).forEach((r: any) => {
+              if (r?.id) matchedMap.set(r.id, r);
+            });
+          }
+        }
+      }
+
+      const refsTexto = [params.numero_venta, params.numero_ot, params.numero_cot].filter(Boolean) as string[];
+      for (const ref of refsTexto) {
+        try {
+          const { data: noteRows } = await supabase!
+            .from('abonos_pagos')
+            .select('*')
+            .ilike('nota', `%${ref}%`);
+          (noteRows || []).forEach((r: any) => {
+            if (r?.id) matchedMap.set(r.id, r);
+          });
+        } catch (_) {}
+      }
+
+      const matchingRows = Array.from(matchedMap.values());
+      const sumaActual = Math.round(matchingRows.reduce((sum, r) => sum + (Number(r.monto) || 0), 0));
+
+      if (nuevoAbono === sumaActual) {
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+        return true;
+      }
+
+      // Caso A: Reverso total a $0 o Caso B: Corrección a la baja (< sumaActual)
+      if (nuevoAbono <= 0 || nuevoAbono < sumaActual) {
+        const idsToDelete = matchingRows.map(r => r.id).filter(Boolean);
+        if (idsToDelete.length > 0) {
+          await supabase!.from('abonos_pagos').delete().in('id', idsToDelete);
+        }
+        if (nuevoAbono <= 0) {
+          if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+          return true;
+        }
+        return await this.savePayment({
+          id: `pay-adj-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          monto: nuevoAbono,
+          metodo_pago: params.metodo_pago || 'Bre-B',
+          referencia_pago: 'Corrección / Ajuste de Abono',
+          comprobante_url: params.comprobante_url,
+          cotizacion_id: cotUuid || params.cotizacion_id,
+          orden_trabajo_id: otUuid || params.orden_trabajo_id,
+          pos_venta_id: params.pos_venta_id || params.numero_venta,
+          cuenta_cobro_id: params.cuenta_cobro_id,
+          origen_modulo: params.pos_venta_id ? 'pos' : (params.cuenta_cobro_id ? 'cuenta_cobro' : 'taller'),
+          nota: params.nota || `Ajuste de abono a $${nuevoAbono.toLocaleString('es-CO')} (${params.numero_venta || params.numero_ot || params.numero_cot || 'Registro'})`
+        }, true);
+      }
+
+      // Caso C: Incremento real (> sumaActual)
+      const delta = nuevoAbono - sumaActual;
+      return await this.savePayment({
+        id: `pay-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+        monto: delta,
+        metodo_pago: params.metodo_pago || 'Bre-B',
+        comprobante_url: params.comprobante_url,
+        cotizacion_id: cotUuid || params.cotizacion_id,
+        orden_trabajo_id: otUuid || params.orden_trabajo_id,
+        pos_venta_id: params.pos_venta_id || params.numero_venta,
+        cuenta_cobro_id: params.cuenta_cobro_id,
+        origen_modulo: params.pos_venta_id ? 'pos' : (params.cuenta_cobro_id ? 'cuenta_cobro' : 'taller'),
+        nota: params.nota || `Abono de $${delta.toLocaleString('es-CO')} (${params.numero_venta || params.numero_ot || params.numero_cot || 'Registro'})`
+      }, true);
+    } catch (e: any) {
+      console.warn('Exception in reconciliarPagoEnLedger:', e?.message || e);
       return false;
     }
   },
@@ -2262,13 +2642,11 @@ export const CloudSyncService = {
       }
 
       // 2. Eliminación directa en ledger único abonos_pagos
-      let deleted = false;
       if (isUuid) {
-        const { error: errAbonos } = await supabase!
+        await supabase!
           .from('abonos_pagos')
           .delete()
           .eq('id', cobroId);
-        if (!errAbonos) deleted = true;
       }
 
       // 3. Recálculo defensivo en ordenes_trabajo si no se activó el trigger

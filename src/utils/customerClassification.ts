@@ -1,4 +1,4 @@
-import { Cotizacion, Cliente } from '../types';
+import { Cotizacion } from '../types';
 import { VentaExpress } from '../types/pos';
 
 export type FiltroTipoCliente = 'todos' | 'nuevos' | 'recurrentes';

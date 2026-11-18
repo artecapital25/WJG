@@ -1,14 +1,7 @@
 import React from 'react';
 import { 
-  DollarSign, 
   Clock, 
-  ExternalLink, 
   Calendar, 
-  ChevronRight, 
-  CheckCircle2, 
-  AlertCircle,
-  Package,
-  Layers,
   ArrowUpRight
 } from 'lucide-react';
 import { CalendarEvent, TipoEventoCalendario } from '../../types';

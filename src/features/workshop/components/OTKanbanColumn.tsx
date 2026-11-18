@@ -27,7 +27,6 @@ interface OTKanbanColumnProps {
 
 export const OTKanbanColumn: React.FC<OTKanbanColumnProps> = React.memo(({
   titulo,
-  estado,
   ordenes,
   config,
   cotizaciones = [],

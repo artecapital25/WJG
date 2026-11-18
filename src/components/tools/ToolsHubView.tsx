@@ -10,15 +10,11 @@ import {
   Search, 
   Check, 
   Copy, 
-  Layers, 
   Cpu, 
   Palette, 
   FolderGit2, 
   Globe, 
-  X,
-  Share2,
-  HelpCircle,
-  Lightbulb
+  X
 } from 'lucide-react';
 import { HerramientaLink, CategoriaHerramienta } from '../../types';
 import { StorageService } from '../../services/storageService';

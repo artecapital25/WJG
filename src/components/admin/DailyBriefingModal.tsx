@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Send, 
-  Activity, 
   CheckCircle2, 
   AlertTriangle, 
   Clock, 
@@ -12,10 +11,7 @@ import {
   ExternalLink, 
   RefreshCw,
   Sun,
-  ShieldCheck,
-  Zap,
-  Building2,
-  Calendar
+  Zap
 } from 'lucide-react';
 import { WhatsAppHealthStatus, WhatsAppPingResult, DailyBriefingData } from '../../types';
 import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
@@ -100,7 +96,7 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
     setDispatchLoading(true);
     setFeedbackMsg(null);
     try {
-      const res = await WhatsAppNotificationService.despacharDailyBriefing({ force: true });
+      await WhatsAppNotificationService.despacharDailyBriefing({ force: true });
       setFeedbackMsg({
         tipo: 'success',
         texto: '¡Reporte diario despachado exitosamente por WhatsApp a Germán, Wendy y Juan!'

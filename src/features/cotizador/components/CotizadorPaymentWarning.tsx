@@ -1,6 +1,5 @@
 import React from 'react';
-import { CreditCard, AlertTriangle, CheckCircle2, DollarSign } from 'lucide-react';
-import { EstadoPago } from '../../../types';
+import { CreditCard, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { CotizadorPaymentWarningProps } from '../types/cotizador.types';
 
 export const CotizadorPaymentWarning: React.FC<CotizadorPaymentWarningProps> = React.memo(({
@@ -11,8 +10,7 @@ export const CotizadorPaymentWarning: React.FC<CotizadorPaymentWarningProps> = R
   setAbonoInicial,
   metodoPagoInicial,
   setMetodoPagoInicial,
-  abonoEfectivo,
-  saldoPendiente
+  abonoEfectivo
 }) => {
   const minimo50 = Math.ceil(total * 0.5);
   const cumple50 = abonoEfectivo >= minimo50;
@@ -120,9 +118,10 @@ export const CotizadorPaymentWarning: React.FC<CotizadorPaymentWarningProps> = R
             <span style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: '#fbbf24', fontWeight: 700 }}>$</span>
             <input
               type="number"
+              inputMode="numeric"
               min="0"
               max={total}
-              step="1000"
+              step="any"
               className="form-input"
               style={{ paddingLeft: '24px', fontWeight: 700, color: '#fbbf24' }}
               value={abonoInicial}

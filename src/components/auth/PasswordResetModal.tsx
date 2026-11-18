@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, MessageSquare, ShieldCheck, KeyRound, Eye, EyeOff, ArrowRight, RotateCw, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { X, MessageSquare, KeyRound, Eye, EyeOff, ArrowRight, RotateCw, AlertTriangle } from 'lucide-react';
 import { WhatsAppOtpService, PasswordStrengthResult } from '../../services/whatsappOtpService';
 import { toast } from '../ui/ToastProvider';
 

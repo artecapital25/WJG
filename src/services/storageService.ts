@@ -65,7 +65,9 @@ const STORAGE_KEYS = {
   HERRAMIENTAS: 'wjg_herramientas_links',
   GOOGLE_SHEETS_CONFIG: 'wjg_google_sheets_config',
   DRAFT_PIECES: 'wjg_draft_pieces',
-  DRAFT_BUILDER_META: 'wjg_draft_builder_meta'
+  DRAFT_BUILDER_META: 'wjg_draft_builder_meta',
+  EDITING_COTIZACION: 'wjg_editing_cotizacion',
+  RECENT_MUTATIONS: 'wjg_recent_mutations'
 };
 
 const TAREAS_INICIALES: TareaEquipo[] = [
@@ -655,6 +657,76 @@ export const StorageService = {
     }
   },
 
+  // Persistencia anti-recarga móvil para cotización actualmente en edición
+  getEditingCotizacion: (): Cotizacion | null => {
+    try {
+      if (typeof localStorage === 'undefined') return null;
+      const raw = localStorage.getItem(STORAGE_KEYS.EDITING_COTIZACION);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  },
+  saveEditingCotizacion: (cot: Cotizacion | null) => {
+    try {
+      if (typeof localStorage === 'undefined') return;
+      if (!cot) {
+        localStorage.removeItem(STORAGE_KEYS.EDITING_COTIZACION);
+      } else {
+        localStorage.setItem(STORAGE_KEYS.EDITING_COTIZACION, JSON.stringify(cot));
+      }
+    } catch (e) {
+      console.warn('Error saving editing cotizacion:', e);
+    }
+  },
+
+  // Registro persistente de mutaciones locales recientes (<90s) para proteger ediciones en móvil ante Realtime o recarga al volver de cámara/WhatsApp
+  markEntityMutated: (
+    type: 'cotizacion' | 'venta' | 'orden' | 'cuenta',
+    idOrCode: string,
+    snapshotData: any
+  ): void => {
+    try {
+      if (typeof localStorage === 'undefined' || !idOrCode) return;
+      const now = Date.now();
+      const raw = localStorage.getItem(STORAGE_KEYS.RECENT_MUTATIONS);
+      const map: Record<string, { timestamp: number; data: any }> = raw ? JSON.parse(raw) : {};
+      // Purgar entradas expiradas (> 2 minutos) para mantener almacenamiento ligero
+      Object.keys(map).forEach(k => {
+        if (!map[k] || now - map[k].timestamp > 120000) {
+          delete map[k];
+        }
+      });
+      map[`${type}:${idOrCode}`] = { timestamp: now, data: snapshotData };
+      localStorage.setItem(STORAGE_KEYS.RECENT_MUTATIONS, JSON.stringify(map));
+    } catch (e) {
+      console.warn('Error marking entity mutation:', e);
+    }
+  },
+  getRecentMutation: <T = any>(
+    type: 'cotizacion' | 'venta' | 'orden' | 'cuenta',
+    idOrCode: string,
+    maxAgeMs: number = 90000
+  ): T | null => {
+    try {
+      if (typeof localStorage === 'undefined' || !idOrCode) return null;
+      const raw = localStorage.getItem(STORAGE_KEYS.RECENT_MUTATIONS);
+      if (!raw) return null;
+      const map: Record<string, { timestamp: number; data: T }> = JSON.parse(raw);
+      const key = `${type}:${idOrCode}`;
+      const entry = map[key];
+      if (!entry) return null;
+      if (Date.now() - entry.timestamp > maxAgeMs) {
+        delete map[key];
+        localStorage.setItem(STORAGE_KEYS.RECENT_MUTATIONS, JSON.stringify(map));
+        return null;
+      }
+      return entry.data ?? null;
+    } catch {
+      return null;
+    }
+  },
+
   // Rutina de saneamiento para liberar memoria local y prevenir QuotaExceededError
   sanitizeLocalStorage: (): { bytesLiberados: number; keysSaneadas: number } => {
     if (typeof localStorage === 'undefined') return { bytesLiberados: 0, keysSaneadas: 0 };
@@ -662,12 +734,17 @@ export const StorageService = {
     let keysSaneadas = 0;
 
     try {
-      // 1. Limpiar claves temporales o de preview obsoletas
+      // 1. Limpiar claves temporales o de preview obsoletas y mutaciones expiradas
       const keysToRemove: string[] = [];
+      let approxTotalBytes = 0;
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('wjg_preview_') || k.startsWith('wjg_temp_') || k.includes('cache_old'))) {
-          keysToRemove.push(k);
+        if (k) {
+          const v = localStorage.getItem(k);
+          if (v) approxTotalBytes += k.length + v.length;
+          if (k.startsWith('wjg_preview_') || k.startsWith('wjg_temp_') || k.includes('cache_old')) {
+            keysToRemove.push(k);
+          }
         }
       }
       keysToRemove.forEach(k => {
@@ -696,6 +773,32 @@ export const StorageService = {
           }
         } catch {
           localStorage.removeItem(STORAGE_KEYS.DRAFT_PIECES);
+        }
+      }
+
+      // 3. Si la cuota total supera 3.5 MB en móvil, aligerar imágenes Base64 (>60KB) en OTs históricas ya entregadas
+      if (approxTotalBytes > 3500000) {
+        const ordRaw = localStorage.getItem(STORAGE_KEYS.ORDENES);
+        if (ordRaw && ordRaw.length > 500000) {
+          try {
+            const ordenesArr = JSON.parse(ordRaw);
+            if (Array.isArray(ordenesArr)) {
+              let prunedCount = 0;
+              const lightOrders = ordenesArr.map((o: any) => {
+                if (o?.estado === 'Entregado' && typeof o.imagen_url === 'string' && o.imagen_url.startsWith('data:image/') && o.imagen_url.length > 60000) {
+                  prunedCount++;
+                  return { ...o, imagen_url: '' };
+                }
+                return o;
+              });
+              if (prunedCount > 0) {
+                const newOrdStr = JSON.stringify(lightOrders);
+                bytesLiberados += (ordRaw.length - newOrdStr.length);
+                localStorage.setItem(STORAGE_KEYS.ORDENES, newOrdStr);
+                keysSaneadas++;
+              }
+            }
+          } catch {}
         }
       }
 

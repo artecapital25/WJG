@@ -1,18 +1,13 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Send, 
   Clock, 
-  CheckCircle2, 
-  AlertCircle, 
   TrendingUp, 
-  User, 
-  Flame, 
   MessageSquare,
-  Sparkles,
-  ChevronRight
+  Sparkles
 } from 'lucide-react';
-import { TareaEquipo, TareaAvance } from '../../types/tasks';
+import { TareaEquipo } from '../../types/tasks';
 import { useTareaAvances } from '../../hooks/useTareaAvances';
 
 interface BitacoraTareaModalProps {

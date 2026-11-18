@@ -1,14 +1,10 @@
 import React, { useState } from 'react';
 import { 
-  AlertTriangle, 
   Trash2, 
   X, 
   User, 
   Box, 
-  DollarSign, 
-  FileText, 
   ShieldAlert, 
-  RotateCcw,
   CheckCircle2
 } from 'lucide-react';
 import { OrdenTrabajo, Cotizacion, EstadoCotizacion } from '../../types';

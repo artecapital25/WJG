@@ -3,12 +3,8 @@ import {
   X, 
   Send, 
   Check, 
-  Copy, 
-  Users, 
-  ExternalLink, 
-  CheckCircle2, 
-  Sparkles,
-  PhoneCall
+  Copy,
+  CheckCircle2
 } from 'lucide-react';
 import { TareaEquipo } from '../../types';
 import { 

@@ -43,6 +43,7 @@ export interface ProductoStock {
   categoria: string;
   precio_unitario: number;
   stock_actual: number;
+  stock_minimo?: number;
   descripcion?: string;
   dimensiones?: string;
   material?: string;

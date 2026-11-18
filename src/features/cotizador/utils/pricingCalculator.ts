@@ -3,7 +3,7 @@
  * WJGEEKS 3D PRO - Layer 3: Math & Pure Utils
  */
 
-import { Resina, Maquina, Insumo, Personal, ConfiguracionTaller, PiezaCotizada } from '../../../types';
+import { PiezaCotizada } from '../../../types';
 import { 
   calcularPieza3D, 
   calcularPiezaFDM, 

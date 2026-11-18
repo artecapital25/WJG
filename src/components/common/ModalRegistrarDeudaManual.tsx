@@ -6,11 +6,7 @@ import {
   Phone, 
   FileText, 
   Receipt, 
-  CreditCard, 
-  Calendar, 
-  Sparkles,
-  Plus,
-  CheckCircle2
+  Plus
 } from 'lucide-react';
 import { CuentaCobro, Cliente, EstadoPago } from '../../types';
 
@@ -60,7 +56,6 @@ export const ModalRegistrarDeudaManual: React.FC<ModalRegistrarDeudaManualProps>
   const [comprobante, setComprobante] = useState<string>('');
   
   const [fechaEmision, setFechaEmision] = useState<string>(new Date().toISOString().slice(0, 10));
-  const [notas, setNotas] = useState<string>('');
 
   // Sugerencia al escribir nombre de cliente
   const [mostrarSugerencias, setMostrarSugerencias] = useState(false);
@@ -344,12 +339,13 @@ export const ModalRegistrarDeudaManual: React.FC<ModalRegistrarDeudaManualProps>
                 <input
                   id="input-monto-total"
                   type="number"
+                  inputMode="numeric"
                   className="input-field"
                   placeholder="Ej: 85000"
                   value={montoTotal === 0 ? '' : montoTotal}
-                  onChange={e => setMontoTotal(e.target.value === '' ? 0 : Number(e.target.value))}
-                  min="1"
-                  step="1000"
+                  onChange={e => setMontoTotal(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
+                  min="0"
+                  step="any"
                   required
                 />
               </div>
@@ -361,12 +357,13 @@ export const ModalRegistrarDeudaManual: React.FC<ModalRegistrarDeudaManualProps>
                 <input
                   id="input-abono-inicial"
                   type="number"
+                  inputMode="numeric"
                   className="input-field"
                   placeholder="0"
                   value={abonoInicial === 0 ? '' : abonoInicial}
                   onChange={e => setAbonoInicial(e.target.value === '' ? 0 : Math.max(0, Number(e.target.value)))}
                   min="0"
-                  step="1000"
+                  step="any"
                 />
               </div>
             </div>

@@ -1,5 +1,5 @@
-import React from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown } from 'lucide-react';
 
 interface HeaderMinimalProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
@@ -16,7 +16,6 @@ interface HeaderMinimalProps {
 export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   cloudStatus = 'connected',
   activeOperator = 'Juan',
-  onSelectOperator,
   onOpenDailyBriefing,
   onOpenBackup,
   onOpenWhatsAppConnect,
@@ -24,6 +23,9 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   onLogout,
   dailyAlertsCount = 0,
 }) => {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
   const displayName = React.useMemo(() => {
     if (!activeOperator) return 'Operador';
     const clean = activeOperator.trim();
@@ -34,162 +36,174 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
     return clean;
   }, [activeOperator]);
 
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (ev: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(ev.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    const handleEsc = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [menuOpen]);
+
+  const handleAction = (cb?: () => void) => {
+    setMenuOpen(false);
+    if (cb) cb();
+  };
+
   return (
     <header className="header-minimal">
-      {/* Brand Identity */}
+      {/* Identidad de Marca Limpia */}
       <div className="header-brand">
         <img 
           src="/wjg_logo_vector.svg" 
           alt="WJGEEKS Logo" 
           className="header-brand-logo"
         />
-        <div style={{ lineHeight: 1.1, display: 'flex', alignItems: 'center' }}>
+        <div style={{ lineHeight: 1.1, display: 'flex', alignItems: 'center', gap: '6px' }}>
           <span className="header-brand-title">
             WJGEEKS
           </span>
           <span className="header-brand-badge">
             3D PRO
           </span>
+          <span
+            className="header-status-dot"
+            title={cloudStatus === 'connected' ? 'Supabase Online en vivo' : 'Modo Local'}
+            style={{
+              color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24'
+            }}
+          />
         </div>
       </div>
 
-      {/* Discretos Indicadores y Controles de Sesión */}
-      <div className="header-right-actions">
-        {/* Supabase Health Indicator / Acceso a Respaldos */}
-        <div
-          className="header-status-pill"
-          onClick={onOpenBackup}
-          title={cloudStatus === 'connected' ? 'Base de datos Supabase Online en vivo (Clic para Respaldos y Drive)' : 'Modo Local (Clic para Respaldos y Drive)'}
-          style={{
-            backgroundColor: cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.12)' : 'rgba(245, 158, 11, 0.12)',
-            color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24',
-            border: `1px solid ${cloudStatus === 'connected' ? 'rgba(16, 185, 129, 0.25)' : 'rgba(245, 158, 11, 0.25)'}`,
-            cursor: onOpenBackup ? 'pointer' : 'default'
-          }}
+      {/* Única Píldora de Operador y Menú Unificado (Cabecera Libre de Iconos) */}
+      <div className="header-right-actions" ref={menuRef} style={{ position: 'relative' }}>
+        <button
+          type="button"
+          className="header-user-badge"
+          onClick={() => setMenuOpen(prev => !prev)}
+          aria-expanded={menuOpen}
+          aria-haspopup="menu"
+          title={`Menú de ${activeOperator}`}
+          style={{ cursor: 'pointer', maxWidth: 'none', padding: '6px 12px', minHeight: '36px' }}
         >
-          <span className="header-status-dot" />
-          <span className="header-status-text">
-            {cloudStatus === 'connected' ? 'Online' : 'Local'}
-          </span>
-        </div>
-
-        {/* Botón Respaldos & Google Drive */}
-        {onOpenBackup && (
-          <button
-            onClick={onOpenBackup}
-            type="button"
-            className="header-daily-btn"
-            title="Respaldos en Google Drive (3:00 AM) y Copia de Seguridad Local"
-            aria-label="Respaldos y Google Drive"
-            style={{
-              backgroundColor: 'rgba(56, 189, 248, 0.12)',
-              color: '#38bdf8',
-              border: '1px solid rgba(56, 189, 248, 0.3)',
-              cursor: 'pointer'
-            }}
-          >
-            <Database size={13} color="#38bdf8" style={{ flexShrink: 0 }} />
-            <span className="header-daily-text" style={{ color: '#38bdf8', fontWeight: 700 }}>
-              Backup
+          <ShieldCheck size={14} color="#38bdf8" style={{ flexShrink: 0 }} />
+          <span className="header-user-name">{displayName}</span>
+          {dailyAlertsCount > 0 && (
+            <span
+              style={{
+                backgroundColor: '#ef4444',
+                color: '#ffffff',
+                borderRadius: '9999px',
+                padding: '0 5px',
+                fontSize: '0.64rem',
+                fontWeight: 800,
+                lineHeight: '15px',
+                height: '15px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+            >
+              {dailyAlertsCount}
             </span>
-          </button>
-        )}
-
-        {/* Botón WhatsApp & Correo Oficial */}
-        {onOpenWhatsAppConnect && (
-          <button
-            onClick={onOpenWhatsAppConnect}
-            type="button"
-            className="header-daily-btn"
-            title="Conexión WhatsApp Oficial (+57 320 2796115) y Correo (wjgeeks3d@gmail.com)"
-            aria-label="WhatsApp y Correo Oficial"
+          )}
+          <ChevronDown
+            size={14}
+            color="#94a3b8"
             style={{
-              backgroundColor: 'rgba(34, 197, 94, 0.12)',
-              color: '#4ade80',
-              border: '1px solid rgba(34, 197, 94, 0.3)',
-              cursor: 'pointer'
+              flexShrink: 0,
+              transform: menuOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+              transition: 'transform 0.15s ease'
             }}
-          >
-            <MessageSquare size={13} color="#4ade80" style={{ flexShrink: 0 }} />
-            <span className="header-daily-text" style={{ color: '#4ade80', fontWeight: 700 }}>
-              WhatsApp
-            </span>
-          </button>
-        )}
+          />
+        </button>
 
-        {/* Chip Daily 7am */}
-        {onOpenDailyBriefing && (
-          <button
-            onClick={onOpenDailyBriefing}
-            type="button"
-            className="header-daily-btn"
-            title="Ver resumen diario y alertas operativas (7AM)"
-            aria-label="Resumen diario 7AM"
-          >
-            <Sun size={13} color="#f59e0b" style={{ flexShrink: 0 }} />
-            <span className="header-daily-text">7AM</span>
-            {dailyAlertsCount > 0 && (
-              <span 
-                style={{
-                  backgroundColor: '#ef4444',
-                  color: '#ffffff',
-                  borderRadius: '9999px',
-                  padding: '0 5px',
-                  fontSize: '0.65rem',
-                  fontWeight: 800,
-                  marginLeft: '2px',
-                  lineHeight: '14px',
-                  height: '14px',
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                {dailyAlertsCount}
+        {menuOpen && (
+          <div className="header-operator-menu" role="menu">
+            <div className="header-operator-menu-status">
+              <span
+                className="header-status-dot"
+                style={{ color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24' }}
+              />
+              <span>
+                {cloudStatus === 'connected' ? 'Supabase Online en vivo' : 'Modo Local (Offline)'}
               </span>
+            </div>
+
+            {onOpenDailyBriefing && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item"
+                onClick={() => handleAction(onOpenDailyBriefing)}
+              >
+                <Sun size={15} color="#f59e0b" />
+                <span>Resumen Diario 7AM</span>
+                {dailyAlertsCount > 0 && (
+                  <span className="header-menu-pill-alert">{dailyAlertsCount}</span>
+                )}
+              </button>
             )}
-          </button>
-        )}
 
-        {/* Active Operator Avatar & Gestión de Sesión */}
-        <div className="header-user-cluster">
-          {/* Badge del Operador Autenticado */}
-          <div
-            className="header-user-badge"
-            title={`Sesión activa: ${activeOperator}`}
-          >
-            <ShieldCheck size={13} color="#818cf8" style={{ flexShrink: 0 }} />
-            <span className="header-user-name">
-              {displayName}
-            </span>
+            {onOpenWhatsAppConnect && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item"
+                onClick={() => handleAction(onOpenWhatsAppConnect)}
+              >
+                <MessageSquare size={15} color="#4ade80" />
+                <span>WhatsApp y Correo</span>
+              </button>
+            )}
+
+            {onOpenBackup && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item"
+                onClick={() => handleAction(onOpenBackup)}
+              >
+                <Database size={15} color="#38bdf8" />
+                <span>Respaldos & Drive</span>
+              </button>
+            )}
+
+            {onOpenChangePin && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item"
+                onClick={() => handleAction(onOpenChangePin)}
+              >
+                <KeyRound size={15} color="#94a3b8" />
+                <span>Cambiar PIN / Clave</span>
+              </button>
+            )}
+
+            {onLogout && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item danger"
+                onClick={() => handleAction(onLogout)}
+              >
+                <LogOut size={15} color="#f87171" />
+                <span>Cerrar Sesión</span>
+              </button>
+            )}
           </div>
-
-          {/* Botón para cambiar PIN / Contraseña */}
-          {onOpenChangePin && (
-            <button
-              type="button"
-              onClick={onOpenChangePin}
-              className="header-action-btn header-action-btn-key"
-              title={`Cambiar clave o PIN (${activeOperator})`}
-              aria-label="Cambiar clave o PIN"
-            >
-              <KeyRound size={13} />
-            </button>
-          )}
-
-          {/* Botón para cerrar sesión */}
-          {onLogout && (
-            <button
-              type="button"
-              onClick={onLogout}
-              className="header-action-btn header-action-btn-logout"
-              title={`Cerrar sesión de ${activeOperator}`}
-              aria-label="Cerrar sesión"
-            >
-              <LogOut size={13} />
-            </button>
-          )}
-        </div>
+        )}
       </div>
     </header>
   );

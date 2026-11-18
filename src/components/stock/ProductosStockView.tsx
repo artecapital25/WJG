@@ -6,7 +6,6 @@ import {
   Camera, 
   Trash2, 
   Edit3, 
-  Sparkles, 
   Share2, 
   Check, 
   X, 
@@ -14,7 +13,6 @@ import {
   PlusCircle, 
   MinusCircle, 
   ShoppingCart, 
-  Tag, 
   Boxes,
   ArrowRight,
   TrendingUp,
@@ -22,7 +20,6 @@ import {
   RefreshCw
 } from 'lucide-react';
 import { ProductoStock, PiezaCotizada } from '../../types';
-import { processAndOptimizeImage } from '../../services/imageService';
 import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
 
@@ -54,12 +51,12 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategoria, setSelectedCategoria] = useState<string>('Todos');
   const [soloDisponibles, setSoloDisponibles] = useState<boolean>(false);
+  const [soloAlertaStock, setSoloAlertaStock] = useState<boolean>(false);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
 
   // Estados de Modales
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
-  const [isOptimizingImage, setIsOptimizingImage] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
 
   // Estados de retroalimentación
@@ -72,6 +69,7 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   const totalUnidadesStock = productos.reduce((sum, p) => sum + (p.stock_actual || 0), 0);
   const valorTotalInventario = productos.reduce((sum, p) => sum + (p.precio_unitario * (p.stock_actual || 0)), 0);
   const productosAgotados = productos.filter(p => (p.stock_actual || 0) <= 0).length;
+  const productosAlerta = productos.filter(p => (p.stock_actual || 0) <= (p.stock_minimo || 2)).length;
 
   // Normalizar categorías para matching flexible entre UI y Base de Datos (ej: "FIGURAS" <-> "Figuras & Miniaturas")
   const matchCategoriaHelper = (prodCat: string | undefined, selected: string): boolean => {
@@ -110,10 +108,11 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
 
       const matchCat = matchCategoriaHelper(p.categoria, selectedCategoria);
       const matchStock = !soloDisponibles || (p.stock_actual || 0) > 0;
+      const matchAlerta = !soloAlertaStock || (p.stock_actual || 0) <= (p.stock_minimo || 2);
 
-      return matchSearch && matchCat && matchStock;
+      return matchSearch && matchCat && matchStock && matchAlerta;
     });
-  }, [productos, searchTerm, selectedCategoria, soloDisponibles]);
+  }, [productos, searchTerm, selectedCategoria, soloDisponibles, soloAlertaStock]);
 
   // Categorías mostradas en los chips (predefinidas + dinámicas de la base de datos)
   const categoriasChips = useMemo(() => {
@@ -160,23 +159,6 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
       return p;
     });
     onUpdateProductos(updated);
-  };
-
-  // Subir o cambiar foto de producto
-  const handleImageFile = async (file: File) => {
-    if (!file.type.startsWith('image/')) {
-      toast.warning('Por favor selecciona un archivo de imagen (PNG, JPG o WebP).');
-      return;
-    }
-    try {
-      setIsOptimizingImage(true);
-      const optimized = await processAndOptimizeImage(file, 800, 800, 0.85);
-      setEditingItem((prev: any) => ({ ...prev, imagen_url: optimized }));
-    } catch (e) {
-      console.error('Error optimizando imagen del producto:', e);
-    } finally {
-      setIsOptimizingImage(false);
-    }
   };
 
   // Abrir Modal para Crear o Editar
@@ -494,16 +476,28 @@ ${itemsText}
             />
           </div>
 
-          {/* Toggle Solo Disponibles */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.82rem', color: soloDisponibles ? 'var(--brand-cyan)' : 'var(--text-muted)', fontWeight: 600 }}>
-            <input
-              type="checkbox"
-              checked={soloDisponibles}
-              onChange={e => setSoloDisponibles(e.target.checked)}
-              style={{ accentColor: 'var(--brand-cyan)', width: '16px', height: '16px', cursor: 'pointer' }}
-            />
-            <span>Solo con stock disponible (&gt; 0)</span>
-          </label>
+          {/* Toggles Rápidos de Stock */}
+          <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.82rem', color: soloDisponibles ? 'var(--brand-cyan)' : 'var(--text-muted)', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={soloDisponibles}
+                onChange={e => setSoloDisponibles(e.target.checked)}
+                style={{ accentColor: 'var(--brand-cyan)', width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span>Solo disponibles (&gt; 0)</span>
+            </label>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.82rem', color: soloAlertaStock ? '#fbbf24' : 'var(--text-muted)', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={soloAlertaStock}
+                onChange={e => setSoloAlertaStock(e.target.checked)}
+                style={{ accentColor: '#f59e0b', width: '16px', height: '16px', cursor: 'pointer' }}
+              />
+              <span>⚠️ Stock Bajo / Agotado ({productosAlerta})</span>
+            </label>
+          </div>
         </div>
 
         {/* Chips de categorías */}
@@ -543,8 +537,10 @@ ${itemsText}
           gap: '14px'
         }}>
           {productosFiltrados.map(prod => {
-            const hasStock = (prod.stock_actual || 0) > 0;
-            const isLowStock = prod.stock_actual === 1;
+            const stockActual = prod.stock_actual || 0;
+            const stockMin = prod.stock_minimo || 2;
+            const hasStock = stockActual > 0;
+            const isLowStock = hasStock && stockActual <= stockMin;
             const isCopied = copiedId === prod.id;
 
             return (
@@ -560,7 +556,7 @@ ${itemsText}
                   gap: '12px',
                   position: 'relative',
                   overflow: 'hidden',
-                  borderColor: hasStock ? 'var(--border-subtle)' : 'rgba(239, 68, 68, 0.25)',
+                  borderColor: !hasStock ? 'rgba(239, 68, 68, 0.35)' : isLowStock ? 'rgba(245, 158, 11, 0.35)' : 'var(--border-subtle)',
                   contentVisibility: 'auto',
                   containIntrinsicSize: '0 380px'
                 }}
@@ -625,24 +621,23 @@ ${itemsText}
                       </div>
                     )}
 
-                    {/* Badge de Stock en la Foto */}
-                    <div style={{
-                      position: 'absolute',
-                      top: '8px',
-                      left: '8px',
-                      padding: '3px 8px',
-                      borderRadius: '6px',
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      backdropFilter: 'blur(8px)',
-                      background: !hasStock 
-                        ? 'rgba(239, 68, 68, 0.85)' 
-                        : isLowStock 
-                          ? 'rgba(234, 179, 8, 0.85)' 
-                          : 'rgba(16, 185, 129, 0.85)',
-                      color: '#fff'
-                    }}>
-                      {!hasStock ? 'Agotado' : isLowStock ? 'Última Unidad' : `Stock: ${prod.stock_actual}`}
+                    {/* Badge Semáforo de Stock en la Foto */}
+                    <div
+                      className={`wjg-stock-pill ${!hasStock ? 'stock-empty' : isLowStock ? 'stock-low' : 'stock-ok'}`}
+                      style={{
+                        position: 'absolute',
+                        top: '8px',
+                        left: '8px',
+                        backdropFilter: 'blur(8px)',
+                        background: !hasStock
+                          ? 'rgba(239, 68, 68, 0.9)'
+                          : isLowStock
+                            ? 'rgba(217, 119, 6, 0.92)'
+                            : 'rgba(16, 185, 129, 0.9)',
+                        color: '#fff'
+                      }}
+                    >
+                      {!hasStock ? 'Agotado' : isLowStock ? `Stock Bajo (${stockActual})` : `Disponible: ${stockActual}`}
                     </div>
 
                     {/* Categoría chip */}

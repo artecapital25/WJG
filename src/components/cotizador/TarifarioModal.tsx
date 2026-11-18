@@ -7,8 +7,6 @@ import {
   Sliders, 
   ArrowRight, 
   Send, 
-  Layers, 
-  DollarSign, 
   Settings,
   Clock
 } from 'lucide-react';

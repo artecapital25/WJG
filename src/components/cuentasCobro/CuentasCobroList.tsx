@@ -5,33 +5,28 @@ import {
   FileDown, 
   DollarSign, 
   CheckCircle, 
-  CreditCard,
   Plus,
   Users,
-  AlertTriangle,
   Clock,
   Search,
-  Sparkles,
   Phone,
-  ArrowRight,
-  TrendingUp,
   Camera,
   Edit3,
   Trash2,
-  Wrench
+  Wrench,
+  TrendingUp
 } from 'lucide-react';
 import { 
   CuentaCobro, 
   ConfiguracionTaller, 
-  EstadoPago, 
   VentaExpress, 
   OrdenTrabajo, 
   Cliente, 
   DatosPagoRegistro 
 } from '../../types';
-import { generarPDFCuentaCobro, obtenerBlobURLCuentaCobro, obtenerBlobURLReciboPOS } from '../../services/pdfService';
+import { generarPDFCuentaCobro, obtenerBlobURLCuentaCobro } from '../../services/pdfService';
 import { generateCuentaCobroWhatsAppUrl, generateCuentaCobroWhatsAppText, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
-import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro, generarTextoComprobantePOS } from '../../services/posService';
+import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../services/posService';
 import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
@@ -146,23 +141,6 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
     } catch (e) {
       console.error('Error generando vista previa de cuenta de cobro:', e);
       toast.error('No se pudo generar la vista previa del documento.');
-    }
-  };
-
-  const handleAbrirVisorVentaPOS = async (venta: VentaExpress) => {
-    try {
-      const blobUrl = await obtenerBlobURLReciboPOS(venta, config, 'ticket80mm');
-      const texto = generarTextoComprobantePOS(venta, config);
-      setDocumentoVisualizar({
-        titulo: `Recibo POS ${venta.numero_venta}`,
-        subtitulo: `${venta.cliente_nombre} • Total: $${venta.total.toLocaleString('es-CO')} COP`,
-        blobUrl,
-        nombreArchivo: `Recibo_${venta.numero_venta}_${venta.cliente_nombre.replace(/[^a-zA-Z0-9]/g, '_')}`,
-        textoDescriptivo: texto,
-        telefono: venta.cliente_telefono
-      });
-    } catch (e) {
-      console.error('Error generando vista previa de venta POS:', e);
     }
   };
 

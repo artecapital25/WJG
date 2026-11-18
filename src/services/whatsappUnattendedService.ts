@@ -20,7 +20,7 @@ export class WhatsAppUnattendedService {
     }
 
     try {
-      const { data, error } = await supabase
+      const { error } = await supabase
         .from('whatsapp_notification_logs')
         .insert({
           idempotency_key: params.idempotencyKey,

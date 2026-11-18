@@ -12,7 +12,7 @@ import {
   Fingerprint,
   Monitor
 } from 'lucide-react';
-import { UsuarioTaller, DispositivoConexion, parseDispositivoInfo } from '../../types/usuarios.types';
+import { UsuarioTaller, parseDispositivoInfo } from '../../types/usuarios.types';
 
 interface ModalDispositivosUsuarioProps {
   isOpen: boolean;

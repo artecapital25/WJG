@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, Zap, Layers, Flame, Cpu, Sparkles } from 'lucide-react';
+import { Scale, Zap } from 'lucide-react';
 import { Resina, Filamento, Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
 
 interface CotizadorMaterialsCardProps {
@@ -100,8 +100,6 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
   calculoEnVivo,
   tecnologia = 'SLA_RESINA',
   setTecnologia,
-  materialFilamento = 'PLA',
-  setMaterialFilamento,
   pesoFilamentoG = 45,
   setPesoFilamentoG,
   costoRolloKg = 85000,
@@ -260,10 +258,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                   <input 
                     type="number" 
                     className="form-input" 
-                    value={pesoResinaManualG}
-                    onChange={e => setPesoResinaManualG(Math.max(1, parseFloat(e.target.value) || 0))}
+                    value={pesoResinaManualG === 0 ? '' : pesoResinaManualG}
+                    onChange={e => setPesoResinaManualG(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                     placeholder="Gramos"
-                    step="0.5"
+                    min="0"
+                    step="any"
                   />
                   <span className="input-unit-badge">g</span>
                 </div>
@@ -279,10 +278,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <input
                   type="number"
                   className="form-input"
-                  value={mermaPorcentajeResina}
-                  onChange={e => setMermaPorcentajeResina && setMermaPorcentajeResina(Math.max(0, parseFloat(e.target.value) || 0))}
+                  value={mermaPorcentajeResina === 0 ? '' : mermaPorcentajeResina}
+                  onChange={e => setMermaPorcentajeResina && setMermaPorcentajeResina(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="10"
-                  step="1"
+                  min="0"
+                  step="any"
                 />
                 <span className="input-unit-badge">%</span>
               </div>
@@ -352,21 +352,27 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                   style={{ fontSize: '0.7rem', padding: '2px 8px', minHeight: 'auto' }}
                   onClick={() => setTiempoImpresionModo('auto')}
                 >
-                  ⚡ Auto ({Math.round(calculoEnVivo?.tiempo_impresion_min || 0)} min)
+                  ⚡ Auto ({Math.round((altoMm / (resinaActual?.velocidad_impresion_mm_h || 20)) * 60)} min)
                 </button>
                 <button
                   type="button"
                   className={`btn btn-sm ${tiempoImpresionModo === 'manual' ? 'btn-cyan' : 'btn-secondary'}`}
                   style={{ fontSize: '0.7rem', padding: '2px 8px', minHeight: 'auto' }}
-                  onClick={() => setTiempoImpresionModo('manual')}
+                  onClick={() => {
+                    if (tiempoImpresionModo !== 'manual' && (!tiempoImpresionManualMin || tiempoImpresionManualMin <= 0)) {
+                      setTiempoImpresionManualMin(Math.max(1, Math.round(calculoEnVivo?.tiempo_impresion_min || ((altoMm / (resinaActual?.velocidad_impresion_mm_h || 20)) * 60))));
+                    }
+                    setTiempoImpresionModo('manual');
+                  }}
                 >
-                  ✏️ Manual
+                  ✏️ Manual (Slicer)
                 </button>
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: tiempoImpresionModo === 'manual' ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
               <div>
+                <label className="form-label">Impresora 3D SLA</label>
                 <select 
                   className="form-select"
                   value={maquinaId}
@@ -380,32 +386,52 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 </select>
               </div>
 
-              {tiempoImpresionModo === 'manual' && (
-                <div>
-                  <div className="input-with-unit">
-                    <input 
-                      type="number" 
-                      className="form-input" 
-                      value={tiempoImpresionManualMin}
-                      onChange={e => setTiempoImpresionManualMin(Math.max(1, parseInt(e.target.value) || 0))}
-                      placeholder="Minutos"
-                    />
-                    <span className="input-unit-badge">min</span>
-                  </div>
+              <div>
+                <label className="form-label">Tiempo Estimado Slicer</label>
+                <div className="input-with-unit">
+                  <input 
+                    type="number" 
+                    className="form-input" 
+                    value={
+                      tiempoImpresionModo === 'manual'
+                        ? (tiempoImpresionManualMin === 0 ? '' : tiempoImpresionManualMin)
+                        : Math.round(calculoEnVivo?.tiempo_impresion_min || ((altoMm / (resinaActual?.velocidad_impresion_mm_h || 20)) * 60))
+                    }
+                    onChange={e => {
+                      setTiempoImpresionModo('manual');
+                      setTiempoImpresionManualMin(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value, 10) || 1));
+                    }}
+                    min="1"
+                    step="any"
+                    placeholder="Minutos"
+                  />
+                  <span className="input-unit-badge">min</span>
                 </div>
-              )}
+              </div>
             </div>
 
-            <div style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', marginTop: '4px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-              <span>
-                {tiempoImpresionModo === 'auto' 
-                  ? `Calculado según altura Z (${altoMm} mm) y velocidad (${resinaActual?.velocidad_impresion_mm_h || 20} mm/h)` 
-                  : `Tiempo manual: ${Math.floor(tiempoImpresionManualMin / 60)}h ${tiempoImpresionManualMin % 60}m`}
-              </span>
-              <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
-                Energía: ${Math.round((calculoEnVivo?.tiempo_impresion_min || 0) * (maquinaActual?.costo_minuto || 6.255)).toLocaleString('es-CO')} COP
-              </span>
-            </div>
+            {(() => {
+              const minsSLA = Math.round(
+                calculoEnVivo?.tiempo_impresion_min ||
+                (tiempoImpresionModo === 'manual' ? tiempoImpresionManualMin : (altoMm / (resinaActual?.velocidad_impresion_mm_h || 20)) * 60)
+              );
+              return (
+                <div style={{ fontSize: '0.74rem', color: '#38bdf8', background: 'rgba(56, 189, 248, 0.08)', padding: '8px 12px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)', display: 'flex', flexDirection: 'column', gap: '3px', marginTop: '10px' }}>
+                  <div>
+                    💡 <strong>Desglose SLA 3DPCC:</strong> {Math.floor(minsSLA / 60)}h {minsSLA % 60}m ({minsSLA} min) en {maquinaActual?.nombre || 'SLA'} •{' '}
+                    {tiempoImpresionModo === 'auto'
+                      ? `Auto por Z (${altoMm} mm ÷ ${resinaActual?.velocidad_impresion_mm_h || 20} mm/h)`
+                      : 'Tiempo Slicer Manual'}
+                  </div>
+                  <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap', color: 'var(--text-main)', marginTop: '2px' }}>
+                    <span>🧪 Resina: ${(calculoEnVivo?.costo_resina || 0).toLocaleString('es-CO')} COP ({(calculoEnVivo?.peso_estimado_g || 0).toFixed(1)}g + {mermaPorcentajeResina}% merma)</span>
+                    <span>⚡ Energía: ${(calculoEnVivo?.costo_energia || 0).toLocaleString('es-CO')} COP</span>
+                    <span>🔧 FEP/LCD: ${(calculoEnVivo?.costo_repuestos_maquina || 0).toLocaleString('es-CO')} COP</span>
+                    <span>🧼 Lavado/Curado UV: ${(calculoEnVivo?.costo_curado || 0).toLocaleString('es-CO')} COP</span>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         </>
       )}
@@ -521,8 +547,10 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <input
                   type="number"
                   className="form-input"
-                  value={tiempoFDMMin}
-                  onChange={e => setTiempoFDMMin && setTiempoFDMMin(Math.max(1, parseInt(e.target.value) || 1))}
+                  value={tiempoFDMMin === 0 ? '' : tiempoFDMMin}
+                  onChange={e => setTiempoFDMMin && setTiempoFDMMin(e.target.value === '' ? 0 : Math.max(1, parseInt(e.target.value, 10) || 1))}
+                  min="1"
+                  step="any"
                   placeholder="Minutos"
                 />
                 <span className="input-unit-badge">min</span>

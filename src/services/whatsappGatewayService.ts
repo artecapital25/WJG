@@ -12,7 +12,6 @@
  */
 
 import { formatWhatsAppPhone } from './whatsappService';
-import { toast } from '../components/ui/ToastProvider';
 
 export interface WhatsAppGatewayConfig {
   provider: 'qr_gateway' | 'meta_cloud_api';

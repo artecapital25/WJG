@@ -1,4 +1,4 @@
-import { Sparkles, Download, Package, Rocket, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet, ShieldCheck, Calendar, Sun } from 'lucide-react';
+import { Sparkles, Package, TrendingUp, Smartphone, Camera, Users, Megaphone, Wrench, FileSpreadsheet, ShieldCheck, Calendar, Sun } from 'lucide-react';
 import { StorageService } from '../../services/storageService';
 
 interface NavbarProps {
@@ -24,7 +24,6 @@ export const Navbar: React.FC<NavbarProps> = ({
   whatsappStatus = 'operativo',
   onOpenDailyBriefing,
   onInstallPwa,
-  isInstallable,
   onOpenBackupModal,
   onOpenStaffLogin,
   isStaffAuthenticated,

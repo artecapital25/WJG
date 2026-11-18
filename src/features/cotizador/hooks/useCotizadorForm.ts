@@ -1,11 +1,7 @@
 import { useState, useEffect, useMemo, useRef, ChangeEvent, FormEvent } from 'react';
 import { 
-  Resina, 
-  Filamento,
   Maquina, 
   Insumo, 
-  Personal, 
-  ConfiguracionTaller, 
   PiezaCotizada, 
   TarifaTamano,
   TecnologiaFabricacion
@@ -182,6 +178,15 @@ export function useCotizadorForm(props: CotizadorFormProps) {
           url: enl.url || '',
           costoEstimado: enl.costo_estimado || 0
         })));
+      }
+      if (initialPieceData.tiempoImpresionMin !== undefined && initialPieceData.tiempoImpresionMin > 0) {
+        const minRedondeados = Math.round(initialPieceData.tiempoImpresionMin);
+        if (initialPieceData.tecnologia === 'FDM_FILAMENTO') {
+          setTiempoFDMMin(minRedondeados);
+        } else {
+          setTiempoImpresionModo('manual');
+          setTiempoImpresionManualMin(minRedondeados);
+        }
       }
     }
   }, [initialPieceData]);

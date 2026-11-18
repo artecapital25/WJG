@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { 
   Zap, 
-  Send, 
-  CheckCircle2, 
   X, 
   Copy, 
   Check, 

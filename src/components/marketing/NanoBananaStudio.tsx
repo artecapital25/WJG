@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Sparkles, 
   Download, 
@@ -6,13 +6,8 @@ import {
   Check, 
   MessageCircle, 
   RefreshCw, 
-  Sliders, 
   Eye, 
-  Share2, 
-  Tag, 
-  Layers, 
   Smartphone, 
-  Monitor, 
   Image as ImageIcon,
   CheckCircle2,
   Wand2,
@@ -28,14 +23,13 @@ import {
   FormatoRedSocial, 
   EstiloVisualId, 
   FormatoPreset,
-  EstiloVisual,
   construirPromptNanoBanana, 
   construirUrlNanoBanana, 
   renderizarCanvasConBranding,
   copiarImagenAlPortapapeles,
   BrandingOverlayConfig 
 } from '../../services/imageGenerationService';
-import { openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
+import { openWhatsApp } from '../../services/whatsappService';
 import { toast } from '../ui/ToastProvider';
 
 interface NanoBananaStudioProps {
@@ -63,7 +57,7 @@ export const NanoBananaStudio: React.FC<NanoBananaStudioProps> = ({
   // Parámetros de Generación
   const [formatoId, setFormatoId] = useState<FormatoRedSocial>('instagram_portrait'); // 4:5 por defecto
   const [estiloId, setEstiloId] = useState<EstiloVisualId>('estudio_comercial');
-  const [seed, setSeed] = useState<number>(() => Math.floor(Math.random() * 8999999) + 1000000);
+  const [, setSeed] = useState<number>(() => Math.floor(Math.random() * 8999999) + 1000000);
 
   // Estados de Branding Overlay
   const [mostrarLogo, setMostrarLogo] = useState<boolean>(true);
@@ -81,10 +75,6 @@ export const NanoBananaStudio: React.FC<NanoBananaStudioProps> = ({
   const formatoActual: FormatoPreset = useMemo(() => {
     return FORMATOS_PRESETS.find(f => f.id === formatoId) || FORMATOS_PRESETS[1];
   }, [formatoId]);
-
-  const estiloActual: EstiloVisual = useMemo(() => {
-    return ESTILOS_VISUALES.find(e => e.id === estiloId) || ESTILOS_VISUALES[0];
-  }, [estiloId]);
 
   // Sincronizar selección de producto
   const handleSelectProducto = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -222,7 +212,6 @@ export const NanoBananaStudio: React.FC<NanoBananaStudioProps> = ({
 
   // Compartir en WhatsApp con el Copy Comercial
   const handleCompartirWhatsApp = () => {
-    const tel = formatWhatsAppPhone(config.telefono_contacto || '320 279 6115');
     const mensaje = 
 `🔥 ¡NUEVA FIGURA EN RESINA 8K LISTA EN TALLER! 🎨✨
 

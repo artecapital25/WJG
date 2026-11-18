@@ -2,22 +2,14 @@ import React, { useState } from 'react';
 import { 
   Users, 
   CheckCircle2, 
-  Clock, 
-  AlertTriangle, 
   Plus, 
   Send, 
   ShoppingCart, 
   ExternalLink, 
   RotateCw, 
   MessageSquare, 
-  Sparkles, 
-  Trash2, 
   Check, 
-  Filter, 
-  Tag, 
-  User, 
-  Flame,
-  Calendar
+  Flame
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { 
@@ -60,7 +52,6 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   tareas,
   solicitudesInsumos,
   insumosCatalogo,
-  config,
   onGuardarTarea,
   onActualizarTarea,
   onEliminarTarea,
@@ -97,7 +88,7 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   const [showModalSOS, setShowModalSOS] = useState(false);
   const [insumoNombre, setInsumoNombre] = useState('');
   const [cantidadInsumo, setCantidadInsumo] = useState<number>(1);
-  const [unidadInsumo, setUnidadInsumo] = useState('unidades');
+  const [unidadInsumo] = useState('unidades');
   const [urgenciaInsumo, setUrgenciaInsumo] = useState<UrgenciaInsumo>('normal');
   const [solicitadoPor, setSolicitadoPor] = useState('Juan (Pintor/Impresor)');
   const [encargadoCompra, setEncargadoCompra] = useState<IntegranteEquipo>('Wendy');
@@ -223,7 +214,6 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   });
 
   const solicitudesPendientes = solicitudesInsumos.filter(s => s.estado !== 'recibido');
-  const tareasPendientesCount = tareas.filter(t => !t.completada).length;
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '70px' }}>

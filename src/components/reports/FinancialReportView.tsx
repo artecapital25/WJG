@@ -1,19 +1,10 @@
 import React, { useState, useMemo } from 'react';
-import { 
-  DollarSign, 
-  TrendingUp, 
-  Calendar, 
-  Download, 
-  FileSpreadsheet, 
-  PieChart, 
-  Package, 
-  CheckCircle, 
-  Clock,
-  ArrowUpRight,
+import {
+  TrendingUp,
+  Calendar,
+  FileSpreadsheet,
   Filter,
   Sun,
-  ShoppingCart,
-  Tag,
   Layers,
   RefreshCw,
   Store,
@@ -59,7 +50,6 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
   cotizaciones,
   ordenes,
   cuentas,
-  resinas,
   ventasExpress = [],
   onOpenDailyBriefing,
   onOpenBackup,
@@ -70,15 +60,22 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
   const [cargandoBalance, setCargandoBalance] = useState<boolean>(true);
 
   const fetchBalance = () => {
-    setCargandoBalance(true);
     CloudSyncService.fetchBalanceTaller().then(bal => {
-      setBalanceTaller(bal);
+      if (bal) setBalanceTaller(bal);
+      setCargandoBalance(false);
+    }).catch(() => {
       setCargandoBalance(false);
     });
   };
 
   React.useEffect(() => {
     fetchBalance();
+  }, [cotizaciones, ordenes, cuentas, ventasExpress]);
+
+  React.useEffect(() => {
+    const handleLedgerUpdate = () => fetchBalance();
+    window.addEventListener('wjg:ledger-updated', handleLedgerUpdate);
+    return () => window.removeEventListener('wjg:ledger-updated', handleLedgerUpdate);
   }, []);
 
   // Filtros
@@ -92,12 +89,16 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
 
     // Mapear Cotizaciones
     cotizaciones.forEach(c => {
-      const cuentaAsoc = cuentas.find(cc => cc.cotizacion_id === c.id || cc.cotizacion_numero === c.numero_cot);
-      const otAsoc = ordenes.find(o => o.cotizacion_id === c.id || o.cotizacion_numero === c.numero_cot);
+      const cuentaAsoc = cuentas.find(cc => cc.cotizacion_id === c.id || (cc.cotizacion_numero && cc.cotizacion_numero === c.numero_cot));
+      const otAsoc = ordenes.find(o => o.cotizacion_id === c.id || (o.cotizacion_numero && o.cotizacion_numero === c.numero_cot));
       
       const total = Number(c.total) || 0;
-      const abono = cuentaAsoc ? Number(cuentaAsoc.abono) : (c.estado === 'Facturada' ? total : (otAsoc ? Number(otAsoc.abono || 0) : 0));
-      const saldo = cuentaAsoc ? Number(cuentaAsoc.saldo_pendiente) : Math.max(0, total - abono);
+      const abono = c.abono !== undefined
+        ? Number(c.abono)
+        : (cuentaAsoc ? Number(cuentaAsoc.abono) : (c.estado === 'Facturada' ? total : (otAsoc ? Number(otAsoc.abono ?? 0) : 0)));
+      const saldo = c.saldo_pendiente !== undefined
+        ? Number(c.saldo_pendiente)
+        : (cuentaAsoc ? Number(cuentaAsoc.saldo_pendiente) : Math.max(0, total - abono));
       
       const costoItems = (c.items || []).reduce((s, it) => s + (Number(it.costo_base_produccion) || 0), 0);
       const gResina = (c.items || []).reduce((s, it) => s + ((Number(it.peso_estimado_g) || 0) * (Number(it.cantidad) || 1)), 0);
@@ -114,18 +115,17 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         total,
         abono,
         saldo,
-        estadoPago: saldo <= 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente'),
+        estadoPago: saldo <= 0 && total > 0 ? 'Pagado Total' : (abono > 0 ? 'Abono Parcial' : 'Pendiente'),
         estadoComercial: c.estado || 'Borrador',
-        metodoPago: otAsoc?.metodo_pago || 'Bre-B',
+        metodoPago: c.metodo_pago || otAsoc?.metodo_pago || 'Bre-B',
         costoEstimado: costoItems,
         margenEstimado: Math.max(0, total - costoItems),
         gramosResina: gResina
       });
     });
 
-    // Mapear Ventas Express / POS (con reconciliación cruzada de OT)
+    // Mapear Ventas Express / POS (respetando correcciones y reversiones directas de la venta)
     ventasExpress.forEach(v => {
-      // Buscar si tiene OT vinculada para sincronizar los abonos más recientes
       const otAsoc = ordenes.find(o => 
         (v.ot_id && (o.id === v.ot_id || o.numero_ot === v.ot_id)) ||
         (v.ot_numero && (o.numero_ot === v.ot_numero || o.id === v.ot_numero)) ||
@@ -133,19 +133,8 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
       );
 
       const total = Number(v.total) || 0;
-      let abono = Number(v.abono) || 0;
-      let saldo = v.saldo_pendiente !== undefined ? Number(v.saldo_pendiente) : Math.max(0, total - abono);
-
-      if (otAsoc) {
-        if (otAsoc.abono !== undefined && Number(otAsoc.abono) > abono) {
-          abono = Number(otAsoc.abono);
-          saldo = Math.max(0, total - abono);
-        }
-        if (otAsoc.estado_pago === 'Pagado Total') {
-          abono = total;
-          saldo = 0;
-        }
-      }
+      const abono = Math.max(0, Number(v.abono) || 0);
+      const saldo = v.saldo_pendiente !== undefined ? Math.max(0, Number(v.saldo_pendiente)) : Math.max(0, total - abono);
 
       // Costo estimado de stock o producción rápida (~45% del PVP si es figura o material)
       const costoEstimado = Math.round(total * 0.45);
@@ -250,10 +239,6 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
     return pedidosFiltrados
       .filter(p => p.origen === 'POS' || p.estadoComercial === 'Facturada' || p.estadoComercial === 'Aceptada')
       .reduce((sum, p) => sum + p.total, 0);
-  }, [pedidosFiltrados]);
-
-  const totalPotencial = useMemo(() => {
-    return pedidosFiltrados.reduce((sum, p) => sum + p.total, 0);
   }, [pedidosFiltrados]);
 
   const costoTotalProduccion = useMemo(() => {
