@@ -87,3 +87,4 @@ WHERE activo IS NOT FALSE
 ALTER VIEW IF EXISTS public.payments SET (security_invoker = true);
 ALTER VIEW IF EXISTS public.cuentas_cobro SET (security_invoker = true);
 ALTER VIEW IF EXISTS public.vista_balance_taller SET (security_invoker = true);
+

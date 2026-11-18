@@ -12,6 +12,11 @@ Basado en las directrices oficiales de **GoogleChrome/modern-web-guidance** para
   - Usar variables CSS personalizadas (`--bg-main`, `--brand-cyan`, `--text-main`), `backdrop-filter: blur(...)`, `color-mix()`, `clamp()` para tipografía fluida y Grid/Flexbox modernos con `gap` nativo en lugar de márgenes frágiles o hacks JS.
   - Aprovechar `overflow-y: auto` y `scrollbar-gutter: stable` en modales para evitar saltos de layout horizontal al abrir diálogos.
   - Usar propiedades lógicas y `min-height: 44px` en controles interactivos para ergonomía táctil móvil y escritorio.
+- **Compatibilidad HTML / CSS / TS (`webhint` + Baseline):**
+  - Usar `<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />` sin `maximum-scale` ni `user-scalable=no` (el zoom accesible permanece activo; el auto-zoom en inputs móviles se previene con `font-size: 16px` en CSS).
+  - Preferir `<meta name="color-scheme" content="dark" />` (Baseline universal) en `index.html` y mantener `theme_color` únicamente en `public/manifest.json` para PWA.
+  - Declarar siempre prefijos de proveedor (`-webkit-backdrop-filter`, `-webkit-user-select`) **antes** de la propiedad estándar correspondiente (`backdrop-filter`, `user-select`).
+  - Mantener `"forceConsistentCasingInFileNames": true` en `tsconfig.json` para evitar fallos de rutas entre Windows y entornos Linux (Vercel/Render).
 
 ## 2. Formularios HTML5 Nativos Sin Trampas de Validación
 - **Regla Crítica para Campos Numéricos (`<input type="number">`):**
@@ -36,5 +41,6 @@ Basado en las directrices oficiales de **GoogleChrome/modern-web-guidance** para
 ## 5. Checklist Antes de Cerrar Cambios Web
 1. Verificar que todo `<input type="number">` monetario o métrico use `step="any"` sin múltiplos artificiales.
 2. Confirmar que los botones clave tengan `type="button"` (cuando no envían formularios) y áreas táctiles mínimas de `44x44px` en acciones primarias móviles.
-3. Validar compilación estricta TypeScript + Vite (`npm run build`) sin advertencias bloqueantes ni tipos implícitos rotos.
+3. Verificar que HTML, CSS y `tsconfig.json` cumplan Baseline y `webhint` (`meta-viewport`, `color-scheme`, orden `-webkit-*`, `forceConsistentCasingInFileNames: true`).
+4. Validar compilación estricta TypeScript + Vite (`npm run build`) sin advertencias bloqueantes ni tipos implícitos rotos.
 
