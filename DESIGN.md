@@ -53,8 +53,15 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - Padding interno estándar `16px–24px`, esquinas redondeadas `12px–16px`, backdrop blur moderado (`6px–12px` en modales y tarjetas principales).
 - **Banners de Desglose 3DPCC (SLA y FDM):** Bloque informativo en tinte cyan translúcido (`rgba(56, 189, 248, 0.08)`, borde `rgba(56, 189, 248, 0.2)`) que muestra en tiempo real duración (`Xh Ym — Z min`) y costos de material, energía, repuestos (FEP/LCD o Boquilla/PEI) y lavado/curado UV.
 
+### Header Superior Limpio y Layout Global (Regla Permanente)
+- **Cero elementos flotantes invasivos en el Header:** La barra superior (`HeaderMinimal`) debe permanecer ultra-limpia y despejada:
+  - **Izquierda:** Logotipo oficial `WJGEEKS 3D PRO` con punto de estado discreto (`header-status-dot`: verde online / ámbar local).
+  - **Derecha:** Únicamente el botón del operador (`header-user-badge`) con el nombre visible, contador numérico de alertas (`dailyAlertsCount`) y flecha para el menú desplegable.
+  - **Reconexión de servicios externos (WhatsApp / Drive / Supabase):** Prohibido colocar píldoras o botones flotantes externos en la cabecera. La vinculación y el estado QR se ubican dentro del menú del operador (*"WhatsApp y Correo"*) y de forma reactiva en el modal de confirmación de envío ante errores `503`.
+- **Subpestañas Contextuales (`HubNavigationController`):** Botones tipo píldora deslizables con `min-height: 42px`, gradiente activo cobalt-blue y contraste alto sobre fondo translúcido blur(12px).
+
 ### Ergonomía de Botones y Modales
-- **Targets Táctiles:** Controles primarios y segmentadores con altura mínima `42px–44px` en móvil.
+- **Targets Táctiles:** Controles primarios y segmentadores con altura mínima `42px–44px` en móvil (`.btn-sm` mínimo `40px` en escritorio y `42px` en móvil).
 - **Acciones siempre alcanzables:**
   - En **Cotizaciones**, el botón `Modificar` permanece habilitado en todos los estados (`Borrador`, `Enviada`, `Parcial`, `Aceptada`, `Facturada`).
   - En **POS Express**, toda venta muestra el botón `Abonar` (si tiene saldo) o `Cambiar Pago` (si ya está pagada) para corregir pagos o revertir estados de inmediato.

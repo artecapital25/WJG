@@ -73,22 +73,22 @@ export const HubNavigationController: React.FC<HubNavigationControllerProps> = (
             type="button"
             onClick={() => onSelectTab(tab.id)}
             style={{
-              minHeight: '38px',
-              padding: '7px 15px',
+              minHeight: '42px',
+              padding: '8px 16px',
               borderRadius: '9999px',
-              fontSize: '0.82rem',
+              fontSize: '0.84rem',
               fontWeight: isActive ? 800 : 600,
               fontFamily: isActive ? 'var(--font-display)' : 'var(--font-body)',
               border: isActive
-                ? '1px solid rgba(56, 189, 248, 0.55)'
-                : '1px solid rgba(255, 255, 255, 0.09)',
+                ? '1px solid rgba(56, 189, 248, 0.65)'
+                : '1px solid rgba(255, 255, 255, 0.1)',
               background: isActive
-                ? 'linear-gradient(135deg, rgba(27, 98, 177, 0.85) 0%, rgba(37, 119, 208, 0.75) 100%)'
+                ? 'linear-gradient(135deg, rgba(27, 98, 177, 0.95) 0%, rgba(37, 119, 208, 0.85) 100%)'
                 : 'rgba(41, 42, 47, 0.65)',
-              color: isActive ? '#ffffff' : 'rgba(248, 250, 252, 0.75)',
-              boxShadow: isActive ? '0 4px 12px rgba(27, 98, 177, 0.35)' : 'none',
+              color: isActive ? '#ffffff' : 'rgba(248, 250, 252, 0.78)',
+              boxShadow: isActive ? '0 4px 14px rgba(27, 98, 177, 0.45)' : 'none',
               cursor: 'pointer',
-              transition: 'all 0.15s ease',
+              transition: 'all 0.18s cubic-bezier(0.4, 0, 0.2, 1)',
               flexShrink: 0,
               display: 'inline-flex',
               alignItems: 'center',

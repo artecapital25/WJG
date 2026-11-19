@@ -115,42 +115,8 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
         </div>
       </div>
 
-      {/* Píldora en vivo de WhatsApp + Menú Unificado de Operador */}
+      {/* Menú Unificado de Operador Limpio (Sin elementos flotantes invasivos) */}
       <div className="header-right-actions" ref={menuRef} style={{ position: 'relative' }}>
-        {onOpenWhatsAppConnect && waConnected !== null && (
-          <button
-            type="button"
-            onClick={onOpenWhatsAppConnect}
-            title={waConnected ? 'Línea WhatsApp +57 320 2796115 conectada en vivo' : 'WhatsApp Gateway desconectado — Clic para escanear QR y reconectar'}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '5px 9px',
-              minHeight: '34px',
-              borderRadius: '9999px',
-              fontSize: '0.72rem',
-              fontWeight: 700,
-              cursor: 'pointer',
-              border: waConnected
-                ? '1px solid rgba(34, 197, 94, 0.35)'
-                : '1px solid rgba(245, 158, 11, 0.55)',
-              backgroundColor: waConnected
-                ? 'rgba(34, 197, 94, 0.12)'
-                : 'rgba(245, 158, 11, 0.16)',
-              color: waConnected ? '#4ade80' : '#fbbf24',
-              whiteSpace: 'nowrap'
-            }}
-          >
-            {waConnected ? (
-              <MessageSquare size={13} color="#4ade80" style={{ flexShrink: 0 }} />
-            ) : (
-              <QrCode size={13} color="#fbbf24" style={{ flexShrink: 0 }} />
-            )}
-            <span>{waConnected ? 'WA Activo' : 'Reconectar WA'}</span>
-          </button>
-        )}
-
         <button
           type="button"
           className="header-user-badge"
@@ -158,7 +124,7 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
           aria-expanded={menuOpen}
           aria-haspopup="menu"
           title={`Menú de ${activeOperator}`}
-          style={{ cursor: 'pointer', maxWidth: 'none', padding: '6px 12px', minHeight: '36px' }}
+          style={{ cursor: 'pointer', maxWidth: 'none', padding: '6px 12px', minHeight: '38px' }}
         >
           <ShieldCheck size={14} color="#38bdf8" style={{ flexShrink: 0 }} />
           <span className="header-user-name">{displayName}</span>
