@@ -7,8 +7,11 @@ export interface VentaExpress {
   numero_venta: string; // ej: POS-001
   foto_url?: string;
   nombre_producto: string;
+  cliente_id?: string;
   cliente_nombre: string;
   cliente_telefono: string;
+  cliente_nit_cc?: string;
+  cliente_correo?: string;
   total: number;
   abono: number;
   saldo_pendiente: number;

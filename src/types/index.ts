@@ -377,6 +377,7 @@ export interface OrdenTrabajo {
   numero_ot: string; // ej: OT-0012
   cotizacion_id: string;
   cotizacion_numero: string;
+  cliente_id?: string;
   cliente_nombre: string;
   cliente_telefono: string;
   item_nombre: string;
@@ -529,4 +530,18 @@ export interface DailyBriefingData {
   };
   acciones_recomendadas?: string[];
   mensaje_whatsapp: string;
+}
+
+export type EstadoBacklogEmpresa = 'pendiente' | 'en_validacion' | 'implementado';
+export type PrioridadBacklogEmpresa = 'alta' | 'media' | 'baja';
+
+export interface ItemBacklogEmpresa {
+  id: string;
+  titulo: string;
+  modulo: string;
+  prioridad: PrioridadBacklogEmpresa;
+  estado: EstadoBacklogEmpresa;
+  descripcion: string;
+  autor: string;
+  fecha_creacion: string;
 }

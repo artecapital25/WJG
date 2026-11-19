@@ -29,8 +29,15 @@ import {
   ProductoStock,
   PaymentRecord,
   EstadoOT,
-  EstadoCotizacion
+  EstadoCotizacion,
+  ItemBacklogEmpresa
 } from '../types';
+import {
+  normalizarNitCc,
+  normalizarCorreo,
+  buscarCoincidenciasCliente,
+  enriquecerClienteExistente
+} from '../utils/customerClassification';
 
 // Interfaz canónica para el Balance Financiero Consolidado
 export const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -418,7 +425,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 3. Traer Clientes desde la Nube (Ordenados Alfabéticamente)
+  // 3. Traer Clientes desde la Nube (Ordenados Alfabéticamente, Normalizados y Sin Duplicados Fusionados)
   async fetchClientes(): Promise<Cliente[] | null> {
     if (!this.isAvailable()) return null;
     try {
@@ -431,7 +438,42 @@ export const CloudSyncService = {
         console.warn('Error fetching clientes:', error);
         return null;
       }
-      return (data || []).sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
+
+      const DUPLICADOS_FUSIONADOS_IDS = new Set([
+        '3de944ee-5ea2-407d-bb8b-dc1770c3817a',
+        'a0051b46-0a99-443b-ba2d-e53741f0bea5',
+        'c947e6da-cc42-4363-b7c9-da457216565f',
+        '0240f537-b629-42a3-9d64-789a3ad7f599',
+        '0a445b4b-a065-4c87-8f5d-ae8f7d607c98',
+        '2ad30c73-c78e-4148-b9ff-d82b27880e9c'
+      ]);
+
+      const rows = data || [];
+      const duplicadosPresentes = rows
+        .map((r: any) => r.id)
+        .filter((id: string) => DUPLICADOS_FUSIONADOS_IDS.has(id));
+
+      if (duplicadosPresentes.length > 0) {
+        supabase!
+          .from('clientes')
+          .delete()
+          .in('id', duplicadosPresentes)
+          .then(({ error: delErr }) => {
+            if (delErr) console.debug('Limpieza diferida de duplicados:', delErr.message);
+          });
+      }
+
+      return rows
+        .filter((row: any) => !DUPLICADOS_FUSIONADOS_IDS.has(row.id))
+        .map((row: any): Cliente => ({
+          id: row.id,
+          codigo: Number(row.codigo) || 1,
+          nombre: (row.nombre || 'Cliente General').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim(),
+          nit_cc: normalizarNitCc(row.nit_cc),
+          telefono: (row.telefono || '').replace(/[\u00a0\u202c\s]/g, '').trim(),
+          correo: row.correo || ''
+        }))
+        .sort((a, b) => (a.nombre || '').localeCompare(b.nombre || ''));
     } catch (e) {
       console.warn('Exception in fetchClientes:', e);
       return null;
@@ -518,6 +560,7 @@ export const CloudSyncService = {
           numero_ot: row.numero_ot,
           cotizacion_id: meta.cotizacion_id || row.cotizacion_id || '',
           cotizacion_numero: meta.cotizacion_numero || row.cotizacion_numero || '',
+          cliente_id: row.cliente_id || undefined,
           cliente_nombre: row.cliente_nombre || 'Cliente General',
           cliente_telefono: row.cliente_telefono || '',
           item_nombre: row.item_nombre || descParsed.clean || 'Pieza 3D',
@@ -634,33 +677,10 @@ export const CloudSyncService = {
       return false;
     }
     try {
-      // 5.1 Asegurar que el cliente exista en la tabla clientes
+      // 5.1 Asegurar que el cliente exista en la tabla clientes mediante Upsert Inteligente (anti-duplicados)
       let clienteId: string | null = null;
       if (cot.cliente) {
-        const { data: existingCli } = await supabase!
-          .from('clientes')
-          .select('id')
-          .eq('telefono', cot.cliente.telefono)
-          .limit(1);
-
-        if (existingCli && existingCli.length > 0) {
-          clienteId = existingCli[0].id;
-        } else {
-          const { data: newCli } = await supabase!
-            .from('clientes')
-            .insert([{
-              nombre: cot.cliente.nombre,
-              telefono: cot.cliente.telefono,
-              nit_cc: cot.cliente.nit_cc || null,
-              correo: cot.cliente.correo || null
-            }])
-            .select('id')
-            .single();
-
-          if (newCli) {
-            clienteId = newCli.id;
-          }
-        }
+        clienteId = await this.saveCliente(cot.cliente);
       }
 
       const normalizarEstadoCotizacion = (estado?: string): string => {
@@ -826,6 +846,7 @@ export const CloudSyncService = {
 
       const payloadV3: any = {
         numero_ot: ot.numero_ot,
+        cliente_id: (ot.cliente_id && UUID_REGEX.test(ot.cliente_id)) ? ot.cliente_id : null,
         cliente_nombre: ot.cliente_nombre || 'Cliente',
         cliente_telefono: ot.cliente_telefono || 'Sin teléfono',
         item_nombre: ot.item_nombre || null,
@@ -960,17 +981,52 @@ export const CloudSyncService = {
     }
   },
 
-  // 8. Guardar o Actualizar un Cliente en Supabase
-  async saveCliente(cliente: Cliente): Promise<string | null> {
+  // 8. Guardar o Actualizar un Cliente en Supabase (Upsert Inteligente Anti-Duplicados)
+  async saveCliente(cliente: Cliente, opciones?: { allowShorterName?: boolean }): Promise<string | null> {
     if (!this.isAvailable()) return null;
     try {
+      const { data: rows } = await supabase!
+        .from('clientes')
+        .select('id, codigo, nombre, nit_cc, telefono, correo');
+
+      const existingRows: Cliente[] = (rows || []).map((r: any) => ({
+        id: r.id,
+        codigo: Number(r.codigo) || 1,
+        nombre: (r.nombre || '').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim(),
+        nit_cc: normalizarNitCc(r.nit_cc),
+        telefono: (r.telefono || '').replace(/[\u00a0\u202c\s]/g, '').trim(),
+        correo: r.correo || ''
+      }));
+
+      const { exactMatch } = buscarCoincidenciasCliente(cliente, existingRows);
+
+      if (exactMatch) {
+        const { clienteActualizado, huboCambios } = enriquecerClienteExistente(exactMatch, cliente, opciones);
+        if (huboCambios) {
+          const { error: updErr } = await supabase!
+            .from('clientes')
+            .update({
+              nombre: clienteActualizado.nombre,
+              telefono: clienteActualizado.telefono || '',
+              nit_cc: normalizarNitCc(clienteActualizado.nit_cc) || null,
+              correo: normalizarCorreo(clienteActualizado.correo) || null
+            })
+            .eq('id', exactMatch.id);
+
+          if (updErr) {
+            console.warn('Error updating existing cliente in Supabase:', updErr);
+          }
+        }
+        return exactMatch.id;
+      }
+
       const { data, error } = await supabase!
         .from('clientes')
         .insert([{
-          nombre: cliente.nombre,
-          telefono: cliente.telefono,
-          nit_cc: cliente.nit_cc || null,
-          correo: cliente.correo || null
+          nombre: (cliente.nombre || 'Cliente General').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim(),
+          telefono: (cliente.telefono || '').trim(),
+          nit_cc: normalizarNitCc(cliente.nit_cc) || null,
+          correo: normalizarCorreo(cliente.correo) || null
         }])
         .select('id')
         .single();
@@ -986,20 +1042,41 @@ export const CloudSyncService = {
     }
   },
 
-  // 8.1 Eliminar Cliente en Supabase
+  // 8.1 Eliminar Cliente en Supabase (Desvinculando FKs en cotizaciones, OTs, abonos y ventas POS)
   async deleteCliente(id: string, nombre?: string): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
+      const idsToDelete: string[] = [];
       if (UUID_REGEX.test(id)) {
-        const { error } = await supabase!.from('clientes').delete().eq('id', id);
-        if (!error) return true;
+        idsToDelete.push(id);
+      } else if (nombre && nombre.trim()) {
+        const { data: matched } = await supabase!
+          .from('clientes')
+          .select('id')
+          .ilike('nombre', nombre.trim());
+        (matched || []).forEach((r: any) => {
+          if (r?.id && UUID_REGEX.test(r.id)) idsToDelete.push(r.id);
+        });
       }
-      if (nombre) {
-        const { error } = await supabase!.from('clientes').delete().ilike('nombre', `%${nombre}%`);
-        return !error;
+
+      if (idsToDelete.length === 0) return false;
+
+      // Desvincular cliente_id antes de borrar para garantizar integridad y 0 errores FK
+      await Promise.all([
+        supabase!.from('cotizaciones').update({ cliente_id: null }).in('cliente_id', idsToDelete),
+        supabase!.from('ordenes_trabajo').update({ cliente_id: null }).in('cliente_id', idsToDelete),
+        supabase!.from('abonos_pagos').update({ cliente_id: null }).in('cliente_id', idsToDelete),
+        supabase!.from('ventas_express').update({ cliente_id: null }).in('cliente_id', idsToDelete)
+      ]);
+
+      const { error } = await supabase!.from('clientes').delete().in('id', idsToDelete);
+      if (error) {
+        console.warn('Error deleting cliente in Supabase:', error.message);
+        return false;
       }
-      return false;
+      return true;
     } catch (e) {
+      console.warn('Exception deleting cliente in Supabase:', e);
       return false;
     }
   },
@@ -1144,8 +1221,11 @@ export const CloudSyncService = {
           numero_venta: row.numero_venta,
           foto_url: row.foto_url || undefined,
           nombre_producto: snapshotMeta.nombre_producto || row.nombre_producto,
+          cliente_id: snapshotMeta.cliente_id || row.cliente_id || undefined,
           cliente_nombre: snapshotMeta.cliente_nombre || row.cliente_nombre,
           cliente_telefono: snapshotMeta.cliente_telefono ?? row.cliente_telefono ?? '',
+          cliente_nit_cc: snapshotMeta.cliente_nit_cc || row.cliente_nit_cc || undefined,
+          cliente_correo: snapshotMeta.cliente_correo || row.cliente_correo || undefined,
           subtotal: subtotalVal,
           iva_porcentaje: ivaPorcentajeVal,
           iva_monto: ivaMontoVal,
@@ -1200,8 +1280,11 @@ export const CloudSyncService = {
         fecha_venta: venta.fecha_venta,
         fecha_prometida_pago: venta.fecha_prometida_pago || null,
         nombre_producto: venta.nombre_producto,
+        cliente_id: venta.cliente_id || null,
         cliente_nombre: venta.cliente_nombre,
         cliente_telefono: venta.cliente_telefono || '',
+        cliente_nit_cc: normalizarNitCc(venta.cliente_nit_cc) || null,
+        cliente_correo: normalizarCorreo(venta.cliente_correo) || null,
         requiere_ot: Boolean(venta.requiere_ot),
         estado_diseno: venta.estado_diseno || null,
         ot_id: venta.ot_id || null,
@@ -1233,6 +1316,9 @@ export const CloudSyncService = {
 
       const fullPayload = {
         ...corePayload,
+        cliente_id: (venta.cliente_id && UUID_REGEX.test(venta.cliente_id)) ? venta.cliente_id : null,
+        cliente_nit_cc: normalizarNitCc(venta.cliente_nit_cc) || null,
+        cliente_correo: normalizarCorreo(venta.cliente_correo) || null,
         enlace_diseno: venta.enlace_diseno || null,
         notas_diseno: venta.notas_diseno || null,
         producto_stock_id: venta.producto_stock_id || null,
@@ -2758,7 +2844,9 @@ export const CloudSyncService = {
     onPaymentChange?: () => void,
     onStockChange?: () => void,
     onMaquinaChange?: () => void,
-    onCatalogChange?: () => void
+    onCatalogChange?: () => void,
+    onClientesChange?: () => void,
+    onBacklogChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
 
@@ -2816,6 +2904,13 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_tamanos' }, () => {
         if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
+        if (onClientesChange) onClientesChange();
+        if (onCatalogChange) onCatalogChange();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'backlog_mejoras_empresa' }, () => {
+        if (onBacklogChange) onBacklogChange();
       })
       .subscribe();
 
@@ -2906,6 +3001,68 @@ export const CloudSyncService = {
       if (typeof input === 'string') return input;
       const { processAndOptimizeImage } = await import('./imageService');
       return await processAndOptimizeImage(input, 640, 640, 0.75);
+    }
+  },
+
+  // 25. Bitácora / Futuras Validaciones de la Empresa (Backlog en Supabase)
+  async fetchBacklogMejoras(): Promise<ItemBacklogEmpresa[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('backlog_mejoras_empresa')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Error fetching backlog_mejoras_empresa:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any): ItemBacklogEmpresa => ({
+        id: row.id,
+        titulo: row.titulo,
+        modulo: row.modulo || 'General',
+        prioridad: (row.prioridad as any) || 'media',
+        estado: (row.estado as any) || 'pendiente',
+        descripcion: row.descripcion || '',
+        autor: row.autor || 'Equipo WJGEEKS',
+        fecha_creacion: row.fecha_creacion || (row.created_at ? String(row.created_at).slice(0, 10) : new Date().toISOString().slice(0, 10))
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchBacklogMejoras:', e);
+      return null;
+    }
+  },
+
+  async saveBacklogMejora(item: ItemBacklogEmpresa): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('backlog_mejoras_empresa')
+        .upsert({
+          id: item.id,
+          titulo: item.titulo,
+          modulo: item.modulo || 'General',
+          prioridad: item.prioridad || 'media',
+          estado: item.estado || 'pendiente',
+          descripcion: item.descripcion || '',
+          autor: item.autor || 'Equipo WJGEEKS',
+          fecha_creacion: item.fecha_creacion || new Date().toISOString().slice(0, 10),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'id' });
+      return !error;
+    } catch (e) {
+      console.warn('Exception in saveBacklogMejora:', e);
+      return false;
+    }
+  },
+
+  async deleteBacklogMejora(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!.from('backlog_mejoras_empresa').delete().eq('id', id);
+      return !error;
+    } catch (e) {
+      return false;
     }
   }
 };

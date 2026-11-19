@@ -113,27 +113,90 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
         )}
       </div>
 
-      {/* Selector de Cliente */}
+      {/* Selector de Cliente con Buscador y Actualización Rápida */}
       <div className="form-group" style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '14px', borderRadius: '12px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
           <label className="form-label" style={{ margin: 0 }}>
             <User size={14} style={{ display: 'inline', marginRight: '4px' }} />
             Cliente Asignado
           </label>
-          <button type="button" className="btn btn-secondary btn-sm" onClick={() => b.setShowNewClientModal(true)}>
-            <Plus size={14} />
-            <span>Nuevo Cliente</span>
-          </button>
+          <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+            <input
+              type="text"
+              className="form-input"
+              placeholder="🔍 Filtrar por nombre, tel, NIT o correo..."
+              value={b.clienteSearchQuery}
+              onChange={e => b.setClienteSearchQuery(e.target.value)}
+              style={{ maxWidth: '230px', padding: '4px 10px', minHeight: '32px', fontSize: '0.78rem' }}
+            />
+            <button type="button" className="btn btn-secondary btn-sm" onClick={() => b.setShowNewClientModal(true)}>
+              <Plus size={14} />
+              <span>Nuevo / Buscar</span>
+            </button>
+          </div>
         </div>
         <select className="form-select" value={b.clienteId} onChange={e => b.setClienteId(e.target.value)}>
-          {props.clientes.map(c => (
-            <option key={c.id} value={c.id}>{c.nombre} (Tel: {c.telefono})</option>
+          {b.clientesFiltrados.map(c => (
+            <option key={c.id} value={c.id}>
+              {c.nombre} {c.telefono ? `(Tel: ${c.telefono})` : ''} {c.nit_cc ? `[NIT: ${c.nit_cc}]` : ''}
+            </option>
           ))}
         </select>
         {b.clienteSeleccionado && (
-          <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-            <span>📱 WhatsApp: {b.clienteSeleccionado.telefono}</span>
-            <span>🆔 NIT/CC: {b.clienteSeleccionado.nit_cc || 'N/A'}</span>
+          <div style={{ marginTop: '8px' }}>
+            <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
+                <span>📱 WhatsApp: {b.clienteSeleccionado.telefono || 'Sin tel'}</span>
+                <span>🆔 NIT/CC: {b.clienteSeleccionado.nit_cc || 'N/A'}</span>
+                {b.clienteSeleccionado.correo && <span>✉️ {b.clienteSeleccionado.correo}</span>}
+              </div>
+              <button
+                type="button"
+                onClick={() => b.setEditandoClienteInline(prev => !prev)}
+                style={{
+                  background: 'rgba(56, 189, 248, 0.1)',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  color: 'var(--brand-cyan)',
+                  borderRadius: '6px',
+                  padding: '2px 8px',
+                  fontSize: '0.72rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                {b.editandoClienteInline ? 'Cerrar edición' : '✏️ Actualizar Tel / NIT / Correo'}
+              </button>
+            </div>
+
+            {b.editandoClienteInline && (
+              <div style={{
+                marginTop: '10px',
+                padding: '10px',
+                background: 'rgba(56, 189, 248, 0.06)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '8px',
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))',
+                gap: '8px',
+                alignItems: 'end'
+              }}>
+                <div>
+                  <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Teléfono WhatsApp</label>
+                  <input type="tel" className="form-input" value={b.editCliTelefono} onChange={e => b.setEditCliTelefono(e.target.value)} style={{ padding: '4px 8px', minHeight: '32px', fontSize: '0.8rem' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Cédula / NIT</label>
+                  <input type="text" className="form-input" value={b.editCliNitCc} onChange={e => b.setEditCliNitCc(e.target.value)} style={{ padding: '4px 8px', minHeight: '32px', fontSize: '0.8rem' }} />
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '3px' }}>Correo</label>
+                  <input type="email" className="form-input" value={b.editCliCorreo} onChange={e => b.setEditCliCorreo(e.target.value)} style={{ padding: '4px 8px', minHeight: '32px', fontSize: '0.8rem' }} />
+                </div>
+                <button type="button" className="btn btn-primary btn-sm" onClick={b.handleActualizarClienteSeleccionado}>
+                  Guardar Datos Cliente
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -247,6 +310,7 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
         onClose={() => b.setShowNewClientModal(false)}
         onAddCliente={b.handleCrearNuevoCliente}
         clientesCount={props.clientes.length}
+        clientes={props.clientes}
       />
 
       <ModalLightboxImagen

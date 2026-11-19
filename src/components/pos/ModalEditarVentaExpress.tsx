@@ -18,6 +18,7 @@ import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/po
 import { Cliente } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
 import { calcularAlertaCobro } from '../../services/posService';
+import { normalizarNitCc, normalizarCorreo, coincideBusquedaCliente } from '../../utils/customerClassification';
 import { toast } from '../ui/ToastProvider';
 
 interface ModalEditarVentaExpressProps {
@@ -32,6 +33,7 @@ interface ModalEditarVentaExpressProps {
 export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = ({
   isOpen,
   venta,
+  clientes = [],
   onClose,
   onGuardarCambios,
   onEliminarVenta
@@ -39,8 +41,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
   if (!isOpen || !venta) return null;
 
   const [nombreProducto, setNombreProducto] = useState(venta.nombre_producto);
+  const [clienteId, setClienteId] = useState(venta.cliente_id || '');
   const [clienteNombre, setClienteNombre] = useState(venta.cliente_nombre);
   const [clienteTelefono, setClienteTelefono] = useState(venta.cliente_telefono || '');
+  const [clienteNitCc, setClienteNitCc] = useState(venta.cliente_nit_cc || '');
+  const [clienteCorreo, setClienteCorreo] = useState(venta.cliente_correo || '');
+  const [busquedaCliModal, setBusquedaCliModal] = useState('');
   const [total, setTotal] = useState<number | ''>(venta.total);
   const [abono, setAbono] = useState<number | ''>(venta.abono);
   const [fechaVenta, setFechaVenta] = useState(venta.fecha_venta || new Date().toISOString().slice(0, 10));
@@ -65,8 +71,12 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
   useEffect(() => {
     if (venta) {
       setNombreProducto(venta.nombre_producto);
+      setClienteId(venta.cliente_id || '');
       setClienteNombre(venta.cliente_nombre);
       setClienteTelefono(venta.cliente_telefono || '');
+      setClienteNitCc(venta.cliente_nit_cc || '');
+      setClienteCorreo(venta.cliente_correo || '');
+      setBusquedaCliModal('');
       setTotal(venta.total);
       setAbono(venta.abono);
       setFechaVenta(venta.fecha_venta || new Date().toISOString().slice(0, 10));
@@ -133,8 +143,11 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
     const ventaActualizada: VentaExpress = {
       ...venta,
       nombre_producto: nombreProducto.trim(),
+      cliente_id: clienteId || venta.cliente_id || undefined,
       cliente_nombre: clienteNombre.trim(),
       cliente_telefono: clienteTelefono.trim(),
+      cliente_nit_cc: normalizarNitCc(clienteNitCc) || undefined,
+      cliente_correo: normalizarCorreo(clienteCorreo) || undefined,
       total: totalNum,
       abono: abonoNum,
       saldo_pendiente: saldoPendiente,
@@ -357,12 +370,56 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
 
             {/* DATOS DEL CLIENTE */}
             <div style={{ background: 'rgba(0,0,0,0.3)', padding: '14px', borderRadius: '10px', marginBottom: '14px', border: '1px solid var(--border-subtle)' }}>
-              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--brand-cyan)', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <User size={14} />
-                <span>Datos del Cliente / Comprador</span>
+              <div style={{ fontSize: '0.78rem', fontWeight: 800, color: 'var(--brand-cyan)', textTransform: 'uppercase', marginBottom: '10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <User size={14} />
+                  <span>Datos del Cliente / Comprador</span>
+                </span>
+                {clientes.length > 0 && (
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={busquedaCliModal}
+                    onChange={e => setBusquedaCliModal(e.target.value)}
+                    placeholder="🔍 Vincular del directorio..."
+                    style={{ fontSize: '0.75rem', padding: '4px 8px', maxWidth: '210px' }}
+                  />
+                )}
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px' }}>
+              {busquedaCliModal.trim() !== '' && (
+                <div style={{ maxHeight: '120px', overflowY: 'auto', marginBottom: '10px', background: '#0b1329', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+                  {clientes.filter(c => coincideBusquedaCliente(c, busquedaCliModal)).slice(0, 5).map(c => (
+                    <button
+                      key={c.id}
+                      type="button"
+                      onClick={() => {
+                        setClienteId(c.id);
+                        setClienteNombre(c.nombre);
+                        setClienteTelefono(c.telefono || '');
+                        setClienteNitCc(c.nit_cc || '');
+                        setClienteCorreo(c.correo || '');
+                        setBusquedaCliModal('');
+                      }}
+                      style={{
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '6px 10px',
+                        background: 'transparent',
+                        border: 'none',
+                        borderBottom: '1px solid rgba(255,255,255,0.06)',
+                        color: '#f8fafc',
+                        fontSize: '0.75rem',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <strong>{c.nombre}</strong> — 📱 {c.telefono || 'Sin tel'} {c.nit_cc ? `• 🆔 ${c.nit_cc}` : ''}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '10px' }}>
                 <div>
                   <label style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
                     NOMBRE DEL CLIENTE *
@@ -388,6 +445,36 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                     onChange={e => setClienteTelefono(e.target.value)}
                     placeholder="Ej: 3001234567"
                     style={{ fontSize: '0.9rem' }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
+                    CÉDULA / NIT
+                  </label>
+                  <input
+                    type="text"
+                    className="input-field"
+                    value={clienteNitCc}
+                    onChange={e => setClienteNitCc(e.target.value)}
+                    placeholder="Ej: 1018480904"
+                    style={{ fontSize: '0.86rem' }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
+                    CORREO ELECTRÓNICO
+                  </label>
+                  <input
+                    type="email"
+                    className="input-field"
+                    value={clienteCorreo}
+                    onChange={e => setClienteCorreo(e.target.value)}
+                    placeholder="cliente@correo.com"
+                    style={{ fontSize: '0.86rem' }}
                   />
                 </div>
               </div>

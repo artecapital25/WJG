@@ -25,6 +25,7 @@ import { detect3DPlatform, formatExternalUrl } from '../../../services/platformU
 import { toast } from '../../../components/ui/ToastProvider';
 import { EmailNotificationService } from '../../../services/emailNotificationService';
 import { StorageService } from '../../../services/storageService';
+import { coincideBusquedaCliente, normalizarNitCc, normalizarCorreo } from '../../../utils/customerClassification';
 
 export function useCotizadorBuilder({
   items,
@@ -106,6 +107,11 @@ export function useCotizadorBuilder({
     }
   }, [clienteId, vendedorNombre, descuentoPorcentaje, ivaPorcentaje, notas, diasEntrega, fechaEntrega, tiempoEntregaTexto, items.length, cotizacionEnEdicion]);
   const [showNewClientModal, setShowNewClientModal] = useState<boolean>(false);
+  const [clienteSearchQuery, setClienteSearchQuery] = useState<string>('');
+  const [editandoClienteInline, setEditandoClienteInline] = useState<boolean>(false);
+  const [editCliTelefono, setEditCliTelefono] = useState<string>('');
+  const [editCliNitCc, setEditCliNitCc] = useState<string>('');
+  const [editCliCorreo, setEditCliCorreo] = useState<string>('');
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
   const [cotizacionParaConfirmarWhatsApp, setCotizacionParaConfirmarWhatsApp] = useState<Cotizacion | null>(null);
   const [cotizacionParaVisualizar, setCotizacionParaVisualizar] = useState<{
@@ -232,10 +238,27 @@ export function useCotizadorBuilder({
     return validarRegla50Anticipo(total, abonoInicial, estadoPagoInicial);
   }, [total, abonoInicial, estadoPagoInicial]);
 
-  // Cliente seleccionado
+  // Cliente seleccionado y lista filtrada
   const clienteSeleccionado = useMemo(() => {
     return clientes.find(c => c.id === clienteId) || clientes[0];
   }, [clientes, clienteId]);
+
+  const clientesFiltrados = useMemo(() => {
+    const q = clienteSearchQuery.trim();
+    const list = q ? clientes.filter(c => coincideBusquedaCliente(c, q)) : clientes;
+    if (clienteSeleccionado && !list.some(c => c.id === clienteSeleccionado.id)) {
+      return [clienteSeleccionado, ...list];
+    }
+    return list;
+  }, [clientes, clienteSearchQuery, clienteSeleccionado]);
+
+  useEffect(() => {
+    if (clienteSeleccionado) {
+      setEditCliTelefono(clienteSeleccionado.telefono || '');
+      setEditCliNitCc(clienteSeleccionado.nit_cc || '');
+      setEditCliCorreo(clienteSeleccionado.correo || '');
+    }
+  }, [clienteSeleccionado]);
 
   // Número consecutivo sugerido o fijado
   const numeroCotSugerido = useMemo(() => {
@@ -531,9 +554,27 @@ export function useCotizadorBuilder({
   };
 
   const handleCrearNuevoCliente = (nuevo: Cliente) => {
-    onAddCliente(nuevo);
-    setClienteId(nuevo.id);
+    const resCli = onAddCliente(nuevo);
+    const idFinal = (resCli && typeof resCli === 'object' && resCli.id) ? resCli.id : nuevo.id;
+    setClienteId(idFinal);
+    setClienteSearchQuery('');
     setShowNewClientModal(false);
+  };
+
+  const handleActualizarClienteSeleccionado = () => {
+    if (!clienteSeleccionado) return;
+    const actualizado: Cliente = {
+      ...clienteSeleccionado,
+      telefono: editCliTelefono.trim(),
+      nit_cc: normalizarNitCc(editCliNitCc),
+      correo: normalizarCorreo(editCliCorreo)
+    };
+    const resCli = onAddCliente(actualizado, { allowShorterName: true });
+    if (resCli && typeof resCli === 'object' && resCli.id) {
+      setClienteId(resCli.id);
+    }
+    setEditandoClienteInline(false);
+    toast.success(`Datos de ${clienteSeleccionado.nombre} actualizados en el directorio y nube.`);
   };
 
   // Recalcular piezas con tarifas vigentes de catálogo cuando el operador lo solicita
@@ -687,6 +728,18 @@ export function useCotizadorBuilder({
     setTipoEstado,
     tieneItemsPendientes,
     clienteSeleccionado,
+    clientesFiltrados,
+    clienteSearchQuery,
+    setClienteSearchQuery,
+    editandoClienteInline,
+    setEditandoClienteInline,
+    editCliTelefono,
+    setEditCliTelefono,
+    editCliNitCc,
+    setEditCliNitCc,
+    editCliCorreo,
+    setEditCliCorreo,
+    handleActualizarClienteSeleccionado,
     esEdicion,
     numeroCotFinal,
     numeroCotSugerido,

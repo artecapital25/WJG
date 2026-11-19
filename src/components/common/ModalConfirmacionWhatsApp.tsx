@@ -8,11 +8,24 @@ import {
   Phone, 
   ShieldCheck, 
   AlertTriangle, 
-  ExternalLink 
+  ExternalLink,
+  QrCode
 } from 'lucide-react';
 import { WhatsAppGatewayService } from '../../services/whatsappGatewayService';
 import { formatWhatsAppPhone } from '../../services/whatsappService';
 import { toast } from '../ui/ToastProvider';
+
+function parseFriendlyGatewayError(raw?: string | null): string {
+  if (!raw) return 'La línea corporativa no está conectada en este momento.';
+  const jsonStart = raw.indexOf('{');
+  if (jsonStart !== -1) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart));
+      if (parsed?.error) return String(parsed.error);
+    } catch (_) {}
+  }
+  return raw;
+}
 
 export interface ResumenFinancieroItem {
   etiqueta: string;
@@ -49,11 +62,40 @@ export const ModalConfirmacionWhatsApp: React.FC<ModalConfirmacionWhatsAppProps>
   const [isSending, setIsSending] = useState(false);
   const [copiado, setCopiado] = useState(false);
   const [errorEnvio, setErrorEnvio] = useState<string | null>(null);
+  const [gatewayStatus, setGatewayStatus] = useState<'checking' | 'connected' | 'disconnected'>('checking');
 
-  // Actualizar si cambia el prop
+  // Actualizar y pre-verificar estado del Gateway WhatsApp al abrir
   React.useEffect(() => {
     setTelefonoEditable(clienteTelefono || '');
     setErrorEnvio(null);
+    if (!isOpen) return;
+
+    let mounted = true;
+    setGatewayStatus('checking');
+    const verifyGateway = async () => {
+      try {
+        const res = await WhatsAppGatewayService.checkStatus();
+        if (mounted) {
+          setGatewayStatus(res.connected ? 'connected' : 'disconnected');
+        }
+      } catch {
+        if (mounted) setGatewayStatus('disconnected');
+      }
+    };
+    verifyGateway();
+
+    const handleWaUpdated = (ev: Event) => {
+      const custom = ev as CustomEvent<{ connected?: boolean }>;
+      if (mounted && typeof custom.detail?.connected === 'boolean') {
+        setGatewayStatus(custom.detail.connected ? 'connected' : 'disconnected');
+        if (custom.detail.connected) setErrorEnvio(null);
+      }
+    };
+    window.addEventListener('wjg:wa-status-updated', handleWaUpdated);
+    return () => {
+      mounted = false;
+      window.removeEventListener('wjg:wa-status-updated', handleWaUpdated);
+    };
   }, [clienteTelefono, isOpen]);
 
   if (!isOpen) return null;
@@ -85,16 +127,25 @@ export const ModalConfirmacionWhatsApp: React.FC<ModalConfirmacionWhatsAppProps>
         toast.success(`WhatsApp despachado automáticamente desde la línea corporativa (+57 320 2796115)`);
         onConfirmadoExitoso();
       } else {
-        const errorMsg = res.error || 'La línea corporativa no respondió en este momento.';
-        setErrorEnvio(errorMsg);
-        toast.error(`No se pudo despachar por la línea corporativa: ${errorMsg}`);
+        const cleanError = parseFriendlyGatewayError(res.error);
+        setErrorEnvio(cleanError);
+        if (cleanError.toLowerCase().includes('vinculado') || res.error?.includes('503')) {
+          setGatewayStatus('disconnected');
+        }
+        toast.error(`No se pudo despachar por la línea corporativa: ${cleanError}`);
       }
     } catch (err: any) {
-      const msg = err?.message || 'Error de conexión con el servidor corporativo.';
+      const msg = parseFriendlyGatewayError(err?.message);
       setErrorEnvio(msg);
       toast.error(msg);
     } finally {
       setIsSending(false);
+    }
+  };
+
+  const handleAbrirVinculadorQR = () => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wjg:open-whatsapp-modal'));
     }
   };
 
@@ -318,8 +369,8 @@ export const ModalConfirmacionWhatsApp: React.FC<ModalConfirmacionWhatsAppProps>
           </div>
         </div>
 
-        {/* Alerta de Error y Fallback de Contingencia */}
-        {errorEnvio && (
+        {/* Alerta de Error / Desconexión y Reconexión QR + Fallback de Contingencia */}
+        {(errorEnvio || gatewayStatus === 'disconnected') && (
           <div style={{
             background: 'rgba(239, 68, 68, 0.12)',
             border: '1px solid rgba(239, 68, 68, 0.4)',
@@ -329,33 +380,57 @@ export const ModalConfirmacionWhatsApp: React.FC<ModalConfirmacionWhatsAppProps>
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
               <AlertTriangle size={16} />
-              <span>Línea Corporativa No Disponible</span>
+              <span>Línea Corporativa Desconectada (Requiere Vincular QR)</span>
             </div>
-            <p style={{ margin: '0 0 10px 0', fontSize: '0.78rem', color: '#fca5a5' }}>
-              {errorEnvio}. Puedes reintentar o usar el enlace asistido sin perder tu venta ni cotización.
+            <p style={{ margin: '0 0 10px 0', fontSize: '0.78rem', color: '#fca5a5', lineHeight: 1.45 }}>
+              {errorEnvio || 'La sesión de WhatsApp en la página se desconectó. Puedes reconectar el código QR sin perder esta venta/cotización, o enviarlo directo por WhatsApp Web/App (wa.me).'}
             </p>
-            <button
-              type="button"
-              onClick={handleFallbackManual}
-              style={{
-                width: '100%',
-                background: 'rgba(37, 211, 102, 0.2)',
-                border: '1px solid rgba(37, 211, 102, 0.4)',
-                color: '#86efac',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                fontSize: '0.8rem',
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '6px'
-              }}
-            >
-              <ExternalLink size={14} />
-              <span>Abrir en WhatsApp Manual (wa.me) como Contingencia</span>
-            </button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <button
+                type="button"
+                onClick={handleAbrirVinculadorQR}
+                style={{
+                  width: '100%',
+                  background: 'rgba(56, 189, 248, 0.2)',
+                  border: '1px solid rgba(56, 189, 248, 0.45)',
+                  color: '#7dd3fc',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <QrCode size={14} />
+                <span>📲 Reconectar WhatsApp con Código QR Ahora</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleFallbackManual}
+                style={{
+                  width: '100%',
+                  background: 'rgba(37, 211, 102, 0.2)',
+                  border: '1px solid rgba(37, 211, 102, 0.45)',
+                  color: '#86efac',
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  fontSize: '0.8rem',
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px'
+                }}
+              >
+                <ExternalLink size={14} />
+                <span>🚀 Enviar por WhatsApp Web/App (wa.me) y Guardar</span>
+              </button>
+            </div>
           </div>
         )}
 

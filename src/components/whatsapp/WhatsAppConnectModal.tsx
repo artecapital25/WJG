@@ -50,6 +50,9 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
     // Sondeo periódico activo cada 2.0s mientras el modal esté abierto
     const interval = setInterval(() => {
       WhatsAppGatewayService.checkStatus().then(res => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('wjg:wa-status-updated', { detail: { connected: res.connected } }));
+        }
         setStatus(prev => {
           // Si el servidor está reconectando o negociando nuevo QR, preservar el QR previo para evitar parpadeos
           const qrCodeToUse = res.qrCode || (res.connected ? undefined : prev.qrCode);
@@ -76,6 +79,9 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
     setIsLoading(true);
     try {
       const res = await WhatsAppGatewayService.checkStatus();
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:wa-status-updated', { detail: { connected: res.connected } }));
+      }
       setStatus(prev => ({
         ...res,
         qrCode: res.qrCode || (res.connected ? undefined : prev.qrCode)
@@ -209,7 +215,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
         inset: 0,
         backgroundColor: 'rgba(5, 7, 15, 0.85)',
         backdropFilter: 'blur(8px)',
-        zIndex: 9999,
+        zIndex: 10050,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',

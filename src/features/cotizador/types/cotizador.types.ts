@@ -94,7 +94,7 @@ export interface CotizacionBuilderProps {
   onUpdatePieceQuantity?: (id: string, newCantidad: number) => void;
   onUpdatePieceImage?: (id: string, imagenUrl: string) => void;
   onSaveCotizacion: (cotizacion: import('../../../types').Cotizacion) => void;
-  onAddCliente: (cliente: import('../../../types').Cliente) => void;
+  onAddCliente: (cliente: import('../../../types').Cliente, opciones?: { allowShorterName?: boolean }) => import('../../../types').Cliente | void;
   onLoadPieceToCalculator?: (item: PiezaCotizada) => void;
 }
 

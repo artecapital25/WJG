@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   CheckCircle2, 
   Clock, 
@@ -15,8 +15,18 @@ import {
   Activity, 
   Flame, 
   Truck, 
-  CreditCard
+  CreditCard,
+  ClipboardList,
+  Plus,
+  Trash2,
+  Edit3,
+  Save,
+  X
 } from 'lucide-react';
+import { ItemBacklogEmpresa, EstadoBacklogEmpresa, PrioridadBacklogEmpresa } from '../../types';
+import { StorageService } from '../../services/storageService';
+import { CloudSyncService } from '../../services/cloudSyncService';
+import { toast } from '../ui/ToastProvider';
 
 interface FasePlan {
   id: number;
@@ -30,8 +40,119 @@ interface FasePlan {
 }
 
 export const ProjectPlanView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<'roadmap' | 'diagnostico' | 'optimizaciones' | 'proximos'>('roadmap');
+  const [activeTab, setActiveTab] = useState<'roadmap' | 'diagnostico' | 'optimizaciones' | 'proximos' | 'backlog'>('roadmap');
   const [faseExpandida, setFaseExpandida] = useState<number | null>(7); // Fase 7 u 8 para ver lo más reciente
+
+  // Estado de Bitácora & Futuras Validaciones (Sincronizado con Supabase + StorageService)
+  const [backlogItems, setBacklogItems] = useState<ItemBacklogEmpresa[]>(() => StorageService.getBacklogEmpresa());
+  const [filtroBacklogEstado, setFiltroBacklogEstado] = useState<'todos' | EstadoBacklogEmpresa>('todos');
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [nuevoTitulo, setNuevoTitulo] = useState('');
+  const [nuevoModulo, setNuevoModulo] = useState('General');
+  const [nuevaPrioridad, setNuevaPrioridad] = useState<PrioridadBacklogEmpresa>('media');
+  const [nuevoEstado, setNuevoEstado] = useState<EstadoBacklogEmpresa>('pendiente');
+  const [nuevoAutor, setNuevoAutor] = useState('Equipo WJGEEKS');
+  const [nuevaDescripcion, setNuevaDescripcion] = useState('');
+
+  useEffect(() => {
+    let mounted = true;
+    const syncBacklog = async () => {
+      const cloudItems = await CloudSyncService.fetchBacklogMejoras();
+      if (mounted && cloudItems && cloudItems.length > 0) {
+        setBacklogItems(cloudItems);
+        StorageService.saveBacklogEmpresa(cloudItems);
+      }
+    };
+    syncBacklog();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleGuardarBacklogItem = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nuevoTitulo.trim()) {
+      toast.warning('Escribe un título para la mejora o validación pendiente.');
+      return;
+    }
+
+    const item: ItemBacklogEmpresa = {
+      id: editandoId || `bl-${Date.now()}`,
+      titulo: nuevoTitulo.trim(),
+      modulo: nuevoModulo.trim() || 'General',
+      prioridad: nuevaPrioridad,
+      estado: nuevoEstado,
+      descripcion: nuevaDescripcion.trim(),
+      autor: nuevoAutor.trim() || 'Equipo WJGEEKS',
+      fecha_creacion: editandoId
+        ? (backlogItems.find(i => i.id === editandoId)?.fecha_creacion || new Date().toISOString().slice(0, 10))
+        : new Date().toISOString().slice(0, 10)
+    };
+
+    const updated = editandoId
+      ? backlogItems.map(i => i.id === editandoId ? item : i)
+      : [item, ...backlogItems];
+
+    setBacklogItems(updated);
+    StorageService.saveBacklogEmpresa(updated);
+    const ok = await CloudSyncService.saveBacklogMejora(item);
+
+    setEditandoId(null);
+    setNuevoTitulo('');
+    setNuevoModulo('General');
+    setNuevaPrioridad('media');
+    setNuevoEstado('pendiente');
+    setNuevaDescripcion('');
+
+    toast.success(
+      editandoId
+        ? (ok ? 'Registro actualizado en bitácora y Supabase.' : 'Actualizado localmente.')
+        : (ok ? 'Nueva nota agregada a la bitácora y sincronizada con el equipo.' : 'Nota agregada localmente.')
+    );
+  };
+
+  const handleEditarBacklogItem = (item: ItemBacklogEmpresa) => {
+    setEditandoId(item.id);
+    setNuevoTitulo(item.titulo);
+    setNuevoModulo(item.modulo);
+    setNuevaPrioridad(item.prioridad);
+    setNuevoEstado(item.estado);
+    setNuevoAutor(item.autor);
+    setNuevaDescripcion(item.descripcion);
+  };
+
+  const handleCancelarEdicionBacklog = () => {
+    setEditandoId(null);
+    setNuevoTitulo('');
+    setNuevoModulo('General');
+    setNuevaPrioridad('media');
+    setNuevoEstado('pendiente');
+    setNuevaDescripcion('');
+  };
+
+  const handleCambiarEstadoBacklog = async (id: string, estado: EstadoBacklogEmpresa) => {
+    const target = backlogItems.find(i => i.id === id);
+    if (!target) return;
+    const updatedItem: ItemBacklogEmpresa = { ...target, estado };
+    const updated = backlogItems.map(i => i.id === id ? updatedItem : i);
+    setBacklogItems(updated);
+    StorageService.saveBacklogEmpresa(updated);
+    await CloudSyncService.saveBacklogMejora(updatedItem);
+    toast.info(`Estado cambiado a "${estado === 'en_validacion' ? 'En Validación' : estado === 'implementado' ? 'Implementado' : 'Pendiente'}"`);
+  };
+
+  const handleEliminarBacklogItem = async (id: string) => {
+    const target = backlogItems.find(i => i.id === id);
+    if (!target) return;
+    if (!confirm(`¿Eliminar de la bitácora "${target.titulo}"?`)) return;
+    const updated = backlogItems.filter(i => i.id !== id);
+    setBacklogItems(updated);
+    StorageService.saveBacklogEmpresa(updated);
+    await CloudSyncService.deleteBacklogMejora(id);
+    toast.success('Elemento eliminado de la bitácora.');
+  };
+
+  const pendientesBacklogCount = backlogItems.filter(i => i.estado !== 'implementado').length;
 
   const fases: FasePlan[] = [
     {
@@ -282,6 +403,16 @@ export const ProjectPlanView: React.FC = () => {
         >
           <Sparkles size={16} />
           <span>🚀 Próximos Módulos Estratégicos</span>
+        </button>
+
+        <button
+          type="button"
+          className={`btn ${activeTab === 'backlog' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveTab('backlog')}
+          style={{ fontWeight: 800, display: 'flex', alignItems: 'center', gap: '8px' }}
+        >
+          <ClipboardList size={16} />
+          <span>📝 Bitácora & Futuras Validaciones ({pendientesBacklogCount})</span>
         </button>
       </div>
 
@@ -831,6 +962,238 @@ export const ProjectPlanView: React.FC = () => {
                   Impacto: Calidad 100% estandarizada
                 </span>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==============================================================
+          PESTAÑA 5: BITÁCORA & FUTURAS VALIDACIONES (BACKLOG EN VIVO)
+          ============================================================== */}
+      {activeTab === 'backlog' && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div className="glass-card" style={{ padding: '20px', border: '1px solid rgba(56, 189, 248, 0.3)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
+              <div>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 800, color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <ClipboardList size={20} color="var(--brand-cyan)" />
+                  Bitácora de Mejoras, Pendientes & Futuras Validaciones
+                </h3>
+                <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)', margin: 0 }}>
+                  Espacio vivo para anotar todo lo que hace falta implementar o validar con el equipo (ej. reglas de descuentos en inventario) y sincronizarlo entre Germán, Wendy y Juan.
+                </p>
+              </div>
+              <span style={{
+                fontSize: '0.75rem',
+                fontWeight: 700,
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                background: 'rgba(245, 158, 11, 0.15)',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                color: '#fbbf24'
+              }}>
+                {pendientesBacklogCount} pendiente(s) / en validación
+              </span>
+            </div>
+
+            {/* Formulario para agregar / editar ítem */}
+            <form onSubmit={handleGuardarBacklogItem} style={{ background: 'rgba(0,0,0,0.28)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: '12px', padding: '14px', marginBottom: '16px' }}>
+              <div style={{ fontSize: '0.82rem', fontWeight: 800, color: 'var(--brand-cyan)', marginBottom: '10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{editandoId ? '✏️ Editando Nota de Bitácora' : '➕ Agregar Nuevo Pendiente / Mejora / Validación'}</span>
+                {editandoId && (
+                  <button type="button" onClick={handleCancelarEdicionBacklog} className="btn btn-secondary btn-sm" style={{ padding: '2px 8px', fontSize: '0.72rem' }}>
+                    <X size={12} /> Cancelar edición
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ gridColumn: 'span 2' }}>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    TÍTULO DEL REQUERIMIENTO O VALIDACIÓN *
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    placeholder="Ej: Validar descuento automático de stock físico al confirmar POS"
+                    value={nuevoTitulo}
+                    onChange={e => setNuevoTitulo(e.target.value)}
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    MÓDULO / ÁREA
+                  </label>
+                  <select className="form-select" value={nuevoModulo} onChange={e => setNuevoModulo(e.target.value)}>
+                    <option value="General">General / Sistema</option>
+                    <option value="Inventario & Bodega">Inventario & Bodega</option>
+                    <option value="POS Express">POS Express</option>
+                    <option value="Cotizador 3D">Cotizador 3D</option>
+                    <option value="Mensajería WhatsApp">Mensajería WhatsApp</option>
+                    <option value="Clientes & CRM">Clientes & CRM</option>
+                    <option value="Taller & OTs">Taller & OTs</option>
+                    <option value="Finanzas & Cobros">Finanzas & Cobros</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    PRIORIDAD
+                  </label>
+                  <select className="form-select" value={nuevaPrioridad} onChange={e => setNuevaPrioridad(e.target.value as PrioridadBacklogEmpresa)}>
+                    <option value="alta">🔴 Alta</option>
+                    <option value="media">🟡 Media</option>
+                    <option value="baja">🔵 Baja</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    ESTADO
+                  </label>
+                  <select className="form-select" value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value as EstadoBacklogEmpresa)}>
+                    <option value="pendiente">⏳ Pendiente</option>
+                    <option value="en_validacion">🧪 En Validación</option>
+                    <option value="implementado">✅ Implementado</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    REPORTADO POR
+                  </label>
+                  <input
+                    type="text"
+                    className="form-input"
+                    value={nuevoAutor}
+                    onChange={e => setNuevoAutor(e.target.value)}
+                    placeholder="Germán / Wendy / Juan"
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: '10px' }}>
+                <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                  DETALLES / NOTAS TÉCNICAS / OBSERVACIONES
+                </label>
+                <textarea
+                  className="form-input"
+                  rows={2}
+                  placeholder="Describe qué falta por ajustar o qué caso real se observó en el taller..."
+                  value={nuevaDescripcion}
+                  onChange={e => setNuevaDescripcion(e.target.value)}
+                  style={{ resize: 'vertical' }}
+                />
+              </div>
+
+              <button type="submit" className="btn btn-primary btn-sm" style={{ fontWeight: 800 }}>
+                {editandoId ? <Save size={14} /> : <Plus size={14} />}
+                <span>{editandoId ? 'Actualizar Nota en Bitácora' : 'Guardar Nota en Bitácora'}</span>
+              </button>
+            </form>
+
+            {/* Filtros por estado */}
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '14px' }}>
+              {([
+                { id: 'todos', label: `Todos (${backlogItems.length})` },
+                { id: 'en_validacion', label: `🧪 En Validación (${backlogItems.filter(i => i.estado === 'en_validacion').length})` },
+                { id: 'pendiente', label: `⏳ Pendientes (${backlogItems.filter(i => i.estado === 'pendiente').length})` },
+                { id: 'implementado', label: `✅ Implementados (${backlogItems.filter(i => i.estado === 'implementado').length})` }
+              ] as const).map(f => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={`btn btn-sm ${filtroBacklogEstado === f.id ? 'btn-cyan' : 'btn-secondary'}`}
+                  onClick={() => setFiltroBacklogEstado(f.id)}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Lista de ítems */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {backlogItems
+                .filter(item => filtroBacklogEstado === 'todos' || item.estado === filtroBacklogEstado)
+                .map(item => {
+                  const colorEstado = item.estado === 'implementado'
+                    ? '#4ade80'
+                    : item.estado === 'en_validacion'
+                    ? '#fbbf24'
+                    : '#38bdf8';
+                  return (
+                    <div
+                      key={item.id}
+                      style={{
+                        background: 'rgba(0,0,0,0.28)',
+                        border: `1px solid ${item.estado === 'en_validacion' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255,255,255,0.08)'}`,
+                        borderLeft: `4px solid ${colorEstado}`,
+                        borderRadius: '10px',
+                        padding: '12px 14px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px', flexWrap: 'wrap' }}>
+                        <div style={{ flex: 1, minWidth: '220px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 800, padding: '2px 7px', borderRadius: '6px', background: 'rgba(56, 189, 248, 0.14)', color: '#38bdf8' }}>
+                              {item.modulo}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', fontWeight: 700, padding: '2px 7px', borderRadius: '6px', background: item.prioridad === 'alta' ? 'rgba(239, 68, 68, 0.16)' : item.prioridad === 'media' ? 'rgba(245, 158, 11, 0.15)' : 'rgba(148, 163, 184, 0.15)', color: item.prioridad === 'alta' ? '#fca5a5' : item.prioridad === 'media' ? '#fcd34d' : '#cbd5e1' }}>
+                              Prioridad {item.prioridad.toUpperCase()}
+                            </span>
+                            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)' }}>
+                              📅 {item.fecha_creacion} • 👤 {item.autor}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: '0.94rem', fontWeight: 800, color: '#fff' }}>
+                            {item.titulo}
+                          </div>
+                          {item.descripcion && (
+                            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '4px 0 0 0', lineHeight: 1.45 }}>
+                              {item.descripcion}
+                            </p>
+                          )}
+                        </div>
+
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <select
+                            className="form-select"
+                            value={item.estado}
+                            onChange={e => handleCambiarEstadoBacklog(item.id, e.target.value as EstadoBacklogEmpresa)}
+                            style={{ fontSize: '0.74rem', padding: '4px 8px', minHeight: '32px', width: 'auto', color: colorEstado, fontWeight: 700 }}
+                          >
+                            <option value="pendiente">⏳ Pendiente</option>
+                            <option value="en_validacion">🧪 En Validación</option>
+                            <option value="implementado">✅ Implementado</option>
+                          </select>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '4px 7px', minHeight: 'auto' }}
+                            onClick={() => handleEditarBacklogItem(item)}
+                            title="Editar nota"
+                          >
+                            <Edit3 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-sm"
+                            style={{ padding: '4px 7px', minHeight: 'auto' }}
+                            onClick={() => handleEliminarBacklogItem(item.id)}
+                            title="Eliminar nota"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
             </div>
           </div>
         </div>

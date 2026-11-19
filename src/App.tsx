@@ -71,6 +71,12 @@ import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 import { calcularDescuentoVolumenSugerido } from './features/cotizador/utils/pricingCalculator';
 import { calcularCotizacionIntegral, ParametrosPiezaInput } from './services/calculationEngine';
+import {
+  buscarCoincidenciasCliente,
+  enriquecerClienteExistente,
+  normalizarNitCc,
+  normalizarCorreo
+} from './utils/customerClassification';
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<TabType>(() => {
@@ -158,9 +164,12 @@ export const App: React.FC = () => {
     };
     checkWA();
     const intervalId = setInterval(checkWA, 5 * 60 * 1000); // Cada 5 minutos
+    const handleOpenWaModal = () => setShowWhatsAppModal(true);
+    window.addEventListener('wjg:open-whatsapp-modal', handleOpenWaModal);
     return () => {
       isMounted = false;
       clearInterval(intervalId);
+      window.removeEventListener('wjg:open-whatsapp-modal', handleOpenWaModal);
     };
   }, []);
 
@@ -865,6 +874,14 @@ export const App: React.FC = () => {
         if (freshPer !== null && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
         if (freshProv !== null && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
         if (freshTar !== null && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+      },
+      async () => {
+        if (isInMutationGracePeriod()) return;
+        const freshClis = await CloudSyncService.fetchClientes();
+        if (freshClis !== null) {
+          setClientes(freshClis);
+          StorageService.saveClientes(freshClis);
+        }
       }
     );
 
@@ -2119,12 +2136,68 @@ export const App: React.FC = () => {
     }
   };
 
-  // Agregar nuevo cliente
-  const handleAddCliente = (nuevo: Cliente) => {
-    const updated = [nuevo, ...clientes];
+  // Crear o Actualizar Cliente Inteligente (Anti-Duplicados por ID, NIT/CC, Teléfono 10d o Correo)
+  const handleAddCliente = (nuevo: Cliente, opciones?: { allowShorterName?: boolean }): Cliente => {
+    markLocalMutation();
+    const { exactMatch } = buscarCoincidenciasCliente(nuevo, clientes);
+
+    if (exactMatch) {
+      const { clienteActualizado, huboCambios } = enriquecerClienteExistente(exactMatch, nuevo, opciones);
+      if (huboCambios) {
+        const updatedList = clientes.map(c => c.id === exactMatch.id ? clienteActualizado : c);
+        setClientes(updatedList);
+        StorageService.saveClientes(updatedList);
+
+        // Propagar datos actualizados del cliente en cotizaciones en memoria
+        setCotizaciones(prev => {
+          const updatedCots = prev.map(cot =>
+            cot.cliente?.id === exactMatch.id ? { ...cot, cliente: clienteActualizado } : cot
+          );
+          StorageService.saveCotizaciones(updatedCots);
+          return updatedCots;
+        });
+
+        CloudSyncService.saveCliente(clienteActualizado, opciones).then(() => markLocalMutation());
+      }
+      return clienteActualizado;
+    }
+
+    const clienteLimpio: Cliente = {
+      ...nuevo,
+      nombre: (nuevo.nombre || 'Cliente General').replace(/\u00a0/g, ' ').replace(/\s+/g, ' ').trim(),
+      telefono: (nuevo.telefono || '').trim(),
+      nit_cc: normalizarNitCc(nuevo.nit_cc),
+      correo: normalizarCorreo(nuevo.correo)
+    };
+
+    const tempId = clienteLimpio.id;
+    const updated = [clienteLimpio, ...clientes];
     setClientes(updated);
     StorageService.saveClientes(updated);
-    CloudSyncService.saveCliente(nuevo);
+
+    CloudSyncService.saveCliente(clienteLimpio, opciones).then((realId) => {
+      markLocalMutation();
+      if (realId && realId !== tempId) {
+        setClientes(prev => {
+          const sinDuplicado = prev.filter(c => c.id !== tempId && c.id !== realId);
+          const merged = [{ ...clienteLimpio, id: realId }, ...sinDuplicado];
+          StorageService.saveClientes(merged);
+          return merged;
+        });
+        setVentasExpress(prev => {
+          const upd = prev.map(v => v.cliente_id === tempId ? { ...v, cliente_id: realId } : v);
+          StorageService.saveVentasExpress(upd);
+          return upd;
+        });
+        setCotizaciones(prev => {
+          const upd = prev.map(c => c.cliente?.id === tempId ? { ...c, cliente: { ...c.cliente, id: realId } } : c);
+          StorageService.saveCotizaciones(upd);
+          return upd;
+        });
+      }
+    });
+
+    return clienteLimpio;
   };
 
   // Handlers para Producción Interna / Pruebas / Exhibición
@@ -2201,6 +2274,23 @@ export const App: React.FC = () => {
       }
     }
 
+    // Asegurar cliente vinculado sin duplicados antes de generar OT o guardar venta
+    if (ventaFinal.cliente_nombre?.trim()) {
+      const cliCanonic = handleAddCliente({
+        id: ventaFinal.cliente_id || `cli-${Date.now()}`,
+        codigo: clientes.length + 1,
+        nombre: ventaFinal.cliente_nombre.trim(),
+        telefono: ventaFinal.cliente_telefono?.trim() || '',
+        nit_cc: ventaFinal.cliente_nit_cc || '',
+        correo: ventaFinal.cliente_correo || ''
+      });
+      ventaFinal.cliente_id = cliCanonic.id;
+      ventaFinal.cliente_nombre = cliCanonic.nombre;
+      if (cliCanonic.telefono) ventaFinal.cliente_telefono = cliCanonic.telefono;
+      if (cliCanonic.nit_cc) ventaFinal.cliente_nit_cc = cliCanonic.nit_cc;
+      if (cliCanonic.correo) ventaFinal.cliente_correo = cliCanonic.correo;
+    }
+
     // Si la venta requiere Orden de Trabajo (OT) y taller, generamos la OT con su trazabilidad de diseño
     if (ventaFinal.requiere_ot) {
       const currentOrders = StorageService.getOrdenes();
@@ -2216,6 +2306,7 @@ export const App: React.FC = () => {
         cotizacion_id: '',
         cotizacion_numero: ventaFinal.numero_venta,
         pos_venta_id: ventaFinal.id,
+        cliente_id: ventaFinal.cliente_id,
         cliente_nombre: ventaFinal.cliente_nombre,
         cliente_telefono: ventaFinal.cliente_telefono,
         item_nombre: ventaFinal.nombre_producto,
@@ -3165,6 +3256,10 @@ export const App: React.FC = () => {
                   proveedores={proveedores}
                   config={config}
                   tarifasTamanos={tarifasTamanos}
+                  cotizaciones={cotizaciones}
+                  ventasExpress={ventasExpress}
+                  ordenes={ordenes}
+                  onUpsertCliente={handleAddCliente}
                   onUpdateResinas={r => {
                     setResinas(r);
                     StorageService.saveResinas(r);
@@ -3210,7 +3305,7 @@ export const App: React.FC = () => {
                     t.forEach(tar => CloudSyncService.saveTarifaTamano(tar));
                   }}
                   onRefreshCatalogos={async () => {
-                    const [freshMaq, freshIns, freshRes, freshFil, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+                    const [freshMaq, freshIns, freshRes, freshFil, freshCfg, freshPer, freshProv, freshTar, freshClis] = await Promise.all([
                       CloudSyncService.fetchMaquinas(),
                       CloudSyncService.fetchInsumos(),
                       CloudSyncService.fetchResinas(),
@@ -3218,7 +3313,8 @@ export const App: React.FC = () => {
                       CloudSyncService.fetchConfiguracion(),
                       CloudSyncService.fetchTarifasPersonal(),
                       CloudSyncService.fetchProveedores(),
-                      CloudSyncService.fetchTarifasTamanos()
+                      CloudSyncService.fetchTarifasTamanos(),
+                      CloudSyncService.fetchClientes()
                     ]);
                     if (freshMaq && freshMaq.length > 0) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
                     if (freshIns && freshIns.length > 0) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
@@ -3228,6 +3324,7 @@ export const App: React.FC = () => {
                     if (freshPer && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
                     if (freshProv && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
                     if (freshTar && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+                    if (freshClis !== null) { setClientes(freshClis); StorageService.saveClientes(freshClis); }
                   }}
                   onOpenBackup={() => setShowBackupModal(true)}
                 />

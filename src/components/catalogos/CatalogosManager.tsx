@@ -19,7 +19,9 @@ import {
   CheckCircle2,
   Sparkles,
   Camera,
-  Zap
+  Zap,
+  ClipboardList,
+  AlertTriangle
 } from 'lucide-react';
 import { 
   Resina, 
@@ -31,12 +33,23 @@ import {
   Proveedor,
   ConfiguracionTaller,
   TarifaTamano,
-  RepuestoMaquina
+  RepuestoMaquina,
+  Cotizacion,
+  OrdenTrabajo,
+  VentaExpress
 } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService, ensureValidUuid } from '../../services/cloudSyncService';
 import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
+import {
+  obtenerHistorialCliente,
+  coincideBusquedaCliente,
+  buscarCoincidenciasCliente,
+  enriquecerClienteExistente,
+  normalizarNitCc,
+  normalizarCorreo
+} from '../../utils/customerClassification';
 
 export type CatalogCategory = 'materiales' | 'directorio' | 'ajustes';
 export type SubTab = 'resinas' | 'filamentos' | 'insumos' | 'maquinaria' | 'personal' | 'clientes' | 'proveedores' | 'configuracion' | 'tarifas';
@@ -53,6 +66,10 @@ interface CatalogosManagerProps {
   proveedores: Proveedor[];
   config: ConfiguracionTaller;
   tarifasTamanos?: TarifaTamano[];
+  cotizaciones?: Cotizacion[];
+  ventasExpress?: VentaExpress[];
+  ordenes?: OrdenTrabajo[];
+  onUpsertCliente?: (c: Cliente, opciones?: { allowShorterName?: boolean }) => Cliente | void;
   onUpdateResinas: (r: Resina[]) => void;
   onUpdateFilamentos?: (f: Filamento[]) => void;
   onUpdateInsumos: (i: Insumo[]) => void;
@@ -78,6 +95,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   proveedores,
   config,
   tarifasTamanos = [],
+  cotizaciones = [],
+  ventasExpress = [],
+  ordenes = [],
+  onUpsertCliente,
   onUpdateResinas,
   onUpdateFilamentos,
   onUpdateInsumos,
@@ -155,6 +176,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // Modales de Edición / Creación
   const [modalType, setModalType] = useState<string | null>(null);
   const [itemEnEdicion, setItemEnEdicion] = useState<any>(null);
+  const [clienteHistorialModal, setClienteHistorialModal] = useState<Cliente | null>(null);
   const [zoomModalImg, setZoomModalImg] = useState<{ url: string; title: string } | null>(null);
   const [nuevoRepuesto, setNuevoRepuesto] = useState({ nombre: '', costo_compra: '', vida_util_horas: '' });
   const [unidadPotencia, setUnidadPotencia] = useState<'W' | 'kW'>('W');
@@ -717,30 +739,50 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const clienteGuardado: Cliente = {
       id: itemEnEdicion.id,
       codigo: itemEnEdicion.codigo || clientes.length + 1,
-      nombre: itemEnEdicion.nombre,
-      nit_cc: itemEnEdicion.nit_cc || '',
-      telefono: itemEnEdicion.telefono,
-      correo: itemEnEdicion.correo || ''
+      nombre: itemEnEdicion.nombre.trim(),
+      nit_cc: normalizarNitCc(itemEnEdicion.nit_cc),
+      telefono: (itemEnEdicion.telefono || '').trim(),
+      correo: normalizarCorreo(itemEnEdicion.correo)
     };
 
+    if (onUpsertCliente) {
+      onUpsertCliente(clienteGuardado, { allowShorterName: true });
+      toast.success(`Cliente "${clienteGuardado.nombre}" guardado y sincronizado.`);
+      setModalType(null);
+      setItemEnEdicion(null);
+      return;
+    }
+
+    const { exactMatch } = buscarCoincidenciasCliente(clienteGuardado, clientes);
     let updated: Cliente[];
-    if (itemEnEdicion.isEdit) {
+    if (exactMatch) {
+      const { clienteActualizado } = enriquecerClienteExistente(exactMatch, clienteGuardado, { allowShorterName: true });
+      updated = clientes.map(c => c.id === exactMatch.id ? clienteActualizado : c);
+      CloudSyncService.saveCliente(clienteActualizado, { allowShorterName: true });
+    } else if (itemEnEdicion.isEdit) {
       updated = clientes.map(c => c.id === clienteGuardado.id ? clienteGuardado : c);
+      CloudSyncService.saveCliente(clienteGuardado, { allowShorterName: true });
     } else {
       updated = [clienteGuardado, ...clientes];
+      CloudSyncService.saveCliente(clienteGuardado, { allowShorterName: true });
     }
 
     onUpdateClientes(updated);
+    toast.success(`Cliente "${clienteGuardado.nombre}" guardado.`);
     setModalType(null);
     setItemEnEdicion(null);
   };
 
-  const handleDeleteCliente = (id: string) => {
-    const cotizaciones = StorageService.getCotizaciones();
+  const handleDeleteCliente = async (id: string) => {
+    const cotsList = cotizaciones.length > 0 ? cotizaciones : StorageService.getCotizaciones();
+    const ventasList = ventasExpress.length > 0 ? ventasExpress : StorageService.getVentasExpress();
+    const ordenesList = ordenes.length > 0 ? ordenes : StorageService.getOrdenes();
     const cuentas = StorageService.getCuentas();
     const cliente = clientes.find(c => c.id === id);
 
-    const cotsAsociadas = cotizaciones.filter(c => c.cliente?.id === id || c.cliente?.nombre === cliente?.nombre);
+    const historial = cliente
+      ? obtenerHistorialCliente(cliente, cotsList, ventasList, ordenesList)
+      : { cotizaciones: [], ventas: [], ordenes: [], resumen: { totalRegistros: 0 } };
     const cuentasAsociadas = cuentas.filter(c => c.cliente?.id === id || c.cliente?.nombre === cliente?.nombre);
     const tieneDeudas = cuentasAsociadas.some(c => c.saldo_pendiente > 0);
 
@@ -748,8 +790,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       if (!confirm(`⚠️ ADVERTENCIA: ${cliente?.nombre || 'Este cliente'} tiene saldo pendiente en Cuentas de Cobro.\n¿Deseas forzar su eliminación definitiva del catálogo?`)) {
         return;
       }
-    } else if (cotsAsociadas.length > 0) {
-      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${cotsAsociadas.length} cotización(es) registrada(s).\n¿Deseas eliminarlo definitivamente del catálogo?`)) {
+    } else if (historial.resumen.totalRegistros > 0) {
+      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${historial.cotizaciones.length} cotización(es), ${historial.ventas.length} venta(s) POS y ${historial.ordenes.length} orden(es) OT.\n¿Deseas eliminarlo definitivamente del directorio? (Sus registros históricos conservarán el nombre de respaldo)`)) {
         return;
       }
     } else {
@@ -761,8 +803,12 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const updated = clientes.filter(c => c.id !== id);
     onUpdateClientes(updated);
     StorageService.saveClientes(updated);
-    CloudSyncService.deleteCliente(id, cliente?.nombre);
-    toast.success('Cliente eliminado del catálogo y base de datos');
+    const ok = await CloudSyncService.deleteCliente(id, cliente?.nombre);
+    if (ok) {
+      toast.success('Cliente eliminado y desvinculado en base de datos Supabase');
+    } else {
+      toast.warning('Cliente eliminado localmente (verifica conexión con Supabase)');
+    }
   };
 
   // -----------------------------------------------------------------
@@ -1894,49 +1940,90 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
             <input 
               type="text" 
               className="form-input" 
-              style={{ maxWidth: '240px', padding: '6px 12px', minHeight: '36px' }}
-              placeholder="Buscar cliente..."
+              style={{ maxWidth: '280px', padding: '6px 12px', minHeight: '36px' }}
+              placeholder="Buscar por nombre, tel, NIT o correo..."
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '10px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '12px' }}>
             {sortedClientes
-              .filter(c => c.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || c.telefono.includes(searchQuery))
-              .map(c => (
-                <div key={c.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                    <div style={{ fontWeight: 600, fontSize: '0.9rem' }}>
-                      {c.nombre}
+              .filter(c => coincideBusquedaCliente(c, searchQuery))
+              .map(c => {
+                const cotsList = cotizaciones.length > 0 ? cotizaciones : StorageService.getCotizaciones();
+                const ventasList = ventasExpress.length > 0 ? ventasExpress : StorageService.getVentasExpress();
+                const ordenesList = ordenes.length > 0 ? ordenes : StorageService.getOrdenes();
+                const hist = obtenerHistorialCliente(c, cotsList, ventasList, ordenesList);
+
+                return (
+                  <div key={c.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
+                      <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#fff' }}>
+                        {c.nombre}
+                      </div>
+                      <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                        <button 
+                          className="btn btn-secondary btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }} 
+                          onClick={() => handleOpenModalCliente(c)}
+                          title="Editar cliente"
+                        >
+                          <Edit3 size={13} />
+                        </button>
+                        <button 
+                          className="btn btn-danger btn-sm" 
+                          style={{ padding: '3px 6px', minHeight: 'auto' }} 
+                          onClick={() => handleDeleteCliente(c.id)}
+                          title="Eliminar cliente"
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '4px' }}>
-                      <button 
-                        className="btn btn-secondary btn-sm" 
-                        style={{ padding: '3px 6px', minHeight: 'auto' }} 
-                        onClick={() => handleOpenModalCliente(c)}
-                      >
-                        <Edit3 size={13} />
-                      </button>
-                      <button 
-                        className="btn btn-danger btn-sm" 
-                        style={{ padding: '3px 6px', minHeight: 'auto' }} 
-                        onClick={() => handleDeleteCliente(c.id)}
-                      >
-                        <Trash2 size={13} />
-                      </button>
+                    <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                      📱 {c.telefono || 'Sin tel'} | 🆔 {c.nit_cc || 'Sin NIT/CC'}
                     </div>
+                    {c.correo && (
+                      <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
+                        ✉️ {c.correo}
+                      </div>
+                    )}
+                    <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center', marginTop: '2px' }}>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px', background: 'rgba(56, 189, 248, 0.12)', color: '#38bdf8', fontWeight: 700 }}>
+                        📄 {hist.cotizaciones.length} Cot.
+                      </span>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px', background: 'rgba(16, 185, 129, 0.12)', color: '#34d399', fontWeight: 700 }}>
+                        🛍️ {hist.ventas.length} POS
+                      </span>
+                      <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px', background: 'rgba(168, 85, 247, 0.12)', color: '#c084fc', fontWeight: 700 }}>
+                        🛠️ {hist.ordenes.length} OT
+                      </span>
+                      {hist.resumen.saldoPendiente > 0 && (
+                        <span style={{ fontSize: '0.68rem', padding: '2px 6px', borderRadius: '5px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24', fontWeight: 800 }}>
+                          Debe ${hist.resumen.saldoPendiente.toLocaleString('es-CO')}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      onClick={() => setClienteHistorialModal(c)}
+                      style={{
+                        marginTop: 'auto',
+                        width: '100%',
+                        fontSize: '0.74rem',
+                        justifyContent: 'center',
+                        borderColor: 'rgba(56, 189, 248, 0.3)',
+                        color: '#7dd3fc'
+                      }}
+                    >
+                      <ClipboardList size={13} />
+                      <span>Ver Historial / Pedidos ({hist.resumen.totalRegistros})</span>
+                    </button>
                   </div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                    📱 {c.telefono} | NIT/CC: {c.nit_cc || 'N/A'}
-                  </div>
-                  {c.correo && (
-                    <div style={{ fontSize: '0.72rem', color: 'var(--text-subtle)' }}>
-                      ✉️ {c.correo}
-                    </div>
-                  )}
-                </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       )}
@@ -3063,6 +3150,27 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     />
                   </div>
                 </div>
+                {(() => {
+                  const candMatch = buscarCoincidenciasCliente(
+                    {
+                      id: itemEnEdicion.isEdit ? itemEnEdicion.id : undefined,
+                      nombre: itemEnEdicion.nombre,
+                      telefono: itemEnEdicion.telefono,
+                      nit_cc: itemEnEdicion.nit_cc,
+                      correo: itemEnEdicion.correo
+                    },
+                    clientes.filter(cl => !itemEnEdicion.isEdit || cl.id !== itemEnEdicion.id)
+                  );
+                  if (candMatch.exactMatch) {
+                    return (
+                      <div style={{ background: 'rgba(245, 158, 11, 0.12)', border: '1px solid rgba(245, 158, 11, 0.45)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.76rem', color: '#fcd34d', marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <AlertTriangle size={15} />
+                        <span>Coincide con cliente existente <strong>{candMatch.exactMatch.nombre}</strong>. Al guardar se unificará sin duplicar.</span>
+                      </div>
+                    );
+                  }
+                  return null;
+                })()}
                 <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
                   <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>Guardar Cliente</button>
                   <button type="button" className="btn btn-secondary" onClick={() => setModalType(null)}>Cancelar</button>
@@ -3203,6 +3311,156 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
         </div>
       )}
+
+      {/* MODAL EXPEDIENTE 360° DEL CLIENTE (POS, COTIZACIONES Y ÓRDENES DE TRABAJO) */}
+      {clienteHistorialModal && (() => {
+        const cotsList = cotizaciones.length > 0 ? cotizaciones : StorageService.getCotizaciones();
+        const ventasList = ventasExpress.length > 0 ? ventasExpress : StorageService.getVentasExpress();
+        const ordenesList = ordenes.length > 0 ? ordenes : StorageService.getOrdenes();
+        const hist = obtenerHistorialCliente(clienteHistorialModal, cotsList, ventasList, ordenesList);
+
+        return (
+          <div
+            className="modal-overlay"
+            onClick={() => setClienteHistorialModal(null)}
+            style={{ zIndex: 99995 }}
+          >
+            <div
+              className="modal-content"
+              onClick={e => e.stopPropagation()}
+              style={{ maxWidth: '760px', width: '95%', maxHeight: '90vh', overflowY: 'auto' }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px', gap: '12px' }}>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <ClipboardList size={20} color="var(--brand-cyan)" />
+                    <span>Historial 360° • {clienteHistorialModal.nombre}</span>
+                  </h3>
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
+                    <span>📱 {clienteHistorialModal.telefono || 'Sin tel'}</span>
+                    <span>🆔 NIT/CC: {clienteHistorialModal.nit_cc || 'N/A'}</span>
+                    {clienteHistorialModal.correo && <span>✉️ {clienteHistorialModal.correo}</span>}
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => setClienteHistorialModal(null)}
+                  style={{ padding: '4px 8px' }}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Resumen Financiero */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginBottom: '18px' }}>
+                <div style={{ background: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.25)', borderRadius: '10px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>TOTAL OPERADO</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#38bdf8' }}>${hist.resumen.totalOperado.toLocaleString('es-CO')}</div>
+                </div>
+                <div style={{ background: 'rgba(16, 185, 129, 0.08)', border: '1px solid rgba(16, 185, 129, 0.25)', borderRadius: '10px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>TOTAL ABONADO</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: '#34d399' }}>${hist.resumen.totalAbonado.toLocaleString('es-CO')}</div>
+                </div>
+                <div style={{ background: hist.resumen.saldoPendiente > 0 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(255,255,255,0.04)', border: `1px solid ${hist.resumen.saldoPendiente > 0 ? 'rgba(245, 158, 11, 0.35)' : 'var(--border-subtle)'}`, borderRadius: '10px', padding: '10px' }}>
+                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>SALDO PENDIENTE</div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 800, color: hist.resumen.saldoPendiente > 0 ? '#fbbf24' : '#94a3b8' }}>
+                    ${hist.resumen.saldoPendiente.toLocaleString('es-CO')}
+                  </div>
+                </div>
+              </div>
+
+              {/* Ventas POS Express */}
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '0.88rem', color: '#34d399', margin: '0 0 8px 0' }}>
+                  🛍️ Ventas POS Express ({hist.ventas.length})
+                </h4>
+                {hist.ventas.length === 0 ? (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', margin: 0 }}>Sin ventas POS registradas.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {hist.ventas.map(v => (
+                      <div key={v.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                            {v.numero_venta} • {v.nombre_producto}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            📅 {v.fecha_venta} {v.ot_numero ? `• 🛠️ ${v.ot_numero}` : ''} • {v.estado_pago}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '0.8rem' }}>
+                          <div style={{ fontWeight: 800, color: '#fff' }}>${v.total.toLocaleString('es-CO')}</div>
+                          {v.saldo_pendiente > 0 && <div style={{ fontSize: '0.7rem', color: '#fbbf24' }}>Saldo: ${v.saldo_pendiente.toLocaleString('es-CO')}</div>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Cotizaciones */}
+              <div style={{ marginBottom: '16px' }}>
+                <h4 style={{ fontSize: '0.88rem', color: '#38bdf8', margin: '0 0 8px 0' }}>
+                  📄 Cotizaciones ({hist.cotizaciones.length})
+                </h4>
+                {hist.cotizaciones.length === 0 ? (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', margin: 0 }}>Sin cotizaciones registradas.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {hist.cotizaciones.map(cot => (
+                      <div key={cot.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                            N° {cot.numero_cot} • {cot.estado}
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            📅 {cot.fecha} • {cot.items?.length || 0} pieza(s): {(cot.items || []).map(i => i.nombre_item).slice(0, 2).join(', ')}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '0.8rem' }}>
+                          <div style={{ fontWeight: 800, color: '#fff' }}>${cot.total.toLocaleString('es-CO')}</div>
+                          <div style={{ fontSize: '0.7rem', color: (cot.saldo_pendiente || 0) > 0 ? '#fbbf24' : '#34d399' }}>
+                            {cot.estado_pago || 'Pendiente'}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Órdenes de Trabajo */}
+              <div>
+                <h4 style={{ fontSize: '0.88rem', color: '#c084fc', margin: '0 0 8px 0' }}>
+                  🛠️ Pedidos en Taller / Órdenes de Trabajo ({hist.ordenes.length})
+                </h4>
+                {hist.ordenes.length === 0 ? (
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-subtle)', margin: 0 }}>Sin órdenes de trabajo en taller.</p>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {hist.ordenes.map(ot => (
+                      <div key={ot.id} style={{ background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: '8px', padding: '8px 10px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
+                        <div>
+                          <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#fff' }}>
+                            {ot.numero_ot} • {ot.item_nombre} (x{ot.cantidad})
+                          </div>
+                          <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                            Estado: <strong style={{ color: '#c084fc' }}>{ot.estado}</strong> {ot.cotizacion_numero ? `• Ref: ${ot.cotizacion_numero}` : ''}
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'right', fontSize: '0.78rem', color: '#cbd5e1' }}>
+                          {ot.precio_cobrado ? `$${ot.precio_cobrado.toLocaleString('es-CO')}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* MODAL ZOOM DE FOTO EN ALTA DEFINICIÓN */}
       {zoomModalImg && (

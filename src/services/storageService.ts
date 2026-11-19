@@ -17,7 +17,8 @@ import {
   HerramientaLink,
   PiezaCotizada,
   Filamento,
-  RegistroProduccionInterna
+  RegistroProduccionInterna,
+  ItemBacklogEmpresa
 } from '../types';
 import {
   RESINAS_INICIALES,
@@ -67,8 +68,62 @@ const STORAGE_KEYS = {
   DRAFT_PIECES: 'wjg_draft_pieces',
   DRAFT_BUILDER_META: 'wjg_draft_builder_meta',
   EDITING_COTIZACION: 'wjg_editing_cotizacion',
-  RECENT_MUTATIONS: 'wjg_recent_mutations'
+  RECENT_MUTATIONS: 'wjg_recent_mutations',
+  BACKLOG_EMPRESA: 'wjg_company_backlog'
 };
+
+export const BACKLOG_EMPRESA_INICIAL: ItemBacklogEmpresa[] = [
+  {
+    id: 'bl-validacion-descuentos-inventario',
+    titulo: 'Validación Integral de Descuento Automático de Inventario (POS, Resinas, Filamentos e Insumos)',
+    modulo: 'Inventario & Bodega',
+    prioridad: 'alta',
+    estado: 'en_validacion',
+    descripcion: 'Por definición operativa actual se pausó el descuento automático por defecto en POS Express hasta validar con el equipo las reglas exactas de consumo de stock físico, gramos de resina/filamento e insumos decimales sin descuadres.',
+    autor: 'Germán / Equipo',
+    fecha_creacion: '2026-11-19'
+  },
+  {
+    id: 'bl-whatsapp-sesion-persistente',
+    titulo: 'Persistencia Remota de Sesión WhatsApp Gateway (Auth en Supabase / Disco Persistente Render)',
+    modulo: 'Mensajería WhatsApp',
+    prioridad: 'alta',
+    estado: 'pendiente',
+    descripcion: 'Evitar pérdida de vinculación QR cuando el contenedor gratuito de Render se reinicia, guardando/restaurando las credenciales Baileys o migrando a servidor con disco persistente / Meta Cloud API.',
+    autor: 'Equipo WJGEEKS',
+    fecha_creacion: '2026-11-19'
+  },
+  {
+    id: 'bl-pasarela-pagos-wompi',
+    titulo: 'Integración de Pasarela de Pagos Automática (Wompi / Bold / PSE)',
+    modulo: 'Finanzas & Cobros',
+    prioridad: 'media',
+    estado: 'pendiente',
+    descripcion: 'Generar links de pago automáticos por WhatsApp y en el portal de cliente para conciliar abonos sin validación manual de comprobantes.',
+    autor: 'Equipo WJGEEKS',
+    fecha_creacion: '2026-11-19'
+  },
+  {
+    id: 'bl-guias-envios-nacionales',
+    titulo: 'Módulo de Envíos Nacionales, Guías de Mensajería y Rótulos Frágil',
+    modulo: 'Taller & Despachos',
+    prioridad: 'media',
+    estado: 'pendiente',
+    descripcion: 'Registrar transportadora (Interrapidísimo, Envía, Servientrega), número de guía, seguimiento y generación de rótulo de empaque para figuras coleccionables.',
+    autor: 'Equipo WJGEEKS',
+    fecha_creacion: '2026-11-19'
+  },
+  {
+    id: 'bl-horometro-fep-lcd',
+    titulo: 'Horómetro de Impresoras SLA/FDM y Alerta de Vida Útil FEP / LCD / Boquillas',
+    modulo: 'Maquinaria & Mantenimiento',
+    prioridad: 'baja',
+    estado: 'pendiente',
+    descripcion: 'Acumular horas de impresión por máquina desde las OTs para alertar preventivamente antes de desgaste de FEP o pantalla LCD.',
+    autor: 'Juan',
+    fecha_creacion: '2026-11-19'
+  }
+];
 
 const TAREAS_INICIALES: TareaEquipo[] = [
   {
@@ -439,6 +494,9 @@ export const StorageService = {
 
   getHerramientas: (): HerramientaLink[] => loadItem(STORAGE_KEYS.HERRAMIENTAS, HERRAMIENTAS_INICIALES),
   saveHerramientas: (items: HerramientaLink[]) => saveItem(STORAGE_KEYS.HERRAMIENTAS, items),
+
+  getBacklogEmpresa: (): ItemBacklogEmpresa[] => loadItem(STORAGE_KEYS.BACKLOG_EMPRESA, BACKLOG_EMPRESA_INICIAL),
+  saveBacklogEmpresa: (items: ItemBacklogEmpresa[]) => saveItem(STORAGE_KEYS.BACKLOG_EMPRESA, items),
 
   // Get structured backup object
   getBackupData: () => {

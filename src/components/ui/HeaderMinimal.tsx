@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown } from 'lucide-react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown, QrCode } from 'lucide-react';
+import { WhatsAppGatewayService } from '../../services/whatsappGatewayService';
 
 interface HeaderMinimalProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
@@ -24,7 +25,36 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   dailyAlertsCount = 0,
 }) => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [waConnected, setWaConnected] = useState<boolean | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    let mounted = true;
+    const pollWa = async () => {
+      try {
+        const res = await WhatsAppGatewayService.checkStatus();
+        if (mounted) setWaConnected(Boolean(res.connected));
+      } catch {
+        if (mounted) setWaConnected(false);
+      }
+    };
+    pollWa();
+    const intervalId = setInterval(pollWa, 30000);
+    const handleWaEvent = (ev: Event) => {
+      const custom = ev as CustomEvent<{ connected?: boolean }>;
+      if (mounted && typeof custom.detail?.connected === 'boolean') {
+        setWaConnected(custom.detail.connected);
+      } else {
+        pollWa();
+      }
+    };
+    window.addEventListener('wjg:wa-status-updated', handleWaEvent);
+    return () => {
+      mounted = false;
+      clearInterval(intervalId);
+      window.removeEventListener('wjg:wa-status-updated', handleWaEvent);
+    };
+  }, []);
 
   const displayName = React.useMemo(() => {
     if (!activeOperator) return 'Operador';
@@ -85,8 +115,42 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
         </div>
       </div>
 
-      {/* Única Píldora de Operador y Menú Unificado (Cabecera Libre de Iconos) */}
+      {/* Píldora en vivo de WhatsApp + Menú Unificado de Operador */}
       <div className="header-right-actions" ref={menuRef} style={{ position: 'relative' }}>
+        {onOpenWhatsAppConnect && waConnected !== null && (
+          <button
+            type="button"
+            onClick={onOpenWhatsAppConnect}
+            title={waConnected ? 'Línea WhatsApp +57 320 2796115 conectada en vivo' : 'WhatsApp Gateway desconectado — Clic para escanear QR y reconectar'}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '5px 9px',
+              minHeight: '34px',
+              borderRadius: '9999px',
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              cursor: 'pointer',
+              border: waConnected
+                ? '1px solid rgba(34, 197, 94, 0.35)'
+                : '1px solid rgba(245, 158, 11, 0.55)',
+              backgroundColor: waConnected
+                ? 'rgba(34, 197, 94, 0.12)'
+                : 'rgba(245, 158, 11, 0.16)',
+              color: waConnected ? '#4ade80' : '#fbbf24',
+              whiteSpace: 'nowrap'
+            }}
+          >
+            {waConnected ? (
+              <MessageSquare size={13} color="#4ade80" style={{ flexShrink: 0 }} />
+            ) : (
+              <QrCode size={13} color="#fbbf24" style={{ flexShrink: 0 }} />
+            )}
+            <span>{waConnected ? 'WA Activo' : 'Reconectar WA'}</span>
+          </button>
+        )}
+
         <button
           type="button"
           className="header-user-badge"
@@ -162,8 +226,21 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
                 className="header-operator-menu-item"
                 onClick={() => handleAction(onOpenWhatsAppConnect)}
               >
-                <MessageSquare size={15} color="#4ade80" />
+                <MessageSquare size={15} color={waConnected ? '#4ade80' : '#fbbf24'} />
                 <span>WhatsApp y Correo</span>
+                {waConnected !== null && (
+                  <span style={{
+                    marginLeft: 'auto',
+                    fontSize: '0.66rem',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '9999px',
+                    backgroundColor: waConnected ? 'rgba(34, 197, 94, 0.15)' : 'rgba(245, 158, 11, 0.2)',
+                    color: waConnected ? '#4ade80' : '#fbbf24'
+                  }}>
+                    {waConnected ? 'QR OK' : 'Vincular QR'}
+                  </span>
+                )}
               </button>
             )}
 

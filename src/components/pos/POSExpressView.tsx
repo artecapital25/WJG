@@ -18,7 +18,9 @@ import {
   CheckCircle2,
   Boxes,
   Copy,
-  FileText
+  FileText,
+  Link2,
+  X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
@@ -40,7 +42,14 @@ import { LEYENDA_IVA_CERO } from '../../features/cotizador/utils/pricingCalculat
 import { toast } from '../ui/ToastProvider';
 import { EmailNotificationService } from '../../services/emailNotificationService';
 import { StorageService } from '../../services/storageService';
-import { CatalogoClientesStats, FiltroTipoCliente, coincideBusquedaCliente } from '../../utils/customerClassification';
+import {
+  CatalogoClientesStats,
+  FiltroTipoCliente,
+  coincideBusquedaCliente,
+  buscarCoincidenciasCliente,
+  normalizarNitCc,
+  normalizarCorreo
+} from '../../utils/customerClassification';
 
 interface POSExpressViewProps {
   ventas: VentaExpress[];
@@ -52,7 +61,7 @@ interface POSExpressViewProps {
   onGuardarVenta: (nuevaVenta: VentaExpress) => void;
   onActualizarVenta: (ventaActualizada: VentaExpress) => void;
   onEliminarVenta?: (ventaId: string) => void;
-  onCrearCliente?: (cliente: Cliente) => void;
+  onCrearCliente?: (cliente: Cliente, opciones?: { allowShorterName?: boolean }) => Cliente | void;
   onNavigateTab?: (tab: TabType) => void;
 }
 
@@ -83,10 +92,15 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
   const [isProcessingImg, setIsProcessingImg] = useState<boolean>(false);
   const [nombreProducto, setNombreProducto] = useState<string>('');
   const [productoStockId, setProductoStockId] = useState<string>('');
-  const [descontarStock, setDescontarStock] = useState<boolean>(true);
+  const [descontarStock, setDescontarStock] = useState<boolean>(false);
   const [cantidadVender, setCantidadVender] = useState<number>(1);
+  const [clienteIdSeleccionado, setClienteIdSeleccionado] = useState<string>('');
   const [clienteNombre, setClienteNombre] = useState<string>('');
   const [clienteTelefono, setClienteTelefono] = useState<string>('');
+  const [clienteNitCc, setClienteNitCc] = useState<string>('');
+  const [clienteCorreo, setClienteCorreo] = useState<string>('');
+  const [mostrarSugerenciasCliente, setMostrarSugerenciasCliente] = useState<boolean>(false);
+  const [homonimoIgnorado, setHomonimoIgnorado] = useState<boolean>(false);
   const [total, setTotal] = useState<number | ''>(80000);
   const [abono, setAbono] = useState<number | ''>(40000);
   const [fechaPrometida, setFechaPrometida] = useState<string>(() => {
@@ -213,13 +227,47 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
     }
   };
 
-  // Autocompletar datos si selecciona cliente existente
+  // Coincidencias en tiempo real con todo el directorio de clientes (Cédula, Teléfono, Correo, Nombre)
+  const coincidenciaCliente = useMemo(() => {
+    return buscarCoincidenciasCliente(
+      {
+        id: clienteIdSeleccionado || undefined,
+        nombre: clienteNombre,
+        telefono: clienteTelefono,
+        nit_cc: clienteNitCc,
+        correo: clienteCorreo
+      },
+      clientes
+    );
+  }, [clienteIdSeleccionado, clienteNombre, clienteTelefono, clienteNitCc, clienteCorreo, clientes]);
+
+  const sugerenciasAutocompletar = useMemo(() => {
+    const q = (clienteNombre || clienteTelefono || clienteNitCc || clienteCorreo).trim();
+    if (!q) return clientes.slice(0, 8);
+    return clientes.filter(c => coincideBusquedaCliente(c, q)).slice(0, 8);
+  }, [clientes, clienteNombre, clienteTelefono, clienteNitCc, clienteCorreo]);
+
+  // Autocompletar datos si selecciona cliente existente o cotejo del directorio
   const handleSelectCliente = (cli: Cliente) => {
+    setClienteIdSeleccionado(cli.id);
     setClienteNombre(cli.nombre);
-    setClienteTelefono(cli.telefono);
+    setClienteTelefono(cli.telefono || '');
+    setClienteNitCc(cli.nit_cc || '');
+    setClienteCorreo(cli.correo || '');
+    setMostrarSugerenciasCliente(false);
+    setHomonimoIgnorado(false);
   };
 
-  // Manejo de Selección de Producto en Stock Físico (Conciliación Automática)
+  const handleLimpiarClienteSeleccionado = () => {
+    setClienteIdSeleccionado('');
+    setClienteNombre('');
+    setClienteTelefono('');
+    setClienteNitCc('');
+    setClienteCorreo('');
+    setHomonimoIgnorado(false);
+  };
+
+  // Manejo de Selección de Producto en Stock Físico (Conciliación pausada hasta validación futura)
   const handleSelectProductoStock = (prodId: string) => {
     setProductoStockId(prodId);
     if (!prodId) return;
@@ -230,7 +278,7 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       const precioTotal = prod.precio_unitario * cantidadVender;
       setTotal(precioTotal);
       setAbono(precioTotal);
-      setDescontarStock(true);
+      setDescontarStock(false);
       setRequiereOT(false); // Entrega física inmediata de vitrina
       if (prod.imagen_url) {
         setFotoUrl(prod.imagen_url);
@@ -284,13 +332,17 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       : totalNum;
     const ivaMontoCalc = totalNum - subtotalCalc;
 
+    const clienteVinculadoId = clienteIdSeleccionado || coincidenciaCliente.exactMatch?.id || undefined;
     const nuevaVenta: VentaExpress = {
       id: `pos-${Date.now()}`,
       numero_venta: generarConsecutivoPOS(ventas),
       foto_url: fotoUrl || undefined,
       nombre_producto: nombreProducto.trim(),
+      cliente_id: clienteVinculadoId,
       cliente_nombre: clienteNombre.trim(),
-      cliente_telefono: clienteTelefono.trim() || '3000000000',
+      cliente_telefono: clienteTelefono.trim() || coincidenciaCliente.exactMatch?.telefono || '3000000000',
+      cliente_nit_cc: normalizarNitCc(clienteNitCc) || coincidenciaCliente.exactMatch?.nit_cc || undefined,
+      cliente_correo: normalizarCorreo(clienteCorreo) || coincidenciaCliente.exactMatch?.correo || undefined,
       subtotal: subtotalCalc,
       iva_porcentaje: ivaPorcentajePOS,
       iva_monto: ivaMontoCalc,
@@ -319,20 +371,33 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
 
   // Ejecución del guardado final y limpieza de estado solo tras validación
   const ejecutarGuardadoFinalVenta = (ventaAGuardar: VentaExpress) => {
-    onGuardarVenta(ventaAGuardar);
+    let ventaFinal: VentaExpress = { ...ventaAGuardar };
 
-    // Si es cliente nuevo y tenemos onCrearCliente, registrarlo
-    const existeCliente = clientes.some(c => c.nombre.toLowerCase() === ventaAGuardar.cliente_nombre.trim().toLowerCase());
-    if (!existeCliente && onCrearCliente && ventaAGuardar.cliente_nombre.trim()) {
-      onCrearCliente({
-        id: `cli-${Date.now()}`,
+    // Crear o actualizar SIEMPRE al cliente en el directorio único (actualiza campos nuevos en cada compra)
+    let clienteCanonic: Cliente | undefined;
+    if (onCrearCliente && ventaFinal.cliente_nombre.trim()) {
+      const resCli = onCrearCliente({
+        id: ventaFinal.cliente_id || `cli-${Date.now()}`,
         codigo: clientes.length + 1,
-        nombre: ventaAGuardar.cliente_nombre.trim(),
-        telefono: ventaAGuardar.cliente_telefono.trim() || '3000000000',
-        nit_cc: '222222222222',
-        correo: ''
+        nombre: ventaFinal.cliente_nombre.trim(),
+        telefono: ventaFinal.cliente_telefono.trim(),
+        nit_cc: normalizarNitCc(ventaFinal.cliente_nit_cc),
+        correo: normalizarCorreo(ventaFinal.cliente_correo)
       });
+      if (resCli && typeof resCli === 'object') {
+        clienteCanonic = resCli;
+        ventaFinal = {
+          ...ventaFinal,
+          cliente_id: resCli.id,
+          cliente_nombre: resCli.nombre,
+          cliente_telefono: resCli.telefono || ventaFinal.cliente_telefono,
+          cliente_nit_cc: resCli.nit_cc || ventaFinal.cliente_nit_cc,
+          cliente_correo: resCli.correo || ventaFinal.cliente_correo
+        };
+      }
     }
+
+    onGuardarVenta(ventaFinal);
 
     // Efecto visual de éxito
     confetti({
@@ -341,33 +406,51 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
       origin: { y: 0.7 }
     });
 
-    const detalleOT = ventaAGuardar.requiere_ot 
-      ? ` • OT programada (${ventaAGuardar.estado_diseno === 'ya_realizado' ? 'Diseño Listo' : 'Modelado por Germán'})` 
+    const detalleOT = ventaFinal.requiere_ot 
+      ? ` • OT programada (${ventaFinal.estado_diseno === 'ya_realizado' ? 'Diseño Listo' : 'Modelado por Germán'})` 
       : '';
 
-    toast.success(`Venta ${ventaAGuardar.numero_venta} registrada exitosamente`, detalleOT || undefined);
+    toast.success(`Venta ${ventaFinal.numero_venta} registrada exitosamente`, detalleOT || undefined);
 
     // Disparo dual por correo de contingencia si el cliente tiene correo registrado
-    const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === ventaAGuardar.cliente_nombre.toLowerCase().trim());
-    if (clienteMatch?.correo) {
+    const clienteMatch = clienteCanonic || coincidenciaCliente.exactMatch || clientes.find(
+      c => c.id === ventaFinal.cliente_id || c.nombre.toLowerCase().trim() === ventaFinal.cliente_nombre.toLowerCase().trim()
+    );
+    const correoDestino = ventaFinal.cliente_correo || clienteMatch?.correo;
+    if (correoDestino) {
       EmailNotificationService.enviarCorreoAbono(
-        clienteMatch,
-        ventaAGuardar.numero_venta,
-        ventaAGuardar.abono,
-        ventaAGuardar.saldo_pendiente,
-        ventaAGuardar.total,
-        ventaAGuardar.metodo_pago
+        {
+          ...(clienteMatch || {
+            id: ventaFinal.cliente_id || 'cli-temp',
+            codigo: 1,
+            nombre: ventaFinal.cliente_nombre,
+            telefono: ventaFinal.cliente_telefono,
+            nit_cc: ventaFinal.cliente_nit_cc || '',
+            correo: correoDestino
+          }),
+          correo: correoDestino
+        },
+        ventaFinal.numero_venta,
+        ventaFinal.abono,
+        ventaFinal.saldo_pendiente,
+        ventaFinal.total,
+        ventaFinal.metodo_pago
       );
     }
 
     // Reset Form SOLO tras confirmación explícita
     setFotoUrl('');
     setProductoStockId('');
-    setDescontarStock(true);
+    setDescontarStock(false);
     setCantidadVender(1);
     setNombreProducto('');
+    setClienteIdSeleccionado('');
     setClienteNombre('');
     setClienteTelefono('');
+    setClienteNitCc('');
+    setClienteCorreo('');
+    setHomonimoIgnorado(false);
+    setMostrarSugerenciasCliente(false);
     setTotal(80000);
     setAbono(40000);
     setNotas('');
@@ -636,25 +719,30 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                 </select>
 
                 {productoStockId && (
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: descontarStock ? '#34d399' : 'inherit' }}>
-                      <input 
-                        type="checkbox"
-                        checked={descontarStock}
-                        onChange={e => setDescontarStock(e.target.checked)}
-                      />
-                      <span>✓ Descontar inventario al guardar</span>
-                    </label>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                      <span>Cantidad:</span>
-                      <input 
-                        type="number"
-                        min="1"
-                        max="99"
-                        value={cantidadVender}
-                        onChange={e => handleCambiarCantidadVender(parseInt(e.target.value) || 1)}
-                        style={{ width: '52px', padding: '2px 6px', background: '#020617', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: '#fff', textAlign: 'center' }}
-                      />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '6px' }}>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', color: descontarStock ? '#34d399' : 'inherit' }}>
+                        <input 
+                          type="checkbox"
+                          checked={descontarStock}
+                          onChange={e => setDescontarStock(e.target.checked)}
+                        />
+                        <span>Descontar inventario al guardar</span>
+                      </label>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span>Cantidad:</span>
+                        <input 
+                          type="number"
+                          min="1"
+                          max="99"
+                          value={cantidadVender}
+                          onChange={e => handleCambiarCantidadVender(parseInt(e.target.value) || 1)}
+                          style={{ width: '52px', padding: '2px 6px', background: '#020617', border: '1px solid var(--border-subtle)', borderRadius: '4px', color: '#fff', textAlign: 'center' }}
+                        />
+                      </div>
+                    </div>
+                    <div style={{ fontSize: '0.7rem', color: '#fbbf24', background: 'rgba(245, 158, 11, 0.08)', border: '1px solid rgba(245, 158, 11, 0.25)', borderRadius: '6px', padding: '4px 8px' }}>
+                      ⏸️ Descuento automático desactivado por defecto (en validación futura en Estado de la Empresa).
                     </div>
                   </div>
                 )}
@@ -696,64 +784,279 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
               </div>
             </div>
 
-            {/* Cliente & Teléfono */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  CLIENTE / COMPRADOR:
-                </label>
-                <input 
-                  type="text" 
-                  className="form-input"
-                  placeholder="Nombre de la persona"
-                  value={clienteNombre}
-                  onChange={e => setClienteNombre(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
-                  TELÉFONO (WHATSAPP):
-                </label>
-                <input 
-                  type="tel" 
-                  className="form-input"
-                  placeholder="Ej: 3202796115"
-                  value={clienteTelefono}
-                  onChange={e => setClienteTelefono(e.target.value)}
-                />
-              </div>
-            </div>
-
-            {/* Clientes Frecuentes Chips */}
-            {clientes.length > 0 && (
-              <div style={{ marginBottom: '14px' }}>
-                <span style={{ fontSize: '0.7rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '4px' }}>
-                  Clientes frecuentes:
+            {/* Identificación Inteligente de Cliente en Base de Datos */}
+            <div style={{ background: 'rgba(56, 189, 248, 0.04)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '10px', padding: '12px', marginBottom: '14px', position: 'relative' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+                <span style={{ fontSize: '0.76rem', fontWeight: 800, color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                  <Users size={14} />
+                  <span>CLIENTE / COMPRADOR (Directorio Único: {clientes.length})</span>
                 </span>
-                <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-                  {clientes.slice(0, 4).map(c => (
+                {(clienteIdSeleccionado || clienteNombre || clienteTelefono || clienteNitCc || clienteCorreo) && (
+                  <button
+                    type="button"
+                    onClick={handleLimpiarClienteSeleccionado}
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', fontSize: '0.7rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '3px' }}
+                  >
+                    <X size={12} />
+                    <span>Limpiar cliente</span>
+                  </button>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div style={{ position: 'relative' }}>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    NOMBRE COMPLETO / BUSCAR *:
+                  </label>
+                  <input 
+                    type="text" 
+                    className="form-input"
+                    placeholder="Buscar o escribir nombre..."
+                    value={clienteNombre}
+                    onFocus={() => setMostrarSugerenciasCliente(true)}
+                    onBlur={() => setTimeout(() => setMostrarSugerenciasCliente(false), 200)}
+                    onChange={e => {
+                      setClienteNombre(e.target.value);
+                      setMostrarSugerenciasCliente(true);
+                      setHomonimoIgnorado(false);
+                    }}
+                    required
+                  />
+                  {mostrarSugerenciasCliente && sugerenciasAutocompletar.length > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      zIndex: 60,
+                      marginTop: '4px',
+                      background: '#0b1329',
+                      border: '1px solid rgba(56, 189, 248, 0.45)',
+                      borderRadius: '8px',
+                      boxShadow: '0 12px 28px rgba(0, 0, 0, 0.65)',
+                      maxHeight: '210px',
+                      overflowY: 'auto'
+                    }}>
+                      {sugerenciasAutocompletar.map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={e => {
+                            e.preventDefault();
+                            handleSelectCliente(c);
+                          }}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            padding: '8px 10px',
+                            background: clienteIdSeleccionado === c.id ? 'rgba(56, 189, 248, 0.16)' : 'transparent',
+                            border: 'none',
+                            borderBottom: '1px solid rgba(255,255,255,0.06)',
+                            color: '#f8fafc',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '2px'
+                          }}
+                        >
+                          <span style={{ fontSize: '0.8rem', fontWeight: 700 }}>{c.nombre}</span>
+                          <span style={{ fontSize: '0.68rem', color: '#94a3b8' }}>
+                            📱 {c.telefono || 'Sin tel'} {c.nit_cc ? `• 🆔 ${c.nit_cc}` : ''} {c.correo ? `• ✉️ ${c.correo}` : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    TELÉFONO (WHATSAPP):
+                  </label>
+                  <input 
+                    type="tel" 
+                    className="form-input"
+                    placeholder="Ej: 3202796115"
+                    value={clienteTelefono}
+                    onChange={e => setClienteTelefono(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '10px' }}>
+                <div>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    CÉDULA / NIT (OPCIONAL):
+                  </label>
+                  <input 
+                    type="text" 
+                    className="form-input"
+                    placeholder="Ej: 1018480904"
+                    value={clienteNitCc}
+                    onChange={e => setClienteNitCc(e.target.value)}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.74rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                    CORREO ELECTRÓNICO (OPCIONAL):
+                  </label>
+                  <input 
+                    type="email" 
+                    className="form-input"
+                    placeholder="cliente@correo.com"
+                    value={clienteCorreo}
+                    onChange={e => setClienteCorreo(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              {/* Aviso de Cliente Existente Vinculado Automáticamente */}
+              {coincidenciaCliente.exactMatch && (
+                <div style={{
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.4)',
+                  borderRadius: '8px',
+                  padding: '8px 10px',
+                  marginBottom: '8px',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  flexWrap: 'wrap',
+                  gap: '8px'
+                }}>
+                  <div style={{ fontSize: '0.74rem', color: '#86efac', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Link2 size={14} color="#34d399" />
+                    <span>
+                      <strong>Vinculado a {coincidenciaCliente.exactMatch.nombre}</strong>
+                      {' '}({coincidenciaCliente.matchReason === 'nit_cc' ? 'por Cédula/NIT' : coincidenciaCliente.matchReason === 'telefono' ? 'por Teléfono' : coincidenciaCliente.matchReason === 'correo' ? 'por Correo' : 'del Directorio'}). Los cambios actualizarán su ficha.
+                    </span>
+                  </div>
+                  {(
+                    (!clienteTelefono.trim() && coincidenciaCliente.exactMatch.telefono) ||
+                    (!clienteNitCc.trim() && coincidenciaCliente.exactMatch.nit_cc) ||
+                    (!clienteCorreo.trim() && coincidenciaCliente.exactMatch.correo) ||
+                    clienteIdSeleccionado !== coincidenciaCliente.exactMatch.id
+                  ) && (
                     <button
-                      key={c.id}
                       type="button"
-                      onClick={() => handleSelectCliente(c)}
+                      onClick={() => handleSelectCliente(coincidenciaCliente.exactMatch!)}
                       style={{
-                        background: 'rgba(56, 189, 248, 0.08)',
-                        border: '1px solid rgba(56, 189, 248, 0.25)',
+                        background: 'rgba(16, 185, 129, 0.25)',
+                        border: '1px solid rgba(16, 185, 129, 0.5)',
+                        color: '#ecfdf5',
                         borderRadius: '6px',
-                        padding: '2px 6px',
+                        padding: '3px 8px',
                         fontSize: '0.7rem',
-                        color: 'var(--brand-cyan)',
+                        fontWeight: 700,
                         cursor: 'pointer'
                       }}
                     >
-                      {c.nombre.split(' ')[0]}
+                      Cargar datos completos
                     </button>
-                  ))}
+                  )}
                 </div>
-              </div>
-            )}
+              )}
+
+              {/* Tarjeta de Cotejo cuando solo coincide por Nombre (previene duplicados al dar solo nombre) */}
+              {!coincidenciaCliente.exactMatch && coincidenciaCliente.nameMatches.length > 0 && !homonimoIgnorado && (
+                <div style={{
+                  background: 'rgba(245, 158, 11, 0.1)',
+                  border: '1px solid rgba(245, 158, 11, 0.45)',
+                  borderRadius: '8px',
+                  padding: '10px',
+                  marginBottom: '8px'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
+                    <span style={{ fontSize: '0.74rem', fontWeight: 800, color: '#fbbf24' }}>
+                      ⚠️ Encontramos {coincidenciaCliente.nameMatches.length} cliente(s) similar(es) en la base de datos:
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setHomonimoIgnorado(true)}
+                      style={{
+                        background: 'rgba(255,255,255,0.06)',
+                        border: '1px solid rgba(255,255,255,0.2)',
+                        color: '#cbd5e1',
+                        borderRadius: '6px',
+                        padding: '2px 8px',
+                        fontSize: '0.68rem',
+                        fontWeight: 600,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      Es otra persona (Crear nuevo)
+                    </button>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {coincidenciaCliente.nameMatches.slice(0, 3).map(cand => (
+                      <div key={cand.id} style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        background: 'rgba(0,0,0,0.3)',
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        gap: '8px',
+                        flexWrap: 'wrap'
+                      }}>
+                        <div style={{ fontSize: '0.73rem', color: '#f8fafc' }}>
+                          <strong>{cand.nombre}</strong>
+                          <span style={{ color: '#94a3b8', marginLeft: '6px' }}>
+                            📱 {cand.telefono || 'Sin tel'} {cand.nit_cc ? `• 🆔 ${cand.nit_cc}` : ''} {cand.correo ? `• ✉️ ${cand.correo}` : ''}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleSelectCliente(cand)}
+                          style={{
+                            background: 'rgba(56, 189, 248, 0.2)',
+                            border: '1px solid rgba(56, 189, 248, 0.45)',
+                            color: '#7dd3fc',
+                            borderRadius: '6px',
+                            padding: '3px 8px',
+                            fontSize: '0.7rem',
+                            fontWeight: 700,
+                            cursor: 'pointer'
+                          }}
+                        >
+                          Vincular este cliente
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Clientes Recientes Chips */}
+              {clientes.length > 0 && (
+                <div>
+                  <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', display: 'block', marginBottom: '4px' }}>
+                    Acceso rápido directorio:
+                  </span>
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+                    {clientes.slice(0, 5).map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => handleSelectCliente(c)}
+                        style={{
+                          background: clienteIdSeleccionado === c.id ? 'rgba(56, 189, 248, 0.25)' : 'rgba(56, 189, 248, 0.08)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: '6px',
+                          padding: '2px 7px',
+                          fontSize: '0.69rem',
+                          color: 'var(--brand-cyan)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {c.nombre.split(' ').slice(0, 2).join(' ')}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Valores Financieros */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '14px' }}>
@@ -1795,7 +2098,28 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
           clientes={clientes}
           onClose={() => setVentaParaEditar(null)}
           onGuardarCambios={(v) => {
-            onActualizarVenta(v);
+            let ventaConCli = v;
+            if (onCrearCliente && v.cliente_nombre.trim()) {
+              const cliRes = onCrearCliente({
+                id: v.cliente_id || `cli-${Date.now()}`,
+                codigo: clientes.length + 1,
+                nombre: v.cliente_nombre.trim(),
+                telefono: v.cliente_telefono?.trim() || '',
+                nit_cc: v.cliente_nit_cc || '',
+                correo: v.cliente_correo || ''
+              });
+              if (cliRes && typeof cliRes === 'object') {
+                ventaConCli = {
+                  ...v,
+                  cliente_id: cliRes.id,
+                  cliente_nombre: cliRes.nombre,
+                  cliente_telefono: cliRes.telefono || v.cliente_telefono,
+                  cliente_nit_cc: cliRes.nit_cc || v.cliente_nit_cc,
+                  cliente_correo: cliRes.correo || v.cliente_correo
+                };
+              }
+            }
+            onActualizarVenta(ventaConCli);
             setVentaParaEditar(null);
           }}
           onEliminarVenta={(id) => {
