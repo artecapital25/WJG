@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { WjgSelect } from '../ui/WjgSelect';
 import { 
   Settings, 
   Layers, 
@@ -2589,22 +2590,22 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     required
                   />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
                   <div className="form-group">
                     <label className="form-label">Categoría</label>
-                    <select 
-                      className="form-select"
+                    <WjgSelect
                       value={itemEnEdicion.categoria}
-                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, categoria: e.target.value })}
-                    >
-                      <option value="Pintura">Pintura</option>
-                      <option value="Químicos">Químicos</option>
-                      <option value="Bisutería">Bisutería</option>
-                      <option value="Ferretería">Ferretería</option>
-                      <option value="Empaque">Empaque</option>
-                      <option value="Electrónica">Electrónica</option>
-                      <option value="General">General</option>
-                    </select>
+                      onChange={(val) => setItemEnEdicion({ ...itemEnEdicion, categoria: val })}
+                      options={[
+                        { value: 'Pintura', label: 'Pintura' },
+                        { value: 'Químicos', label: 'Químicos' },
+                        { value: 'Bisutería', label: 'Bisutería' },
+                        { value: 'Ferretería', label: 'Ferretería' },
+                        { value: 'Empaque', label: 'Empaque' },
+                        { value: 'Electrónica', label: 'Electrónica' },
+                        { value: 'General', label: 'General' },
+                      ]}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Marca</label>
@@ -2801,32 +2802,32 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                   </div>
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
                   <div className="form-group">
                     <label className="form-label" style={{ fontWeight: 600 }}>Tecnología de Fabricación</label>
-                    <select
-                      className="form-select"
+                    <WjgSelect
                       value={itemEnEdicion.tecnologia || 'SLA_RESINA'}
-                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, tecnologia: e.target.value })}
-                      style={{ border: '1px solid #38bdf8' }}
-                    >
-                      <option value="SLA_RESINA">🧪 Impresión 3D Resina (SLA / MSLA)</option>
-                      <option value="FDM_FILAMENTO">🧵 Impresión 3D Filamento (FDM / FFF)</option>
-                      <option value="CORTE_LASER">⚡ Corte / Grabado Láser</option>
-                      <option value="CNC_ROUTER">⚙️ CNC Router / Mecanizado</option>
-                    </select>
+                      onChange={(val) => setItemEnEdicion({ ...itemEnEdicion, tecnologia: val })}
+                      style={{ borderColor: '#38bdf8' }}
+                      options={[
+                        { value: 'SLA_RESINA', label: '🧪 Impresión 3D Resina (SLA / MSLA)' },
+                        { value: 'FDM_FILAMENTO', label: '🧵 Impresión 3D Filamento (FDM / FFF)' },
+                        { value: 'CORTE_LASER', label: '⚡ Corte / Grabado Láser' },
+                        { value: 'CNC_ROUTER', label: '⚙️ CNC Router / Mecanizado' },
+                      ]}
+                    />
                   </div>
                   <div className="form-group">
                     <label className="form-label">Estado de la Máquina</label>
-                    <select
-                      className="form-select"
+                    <WjgSelect
                       value={itemEnEdicion.estado || 'Disponible'}
-                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, estado: e.target.value })}
-                    >
-                      <option value="Disponible">🟢 Disponible para Producción</option>
-                      <option value="En Uso">🟡 En Uso</option>
-                      <option value="Mantenimiento">🔴 En Mantenimiento</option>
-                    </select>
+                      onChange={(val) => setItemEnEdicion({ ...itemEnEdicion, estado: val })}
+                      options={[
+                        { value: 'Disponible', label: '🟢 Disponible para Producción' },
+                        { value: 'En Uso', label: '🟡 En Uso' },
+                        { value: 'Mantenimiento', label: '🔴 En Mantenimiento' },
+                      ]}
+                    />
                   </div>
                 </div>
 

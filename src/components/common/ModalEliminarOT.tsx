@@ -8,6 +8,7 @@ import {
   CheckCircle2
 } from 'lucide-react';
 import { OrdenTrabajo, Cotizacion, EstadoCotizacion } from '../../types';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface ModalEliminarOTProps {
   isOpen: boolean;
@@ -297,16 +298,16 @@ export const ModalEliminarOT: React.FC<ModalEliminarOTProps> = ({
                 <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                   Cambiar el estado de la cotización a:
                 </span>
-                <select
-                  className="input-field"
+                <WjgSelect
+                  compact
                   value={nuevoEstadoCotizacion}
-                  onChange={(e) => setNuevoEstadoCotizacion(e.target.value as EstadoCotizacion)}
-                  style={{ fontSize: '0.82rem', padding: '6px 10px', width: 'auto' }}
-                >
-                  <option value="Rechazada">❌ Rechazada / Cancelada por cliente (Recomendado)</option>
-                  <option value="Borrador">✏️ Borrador (Para editar en el cotizador)</option>
-                  <option value="Enviada">📩 Enviada (Pendiente de respuesta)</option>
-                </select>
+                  onChange={(val) => setNuevoEstadoCotizacion(val as EstadoCotizacion)}
+                  options={[
+                    { value: 'Rechazada', label: '❌ Rechazada / Cancelada por cliente', subtitle: 'Recomendado' },
+                    { value: 'Borrador', label: '✏️ Borrador', subtitle: 'Para editar en el cotizador' },
+                    { value: 'Enviada', label: '📩 Enviada', subtitle: 'Pendiente de respuesta' },
+                  ]}
+                />
               </div>
             )}
           </div>

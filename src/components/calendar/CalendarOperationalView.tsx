@@ -23,6 +23,7 @@ import {
 } from '../../types';
 import { toast } from '../ui/ToastProvider';
 import { useDateNavigation } from './useDateNavigation';
+import { WjgSelect } from '../ui/WjgSelect';
 import { MobileWeekStrip } from './MobileWeekStrip';
 import { MobileEventCard } from './MobileEventCard';
 import { MobileBottomSheet } from './MobileBottomSheet';
@@ -424,32 +425,36 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
             </button>
           ) : (
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
-              <select
-                className="form-input"
-                style={{ minHeight: '34px', fontSize: '0.8rem', padding: '3px 8px' }}
-                value={filtros.responsable}
-                onChange={e => setFiltros({ ...filtros, responsable: e.target.value })}
-              >
-                <option value="todos">👤 Todos los Responsables</option>
-                <option value="Germán">Germán</option>
-                <option value="Wendy">Wendy</option>
-                <option value="Juan">Juan</option>
-              </select>
+              <div style={{ minWidth: '175px' }}>
+                <WjgSelect
+                  compact
+                  value={filtros.responsable}
+                  onChange={(val) => setFiltros({ ...filtros, responsable: val })}
+                  options={[
+                    { value: 'todos', label: '👤 Todos los Responsables' },
+                    { value: 'Germán', label: 'Germán' },
+                    { value: 'Wendy', label: 'Wendy' },
+                    { value: 'Juan', label: 'Juan' },
+                  ]}
+                />
+              </div>
 
-              <select
-                className="form-input"
-                style={{ minHeight: '34px', fontSize: '0.8rem', padding: '3px 8px' }}
-                value={filtros.tipoEvento}
-                onChange={e => setFiltros({ ...filtros, tipoEvento: e.target.value })}
-              >
-                <option value="todos">🏷️ Todos los Eventos</option>
-                <option value="vencimiento_cobro">💰 Cobros Pendientes</option>
-                <option value="entrega_pedido">📦 Entregas de Pedidos</option>
-                <option value="tarea_individual">👤 Tareas Personales</option>
-                <option value="tarea_grupal">👥 Tareas Grupales</option>
-                <option value="rutina_diaria">🔄 Rutinas Diarias</option>
-                <option value="llegada_insumo">🛒 Insumos de Taller</option>
-              </select>
+              <div style={{ minWidth: '185px' }}>
+                <WjgSelect
+                  compact
+                  value={filtros.tipoEvento}
+                  onChange={(val) => setFiltros({ ...filtros, tipoEvento: val })}
+                  options={[
+                    { value: 'todos', label: '🏷️ Todos los Eventos' },
+                    { value: 'vencimiento_cobro', label: '💰 Cobros Pendientes' },
+                    { value: 'entrega_pedido', label: '📦 Entregas de Pedidos' },
+                    { value: 'tarea_individual', label: '👤 Tareas Personales' },
+                    { value: 'tarea_grupal', label: '👥 Tareas Grupales' },
+                    { value: 'rutina_diaria', label: '🔄 Rutinas Diarias' },
+                    { value: 'llegada_insumo', label: '🛒 Insumos de Taller' },
+                  ]}
+                />
+              </div>
 
               <input
                 type="text"
@@ -474,32 +479,32 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
             gridTemplateColumns: '1fr',
             gap: '8px'
           }}>
-            <select
-              className="form-input"
-              style={{ minHeight: '40px', fontSize: '0.85rem' }}
+            <WjgSelect
+              compact
               value={filtros.responsable}
-              onChange={e => setFiltros({ ...filtros, responsable: e.target.value })}
-            >
-              <option value="todos">👤 Todos los Responsables</option>
-              <option value="Germán">Germán</option>
-              <option value="Wendy">Wendy</option>
-              <option value="Juan">Juan</option>
-            </select>
+              onChange={(val) => setFiltros({ ...filtros, responsable: val })}
+              options={[
+                { value: 'todos', label: '👤 Todos los Responsables' },
+                { value: 'Germán', label: 'Germán' },
+                { value: 'Wendy', label: 'Wendy' },
+                { value: 'Juan', label: 'Juan' },
+              ]}
+            />
 
-            <select
-              className="form-input"
-              style={{ minHeight: '40px', fontSize: '0.85rem' }}
+            <WjgSelect
+              compact
               value={filtros.tipoEvento}
-              onChange={e => setFiltros({ ...filtros, tipoEvento: e.target.value })}
-            >
-              <option value="todos">🏷️ Todos los Eventos</option>
-              <option value="vencimiento_cobro">💰 Cobros Pendientes</option>
-              <option value="entrega_pedido">📦 Entregas de Pedidos</option>
-              <option value="tarea_individual">👤 Tareas Personales</option>
-              <option value="tarea_grupal">👥 Tareas Grupales</option>
-              <option value="rutina_diaria">🔄 Rutinas Diarias</option>
-              <option value="llegada_insumo">🛒 Insumos de Taller</option>
-            </select>
+              onChange={(val) => setFiltros({ ...filtros, tipoEvento: val })}
+              options={[
+                { value: 'todos', label: '🏷️ Todos los Eventos' },
+                { value: 'vencimiento_cobro', label: '💰 Cobros Pendientes' },
+                { value: 'entrega_pedido', label: '📦 Entregas de Pedidos' },
+                { value: 'tarea_individual', label: '👤 Tareas Personales' },
+                { value: 'tarea_grupal', label: '👥 Tareas Grupales' },
+                { value: 'rutina_diaria', label: '🔄 Rutinas Diarias' },
+                { value: 'llegada_insumo', label: '🛒 Insumos de Taller' },
+              ]}
+            />
 
             <input
               type="text"

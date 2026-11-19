@@ -31,6 +31,7 @@ import {
 } from '../../services/imageGenerationService';
 import { openWhatsApp } from '../../services/whatsappService';
 import { toast } from '../ui/ToastProvider';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface NanoBananaStudioProps {
   productosStock: ProductoStock[];
@@ -77,8 +78,7 @@ export const NanoBananaStudio: React.FC<NanoBananaStudioProps> = ({
   }, [formatoId]);
 
   // Sincronizar selección de producto
-  const handleSelectProducto = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
+  const handleSelectProducto = (id: string) => {
     setSelectedProdId(id);
     if (!id) return;
 
@@ -328,35 +328,27 @@ export const NanoBananaStudio: React.FC<NanoBananaStudioProps> = ({
                 <label style={{ display: 'block', fontSize: '0.74rem', color: '#94a3b8', marginBottom: '4px' }}>
                   Cargar desde Catálogo o Tarifario de Altura:
                 </label>
-                <select
+                <WjgSelect
                   value={selectedProdId}
                   onChange={handleSelectProducto}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #334155',
-                    color: '#fff',
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  <option value="">-- Ingreso Libre / Personalizado --</option>
-                  <optgroup label="📦 Figuras en Stock (POS Express)">
-                    {productosStock.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.nombre} — ${p.precio_unitario.toLocaleString('es-CO')} COP ({p.stock_actual} disp.)
-                      </option>
-                    ))}
-                  </optgroup>
-                  <optgroup label="📏 Tarifario Estándar ($10.000/cm)">
-                    {tarifasTamanos.map(t => (
-                      <option key={`tarifa-${t.altura_cm}`} value={`tarifa-${t.altura_cm}`}>
-                        Figura {t.altura_cm} cm — ${t.precio_sugerido.toLocaleString('es-CO')} COP ({t.tiempo_estimado})
-                      </option>
-                    ))}
-                  </optgroup>
-                </select>
+                  searchable
+                  searchPlaceholder="Buscar figura en stock o altura..."
+                  options={[
+                    { value: '', label: 'Ingreso Libre / Personalizado' },
+                    ...productosStock.map(p => ({
+                      value: p.id,
+                      label: p.nombre,
+                      subtitle: `$${p.precio_unitario.toLocaleString('es-CO')} COP • ${p.stock_actual} disp.`,
+                      group: '📦 Figuras en Stock (POS Express)',
+                    })),
+                    ...tarifasTamanos.map(t => ({
+                      value: `tarifa-${t.altura_cm}`,
+                      label: `Figura ${t.altura_cm} cm`,
+                      subtitle: `$${t.precio_sugerido.toLocaleString('es-CO')} COP • ${t.tiempo_estimado}`,
+                      group: '📏 Tarifario Estándar ($10.000/cm)',
+                    })),
+                  ]}
+                />
               </div>
 
               <div>

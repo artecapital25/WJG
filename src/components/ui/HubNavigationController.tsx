@@ -50,20 +50,7 @@ export const HubNavigationController: React.FC<HubNavigationControllerProps> = (
   const subtabs = HUB_SUBTABS[activeHub] || [];
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        padding: '8px 12px',
-        overflowX: 'auto',
-        whiteSpace: 'nowrap',
-        backgroundColor: 'rgba(13, 19, 31, 0.88)',
-        backdropFilter: 'blur(12px)',
-        borderBottom: '1px solid rgba(255, 255, 255, 0.07)',
-        scrollbarWidth: 'none',
-      }}
-    >
+    <div className="hub-subtabs-bar" role="tablist" aria-label="Subpestañas de sección">
       {subtabs.map((tab) => {
         const isActive = activeTab === tab.id;
 

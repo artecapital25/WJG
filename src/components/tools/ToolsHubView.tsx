@@ -19,6 +19,7 @@ import {
 import { HerramientaLink, CategoriaHerramienta } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { toast } from '../ui/ToastProvider';
+import { WjgSelect } from '../ui/WjgSelect';
 
 const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any; color: string; bg: string }> = {
   ia_3d: {
@@ -558,20 +559,20 @@ export const ToolsHubView: React.FC = () => {
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
                   <div>
                     <label className="form-label">CATEGORÍA</label>
-                    <select 
-                      className="form-select"
+                    <WjgSelect
                       value={categoria}
-                      onChange={e => setCategoria(e.target.value as CategoriaHerramienta)}
-                    >
-                      <option value="ia_3d">🤖 IAs Generativas 3D</option>
-                      <option value="stl_repos">📦 Repositorios STL</option>
-                      <option value="slicers">⚙️ Slicers & Taller</option>
-                      <option value="pintura">🎨 Pintura & Acabados</option>
-                      <option value="utilidades">🛠️ Utilidades</option>
-                    </select>
+                      onChange={(val) => setCategoria(val as CategoriaHerramienta)}
+                      options={[
+                        { value: 'ia_3d', label: '🤖 IAs Generativas 3D' },
+                        { value: 'stl_repos', label: '📦 Repositorios STL' },
+                        { value: 'slicers', label: '⚙️ Slicers & Taller' },
+                        { value: 'pintura', label: '🎨 Pintura & Acabados' },
+                        { value: 'utilidades', label: '🛠️ Utilidades' },
+                      ]}
+                    />
                   </div>
 
                   <div>

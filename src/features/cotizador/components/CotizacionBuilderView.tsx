@@ -11,6 +11,7 @@ import { ModalLightboxImagen } from './ModalLightboxImagen';
 import { ModalConfirmacionWhatsApp } from '../../../components/common/ModalConfirmacionWhatsApp';
 import { ModalVisualizadorDocumento } from '../../../components/common/ModalVisualizadorDocumento';
 import { generateCotizacionWhatsAppText, openWhatsApp } from '../../../services/whatsappService';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) => {
   const b = useCotizadorBuilder(props);
@@ -36,23 +37,23 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
           gap: '12px'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-            <div style={{ 
-              background: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#22c55e' : '#f59e0b', 
-              color: '#000', 
-              borderRadius: '50%', 
-              width: '34px', 
-              height: '34px', 
-              display: 'flex', 
-              alignItems: 'center', 
-              justifyContent: 'center' 
+            <div style={{
+              background: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#22c55e' : '#f59e0b',
+              color: '#000',
+              borderRadius: '50%',
+              width: '34px',
+              height: '34px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center'
             }}>
               <Edit size={18} />
             </div>
             <div>
-              <div style={{ 
-                fontWeight: 700, 
-                color: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#86efac' : '#fbbf24', 
-                fontSize: '0.98rem' 
+              <div style={{
+                fontWeight: 700,
+                color: (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') ? '#86efac' : '#fbbf24',
+                fontSize: '0.98rem'
               }}>
                 {(props.cotizacionEnEdicion.estado || '').toLowerCase().includes('aprob') || (props.cotizacionEnEdicion.estado || '').toLowerCase().includes('factur')
                   ? `Modo Edición Activo (Sincroniza OT y Cuenta de Cobro): N° ${props.cotizacionEnEdicion.numero_cot}`
@@ -64,11 +65,11 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
               </div>
             </div>
           </div>
-          
+
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <button 
-              type="button" 
-              className="btn btn-secondary btn-sm" 
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
               onClick={b.handleRecalcularTarifasVigentes}
               title="Recalcular todas las piezas de esta cotización con los precios actuales de resina, filamento, maquinaria e insumos del taller"
               style={{ borderColor: 'rgba(56, 189, 248, 0.45)', color: 'var(--brand-cyan)', background: 'rgba(56, 189, 248, 0.08)', display: 'flex', alignItems: 'center', gap: '5px' }}
@@ -135,13 +136,18 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             </button>
           </div>
         </div>
-        <select className="form-select" value={b.clienteId} onChange={e => b.setClienteId(e.target.value)}>
-          {b.clientesFiltrados.map(c => (
-            <option key={c.id} value={c.id}>
-              {c.nombre} {c.telefono ? `(Tel: ${c.telefono})` : ''} {c.nit_cc ? `[NIT: ${c.nit_cc}]` : ''}
-            </option>
-          ))}
-        </select>
+        <WjgSelect
+          value={b.clienteId}
+          onChange={b.setClienteId}
+          searchable
+          searchPlaceholder="Buscar cliente por nombre, tel, NIT o correo..."
+          placeholder="Seleccionar cliente..."
+          options={b.clientesFiltrados.map(c => ({
+            value: c.id,
+            label: c.nombre,
+            subtitle: `📱 ${c.telefono || 'Sin tel'}${c.nit_cc ? ` • 🆔 ${c.nit_cc}` : ''}${c.correo ? ` • ✉️ ${c.correo}` : ''}`,
+          }))}
+        />
         {b.clienteSeleccionado && (
           <div style={{ marginTop: '8px' }}>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>

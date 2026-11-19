@@ -20,6 +20,7 @@ import { processAndOptimizeImage } from '../../services/imageService';
 import { calcularAlertaCobro } from '../../services/posService';
 import { normalizarNitCc, normalizarCorreo, coincideBusquedaCliente } from '../../utils/customerClassification';
 import { toast } from '../ui/ToastProvider';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface ModalEditarVentaExpressProps {
   isOpen: boolean;
@@ -710,18 +711,18 @@ export const ModalEditarVentaExpress: React.FC<ModalEditarVentaExpressProps> = (
                   <label style={{ display: 'block', fontSize: '0.76rem', color: 'var(--text-muted)', fontWeight: 700, marginBottom: '4px' }}>
                     MÉTODO DE PAGO
                   </label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
+                    compact
                     value={metodoPago}
-                    onChange={e => setMetodoPago(e.target.value)}
-                    style={{ fontSize: '0.85rem' }}
-                  >
-                    <option value="Bre-B">Bre-B (Llave: 0090778625)</option>
-                    <option value="Nequi">Nequi</option>
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Transferencia">Transferencia</option>
-                    <option value="Tarjeta">Tarjeta</option>
-                  </select>
+                    onChange={setMetodoPago}
+                    options={[
+                      { value: 'Bre-B', label: 'Bre-B', subtitle: 'Llave: 0090778625' },
+                      { value: 'Nequi', label: 'Nequi' },
+                      { value: 'Efectivo', label: 'Efectivo' },
+                      { value: 'Transferencia', label: 'Transferencia' },
+                      { value: 'Tarjeta', label: 'Tarjeta' },
+                    ]}
+                  />
                 </div>
               </div>
 

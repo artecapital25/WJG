@@ -19,6 +19,7 @@ import {
 import confetti from 'canvas-confetti';
 import { ProductoStock, TarifaTamano, ConfiguracionTaller } from '../../types';
 import { NanoBananaStudio } from './NanoBananaStudio';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface MarketingHubViewProps {
   productosStock: ProductoStock[];
@@ -622,25 +623,16 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
                 <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '6px' }}>
                   Selecciona la figura en stock:
                 </label>
-                <select
+                <WjgSelect
                   value={selectedStockId}
-                  onChange={e => setSelectedStockId(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '10px 12px',
-                    borderRadius: '8px',
-                    background: '#0a0f18',
-                    border: '1px solid var(--border-subtle)',
-                    color: '#f8fafc',
-                    fontSize: '0.85rem'
-                  }}
-                >
-                  {productosStock.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} - ${p.precio_unitario.toLocaleString('es-CO')} COP (Stock: {p.stock_actual || 1})
-                    </option>
-                  ))}
-                </select>
+                  onChange={setSelectedStockId}
+                  searchPlaceholder="Buscar figura en stock..."
+                  options={productosStock.map(p => ({
+                    value: p.id,
+                    label: p.nombre,
+                    subtitle: `$${p.precio_unitario.toLocaleString('es-CO')} COP • Stock: ${p.stock_actual || 1}`,
+                  }))}
+                />
               </div>
             )}
 

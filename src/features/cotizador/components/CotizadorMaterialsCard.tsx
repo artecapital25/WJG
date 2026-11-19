@@ -1,6 +1,7 @@
 import React from 'react';
 import { Scale, Zap } from 'lucide-react';
 import { Resina, Filamento, Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface CotizadorMaterialsCardProps {
   resinas: Resina[];
@@ -235,20 +236,19 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: modoCalculoResina === 'manual' ? '1.5fr 1fr 1fr' : '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
             <div>
               <label className="form-label">Tipo de Resina</label>
-              <select 
-                className="form-select"
+              <WjgSelect
                 value={resinaId}
-                onChange={e => setResinaId(e.target.value)}
-              >
-                {resinas.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.tipo} ({r.color}) — ${r.precio_compra.toLocaleString('es-CO')}
-                  </option>
-                ))}
-              </select>
+                onChange={setResinaId}
+                placeholder="Seleccionar resina..."
+                options={resinas.map(r => ({
+                  value: r.id,
+                  label: `${r.tipo} (${r.color})`,
+                  subtitle: `$${r.precio_compra.toLocaleString('es-CO')} COP • $${r.costo_gramo}/g`,
+                }))}
+              />
             </div>
 
             {modoCalculoResina === 'manual' && (
@@ -370,20 +370,19 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
               <div>
                 <label className="form-label">Impresora 3D SLA</label>
-                <select 
-                  className="form-select"
+                <WjgSelect
                   value={maquinaId}
-                  onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
-                >
-                  {maquinasSLAParaSelect.map(m => (
-                    <option key={m.id} value={m.id}>
-                      {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
-                    </option>
-                  ))}
-                </select>
+                  onChange={val => (onSelectMaquina ? onSelectMaquina(val) : setMaquinaId(val))}
+                  placeholder="Seleccionar impresora SLA..."
+                  options={maquinasSLAParaSelect.map(m => ({
+                    value: m.id,
+                    label: `${m.nombre} (${m.tipo})`,
+                    subtitle: `Consumo: ${m.consumo_kwh} kW/h • $${m.costo_minuto.toFixed(2)}/min`,
+                  }))}
+                />
               </div>
 
               <div>
@@ -447,21 +446,20 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                   {filamentos.length} en inventario
                 </span>
               </div>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={filamentoId || (filamentos[0]?.id || '')}
-                onChange={e => setFilamentoId && setFilamentoId(e.target.value)}
-              >
-                {filamentosOrdenados && filamentosOrdenados.length > 0 ? (
-                  filamentosOrdenados.map(f => (
-                    <option key={f.id} value={f.id}>
-                      {f.marca} {f.tipo} ({f.color}) — ${f.costo_gramo}/g (Stock: {f.stock_actual_g || 1000}g)
-                    </option>
-                  ))
-                ) : (
-                  <option value="">No hay filamentos cargados en catálogo</option>
-                )}
-              </select>
+                onChange={val => setFilamentoId && setFilamentoId(val)}
+                placeholder="Seleccionar filamento..."
+                options={
+                  filamentosOrdenados && filamentosOrdenados.length > 0
+                    ? filamentosOrdenados.map(f => ({
+                        value: f.id,
+                        label: `${f.marca} ${f.tipo} (${f.color})`,
+                        subtitle: `$${f.costo_gramo}/g • Stock: ${f.stock_actual_g || 1000}g`,
+                      }))
+                    : [{ value: '', label: 'No hay filamentos cargados en catálogo', disabled: true }]
+                }
+              />
             </div>
 
             <div>
@@ -525,20 +523,19 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
           )}
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
             <div>
               <label className="form-label">Impresora FDM (Filamento)</label>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={maquinaId}
-                onChange={e => onSelectMaquina ? onSelectMaquina(e.target.value) : setMaquinaId(e.target.value)}
-              >
-                {maquinasFDMParaSelect.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre} ({m.tipo}) — {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
-                  </option>
-                ))}
-              </select>
+                onChange={val => (onSelectMaquina ? onSelectMaquina(val) : setMaquinaId(val))}
+                placeholder="Seleccionar impresora FDM..."
+                options={maquinasFDMParaSelect.map(m => ({
+                  value: m.id,
+                  label: `${m.nombre} (${m.tipo})`,
+                  subtitle: `${m.consumo_kwh} kW/h • $${m.costo_minuto.toFixed(2)}/min`,
+                }))}
+              />
             </div>
 
             <div>
@@ -577,32 +574,32 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label className="form-label">Tipo de Proceso Láser</label>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={tipoProcesoLaser}
-                onChange={e => setTipoProcesoLaser && setTipoProcesoLaser(e.target.value as any)}
-              >
-                <option value="corte">Corte Vectorial Continuo</option>
-                <option value="grabado">Grabado Rasterizado / Superficie</option>
-                <option value="ambos">Corte + Grabado Combinado</option>
-              </select>
+                onChange={val => setTipoProcesoLaser && setTipoProcesoLaser(val as any)}
+                options={[
+                  { value: 'corte', label: 'Corte Vectorial Continuo' },
+                  { value: 'grabado', label: 'Grabado Rasterizado / Superficie' },
+                  { value: 'ambos', label: 'Corte + Grabado Combinado' },
+                ]}
+              />
             </div>
 
             <div>
               <label className="form-label">Material de Lámina</label>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={materialLamina}
-                onChange={e => setMaterialLamina && setMaterialLamina(e.target.value)}
-              >
-                <option value="Acrílico Cristal 3mm">Acrílico Cristal 3mm</option>
-                <option value="Acrílico Cristal 4mm">Acrílico Cristal 4mm</option>
-                <option value="Acrílico Color 3mm">Acrílico Color 3mm (Negro / Blanco / Humo)</option>
-                <option value="MDF 3mm">MDF 3mm</option>
-                <option value="MDF 5.5mm">MDF 5.5mm</option>
-                <option value="Triplex Pino 4mm">Triplex Pino 4mm</option>
-                <option value="Cuero Sintético">Cuero Sintético / Foamy</option>
-              </select>
+                onChange={val => setMaterialLamina && setMaterialLamina(val)}
+                options={[
+                  { value: 'Acrílico Cristal 3mm', label: 'Acrílico Cristal 3mm' },
+                  { value: 'Acrílico Cristal 4mm', label: 'Acrílico Cristal 4mm' },
+                  { value: 'Acrílico Color 3mm', label: 'Acrílico Color 3mm (Negro / Blanco / Humo)' },
+                  { value: 'MDF 3mm', label: 'MDF 3mm' },
+                  { value: 'MDF 5.5mm', label: 'MDF 5.5mm' },
+                  { value: 'Triplex Pino 4mm', label: 'Triplex Pino 4mm' },
+                  { value: 'Cuero Sintético', label: 'Cuero Sintético / Foamy' },
+                ]}
+              />
             </div>
 
             <div>
@@ -621,20 +618,17 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '12px', alignItems: 'flex-end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', alignItems: 'flex-end' }}>
             <div>
               <label className="form-label">Máquina Láser CO₂</label>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={maquinaId}
-                onChange={e => setMaquinaId(e.target.value)}
-              >
-                {maquinas.map(m => (
-                  <option key={m.id} value={m.id}>
-                    {m.nombre} ({m.tipo})
-                  </option>
-                ))}
-              </select>
+                onChange={setMaquinaId}
+                options={maquinas.map(m => ({
+                  value: m.id,
+                  label: `${m.nombre} (${m.tipo})`,
+                }))}
+              />
             </div>
 
             <div>
@@ -664,17 +658,17 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px' }}>
             <div>
               <label className="form-label">Material de Bloque / Tablero</label>
-              <select
-                className="form-select"
+              <WjgSelect
                 value={materialBloque}
-                onChange={e => setMaterialBloque && setMaterialBloque(e.target.value)}
-              >
-                <option value="Madera Cedro / Pino">Madera Cedro / Pino Macizo</option>
-                <option value="MDF 15mm / 18mm">MDF 15mm / 18mm Industrial</option>
-                <option value="Nylamid / Poliacetal">Nylamid / Poliacetal / Delrin</option>
-                <option value="Aluminio 6061">Aluminio 6061 / Dural</option>
-                <option value="Acrílico Grueso 10mm">Acrílico 10mm / 15mm</option>
-              </select>
+                onChange={val => setMaterialBloque && setMaterialBloque(val)}
+                options={[
+                  { value: 'Madera Cedro / Pino', label: 'Madera Cedro / Pino Macizo' },
+                  { value: 'MDF 15mm / 18mm', label: 'MDF 15mm / 18mm Industrial' },
+                  { value: 'Nylamid / Poliacetal', label: 'Nylamid / Poliacetal / Delrin' },
+                  { value: 'Aluminio 6061', label: 'Aluminio 6061 / Dural' },
+                  { value: 'Acrílico Grueso 10mm', label: 'Acrílico 10mm / 15mm' },
+                ]}
+              />
             </div>
 
             <div>

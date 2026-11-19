@@ -18,6 +18,7 @@ import {
 } from '../types/cotizador.types';
 import { calcularCostoInsumoItem } from '../utils/pricingCalculator';
 import { detect3DPlatform } from '../../../services/platformUtils';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface CotizadorDynamicListsProps {
   vaPintado: boolean;
@@ -107,19 +108,21 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {pinturasSeleccionadas.map(p => (
                 <div key={p.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                  <select 
-                    className="form-select"
-                    value={p.insumoId}
-                    onChange={e => handleUpdatePintura(p.tempId, 'insumoId', e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="">Selecciona pintura / primer...</option>
-                    {insumosPinturas.map(ins => (
-                      <option key={ins.id} value={ins.id}>
-                        {ins.nombre} (${ins.costo_unitario}/ml)
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ flex: 1, minWidth: '170px' }}>
+                    <WjgSelect
+                      value={p.insumoId}
+                      onChange={val => handleUpdatePintura(p.tempId, 'insumoId', val)}
+                      placeholder="Selecciona pintura / primer..."
+                      options={[
+                        { value: '', label: 'Selecciona pintura / primer...' },
+                        ...insumosPinturas.map(ins => ({
+                          value: ins.id,
+                          label: ins.nombre,
+                          subtitle: `$${ins.costo_unitario}/ml`,
+                        })),
+                      ]}
+                    />
+                  </div>
 
                   <div className="input-with-unit" style={{ width: '100px' }}>
                     <input 
@@ -247,19 +250,21 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
                   }}
                 >
                   <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                    <select 
-                      className="form-select"
-                      value={h.insumoId}
-                      onChange={e => handleUpdateHerraje(h.tempId, 'insumoId', e.target.value)}
-                      style={{ flex: 1, minWidth: '180px' }}
-                    >
-                      <option value="">Selecciona cinta, insumo o herraje...</option>
-                      {insumosHerrajes.map(ins => (
-                        <option key={ins.id} value={ins.id}>
-                          {ins.nombre} (Total: ${(ins.costo_total || ins.costo_unitario).toLocaleString('es-CO')} | Und: ${Math.round(ins.costo_unitario).toLocaleString('es-CO')})
-                        </option>
-                      ))}
-                    </select>
+                    <div style={{ flex: 1, minWidth: '180px' }}>
+                      <WjgSelect
+                        value={h.insumoId}
+                        onChange={val => handleUpdateHerraje(h.tempId, 'insumoId', val)}
+                        placeholder="Selecciona cinta, insumo o herraje..."
+                        options={[
+                          { value: '', label: 'Selecciona cinta, insumo o herraje...' },
+                          ...insumosHerrajes.map(ins => ({
+                            value: ins.id,
+                            label: ins.nombre,
+                            subtitle: `Total: $${(ins.costo_total || ins.costo_unitario).toLocaleString('es-CO')} • Und: $${Math.round(ins.costo_unitario).toLocaleString('es-CO')}`,
+                          })),
+                        ]}
+                      />
+                    </div>
 
                     {/* Toggle Modo Dual: Fracción/Und vs Porcentaje (%) */}
                     <div style={{ display: 'inline-flex', borderRadius: '6px', overflow: 'hidden', border: '1px solid rgba(56, 189, 248, 0.35)', flexShrink: 0 }}>
@@ -450,19 +455,21 @@ export const CotizadorDynamicLists: React.FC<CotizadorDynamicListsProps> = ({
 
               return (
                 <div key={emp.tempId} style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-                  <select 
-                    className="form-select"
-                    value={emp.insumoId}
-                    onChange={e => handleUpdateEmpaque(emp.tempId, 'insumoId', e.target.value)}
-                    style={{ flex: 1, minWidth: '170px' }}
-                  >
-                    <option value="">Selecciona tipo de empaque...</option>
-                    {insumosEmpaques.map(ins => (
-                      <option key={ins.id} value={ins.id}>
-                        {ins.nombre} (${ins.costo_unitario.toLocaleString('es-CO')}/und)
-                      </option>
-                    ))}
-                  </select>
+                  <div style={{ flex: 1, minWidth: '170px' }}>
+                    <WjgSelect
+                      value={emp.insumoId}
+                      onChange={val => handleUpdateEmpaque(emp.tempId, 'insumoId', val)}
+                      placeholder="Selecciona tipo de empaque..."
+                      options={[
+                        { value: '', label: 'Selecciona tipo de empaque...' },
+                        ...insumosEmpaques.map(ins => ({
+                          value: ins.id,
+                          label: ins.nombre,
+                          subtitle: `$${ins.costo_unitario.toLocaleString('es-CO')}/und`,
+                        })),
+                      ]}
+                    />
+                  </div>
 
                   <div className="input-with-unit" style={{ width: '90px' }}>
                     <input 

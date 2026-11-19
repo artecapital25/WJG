@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { WjgSelect } from '../ui/WjgSelect';
 import { 
   Box, 
   UploadCloud, 
@@ -973,24 +974,23 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
             border: '1px solid var(--border-subtle)'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: '210px' }}>
-              <Printer size={15} color="var(--brand-cyan)" />
-              <select
-                className="form-select"
-                style={{ minHeight: '32px', padding: '4px 8px', fontSize: '0.78rem' }}
-                value={bedPresetId}
-                onChange={(e) => {
-                  const newId = e.target.value;
-                  setBedPresetId(newId);
-                  const found = DEFAULT_BED_PRESETS.find(b => b.id === newId);
-                  if (found) setTecnologiaSeleccionada(found.tecnologia);
-                }}
-              >
-                {DEFAULT_BED_PRESETS.map(bed => (
-                  <option key={bed.id} value={bed.id}>
-                    {bed.nombre} — {bed.widthX}×{bed.depthY}×{bed.heightZ} mm
-                  </option>
-                ))}
-              </select>
+              <Printer size={15} color="var(--brand-cyan)" style={{ flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <WjgSelect
+                  compact
+                  value={bedPresetId}
+                  onChange={(newId) => {
+                    setBedPresetId(newId);
+                    const found = DEFAULT_BED_PRESETS.find(b => b.id === newId);
+                    if (found) setTecnologiaSeleccionada(found.tecnologia);
+                  }}
+                  options={DEFAULT_BED_PRESETS.map(bed => ({
+                    value: bed.id,
+                    label: bed.nombre,
+                    subtitle: `${bed.widthX}×${bed.depthY}×${bed.heightZ} mm`,
+                  }))}
+                />
+              </div>
             </div>
 
             {analysis && (
@@ -1694,21 +1694,19 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
 
             {tecnologiaSeleccionada === 'SLA_RESINA' ? (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                   <div>
                     <label className="form-label" style={{ fontSize: '0.72rem' }}>Resina de Impresión</label>
-                    <select 
-                      className="form-select"
-                      style={{ minHeight: '38px', fontSize: '0.84rem' }}
+                    <WjgSelect
+                      compact
                       value={resinaSeleccionadaId}
-                      onChange={(e) => setResinaSeleccionadaId(e.target.value)}
-                    >
-                      {resinas.map(r => (
-                        <option key={r.id} value={r.id}>
-                          {r.tipo} {r.color} (${r.costo_gramo?.toFixed(1) || 78.8}/g)
-                        </option>
-                      ))}
-                    </select>
+                      onChange={setResinaSeleccionadaId}
+                      options={resinas.map(r => ({
+                        value: r.id,
+                        label: `${r.tipo} ${r.color}`,
+                        subtitle: `$${r.costo_gramo?.toFixed(1) || 78.8}/g`,
+                      }))}
+                    />
                   </div>
 
                   <div>
@@ -1788,25 +1786,23 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
               </>
             ) : (
               <>
-                <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '10px', marginBottom: '12px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                   <div>
                     <label className="form-label" style={{ fontSize: '0.72rem' }}>Carrete de Filamento (Catálogo)</label>
-                    <select
-                      className="form-select"
-                      style={{ minHeight: '38px', fontSize: '0.84rem' }}
+                    <WjgSelect
+                      compact
                       value={filamentoSeleccionadoId}
-                      onChange={(e) => setFilamentoSeleccionadoId(e.target.value)}
-                    >
-                      {filamentos.length > 0 ? (
-                        filamentos.map(f => (
-                          <option key={f.id} value={f.id}>
-                            {f.marca} {f.tipo} {f.color} (${Math.round(f.costo_gramo || 85)}/g)
-                          </option>
-                        ))
-                      ) : (
-                        <option value="fil-default">PLA+ Estándar ($85/g)</option>
-                      )}
-                    </select>
+                      onChange={setFilamentoSeleccionadoId}
+                      options={
+                        filamentos.length > 0
+                          ? filamentos.map(f => ({
+                              value: f.id,
+                              label: `${f.marca} ${f.tipo} ${f.color}`,
+                              subtitle: `$${Math.round(f.costo_gramo || 85)}/g`,
+                            }))
+                          : [{ value: 'fil-default', label: 'PLA+ Estándar', subtitle: '$85/g' }]
+                      }
+                    />
                   </div>
 
                   <div>

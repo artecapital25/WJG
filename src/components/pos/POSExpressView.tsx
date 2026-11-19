@@ -23,6 +23,7 @@ import {
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { WjgSelect } from '../ui/WjgSelect';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
 import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock, Cotizacion } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
@@ -704,19 +705,20 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                     </button>
                   )}
                 </div>
-                <select 
-                  className="form-input"
-                  style={{ background: '#0b1329', borderColor: productoStockId ? '#38bdf8' : 'var(--border-subtle)' }}
+                <WjgSelect
                   value={productoStockId}
-                  onChange={e => handleSelectProductoStock(e.target.value)}
-                >
-                  <option value="">-- Personalizado / A pedido (no descuenta vitrina) --</option>
-                  {productosStock.map(p => (
-                    <option key={p.id} value={p.id}>
-                      {p.nombre} (Disponibles: {p.stock_actual} | ${p.precio_unitario.toLocaleString('es-CO')})
-                    </option>
-                  ))}
-                </select>
+                  onChange={handleSelectProductoStock}
+                  searchPlaceholder="Buscar producto en vitrina..."
+                  style={{ borderColor: productoStockId ? '#38bdf8' : undefined }}
+                  options={[
+                    { value: '', label: 'Personalizado / A pedido', subtitle: 'No descuenta vitrina' },
+                    ...productosStock.map(p => ({
+                      value: p.id,
+                      label: p.nombre,
+                      subtitle: `Disponibles: ${p.stock_actual} • $${p.precio_unitario.toLocaleString('es-CO')} COP`,
+                    })),
+                  ]}
+                />
 
                 {productoStockId && (
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginTop: '8px', fontSize: '0.75rem', color: '#94a3b8' }}>
@@ -1224,24 +1226,25 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
             )}
 
             {/* Medio de pago & Notas */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '16px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px', marginBottom: '16px' }}>
               <div>
                 <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                   MÉTODO DE PAGO:
                 </label>
                 <div style={{ display: 'flex', gap: '8px' }}>
-                  <select 
-                    className="form-select"
-                    value={metodoPago}
-                    onChange={e => setMetodoPago(e.target.value)}
-                    style={{ flex: 1 }}
-                  >
-                    <option value="Bre-B">Bre-B (Llave: 0090778625)</option>
-                    <option value="Nequi">Nequi</option>
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Transferencia">Transferencia Bancaria</option>
-                    <option value="Tarjeta">Tarjeta / Datáfono</option>
-                  </select>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <WjgSelect
+                      value={metodoPago}
+                      onChange={setMetodoPago}
+                      options={[
+                        { value: 'Bre-B', label: 'Bre-B', subtitle: 'Llave: 0090778625' },
+                        { value: 'Nequi', label: 'Nequi' },
+                        { value: 'Efectivo', label: 'Efectivo' },
+                        { value: 'Transferencia', label: 'Transferencia Bancaria' },
+                        { value: 'Tarjeta', label: 'Tarjeta / Datáfono' },
+                      ]}
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={handleCopiarLlaveBreB}
@@ -1998,17 +2001,17 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                   <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '6px' }}>
                     MÉTODO DE PAGO:
                   </label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
                     value={metodoPagoModal}
-                    onChange={e => setMetodoPagoModal(e.target.value)}
-                  >
-                    <option value="Bre-B">Bre-B / Llave</option>
-                    <option value="Nequi">Nequi</option>
-                    <option value="Efectivo">Efectivo</option>
-                    <option value="Transferencia">Transferencia Bancaria</option>
-                    <option value="Tarjeta">Tarjeta / Datafono</option>
-                  </select>
+                    onChange={setMetodoPagoModal}
+                    options={[
+                      { value: 'Bre-B', label: 'Bre-B / Llave' },
+                      { value: 'Nequi', label: 'Nequi' },
+                      { value: 'Efectivo', label: 'Efectivo' },
+                      { value: 'Transferencia', label: 'Transferencia Bancaria' },
+                      { value: 'Tarjeta', label: 'Tarjeta / Datáfono' },
+                    ]}
+                  />
                 </div>
 
                 {/* Resumen de impacto y alerta si es reversión */}

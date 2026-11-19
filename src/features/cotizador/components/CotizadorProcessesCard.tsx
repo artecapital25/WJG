@@ -2,6 +2,7 @@ import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
 import { ItemMaquinaExtraForm } from '../types/cotizador.types';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface CotizadorProcessesCardProps {
   tecnologia?: TecnologiaFabricacion;
@@ -142,17 +143,16 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
             <>
               <div style={{ display: 'grid', gridTemplateColumns: tiempoCuradoPersonalizado ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
                 <div>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={curadoId}
-                    onChange={e => setCuradoId(e.target.value)}
-                  >
-                    {maquinas.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCuradoId}
+                    placeholder="Seleccionar equipo de curado..."
+                    options={maquinas.map(m => ({
+                      value: m.id,
+                      label: `${m.nombre} (${m.tipo})`,
+                      subtitle: `Consumo: ${m.consumo_kwh} kW/h • $${m.costo_minuto.toFixed(2)}/min`,
+                    }))}
+                  />
                 </div>
 
                 {tiempoCuradoPersonalizado && (
@@ -221,17 +221,16 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
             <>
               <div style={{ display: 'grid', gridTemplateColumns: !tiempoCompresorSincronizado ? '2fr 1fr' : '1fr', gap: '10px', alignItems: 'center' }}>
                 <div>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={compresorId}
-                    onChange={e => setCompresorId(e.target.value)}
-                  >
-                    {maquinas.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre} ({m.tipo}) — Consumo: {m.consumo_kwh} kW/h (${m.costo_minuto.toFixed(2)}/min)
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setCompresorId}
+                    placeholder="Seleccionar compresor..."
+                    options={maquinas.map(m => ({
+                      value: m.id,
+                      label: `${m.nombre} (${m.tipo})`,
+                      subtitle: `Consumo: ${m.consumo_kwh} kW/h • $${m.costo_minuto.toFixed(2)}/min`,
+                    }))}
+                  />
                 </div>
 
                 {!tiempoCompresorSincronizado && (
@@ -295,18 +294,15 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                   >
                     <div>
                       <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>Máquina #{idx + 1}</label>
-                      <select
-                        className="form-select"
-                        style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                      <WjgSelect
+                        compact
                         value={extra.maquinaId}
-                        onChange={e => handleUpdateMaquinaAdicional(extra.tempId, 'maquinaId', e.target.value)}
-                      >
-                        {maquinas.map(m => (
-                          <option key={m.id} value={m.id}>
-                            {m.nombre} ({m.tipo})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => handleUpdateMaquinaAdicional(extra.tempId, 'maquinaId', val)}
+                        options={maquinas.map(m => ({
+                          value: m.id,
+                          label: `${m.nombre} (${m.tipo})`,
+                        }))}
+                      />
                     </div>
 
                     <div>

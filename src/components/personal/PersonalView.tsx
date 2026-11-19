@@ -12,6 +12,7 @@ import { CambiarPinModal } from '../auth/CambiarPinModal';
 import { ModalDispositivosUsuario } from './ModalDispositivosUsuario';
 import { toast } from '../ui/ToastProvider';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
+import { WjgSelect } from '../ui/WjgSelect';
 
 const ROLES_PREDEFINIDOS = [
   { id: 'ADMIN_COBRANZAS', label: 'Admin & Cobranzas (Acceso Total)', badgeColor: '#0ea5e9' },
@@ -901,16 +902,11 @@ export const PersonalView: React.FC = () => {
                 <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#94a3b8', marginBottom: '6px' }}>
                   ROL OPERATIVO:
                 </label>
-                <select
+                <WjgSelect
                   value={rol}
-                  onChange={e => setRol(e.target.value)}
-                  className="form-select"
-                  style={{ width: '100%', padding: '10px 12px', borderRadius: '10px' }}
-                >
-                  {ROLES_PREDEFINIDOS.map(r => (
-                    <option key={r.id} value={r.id}>{r.label}</option>
-                  ))}
-                </select>
+                  onChange={setRol}
+                  options={ROLES_PREDEFINIDOS.map(r => ({ value: r.id, label: r.label }))}
+                />
               </div>
 
               {/* Matriz Granular de Permisos por Áreas */}

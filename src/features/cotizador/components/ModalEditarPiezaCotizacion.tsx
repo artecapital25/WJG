@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { PiezaCotizada, Resina, Maquina, MaquinaInvolucrada, EnlaceReferenciaCompra } from '../../../types';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface ModalEditarPiezaCotizacionProps {
   isOpen: boolean;
@@ -323,17 +324,15 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
           {resinas && resinas.length > 0 && (
             <div className="form-group" style={{ marginBottom: '14px' }}>
               <label className="form-label" style={{ fontWeight: 600 }}>Material / Resina</label>
-              <select 
-                className="form-select"
+              <WjgSelect
                 value={editResinaId}
-                onChange={e => setEditResinaId(e.target.value)}
-              >
-                {resinas.map(r => (
-                  <option key={r.id} value={r.id}>
-                    {r.resumen || `${r.marca} ${r.tipo} ${r.color}`} — ${r.costo_gramo}/g
-                  </option>
-                ))}
-              </select>
+                onChange={setEditResinaId}
+                options={resinas.map(r => ({
+                  value: r.id,
+                  label: r.resumen || `${r.marca} ${r.tipo} ${r.color}`,
+                  subtitle: `$${r.costo_gramo}/g`,
+                }))}
+              />
             </div>
           )}
 
@@ -474,18 +473,15 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
                       <label style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'block', marginBottom: '2px' }}>
                         Máquina
                       </label>
-                      <select 
-                        className="form-select"
-                        style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                      <WjgSelect
+                        compact
                         value={mExtra.maquina_id}
-                        onChange={e => handleUpdateModalExtraProcess(idx, 'maquina_id', e.target.value)}
-                      >
-                        {maquinas.map(maq => (
-                          <option key={maq.id} value={maq.id}>
-                            {maq.nombre} ({maq.tipo})
-                          </option>
-                        ))}
-                      </select>
+                        onChange={val => handleUpdateModalExtraProcess(idx, 'maquina_id', val)}
+                        options={maquinas.map(maq => ({
+                          value: maq.id,
+                          label: `${maq.nombre} (${maq.tipo})`,
+                        }))}
+                      />
                     </div>
 
                     <div>

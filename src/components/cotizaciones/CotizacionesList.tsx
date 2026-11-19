@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
+import { WjgSelect } from '../ui/WjgSelect';
 import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
@@ -282,19 +283,20 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <User size={13} color="var(--brand-blue)" />
               FILTRAR POR CLIENTE
             </label>
-            <select
-              className="form-select"
-              style={{ minHeight: '40px', fontSize: '0.88rem' }}
+            <WjgSelect
+              compact
               value={clienteSeleccionado}
-              onChange={(e) => setClienteSeleccionado(e.target.value)}
-            >
-              <option value="todos">Todos los clientes ({listaClientesUnicos.length})</option>
-              {listaClientesUnicos.map(({ nombre, count }) => (
-                <option key={nombre} value={nombre}>
-                  {nombre} ({count})
-                </option>
-              ))}
-            </select>
+              onChange={setClienteSeleccionado}
+              searchPlaceholder="Buscar cliente..."
+              options={[
+                { value: 'todos', label: `Todos los clientes (${listaClientesUnicos.length})` },
+                ...listaClientesUnicos.map(({ nombre, count }) => ({
+                  value: nombre,
+                  label: nombre,
+                  badge: `${count}`,
+                })),
+              ]}
+            />
           </div>
 
           {/* Ordenamiento */}
@@ -303,19 +305,19 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <ArrowUpDown size={13} color="var(--brand-purple)" />
               ORDENAR POR
             </label>
-            <select
-              className="form-select"
-              style={{ minHeight: '40px', fontSize: '0.88rem' }}
+            <WjgSelect
+              compact
               value={criterioOrden}
-              onChange={(e) => setCriterioOrden(e.target.value as TipoOrden)}
-            >
-              <option value="reciente">⚡ Más reciente a más antigua (25-073 → 25-001)</option>
-              <option value="antigua">🕰️ Más antigua a más reciente (25-001 → 25-073)</option>
-              <option value="cliente_az">👤 Cliente (A ➔ Z)</option>
-              <option value="cliente_za">👤 Cliente (Z ➔ A)</option>
-              <option value="monto_desc">💰 Mayor a menor valor ($$$ → $)</option>
-              <option value="monto_asc">💵 Menor a mayor valor ($ → $$$)</option>
-            </select>
+              onChange={(val) => setCriterioOrden(val as TipoOrden)}
+              options={[
+                { value: 'reciente', label: '⚡ Más reciente a más antigua', subtitle: '25-073 → 25-001' },
+                { value: 'antigua', label: '🕰️ Más antigua a más reciente', subtitle: '25-001 → 25-073' },
+                { value: 'cliente_az', label: '👤 Cliente (A ➔ Z)' },
+                { value: 'cliente_za', label: '👤 Cliente (Z ➔ A)' },
+                { value: 'monto_desc', label: '💰 Mayor a menor valor ($$$ → $)' },
+                { value: 'monto_asc', label: '💵 Menor a mayor valor ($ → $$$)' },
+              ]}
+            />
           </div>
 
           {/* Filtro por Estado de Pago */}
@@ -324,17 +326,17 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <CreditCard size={13} color="#10b981" />
               ESTADO DE PAGO
             </label>
-            <select
-              className="form-select"
-              style={{ minHeight: '40px', fontSize: '0.88rem' }}
+            <WjgSelect
+              compact
               value={filtroPago}
-              onChange={(e) => setFiltroPago(e.target.value as any)}
-            >
-              <option value="todos">Todos los pagos</option>
-              <option value="pagado">🟢 Pagado Total</option>
-              <option value="abono">🟡 Con Abono Parcial</option>
-              <option value="pendiente">🔴 Sin Pago / Pendiente</option>
-            </select>
+              onChange={(val) => setFiltroPago(val as any)}
+              options={[
+                { value: 'todos', label: 'Todos los pagos' },
+                { value: 'pagado', label: '🟢 Pagado Total' },
+                { value: 'abono', label: '🟡 Con Abono Parcial' },
+                { value: 'pendiente', label: '🔴 Sin Pago / Pendiente' },
+              ]}
+            />
           </div>
         </div>
 

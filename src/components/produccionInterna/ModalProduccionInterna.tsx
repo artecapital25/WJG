@@ -14,6 +14,7 @@ import {
   Maquina, 
   ConfiguracionTaller 
 } from '../../types';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface ModalProduccionInternaProps {
   isOpen: boolean;
@@ -314,38 +315,34 @@ export const ModalProduccionInterna: React.FC<ModalProduccionInternaProps> = ({
               </div>
 
               {/* Grid Tecnología & Máquina */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '14px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '14px' }}>
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 700 }}>Tecnología de Fabricación</label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
                     value={tecnologia}
-                    onChange={e => {
-                      const t = e.target.value as TecnologiaFabricacion;
+                    onChange={(val) => {
+                      const t = val as TecnologiaFabricacion;
                       setTecnologia(t);
                       if (t === 'FDM_FILAMENTO' && filamentos.length > 0) setMaterialId(filamentos[0].id);
                       if (t === 'SLA_RESINA' && resinas.length > 0) setMaterialId(resinas[0].id);
                     }}
-                  >
-                    <option value="FDM_FILAMENTO">🧵 Filamento (FDM / FFF)</option>
-                    <option value="SLA_RESINA">🧪 Resina (SLA / MSLA)</option>
-                  </select>
+                    options={[
+                      { value: 'FDM_FILAMENTO', label: '🧵 Filamento (FDM / FFF)' },
+                      { value: 'SLA_RESINA', label: '🧪 Resina (SLA / MSLA)' },
+                    ]}
+                  />
                 </div>
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 700 }}>Impresora Asignada</label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
                     value={maquinaId}
-                    onChange={e => setMaquinaId(e.target.value)}
-                    required
-                  >
-                    {maquinasDisponibles.map(m => (
-                      <option key={m.id} value={m.id}>
-                        {m.nombre} ({m.tipo})
-                      </option>
-                    ))}
-                  </select>
+                    onChange={setMaquinaId}
+                    options={maquinasDisponibles.map(m => ({
+                      value: m.id,
+                      label: `${m.nombre} (${m.tipo})`,
+                    }))}
+                  />
                 </div>
               </div>
 
@@ -354,27 +351,24 @@ export const ModalProduccionInterna: React.FC<ModalProduccionInternaProps> = ({
                 <label className="form-label" style={{ fontWeight: 700 }}>
                   {tecnologia === 'FDM_FILAMENTO' ? 'Carrete de Filamento' : 'Botella de Resina'}
                 </label>
-                <select
-                  className="form-select"
+                <WjgSelect
                   value={materialId}
-                  onChange={e => setMaterialId(e.target.value)}
-                  style={{ border: '1px solid #38bdf8' }}
-                  required
-                >
-                  {tecnologia === 'FDM_FILAMENTO' ? (
-                    filamentos.map(f => (
-                      <option key={f.id} value={f.id}>
-                        {f.marca} {f.tipo} - {f.color} | Bodega: {Math.round(f.stock_actual_g || 0)}g | ${Math.round(f.costo_gramo || (f.precio_compra / 1000))}/g
-                      </option>
-                    ))
-                  ) : (
-                    resinas.map(r => (
-                      <option key={r.id} value={r.id}>
-                        {r.marca} {r.tipo} - {r.color} | Bodega: {Math.round(r.peso_g || 0)}g | ${Math.round(r.costo_gramo || (r.precio_compra / 1000))}/g
-                      </option>
-                    ))
-                  )}
-                </select>
+                  onChange={setMaterialId}
+                  style={{ borderColor: '#38bdf8' }}
+                  options={
+                    tecnologia === 'FDM_FILAMENTO'
+                      ? filamentos.map(f => ({
+                          value: f.id,
+                          label: `${f.marca} ${f.tipo} - ${f.color}`,
+                          subtitle: `Bodega: ${Math.round(f.stock_actual_g || 0)}g • $${Math.round(f.costo_gramo || (f.precio_compra / 1000))}/g`,
+                        }))
+                      : resinas.map(r => ({
+                          value: r.id,
+                          label: `${r.marca} ${r.tipo} - ${r.color}`,
+                          subtitle: `Bodega: ${Math.round(r.peso_g || 0)}g • $${Math.round(r.costo_gramo || (r.precio_compra / 1000))}/g`,
+                        }))
+                  }
+                />
               </div>
 
               {/* Grid Peso, Tiempo y Responsable */}
@@ -409,15 +403,15 @@ export const ModalProduccionInterna: React.FC<ModalProduccionInternaProps> = ({
 
                 <div className="form-group">
                   <label className="form-label" style={{ fontWeight: 700 }}>Responsable</label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
                     value={responsable}
-                    onChange={e => setResponsable(e.target.value)}
-                  >
-                    <option value="Germán">Germán</option>
-                    <option value="Juan">Juan</option>
-                    <option value="Taller WJGEEKS">Taller WJGEEKS</option>
-                  </select>
+                    onChange={setResponsable}
+                    options={[
+                      { value: 'Germán', label: 'Germán' },
+                      { value: 'Juan', label: 'Juan' },
+                      { value: 'Taller WJGEEKS', label: 'Taller WJGEEKS' },
+                    ]}
+                  />
                 </div>
               </div>
 

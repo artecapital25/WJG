@@ -22,6 +22,7 @@ import {
 import { ProductoStock, PiezaCotizada } from '../../types';
 import { ImageUploadField } from '../common/ImageUploadField';
 import { toast } from '../ui/ToastProvider';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface ProductosStockViewProps {
   productos: ProductoStock[];
@@ -842,15 +843,11 @@ ${itemsText}
 
                 <div className="form-group">
                   <label className="form-label">Categoría *</label>
-                  <select
-                    className="form-select"
+                  <WjgSelect
                     value={editingItem.categoria}
-                    onChange={e => setEditingItem({ ...editingItem, categoria: e.target.value })}
-                  >
-                    {CATEGORIAS_PREDEFINIDAS.map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setEditingItem({ ...editingItem, categoria: val })}
+                    options={CATEGORIAS_PREDEFINIDAS.map(c => ({ value: c, label: c }))}
+                  />
                 </div>
               </div>
 

@@ -12,6 +12,7 @@ import {
   Flame
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { WjgSelect } from '../ui/WjgSelect';
 import { 
   TareaEquipo, 
   IntegranteEquipo, 
@@ -473,36 +474,32 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginBottom: '12px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', marginBottom: '12px' }}>
                 <div>
                   <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     RESPONSABLE:
                   </label>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={asignadoA}
-                    onChange={e => setAsignadoA(e.target.value as IntegranteEquipo)}
-                  >
-                    {INTEGRANTES.map(i => (
-                      <option key={i} value={i}>{i}</option>
-                    ))}
-                  </select>
+                    onChange={(val) => setAsignadoA(val as IntegranteEquipo)}
+                    options={INTEGRANTES.map(i => ({ value: i, label: i }))}
+                  />
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     PRIORIDAD:
                   </label>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={prioridad}
-                    onChange={e => setPrioridad(e.target.value as any)}
-                  >
-                    <option value="baja">Baja</option>
-                    <option value="media">Media</option>
-                    <option value="alta">Alta</option>
-                    <option value="urgente">🔥 Urgente</option>
-                  </select>
+                    onChange={(val) => setPrioridad(val as any)}
+                    options={[
+                      { value: 'baja', label: 'Baja' },
+                      { value: 'media', label: 'Media' },
+                      { value: 'alta', label: 'Alta' },
+                      { value: 'urgente', label: '🔥 Urgente' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -535,17 +532,17 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                     <label style={{ fontSize: '0.72rem', color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                       FRECUENCIA DE REPETICIÓN:
                     </label>
-                    <select 
-                      className="form-select"
+                    <WjgSelect
+                      compact
                       value={frecuencia}
-                      onChange={e => setFrecuencia(e.target.value as any)}
-                      style={{ fontSize: '0.8rem' }}
-                    >
-                      <option value="diaria">Diaria (Todos los días)</option>
-                      <option value="semanal">Semanal (Una vez por semana)</option>
-                      <option value="quincenal">Quincenal (Cada 15 días)</option>
-                      <option value="mensual">Mensual (Cada mes)</option>
-                    </select>
+                      onChange={(val) => setFrecuencia(val as any)}
+                      options={[
+                        { value: 'diaria', label: 'Diaria', subtitle: 'Todos los días' },
+                        { value: 'semanal', label: 'Semanal', subtitle: 'Una vez por semana' },
+                        { value: 'quincenal', label: 'Quincenal', subtitle: 'Cada 15 días' },
+                        { value: 'mensual', label: 'Mensual', subtitle: 'Cada mes' },
+                      ]}
+                    />
                   </div>
                 )}
               </div>
@@ -716,16 +713,16 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                   <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     NIVEL DE URGENCIA:
                   </label>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={urgenciaInsumo}
-                    onChange={e => setUrgenciaInsumo(e.target.value as UrgenciaInsumo)}
-                    style={{ color: urgenciaInsumo === 'taller_detenido' ? '#f87171' : 'inherit', fontWeight: 700 }}
-                  >
-                    <option value="normal">Normal (Para próximos días)</option>
-                    <option value="urgente">⚠️ Urgente (Queda poco)</option>
-                    <option value="taller_detenido">🚨 ¡TALLER DETENIDO!</option>
-                  </select>
+                    onChange={(val) => setUrgenciaInsumo(val as UrgenciaInsumo)}
+                    style={{ color: urgenciaInsumo === 'taller_detenido' ? '#f87171' : undefined, fontWeight: 700 }}
+                    options={[
+                      { value: 'normal', label: 'Normal', subtitle: 'Para próximos días' },
+                      { value: 'urgente', label: '⚠️ Urgente', subtitle: 'Queda poco' },
+                      { value: 'taller_detenido', label: '🚨 ¡TALLER DETENIDO!' },
+                    ]}
+                  />
                 </div>
               </div>
 
@@ -746,16 +743,16 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                   <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     ENCARGADO DE COMPRA:
                   </label>
-                  <select 
-                    className="form-select"
+                  <WjgSelect
                     value={encargadoCompra}
-                    onChange={e => setEncargadoCompra(e.target.value as IntegranteEquipo)}
-                  >
-                    <option value="Wendy">Wendy (320 481 4702 - Compras)</option>
-                    <option value="Germán">Germán (350 344 3140 - Dirección)</option>
-                    <option value="Juan">Juan (321 727 3025 - Taller)</option>
-                    <option value="Todos">🚀 Enviar a los 3 (Germán, Juan y Wendy)</option>
-                  </select>
+                    onChange={(val) => setEncargadoCompra(val as IntegranteEquipo)}
+                    options={[
+                      { value: 'Wendy', label: 'Wendy', subtitle: '320 481 4702 • Compras' },
+                      { value: 'Germán', label: 'Germán', subtitle: '350 344 3140 • Dirección' },
+                      { value: 'Juan', label: 'Juan', subtitle: '321 727 3025 • Taller' },
+                      { value: 'Todos', label: '🚀 Enviar a los 3', subtitle: 'Germán, Juan y Wendy' },
+                    ]}
+                  />
                 </div>
               </div>
 

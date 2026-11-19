@@ -2,6 +2,7 @@ import React from 'react';
 import { FileCode, CreditCard } from 'lucide-react';
 import { OrdenTrabajo, EstadoSTL } from '../../../types';
 import { ESTADOS_STL } from '../utils/workshopUtils';
+import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface ModalTrazabilidadSTLProps {
   ot: OrdenTrabajo | null;
@@ -68,15 +69,11 @@ export const ModalTrazabilidadSTL: React.FC<ModalTrazabilidadSTLProps> = ({
             <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
               ESTADO TÉCNICO DEL STL:
             </label>
-            <select 
-              className="form-select"
+            <WjgSelect
               value={inputStlEstado}
-              onChange={e => setInputStlEstado(e.target.value as EstadoSTL)}
-            >
-              {ESTADOS_STL.map(st => (
-                <option key={st} value={st}>{st}</option>
-              ))}
-            </select>
+              onChange={(val) => setInputStlEstado(val as EstadoSTL)}
+              options={ESTADOS_STL.map(st => ({ value: st, label: st }))}
+            />
           </div>
 
           {/* Recordatorio de Pago al Aprobar Diseño */}

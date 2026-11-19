@@ -54,11 +54,18 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - **Banners de Desglose 3DPCC (SLA y FDM):** Bloque informativo en tinte cyan translúcido (`rgba(56, 189, 248, 0.08)`, borde `rgba(56, 189, 248, 0.2)`) que muestra en tiempo real duración (`Xh Ym — Z min`) y costos de material, energía, repuestos (FEP/LCD o Boquilla/PEI) y lavado/curado UV.
 
 ### Header Superior Limpio y Layout Global (Regla Permanente)
-- **Cero elementos flotantes invasivos en el Header:** La barra superior (`HeaderMinimal`) debe permanecer ultra-limpia y despejada:
-  - **Izquierda:** Logotipo oficial `WJGEEKS 3D PRO` con punto de estado discreto (`header-status-dot`: verde online / ámbar local).
-  - **Derecha:** Únicamente el botón del operador (`header-user-badge`) con el nombre visible, contador numérico de alertas (`dailyAlertsCount`) y flecha para el menú desplegable.
+- **Cero elementos flotantes invasivos en el Header:** La barra superior (`HeaderMinimal`) debe permanecer ultra-limpia y despejada (`min-height: calc(56px + env(safe-area-inset-top))`, `padding: 0 14px` en móvil, `0 18px` en escritorio):
+  - **Izquierda:** Logotipo oficial `WJGEEKS` (ocultando el badge `3D PRO` en `<= 640px`) con punto de estado discreto (`header-status-dot`: verde online / ámbar local).
+  - **Derecha:** Únicamente el botón del operador (`header-user-badge`) mostrando primer nombre compacto en móvil (`shortDisplayName`), contador numérico de alertas (`dailyAlertsCount`) y flecha para el menú desplegable (nombre completo dentro del encabezado del menú).
+  - **Menú del Operador (`header-operator-menu`):** Homologado al estilo de desplegable POS (`#0b1329`, borde `rgba(56, 189, 248, 0.45)`, sombra profunda, ítems táctiles `>= 44px`).
   - **Reconexión de servicios externos (WhatsApp / Drive / Supabase):** Prohibido colocar píldoras o botones flotantes externos en la cabecera. La vinculación y el estado QR se ubican dentro del menú del operador (*"WhatsApp y Correo"*) y de forma reactiva en el modal de confirmación de envío ante errores `503`.
-- **Subpestañas Contextuales (`HubNavigationController`):** Botones tipo píldora deslizables con `min-height: 42px`, gradiente activo cobalt-blue y contraste alto sobre fondo translúcido blur(12px).
+- **Subpestañas Contextuales (`HubNavigationController` / `.hub-subtabs-bar`):** Botones tipo píldora deslizables con `min-height: 42px`, gradiente activo cobalt-blue y contraste alto sobre fondo translúcido blur(12px).
+
+### Desplegable Único Reutilizable (`WjgSelect`)
+- **Prohibido usar `<select>` nativos del navegador:** Todos los selectores de formularios, filtros y modales deben usar `src/components/ui/WjgSelect.tsx`.
+- **Estilo oficial (paridad Clientes POS):** Popover en `#0b1329`, borde `1px solid rgba(56, 189, 248, 0.45)`, sombra `0 12px 28px rgba(0,0,0,0.65)`, filas táctiles `>= 42px` con título + subtítulo/badge opcional y resaltado activo `rgba(56, 189, 248, 0.16)`.
+- **Portal + Posicionamiento Inteligente:** Renderizado en `document.body` (`z-index: 100000`) con volteo automático hacia arriba/abajo para nunca cortarse dentro de modales con scroll.
+- **Búsqueda Automática:** Activa barra de búsqueda interna (`font-size: 16px` en móvil para evitar auto-zoom) cuando la lista supera `6` opciones (`options.length > 6`), y abre directo sin buscador en listas cortas (`<= 6`).
 
 ### Ergonomía de Botones y Modales
 - **Targets Táctiles:** Controles primarios y segmentadores con altura mínima `42px–44px` en móvil (`.btn-sm` mínimo `40px` en escritorio y `42px` en móvil).

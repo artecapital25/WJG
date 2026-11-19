@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../types';
 import { openWhatsApp } from '../../services/whatsappService';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface OTCardProps {
   ot: OrdenTrabajo;
@@ -414,24 +415,16 @@ export const OTCard: React.FC<OTCardProps> = ({
                 <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>
                   Método de Pago:
                 </label>
-                <select
+                <WjgSelect
+                  compact
                   value={metodoAbono}
-                  onChange={(e: any) => setMetodoAbono(e.target.value)}
-                  style={{
-                    width: '100%',
-                    padding: '8px 12px',
-                    borderRadius: '8px',
-                    backgroundColor: '#0f172a',
-                    border: '1px solid #334155',
-                    color: '#fff',
-                    fontSize: '0.85rem',
-                    boxSizing: 'border-box',
-                  }}
-                >
-                  <option value="Bre-B">Bre-B (Llave 0090778625)</option>
-                  <option value="Nequi">Nequi (3217273025)</option>
-                  <option value="Efectivo">Efectivo en Taller</option>
-                </select>
+                  onChange={(val) => setMetodoAbono(val as any)}
+                  options={[
+                    { value: 'Bre-B', label: 'Bre-B', subtitle: 'Llave 0090778625' },
+                    { value: 'Nequi', label: 'Nequi', subtitle: '3217273025' },
+                    { value: 'Efectivo', label: 'Efectivo en Taller' },
+                  ]}
+                />
               </div>
 
               <div style={{ marginBottom: '16px' }}>

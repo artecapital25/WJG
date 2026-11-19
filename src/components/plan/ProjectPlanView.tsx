@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { WjgSelect } from '../ui/WjgSelect';
 import { 
   CheckCircle2, 
   Clock, 
@@ -1026,38 +1027,50 @@ export const ProjectPlanView: React.FC = () => {
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     MÓDULO / ÁREA
                   </label>
-                  <select className="form-select" value={nuevoModulo} onChange={e => setNuevoModulo(e.target.value)}>
-                    <option value="General">General / Sistema</option>
-                    <option value="Inventario & Bodega">Inventario & Bodega</option>
-                    <option value="POS Express">POS Express</option>
-                    <option value="Cotizador 3D">Cotizador 3D</option>
-                    <option value="Mensajería WhatsApp">Mensajería WhatsApp</option>
-                    <option value="Clientes & CRM">Clientes & CRM</option>
-                    <option value="Taller & OTs">Taller & OTs</option>
-                    <option value="Finanzas & Cobros">Finanzas & Cobros</option>
-                  </select>
+                  <WjgSelect
+                    value={nuevoModulo}
+                    onChange={setNuevoModulo}
+                    options={[
+                      { value: 'General', label: 'General / Sistema' },
+                      { value: 'Inventario & Bodega', label: 'Inventario & Bodega' },
+                      { value: 'POS Express', label: 'POS Express' },
+                      { value: 'Cotizador 3D', label: 'Cotizador 3D' },
+                      { value: 'Mensajería WhatsApp', label: 'Mensajería WhatsApp' },
+                      { value: 'Clientes & CRM', label: 'Clientes & CRM' },
+                      { value: 'Taller & OTs', label: 'Taller & OTs' },
+                      { value: 'Finanzas & Cobros', label: 'Finanzas & Cobros' },
+                    ]}
+                  />
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     PRIORIDAD
                   </label>
-                  <select className="form-select" value={nuevaPrioridad} onChange={e => setNuevaPrioridad(e.target.value as PrioridadBacklogEmpresa)}>
-                    <option value="alta">🔴 Alta</option>
-                    <option value="media">🟡 Media</option>
-                    <option value="baja">🔵 Baja</option>
-                  </select>
+                  <WjgSelect
+                    value={nuevaPrioridad}
+                    onChange={(val) => setNuevaPrioridad(val as PrioridadBacklogEmpresa)}
+                    options={[
+                      { value: 'alta', label: '🔴 Alta' },
+                      { value: 'media', label: '🟡 Media' },
+                      { value: 'baja', label: '🔵 Baja' },
+                    ]}
+                  />
                 </div>
 
                 <div>
                   <label style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
                     ESTADO
                   </label>
-                  <select className="form-select" value={nuevoEstado} onChange={e => setNuevoEstado(e.target.value as EstadoBacklogEmpresa)}>
-                    <option value="pendiente">⏳ Pendiente</option>
-                    <option value="en_validacion">🧪 En Validación</option>
-                    <option value="implementado">✅ Implementado</option>
-                  </select>
+                  <WjgSelect
+                    value={nuevoEstado}
+                    onChange={(val) => setNuevoEstado(val as EstadoBacklogEmpresa)}
+                    options={[
+                      { value: 'pendiente', label: '⏳ Pendiente' },
+                      { value: 'en_validacion', label: '🧪 En Validación' },
+                      { value: 'implementado', label: '✅ Implementado' },
+                    ]}
+                  />
                 </div>
 
                 <div>
@@ -1161,16 +1174,19 @@ export const ProjectPlanView: React.FC = () => {
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                          <select
-                            className="form-select"
-                            value={item.estado}
-                            onChange={e => handleCambiarEstadoBacklog(item.id, e.target.value as EstadoBacklogEmpresa)}
-                            style={{ fontSize: '0.74rem', padding: '4px 8px', minHeight: '32px', width: 'auto', color: colorEstado, fontWeight: 700 }}
-                          >
-                            <option value="pendiente">⏳ Pendiente</option>
-                            <option value="en_validacion">🧪 En Validación</option>
-                            <option value="implementado">✅ Implementado</option>
-                          </select>
+                          <div style={{ minWidth: '145px' }}>
+                            <WjgSelect
+                              compact
+                              value={item.estado}
+                              onChange={(val) => handleCambiarEstadoBacklog(item.id, val as EstadoBacklogEmpresa)}
+                              style={{ color: colorEstado, fontWeight: 700 }}
+                              options={[
+                                { value: 'pendiente', label: '⏳ Pendiente' },
+                                { value: 'en_validacion', label: '🧪 En Validación' },
+                                { value: 'implementado', label: '✅ Implementado' },
+                              ]}
+                            />
+                          </div>
                           <button
                             type="button"
                             className="btn btn-secondary btn-sm"

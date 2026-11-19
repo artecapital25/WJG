@@ -14,6 +14,7 @@ import {
 import { Cotizacion, OrdenTrabajo, CuentaCobro, Resina } from '../../types';
 import { VentaExpress } from '../../types/pos';
 import { CloudSyncService, BalanceTaller } from '../../services/cloudSyncService';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface FinancialReportViewProps {
   cotizaciones: Cotizacion[];
@@ -532,22 +533,20 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
       <div style={{ background: 'var(--bg-card)', padding: '14px 18px', borderRadius: '14px', border: '1px solid var(--border-subtle)', marginBottom: '20px', display: 'flex', gap: '14px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
           {/* Selector de Mes */}
-          <div>
+          <div style={{ minWidth: '185px', flex: '1 1 185px' }}>
             <label style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
               <Calendar size={12} color="var(--brand-cyan)" />
               PERIODO / MES
             </label>
-            <select 
-              className="form-select" 
-              style={{ fontSize: '0.82rem', padding: '5px 10px', minHeight: '34px' }}
+            <WjgSelect
+              compact
               value={selectedMonth}
-              onChange={e => setSelectedMonth(e.target.value)}
-            >
-              <option value="todos">Todo el Histórico ({todosLosPedidos.length} pedidos)</option>
-              {mesesDisponibles.map(m => (
-                <option key={m} value={m}>{m}</option>
-              ))}
-            </select>
+              onChange={setSelectedMonth}
+              options={[
+                { value: 'todos', label: `Todo el Histórico (${todosLosPedidos.length} pedidos)` },
+                ...mesesDisponibles.map(m => ({ value: m, label: m })),
+              ]}
+            />
           </div>
 
           {/* Selector de Canal / Origen */}
@@ -556,28 +555,28 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
               <Layers size={12} color="#a855f7" />
               CANAL DE ORIGEN
             </label>
-            <div style={{ display: 'flex', gap: '4px' }}>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
               <button
                 type="button"
-                className={`btn btn-xs ${filterCanal === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn btn-sm ${filterCanal === 'todos' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilterCanal('todos')}
-                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                style={{ fontSize: '0.76rem', padding: '5px 10px' }}
               >
                 Todos ({todosLosPedidos.length})
               </button>
               <button
                 type="button"
-                className={`btn btn-xs ${filterCanal === 'cotizaciones' ? 'btn-cyan' : 'btn-secondary'}`}
+                className={`btn btn-sm ${filterCanal === 'cotizaciones' ? 'btn-cyan' : 'btn-secondary'}`}
                 onClick={() => setFilterCanal('cotizaciones')}
-                style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                style={{ fontSize: '0.76rem', padding: '5px 10px' }}
               >
                 Cotizaciones ({cotizaciones.length})
               </button>
               <button
                 type="button"
-                className={`btn btn-xs ${filterCanal === 'pos' ? 'btn-primary' : 'btn-secondary'}`}
+                className={`btn btn-sm ${filterCanal === 'pos' ? 'btn-primary' : 'btn-secondary'}`}
                 onClick={() => setFilterCanal('pos')}
-                style={{ fontSize: '0.75rem', padding: '4px 10px', background: filterCanal === 'pos' ? '#f59e0b' : undefined, borderColor: filterCanal === 'pos' ? '#f59e0b' : undefined, color: filterCanal === 'pos' ? '#000' : undefined }}
+                style={{ fontSize: '0.76rem', padding: '5px 10px', background: filterCanal === 'pos' ? '#f59e0b' : undefined, borderColor: filterCanal === 'pos' ? '#f59e0b' : undefined, color: filterCanal === 'pos' ? '#000' : undefined }}
               >
                 Ventas POS ({ventasExpress.length})
               </button>
@@ -585,22 +584,22 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
           </div>
 
           {/* Selector de Estado */}
-          <div>
+          <div style={{ minWidth: '185px', flex: '1 1 185px' }}>
             <label style={{ fontSize: '0.70rem', fontWeight: 700, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px', marginBottom: '3px' }}>
               <Filter size={12} color="var(--brand-blue)" />
               ESTADO DE PAGO
             </label>
-            <select 
-              className="form-select" 
-              style={{ fontSize: '0.82rem', padding: '5px 10px', minHeight: '34px' }}
+            <WjgSelect
+              compact
               value={filterEstado}
-              onChange={e => setFilterEstado(e.target.value)}
-            >
-              <option value="todas">Todos los cobros</option>
-              <option value="pagadas">Completamente Pagadas ($0 saldo)</option>
-              <option value="pendientes">Con Saldo Pendiente</option>
-              <option value="confirmadas">Ventas Confirmadas</option>
-            </select>
+              onChange={setFilterEstado}
+              options={[
+                { value: 'todas', label: 'Todos los cobros' },
+                { value: 'pagadas', label: 'Completamente Pagadas ($0 saldo)' },
+                { value: 'pendientes', label: 'Con Saldo Pendiente' },
+                { value: 'confirmadas', label: 'Ventas Confirmadas' },
+              ]}
+            />
           </div>
         </div>
 

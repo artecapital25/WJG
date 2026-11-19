@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { ProductoStock } from '../../types';
 import { openWhatsApp } from '../../services/whatsappService';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface MarketingIAModalProps {
   isOpen: boolean;
@@ -34,8 +35,7 @@ export const MarketingIAModal: React.FC<MarketingIAModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleSelectProduct = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const id = e.target.value;
+  const handleSelectProduct = (id: string) => {
     setSelectedProductId(id);
     const prod = productosStock.find((p) => p.id === id);
     if (prod) {
@@ -174,26 +174,19 @@ export const MarketingIAModal: React.FC<MarketingIAModalProps> = ({
             <label style={{ display: 'block', fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>
               Vincular Producto en Stock (Opcional):
             </label>
-            <select
+            <WjgSelect
               value={selectedProductId}
               onChange={handleSelectProduct}
-              style={{
-                width: '100%',
-                padding: '8px 12px',
-                borderRadius: '8px',
-                backgroundColor: '#1e293b',
-                border: '1px solid #334155',
-                color: '#fff',
-                fontSize: '0.85rem',
-              }}
-            >
-              <option value="">-- Ingreso Manual o Selecciona del Stock --</option>
-              {productosStock.map((prod) => (
-                <option key={prod.id} value={prod.id}>
-                  {prod.nombre} - ${prod.precio_unitario.toLocaleString('es-CO')} COP ({prod.stock_actual} en stock)
-                </option>
-              ))}
-            </select>
+              searchPlaceholder="Buscar producto en stock..."
+              options={[
+                { value: '', label: 'Ingreso Manual o Selecciona del Stock' },
+                ...productosStock.map((prod) => ({
+                  value: prod.id,
+                  label: prod.nombre,
+                  subtitle: `$${prod.precio_unitario.toLocaleString('es-CO')} COP • ${prod.stock_actual} en stock`,
+                })),
+              ]}
+            />
           </div>
 
           {/* Nombre y Precio */}

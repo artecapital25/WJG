@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown, QrCode } from 'lucide-react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown } from 'lucide-react';
 import { WhatsAppGatewayService } from '../../services/whatsappGatewayService';
 
 interface HeaderMinimalProps {
@@ -66,6 +66,11 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
     return clean;
   }, [activeOperator]);
 
+  const shortDisplayName = React.useMemo(() => {
+    const first = displayName.split(/\s+/)[0];
+    return first || displayName;
+  }, [displayName]);
+
   useEffect(() => {
     if (!menuOpen) return;
     const handleClickOutside = (ev: MouseEvent) => {
@@ -123,27 +128,12 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
           onClick={() => setMenuOpen(prev => !prev)}
           aria-expanded={menuOpen}
           aria-haspopup="menu"
-          title={`Menú de ${activeOperator}`}
-          style={{ cursor: 'pointer', maxWidth: 'none', padding: '6px 12px', minHeight: '38px' }}
+          title={`Menú de ${displayName}`}
         >
           <ShieldCheck size={14} color="#38bdf8" style={{ flexShrink: 0 }} />
-          <span className="header-user-name">{displayName}</span>
+          <span className="header-user-name">{shortDisplayName}</span>
           {dailyAlertsCount > 0 && (
-            <span
-              style={{
-                backgroundColor: '#ef4444',
-                color: '#ffffff',
-                borderRadius: '9999px',
-                padding: '0 5px',
-                fontSize: '0.64rem',
-                fontWeight: 800,
-                lineHeight: '15px',
-                height: '15px',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center'
-              }}
-            >
+            <span className="header-alert-badge" title={`${dailyAlertsCount} alerta(s) pendiente(s)`}>
               {dailyAlertsCount}
             </span>
           )}
@@ -165,9 +155,14 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
                 className="header-status-dot"
                 style={{ color: cloudStatus === 'connected' ? '#34d399' : '#fbbf24' }}
               />
-              <span>
-                {cloudStatus === 'connected' ? 'Supabase Online en vivo' : 'Modo Local (Offline)'}
-              </span>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: 0 }}>
+                <span style={{ color: '#f8fafc', fontWeight: 700, fontSize: '0.78rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {displayName}
+                </span>
+                <span style={{ color: '#94a3b8', fontSize: '0.68rem' }}>
+                  {cloudStatus === 'connected' ? 'Supabase Online en vivo' : 'Modo Local (Offline)'}
+                </span>
+              </div>
             </div>
 
             {onOpenDailyBriefing && (
