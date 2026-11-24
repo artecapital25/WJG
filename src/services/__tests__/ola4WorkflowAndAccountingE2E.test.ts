@@ -80,6 +80,7 @@ vi.mock('../supabaseClient', () => ({
 }));
 
 import { CloudSyncService } from '../cloudSyncService';
+import { getConfiguredGroupChannels } from '../messaging';
 import {
   GoogleSheetsSyncService,
   OFFICIAL_APPS_SCRIPT_URL,
@@ -268,5 +269,37 @@ describe('Ola 4 — Consistencia E2E Contable, Stock POS y Migración Apps Scrip
       expect(cfg.webAppUrl).toBe(OFFICIAL_APPS_SCRIPT_URL);
       localStorage.removeItem('wjg_google_sheets_config');
     }
+  });
+
+  it('5. getConfiguredGroupChannels expone canales con audiencia "clientes" para difusión en Marketing', () => {
+    const channels = getConfiguredGroupChannels({
+      tarifa_kwh: 900,
+      margen_merma_resina: 10,
+      telefono_contacto: '3202796115',
+      telefono_contacto2: '',
+      instagram: '@wjgeeks3d',
+      nequi: '',
+      titular_cuenta: 'WJGEEKS',
+      whatsapp_grupos_config: {
+        vip_clientes: {
+          jid: '120363999999999999@g.us',
+          nombre: 'Clientes VIP Lanzamientos',
+          audiencia: 'clientes',
+          esPersonalizado: true,
+        },
+        taller: {
+          jid: '120363421319587624@g.us',
+          nombre: 'WJGeeks 3D',
+          audiencia: 'equipo',
+          esPersonalizado: false,
+        },
+      },
+    });
+
+    const clientChannels = channels.filter(c => c.audiencia === 'clientes');
+    expect(clientChannels).toHaveLength(1);
+    expect(clientChannels[0].id).toBe('vip_clientes');
+    expect(clientChannels[0].nombre).toBe('Clientes VIP Lanzamientos');
+    expect(clientChannels[0].jid).toBe('120363999999999999@g.us');
   });
 });

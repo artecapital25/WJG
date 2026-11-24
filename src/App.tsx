@@ -4152,6 +4152,8 @@ export const App: React.FC = () => {
                   productosStock={productosStock}
                   tarifasTamanos={tarifasTamanos}
                   config={config}
+                  usuarios={usuariosTaller}
+                  onOpenWhatsAppConfig={() => setShowWhatsAppModal(true)}
                   onUpdateProductoStock={(prod) => {
                     const updated = productosStock.map(p => p.id === prod.id ? prod : p);
                     handleUpdateProductosStock(updated);

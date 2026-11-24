@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { 
   Megaphone, 
   Share2, 
@@ -14,17 +14,26 @@ import {
   HelpCircle,
   Eye,
   Send,
-  Wand2
+  Wand2,
+  Users,
+  Settings2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { ProductoStock, TarifaTamano, ConfiguracionTaller } from '../../types';
+import { UsuarioTaller } from '../../types/usuarios.types';
+import { getConfiguredGroupChannels } from '../../services/messaging';
+import { WjgMessageDispatcherModal } from '../messaging/WjgMessageDispatcherModal';
 import { NanoBananaStudio } from './NanoBananaStudio';
-import { WjgButton, WjgNumberInput, WjgSelect, WjgTextInput } from '../ui';
+import { WjgBadge, WjgButton, WjgCard, WjgNumberInput, WjgSelect, WjgTextInput } from '../ui';
 
 interface MarketingHubViewProps {
   productosStock: ProductoStock[];
   tarifasTamanos: TarifaTamano[];
   config: ConfiguracionTaller;
+  usuarios?: UsuarioTaller[];
+  onOpenWhatsAppConfig?: () => void;
   onUpdateProductoStock?: (prod: ProductoStock) => void;
 }
 
@@ -155,9 +164,28 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
   productosStock,
   tarifasTamanos,
   config,
+  usuarios = [],
+  onOpenWhatsAppConfig,
   onUpdateProductoStock
 }) => {
   const [activeSubTab, setActiveSubTab] = useState<MarketingTab>('copys');
+
+  // Estados de Difusión Directa a Canales de Clientes WhatsApp
+  const [broadcastDraft, setBroadcastDraft] = useState<{
+    title: string;
+    subtitle: string;
+    text: string;
+    subject: string;
+  } | null>(null);
+  const [showChannelGuide, setShowChannelGuide] = useState<boolean>(false);
+  const [stockPromoId, setStockPromoId] = useState<string>(productosStock[0]?.id || '');
+
+  const allGroupChannels = useMemo(() => getConfiguredGroupChannels(config), [config]);
+  const clientChannels = useMemo(
+    () => allGroupChannels.filter(c => c.audiencia === 'clientes'),
+    [allGroupChannels]
+  );
+  const defaultBroadcastChannel = clientChannels[0]?.id || 'general';
 
   // Estados del Generador de Copys
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('lanzamiento');
@@ -743,14 +771,32 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
 
               <WjgButton
                 variant="whatsapp"
+                onClick={() =>
+                  setBroadcastDraft({
+                    title: 'Difundir Copy a Canal de Clientes',
+                    subtitle: clientChannels.length > 0
+                      ? `Canal sugerido: ${clientChannels[0].nombre}`
+                      : 'Selecciona el grupo/canal destino de WhatsApp',
+                    text: copyGenerado,
+                    subject: `Campaña WJGEEKS 3D: ${getItemData().nombre}`,
+                  })
+                }
+                leftIcon={<Megaphone size={15} />}
+                title="Enviar directamente al grupo/canal de clientes en WhatsApp"
+              >
+                Difundir a Canal WhatsApp
+              </WjgButton>
+
+              <WjgButton
+                variant="secondary"
                 onClick={() => {
                   const url = `https://wa.me/${telefonoOficial}?text=${encodeURIComponent(copyGenerado)}`;
                   window.open(url, '_blank');
                 }}
                 leftIcon={<Send size={15} />}
-                title="Abrir WhatsApp para compartir o auto-enviarse el copy"
+                title="Abrir WhatsApp web (wa.me) con el copy pre-escrito"
               >
-                Enviar a WhatsApp
+                Abrir wa.me
               </WjgButton>
             </div>
 
@@ -983,84 +1029,18 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
         </div>
       )}
 
-      {/* CONTENIDO 3: DIFUSIONES Y WHATSAPP MARKETING */}
-      {activeSubTab === 'difusiones' && (
-        <div className="marketing-layout-grid vertical-stack-mobile">
-          {/* Mensaje 1: Novedades del Mes */}
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '16px',
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: '14px'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)' }}>
-                  Difusión 1
-                </span>
-                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Clientes Frecuentes</span>
-              </div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px 0' }}>
-                📣 Novedades & Figuras del Mes
-              </h3>
-              <p style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', whiteSpace: 'pre-line', background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-{`¡Hola! 👋 Te saludamos desde el taller de WJGEEKS 3D PRO.
+      {/* CONTENIDO 4: DIFUSIONES Y WHATSAPP MARKETING */}
+      {activeSubTab === 'difusiones' && (() => {
+        const difusionNovedadesText = `¡Hola! 👋 Te saludamos desde el taller de WJGEEKS 3D PRO.
 
 Tenemos nuevas figuras listas y cupos abiertos para impresión personalizada en resina 8K para esta semana 🚀.
 
 Si tienes en mente algún personaje de anime, Marvel, DC, videojuegos o tu propio avatar, solo envíanos una foto y te enviamos la cotización de inmediato 🎨✨.
 
 👇 Escríbenos aquí para apartar tu pedido:
-https://wa.me/${telefonoOficial}?text=${encodeURIComponent('¡Hola WJGEEKS! Quiero cotizar una figura para esta semana.')}`}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCopyClipboard(
-`¡Hola! 👋 Te saludamos desde el taller de WJGEEKS 3D PRO.
+https://wa.me/${telefonoOficial}?text=${encodeURIComponent('¡Hola WJGEEKS! Quiero cotizar una figura para esta semana.')}`;
 
-Tenemos nuevas figuras listas y cupos abiertos para impresión personalizada en resina 8K para esta semana 🚀.
-
-Si tienes en mente algún personaje de anime, Marvel, DC, videojuegos o tu propio avatar, solo envíanos una foto y te enviamos la cotización de inmediato 🎨✨.
-
-👇 Escríbenos aquí para apartar tu pedido:
-https://wa.me/${telefonoOficial}?text=${encodeURIComponent('¡Hola WJGEEKS! Quiero cotizar una figura para esta semana.')}`
-              )}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600 }}
-            >
-              <Copy size={15} />
-              <span>Copiar Plantilla de Difusión</span>
-            </button>
-          </div>
-
-          {/* Mensaje 2: Promoción Fin de Semana */}
-          <div style={{
-            background: 'var(--bg-card)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: '16px',
-            padding: '20px',
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'space-between',
-            gap: '14px'
-          }}>
-            <div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                <span style={{ fontSize: '0.75rem', fontWeight: 700, padding: '3px 8px', borderRadius: '6px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
-                  Difusión 2
-                </span>
-                <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Fin de Semana</span>
-              </div>
-              <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px 0' }}>
-                ⚡ Fin de Semana Geek (Stock Express)
-              </h3>
-              <p style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', whiteSpace: 'pre-line', background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
-{`⚡ ¡PROMO FIN DE SEMANA EN WJGEEKS 3D! ⚡
+        const difusionFinSemanaText = `⚡ ¡PROMO FIN DE SEMANA EN WJGEEKS 3D! ⚡
 
 Este fin de semana tenemos figuras seleccionadas en stock listas para despacho inmediato en Colombia 🇨🇴📦.
 
@@ -1069,32 +1049,297 @@ Sin esperas de producción: pides hoy y despachamos de inmediato.
 👑 Consulta el catálogo disponible en WhatsApp tocando aquí:
 https://wa.me/${telefonoOficial}?text=${encodeURIComponent('¡Hola WJGEEKS! Me gustaría ver las figuras disponibles en stock de este fin de semana.')}
 
-¡Cupos limitados por modelo!`}
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => handleCopyClipboard(
-`⚡ ¡PROMO FIN DE SEMANA EN WJGEEKS 3D! ⚡
+¡Cupos limitados por modelo!`;
 
-Este fin de semana tenemos figuras seleccionadas en stock listas para despacho inmediato en Colombia 🇨🇴📦.
+        const prodStockSel =
+          productosStock.find(p => p.id === stockPromoId) || productosStock[0];
 
-Sin esperas de producción: pides hoy y despachamos de inmediato.
+        const stockPromoText = prodStockSel
+          ? `🔥 ¡FIGURA DISPONIBLE EN VITRINA WJGEEKS 3D! 🔥
 
-👑 Consulta el catálogo disponible en WhatsApp tocando aquí:
-https://wa.me/${telefonoOficial}?text=${encodeURIComponent('¡Hola WJGEEKS! Me gustaría ver las figuras disponibles en stock de este fin de semana.')}
+✨ Pieza: ${prodStockSel.nombre}
+📏 Detalle: ${prodStockSel.dimensiones || prodStockSel.categoria || 'Resina 8K + Pintura artesanal'}
+💰 Precio especial: $${prodStockSel.precio_unitario.toLocaleString('es-CO')} COP
+📦 Disponibles en taller: ${prodStockSel.stock_actual || 1} und(s)
 
-¡Cupos limitados por modelo!`
+👇 Apártala de inmediato por WhatsApp:
+https://wa.me/${telefonoOficial}?text=${encodeURIComponent(`¡Hola WJGEEKS! Quiero apartar la figura en stock: ${prodStockSel.nombre}`)}`
+          : 'Agrega productos en Vitrina / Stock para generar anuncios automáticos desde inventario.';
+
+        return (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '18px' }}>
+            {/* Banner de Canales WhatsApp para Clientes + Guía VIP */}
+            <WjgCard>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                    <Users size={18} color="#34d399" />
+                    <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#fff' }}>
+                      Canales de Difusión WhatsApp (Audiencia: Clientes)
+                    </h3>
+                    {clientChannels.length > 0 ? (
+                      clientChannels.map(ch => (
+                        <WjgBadge key={ch.id} variant="success">
+                          {ch.nombre}
+                        </WjgBadge>
+                      ))
+                    ) : (
+                      <WjgBadge variant="warning">
+                        Sin grupo de clientes configurado (usará canal fallback)
+                      </WjgBadge>
+                    )}
+                  </div>
+                  <p style={{ margin: '4px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                    Envía promociones, cupos semanales o lanzamientos de Stock directo al grupo VIP de clientes sin salir de WJGEEKS.
+                  </p>
+                </div>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <WjgButton
+                    size="sm"
+                    variant="secondary"
+                    onClick={() => setShowChannelGuide(prev => !prev)}
+                    rightIcon={showChannelGuide ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  >
+                    ¿Cómo crear grupo VIP de clientes?
+                  </WjgButton>
+                  {onOpenWhatsAppConfig && (
+                    <WjgButton
+                      size="sm"
+                      variant="cyan"
+                      leftIcon={<Settings2 size={14} />}
+                      onClick={onOpenWhatsAppConfig}
+                    >
+                      Gestionar Grupos / Canales
+                    </WjgButton>
+                  )}
+                </div>
+              </div>
+
+              {showChannelGuide && (
+                <div
+                  style={{
+                    marginTop: '14px',
+                    padding: '14px 16px',
+                    borderRadius: '12px',
+                    background: 'rgba(2, 6, 23, 0.65)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    fontSize: '0.8rem',
+                    color: '#cbd5e1',
+                    lineHeight: 1.55,
+                  }}
+                >
+                  <strong style={{ color: '#38bdf8', display: 'block', marginBottom: '6px' }}>
+                    Guía Rápida: Canal VIP / Difusión de Clientes en 4 Pasos
+                  </strong>
+                  <ol style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <li>
+                      En el WhatsApp de la línea oficial (<strong>+{telefonoOficial}</strong>), crea un grupo llamado p. ej. <strong>"Clientes VIP / Novedades WJGEEKS 3D"</strong> y en ajustes del grupo activa <em>Enviar mensajes → Solo administradores</em>.
+                    </li>
+                    <li>
+                      Abre <strong>Gestionar Grupos / Canales</strong> (arriba) y presiona <strong>Cargar grupos de mi WhatsApp</strong> para traer el listado real de grupos conectados.
+                    </li>
+                    <li>
+                      Crea o edita un canal personalizado asignándole audiencia <strong>Clientes</strong> y vincula el JID de tu grupo VIP.
+                    </li>
+                    <li>
+                      Usa cualquiera de los botones <strong>Difundir a Canal WhatsApp</strong> abajo para publicar anuncios con confirmación real vía Gateway.
+                    </li>
+                  </ol>
+                </div>
               )}
-              className="btn btn-secondary"
-              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', fontWeight: 600 }}
-            >
-              <Copy size={15} />
-              <span>Copiar Plantilla de Fin de Semana</span>
-            </button>
+            </WjgCard>
+
+            <div className="marketing-layout-grid vertical-stack-mobile">
+              {/* Difusión 1: Novedades del Mes */}
+              <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '16px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '14px'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <WjgBadge variant="cyan">Difusión 1</WjgBadge>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Clientes Frecuentes</span>
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px 0' }}>
+                    📣 Novedades & Figuras del Mes
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', whiteSpace: 'pre-line', background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                    {difusionNovedadesText}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <WjgButton
+                    variant="whatsapp"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    leftIcon={<Megaphone size={14} />}
+                    onClick={() =>
+                      setBroadcastDraft({
+                        title: 'Difundir: Novedades & Figuras del Mes',
+                        subtitle: 'Anuncio comercial para grupo/canal de clientes',
+                        text: difusionNovedadesText,
+                        subject: '📣 Novedades & Figuras del Mes — WJGEEKS 3D PRO',
+                      })
+                    }
+                  >
+                    Difundir al Canal WhatsApp
+                  </WjgButton>
+                  <WjgButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Copy size={14} />}
+                    onClick={() => handleCopyClipboard(difusionNovedadesText)}
+                  >
+                    Copiar
+                  </WjgButton>
+                </div>
+              </div>
+
+              {/* Difusión 2: Promoción Fin de Semana */}
+              <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: '16px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '14px'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <WjgBadge variant="warning">Difusión 2</WjgBadge>
+                    <span style={{ fontSize: '0.72rem', color: '#94a3b8' }}>Fin de Semana</span>
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px 0' }}>
+                    ⚡ Fin de Semana Geek (Stock Express)
+                  </h3>
+                  <p style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', whiteSpace: 'pre-line', background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                    {difusionFinSemanaText}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <WjgButton
+                    variant="whatsapp"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    leftIcon={<Megaphone size={14} />}
+                    onClick={() =>
+                      setBroadcastDraft({
+                        title: 'Difundir: Fin de Semana Geek (Stock Express)',
+                        subtitle: 'Anuncio comercial para grupo/canal de clientes',
+                        text: difusionFinSemanaText,
+                        subject: '⚡ Promo Fin de Semana Geek — WJGEEKS 3D PRO',
+                      })
+                    }
+                  >
+                    Difundir al Canal WhatsApp
+                  </WjgButton>
+                  <WjgButton
+                    variant="secondary"
+                    size="sm"
+                    leftIcon={<Copy size={14} />}
+                    onClick={() => handleCopyClipboard(difusionFinSemanaText)}
+                  >
+                    Copiar
+                  </WjgButton>
+                </div>
+              </div>
+
+              {/* Difusión 3: Lanzamiento / Promoción desde Inventario de Stock */}
+              <div style={{
+                background: 'var(--bg-card)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                borderRadius: '16px',
+                padding: '20px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+                gap: '14px'
+              }}>
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                    <WjgBadge variant="success">Difusión 3 · Stock</WjgBadge>
+                    <span style={{ fontSize: '0.72rem', color: '#34d399' }}>Entrega Inmediata</span>
+                  </div>
+                  <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#f8fafc', margin: '0 0 10px 0' }}>
+                    🛍️ Lanzamiento Rápido de Figura en Stock
+                  </h3>
+                  {productosStock.length > 0 && (
+                    <div style={{ marginBottom: '10px' }}>
+                      <WjgSelect
+                        compact
+                        value={prodStockSel?.id || ''}
+                        onChange={setStockPromoId}
+                        searchPlaceholder="Elegir figura de vitrina..."
+                        options={productosStock.map(p => ({
+                          value: p.id,
+                          label: p.nombre,
+                          subtitle: `$${p.precio_unitario.toLocaleString('es-CO')} · Stock: ${p.stock_actual || 0}`,
+                        }))}
+                      />
+                    </div>
+                  )}
+                  <p style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', whiteSpace: 'pre-line', background: '#090d16', padding: '12px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.05)' }}>
+                    {stockPromoText}
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <WjgButton
+                    variant="whatsapp"
+                    size="sm"
+                    style={{ flex: 1 }}
+                    disabled={!prodStockSel}
+                    leftIcon={<Megaphone size={14} />}
+                    onClick={() =>
+                      setBroadcastDraft({
+                        title: `Difundir Figura: ${prodStockSel?.nombre || ''}`,
+                        subtitle: 'Lanzamiento directo de inventario en vitrina a clientes',
+                        text: stockPromoText,
+                        subject: `🔥 Disponible en Stock: ${prodStockSel?.nombre || 'WJGEEKS 3D'}`,
+                      })
+                    }
+                  >
+                    Difundir Figura al Canal
+                  </WjgButton>
+                  <WjgButton
+                    variant="secondary"
+                    size="sm"
+                    disabled={!prodStockSel}
+                    leftIcon={<Copy size={14} />}
+                    onClick={() => handleCopyClipboard(stockPromoText)}
+                  >
+                    Copiar
+                  </WjgButton>
+                </div>
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      <WjgMessageDispatcherModal
+        isOpen={Boolean(broadcastDraft)}
+        onClose={() => setBroadcastDraft(null)}
+        title={broadcastDraft?.title || 'Difundir Campaña por WhatsApp'}
+        subtitle={broadcastDraft?.subtitle || 'Envío directo a tu grupo o canal de difusión de clientes'}
+        context="general"
+        defaultTargetMode="grupo"
+        defaultGroupChannel={defaultBroadcastChannel}
+        initialWhatsAppText={broadcastDraft?.text || ''}
+        initialEmailSubject={broadcastDraft?.subject || 'Campaña WJGEEKS 3D PRO'}
+        emailType="alerta_equipo"
+        usuarios={usuarios}
+        config={config}
+        primaryButtonLabel="Difundir Ahora"
+      />
     </div>
   );
 };
