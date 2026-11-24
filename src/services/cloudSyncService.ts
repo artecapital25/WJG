@@ -33,7 +33,9 @@ import {
   ItemBacklogEmpresa,
   ConsumoRealProduccion,
   PromedioConsumoReal,
-  ModoMargen
+  ModoMargen,
+  EgresoTaller,
+  CategoriaEgresoTaller
 } from '../types';
 import {
   normalizarNitCc,
@@ -63,6 +65,11 @@ export interface BalanceTaller {
   recaudado_bre_b: number;
   recaudado_efectivo: number;
   total_por_cobrar: number;
+  total_egresos?: number;
+  egresos_nequi?: number;
+  egresos_bre_b?: number;
+  egresos_efectivo?: number;
+  flujo_caja_neto?: number;
 }
 
 // Cache en memoria para prevención de doble clic y cobros duplicados en ventana de 60 segundos
@@ -2075,6 +2082,20 @@ export const CloudSyncService = {
     }
   },
 
+  async deleteProduccionInterna(id: string): Promise<boolean> {
+    if (!this.isAvailable() || !id) return false;
+    try {
+      const { error } = await supabase!.from('produccion_interna').delete().eq('id', id);
+      if (error) {
+        console.warn('Error deleting produccion_interna:', error.message);
+        return false;
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
   // 21. Sincronizar Insumos en Supabase (incluye stock_actual y unidad_medida)
   async saveInsumo(insumo: Insumo): Promise<boolean> {
     if (!this.isAvailable()) return false;
@@ -2411,7 +2432,14 @@ export const CloudSyncService = {
         precio_minimo_trabajo: data.precio_minimo_trabajo !== undefined ? Number(data.precio_minimo_trabajo) : 15000,
         comision_pasarela_default_pct: data.comision_pasarela_default_pct !== undefined ? Number(data.comision_pasarela_default_pct) : 0,
         modo_margen_default: (data.modo_margen_default === 'markup' ? 'markup' : 'margen_bruto'),
-        piso_margen_alerta_pct: data.piso_margen_alerta_pct !== undefined ? Number(data.piso_margen_alerta_pct) : 20
+        piso_margen_alerta_pct: data.piso_margen_alerta_pct !== undefined ? Number(data.piso_margen_alerta_pct) : 20,
+        whatsapp_gateway_url: data.whatsapp_gateway_url || 'https://wjg.onrender.com',
+        whatsapp_auto_send: data.whatsapp_auto_send !== undefined ? Boolean(data.whatsapp_auto_send) : true,
+        whatsapp_internal_group_jid: data.whatsapp_internal_group_jid || undefined,
+        whatsapp_internal_group_name: data.whatsapp_internal_group_name || undefined,
+        whatsapp_grupos_config: (data.whatsapp_grupos_config && typeof data.whatsapp_grupos_config === 'object') ? data.whatsapp_grupos_config : {},
+        email_apps_script_url: data.email_apps_script_url || undefined,
+        email_auto_send: data.email_auto_send !== undefined ? Boolean(data.email_auto_send) : true
       };
     } catch (e) {
       console.warn('Exception in fetchConfiguracion:', e);
@@ -2447,7 +2475,14 @@ export const CloudSyncService = {
         precio_minimo_trabajo: cfg.precio_minimo_trabajo !== undefined ? Number(cfg.precio_minimo_trabajo) : 15000,
         comision_pasarela_default_pct: Number(cfg.comision_pasarela_default_pct) || 0,
         modo_margen_default: cfg.modo_margen_default || 'margen_bruto',
-        piso_margen_alerta_pct: cfg.piso_margen_alerta_pct !== undefined ? Number(cfg.piso_margen_alerta_pct) : 20
+        piso_margen_alerta_pct: cfg.piso_margen_alerta_pct !== undefined ? Number(cfg.piso_margen_alerta_pct) : 20,
+        whatsapp_gateway_url: cfg.whatsapp_gateway_url || 'https://wjg.onrender.com',
+        whatsapp_auto_send: cfg.whatsapp_auto_send !== undefined ? Boolean(cfg.whatsapp_auto_send) : true,
+        whatsapp_internal_group_jid: cfg.whatsapp_internal_group_jid || null,
+        whatsapp_internal_group_name: cfg.whatsapp_internal_group_name || null,
+        whatsapp_grupos_config: cfg.whatsapp_grupos_config || {},
+        email_apps_script_url: cfg.email_apps_script_url || null,
+        email_auto_send: cfg.email_auto_send !== undefined ? Boolean(cfg.email_auto_send) : true
       };
 
       const { data: existing } = await supabase!.from('configuracion_taller').select('id').limit(1).maybeSingle();
@@ -2728,13 +2763,46 @@ export const CloudSyncService = {
 
       const cuentaReceptora = metodoFinal === 'NEQUI' 
         ? 'Nequi 3217273025 (Juan)' 
+        : metodoFinal === 'EFECTIVO'
+        ? 'Caja Efectivo Taller'
         : 'Bre-B 0090778625 (Germán)';
+
+      // Ventana anti-duplicados en Supabase (120s): evita registrar dos pagos idénticos sobre la misma entidad
+      if (!skipDedup && (posVentaId || payment.cuenta_cobro_id || otUuid || cotUuid)) {
+        try {
+          const twoMinsAgo = new Date(Date.now() - 120000).toISOString();
+          const dedupFilters: string[] = [];
+          if (posVentaId) dedupFilters.push(`pos_venta_id.eq.${posVentaId}`);
+          if (payment.cuenta_cobro_id) dedupFilters.push(`cuenta_cobro_id.eq.${payment.cuenta_cobro_id}`);
+          if (otUuid) dedupFilters.push(`orden_trabajo_id.eq.${otUuid}`);
+          if (cotUuid) dedupFilters.push(`cotizacion_id.eq.${cotUuid}`);
+
+          if (dedupFilters.length > 0) {
+            const { data: recentDups } = await supabase!
+              .from('abonos_pagos')
+              .select('id, monto, created_at')
+              .or(dedupFilters.join(','))
+              .gte('created_at', twoMinsAgo)
+              .eq('monto', montoNum)
+              .limit(1);
+
+            if (recentDups && recentDups.length > 0) {
+              console.warn(`[Anti-Duplicado BD] Se omitió inserción repetida de $${montoNum} sobre entidad vinculada.`);
+              return true;
+            }
+          }
+        } catch (_) {}
+      }
 
       const payload = {
         orden_trabajo_id: otUuid,
         cotizacion_id: cotUuid,
         pos_venta_id: posVentaId,
         cuenta_cobro_id: payment.cuenta_cobro_id || null,
+        cliente_id: payment.cliente_id && UUID_REGEX.test(payment.cliente_id) ? payment.cliente_id : null,
+        cliente_nombre: payment.cliente_nombre || null,
+        origen_modulo: payment.origen_modulo || (posVentaId ? 'pos' : payment.cuenta_cobro_id ? 'cuenta_cobro' : cotUuid ? 'cotizacion' : 'taller'),
+        tipo_movimiento: payment.tipo_movimiento || 'INGRESO',
         monto: montoNum,
         metodo_pago: metodoFinal,
         referencia_transaccion: payment.referencia_pago || 'Registro Sistema',
@@ -2954,6 +3022,14 @@ export const CloudSyncService = {
         recaudado_bre_b: Number(data.recaudado_bre_b) || 0,
         recaudado_efectivo: Number(data.recaudado_efectivo) || 0,
         total_por_cobrar: Number(data.total_por_cobrar) || 0,
+        total_egresos: Number(data.total_egresos) || 0,
+        egresos_nequi: Number(data.egresos_nequi) || 0,
+        egresos_bre_b: Number(data.egresos_bre_b) || 0,
+        egresos_efectivo: Number(data.egresos_efectivo) || 0,
+        flujo_caja_neto:
+          data.flujo_caja_neto !== undefined
+            ? Number(data.flujo_caja_neto)
+            : (Number(data.total_ingresos_recaudados) || 0) - (Number(data.total_egresos) || 0)
       };
     } catch (e) {
       console.warn('Exception in fetchBalanceTaller:', e);
@@ -3074,18 +3150,194 @@ export const CloudSyncService = {
         referencia_pago: row.referencia_transaccion || '',
         comprobante_url: row.comprobante_url || undefined,
         nota: row.nota || row.notas || undefined,
+        cliente_id: row.cliente_id || undefined,
+        cliente_nombre: row.cliente_nombre || undefined,
         cotizacion_id: row.cotizacion_id || undefined,
         orden_trabajo_id: row.orden_trabajo_id || undefined,
         pos_venta_id: row.pos_venta_id || undefined,
         cuenta_cobro_id: row.cuenta_cobro_id || undefined,
-        origen_modulo: row.pos_venta_id ? 'pos' : (row.cuenta_cobro_id ? 'cuenta_cobro' : 'taller'),
+        origen_modulo: row.origen_modulo || (row.pos_venta_id ? 'pos' : (row.cuenta_cobro_id ? 'cuenta_cobro' : row.cotizacion_id ? 'cotizacion' : 'taller')),
+        tipo_movimiento: row.tipo_movimiento || 'INGRESO',
         registrado_por: row.registrado_por_nombre || 'Equipo WJGEEKS',
-        fecha_pago: row.created_at,
-        created_at: row.created_at
+        fecha_pago: row.fecha_pago || row.created_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at || undefined
       }));
     } catch (e) {
       console.warn('Exception in fetchPayments:', e);
       return [];
+    }
+  },
+
+  async fetchAbonosDetallado(limit: number = 250): Promise<PaymentRecord[]> {
+    if (!this.isAvailable()) return [];
+    try {
+      const { data, error } = await supabase!
+        .from('abonos_pagos')
+        .select('*')
+        .order('fecha_pago', { ascending: false })
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      if (error) throw error;
+      return (data || []).map((row: any) => ({
+        id: row.id,
+        monto: Number(row.monto) || 0,
+        metodo_pago: row.metodo_pago || 'BRE_B',
+        referencia_pago: row.referencia_transaccion || '',
+        comprobante_url: row.comprobante_url || undefined,
+        nota: row.nota || undefined,
+        cliente_id: row.cliente_id || undefined,
+        cliente_nombre: row.cliente_nombre || undefined,
+        cotizacion_id: row.cotizacion_id || undefined,
+        orden_trabajo_id: row.orden_trabajo_id || undefined,
+        pos_venta_id: row.pos_venta_id || undefined,
+        cuenta_cobro_id: row.cuenta_cobro_id || undefined,
+        origen_modulo: row.origen_modulo || (row.pos_venta_id ? 'pos' : (row.cuenta_cobro_id ? 'cuenta_cobro' : row.cotizacion_id ? 'cotizacion' : 'taller')),
+        tipo_movimiento: row.tipo_movimiento || 'INGRESO',
+        registrado_por: row.registrado_por || 'Equipo WJGEEKS',
+        fecha_pago: row.fecha_pago || row.created_at,
+        created_at: row.created_at,
+        updated_at: row.updated_at || undefined
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchAbonosDetallado:', e);
+      return [];
+    }
+  },
+
+  async updateAbono(id: string, patch: Partial<PaymentRecord>): Promise<boolean> {
+    if (!this.isAvailable() || !id) return false;
+    try {
+      const updateBody: Record<string, any> = { updated_at: new Date().toISOString() };
+      if (patch.monto !== undefined) updateBody.monto = Math.max(0.01, Number(patch.monto));
+      if (patch.metodo_pago !== undefined) {
+        const m = String(patch.metodo_pago).toUpperCase().trim();
+        updateBody.metodo_pago = m.includes('NEQUI')
+          ? 'NEQUI'
+          : m.includes('EFECTIVO')
+          ? 'EFECTIVO'
+          : m.includes('TRANSF')
+          ? 'TRANSFERENCIA'
+          : m.includes('TARJETA')
+          ? 'TARJETA'
+          : 'BRE_B';
+        updateBody.cuenta_receptora =
+          updateBody.metodo_pago === 'NEQUI'
+            ? 'Nequi 3217273025 (Juan)'
+            : updateBody.metodo_pago === 'EFECTIVO'
+            ? 'Caja Efectivo Taller'
+            : 'Bre-B 0090778625 (Germán)';
+      }
+      if (patch.nota !== undefined) updateBody.nota = patch.nota;
+      if (patch.cliente_nombre !== undefined) updateBody.cliente_nombre = patch.cliente_nombre;
+      if (patch.referencia_pago !== undefined) updateBody.referencia_transaccion = patch.referencia_pago;
+      if (patch.tipo_movimiento !== undefined) updateBody.tipo_movimiento = patch.tipo_movimiento;
+      if (patch.fecha_pago !== undefined) updateBody.fecha_pago = patch.fecha_pago;
+
+      const { error } = await supabase!.from('abonos_pagos').update(updateBody).eq('id', id);
+      if (error) {
+        console.warn('Error updating abono:', error.message);
+        return false;
+      }
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteAbono(id: string): Promise<boolean> {
+    if (!this.isAvailable() || !id) return false;
+    try {
+      const { error } = await supabase!.from('abonos_pagos').delete().eq('id', id);
+      if (error) {
+        console.warn('Error deleting abono:', error.message);
+        return false;
+      }
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async fetchEgresos(): Promise<EgresoTaller[]> {
+    if (!this.isAvailable()) return [];
+    try {
+      const { data, error } = await supabase!
+        .from('egresos_taller')
+        .select('*')
+        .order('fecha', { ascending: false })
+        .order('created_at', { ascending: false });
+      if (error) {
+        console.warn('Info fetching egresos_taller:', error.message);
+        return [];
+      }
+      return (data || []).map((row: any): EgresoTaller => ({
+        id: row.id,
+        fecha: row.fecha ? String(row.fecha).slice(0, 10) : new Date().toISOString().slice(0, 10),
+        categoria: (row.categoria || 'OTROS') as CategoriaEgresoTaller,
+        concepto: row.concepto || 'Gasto operativo',
+        monto: Number(row.monto) || 0,
+        metodo_pago: row.metodo_pago || 'BRE_B',
+        proveedor_o_beneficiario: row.proveedor_o_beneficiario || undefined,
+        orden_trabajo_id: row.orden_trabajo_id || undefined,
+        solicitud_insumo_id: row.solicitud_insumo_id || undefined,
+        comprobante_url: row.comprobante_url || undefined,
+        registrado_por: row.registrado_por || undefined,
+        notas: row.notas || undefined,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }));
+    } catch {
+      return [];
+    }
+  },
+
+  async saveEgreso(egreso: EgresoTaller): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const validId = ensureValidUuid(egreso.id);
+      egreso.id = validId;
+      const otUuid = egreso.orden_trabajo_id && UUID_REGEX.test(egreso.orden_trabajo_id)
+        ? egreso.orden_trabajo_id
+        : null;
+      const payload = {
+        id: validId,
+        fecha: (egreso.fecha || new Date().toISOString()).slice(0, 10),
+        categoria: egreso.categoria || 'OTROS',
+        concepto: egreso.concepto,
+        monto: Math.max(1, Number(egreso.monto) || 0),
+        metodo_pago: egreso.metodo_pago || 'BRE_B',
+        proveedor_o_beneficiario: egreso.proveedor_o_beneficiario || null,
+        orden_trabajo_id: otUuid,
+        solicitud_insumo_id: egreso.solicitud_insumo_id || null,
+        comprobante_url: egreso.comprobante_url || null,
+        registrado_por: egreso.registrado_por || null,
+        notas: egreso.notas || null,
+        updated_at: new Date().toISOString()
+      };
+      const { error } = await supabase!.from('egresos_taller').upsert(payload, { onConflict: 'id' });
+      if (error) {
+        console.warn('Error saving egreso:', error.message);
+        return false;
+      }
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      return true;
+    } catch {
+      return false;
+    }
+  },
+
+  async deleteEgreso(id: string): Promise<boolean> {
+    if (!this.isAvailable() || !id) return false;
+    try {
+      const { error } = await supabase!.from('egresos_taller').delete().eq('id', id);
+      if (error) return false;
+      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      return true;
+    } catch {
+      return false;
     }
   },
 

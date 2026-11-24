@@ -11,21 +11,50 @@ import {
   Settings2, 
   KeyRound,
   RotateCcw,
-  Loader2
+  Loader2,
+  Plus,
+  Trash2,
+  Edit3,
+  Megaphone,
+  HelpCircle
 } from 'lucide-react';
 import { WhatsAppGatewayService, WhatsAppGatewayConfig, GatewayStatusResponse } from '../../services/whatsappGatewayService';
-import { EmailNotificationService } from '../../services/emailNotificationService';
-import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
+import { CanalGrupoWhatsApp, ConfiguracionTaller, GrupoWhatsAppConfig, MapaGruposWhatsApp } from '../../types';
+import { UsuarioTaller } from '../../types/usuarios.types';
+import {
+  MessagingHubService,
+  getConfiguredGroupChannels,
+  getTeamContacts,
+  normalizeTextKey,
+  resolveGroupDestination
+} from '../../services/messaging';
+import { CloudSyncService } from '../../services/cloudSyncService';
+import { StorageService } from '../../services/storageService';
 import { toast } from '../ui/ToastProvider';
+import { WjgButton } from '../ui/primitives/WjgButton';
+import { WjgBadge } from '../ui/primitives/WjgBadge';
+import { WjgTextInput } from '../ui/primitives/WjgTextInput';
+import { WjgConfirmModal } from '../ui/primitives/WjgConfirmModal';
 import { WjgSelect } from '../ui/WjgSelect';
 
 interface WhatsAppConnectModalProps {
   isOpen: boolean;
   onClose: () => void;
+  config?: ConfiguracionTaller;
+  onUpdateConfig?: (cfg: ConfiguracionTaller) => void;
+  usuarios?: UsuarioTaller[];
 }
 
-export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOpen, onClose }) => {
-  const [config, setConfig] = useState<WhatsAppGatewayConfig>(WhatsAppGatewayService.getConfig());
+export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({
+  isOpen,
+  onClose,
+  config: tallerConfig,
+  onUpdateConfig,
+  usuarios
+}) => {
+  const [config, setConfig] = useState<WhatsAppGatewayConfig>(() =>
+    tallerConfig ? WhatsAppGatewayService.syncFromTallerConfig(tallerConfig) : WhatsAppGatewayService.getConfig()
+  );
   const [status, setStatus] = useState<GatewayStatusResponse>({
     connected: false,
     status: 'disconnected',
@@ -38,6 +67,29 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
   const [activeTab, setActiveTab] = useState<'qr' | 'settings' | 'test'>('qr');
   const [waGroups, setWaGroups] = useState<{ id: string; subject: string; size: number }[]>([]);
   const [loadingGroups, setLoadingGroups] = useState(false);
+  const [testGroupChannel, setTestGroupChannel] = useState<CanalGrupoWhatsApp>('tareas');
+  const [emailUpdateWarning, setEmailUpdateWarning] = useState<string | null>(null);
+  const [showNewGroupForm, setShowNewGroupForm] = useState(false);
+  const [editingChannelKey, setEditingChannelKey] = useState<string | null>(null);
+  const [customGroupLabel, setCustomGroupLabel] = useState('');
+  const [customGroupDesc, setCustomGroupDesc] = useState('');
+  const [customGroupAudiencia, setCustomGroupAudiencia] = useState<'equipo' | 'clientes'>('equipo');
+  const [customGroupJid, setCustomGroupJid] = useState('');
+  const [customGroupNombre, setCustomGroupNombre] = useState('');
+  const [channelToDelete, setChannelToDelete] = useState<{ id: string; label: string } | null>(null);
+  const [showBroadcastGuide, setShowBroadcastGuide] = useState(false);
+
+  const teamContacts = React.useMemo(() => getTeamContacts(usuarios), [usuarios]);
+  const allChannels = React.useMemo(
+    () =>
+      getConfiguredGroupChannels({
+        ...(tallerConfig || StorageService.getConfig()),
+        whatsapp_grupos_config: config.gruposConfig,
+        whatsapp_internal_group_jid: config.internalGroupJid,
+        whatsapp_internal_group_name: config.internalGroupName
+      }),
+    [config.gruposConfig, config.internalGroupJid, config.internalGroupName, tallerConfig]
+  );
   
   // Test states
   const [testPhone, setTestPhone] = useState('3503443140');
@@ -144,15 +196,143 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
     }
   };
 
-  const handleSaveConfig = (e: React.FormEvent) => {
+  const handleSaveConfig = async (e: React.FormEvent) => {
     e.preventDefault();
-    const saved = WhatsAppGatewayService.saveConfig(config);
+    const gruposSanitizados: MapaGruposWhatsApp = { ...(config.gruposConfig || {}) };
+    if (!gruposSanitizados.general && config.internalGroupJid) {
+      gruposSanitizados.general = {
+        jid: config.internalGroupJid,
+        nombre: config.internalGroupName || 'Grupo Principal WJGEEKS'
+      };
+    }
+
+    const primaryJid = gruposSanitizados.general?.jid || config.internalGroupJid || '';
+    const primaryNombre = gruposSanitizados.general?.nombre || config.internalGroupName || '';
+
+    const saved = WhatsAppGatewayService.saveConfig({
+      ...config,
+      internalGroupJid: primaryJid,
+      internalGroupName: primaryNombre,
+      gruposConfig: gruposSanitizados
+    });
     setConfig(saved);
-    toast.success('Configuración guardada correctamente.');
+
+    const baseTallerCfg = tallerConfig || StorageService.getConfig();
+    const nextTallerCfg: ConfiguracionTaller = {
+      ...baseTallerCfg,
+      whatsapp_gateway_url: saved.gatewayUrl,
+      whatsapp_auto_send: saved.autoSendEnabled,
+      whatsapp_internal_group_jid: primaryJid || undefined,
+      whatsapp_internal_group_name: primaryNombre || undefined,
+      whatsapp_grupos_config: gruposSanitizados
+    };
+    StorageService.saveConfig(nextTallerCfg);
+    if (onUpdateConfig) {
+      onUpdateConfig(nextTallerCfg);
+    } else {
+      await CloudSyncService.saveConfiguracion(nextTallerCfg);
+    }
+
+    toast.success('Configuración de WhatsApp y Grupos guardada y sincronizada en Supabase.');
     refreshStatus();
   };
 
-  const handleSendTestWhatsApp = async (phoneToUse?: string) => {
+  const persistGruposMap = async (nextGrupos: MapaGruposWhatsApp, primaryJid?: string, primaryNombre?: string) => {
+    const resolvedPrimaryJid = primaryJid !== undefined ? primaryJid : nextGrupos.general?.jid || config.internalGroupJid || '';
+    const resolvedPrimaryNombre = primaryNombre !== undefined ? primaryNombre : nextGrupos.general?.nombre || config.internalGroupName || '';
+
+    const saved = WhatsAppGatewayService.saveConfig({
+      ...config,
+      internalGroupJid: resolvedPrimaryJid,
+      internalGroupName: resolvedPrimaryNombre,
+      gruposConfig: nextGrupos
+    });
+    setConfig(saved);
+
+    const baseTallerCfg = tallerConfig || StorageService.getConfig();
+    const nextTallerCfg: ConfiguracionTaller = {
+      ...baseTallerCfg,
+      whatsapp_gateway_url: saved.gatewayUrl,
+      whatsapp_auto_send: saved.autoSendEnabled,
+      whatsapp_internal_group_jid: resolvedPrimaryJid || undefined,
+      whatsapp_internal_group_name: resolvedPrimaryNombre || undefined,
+      whatsapp_grupos_config: nextGrupos
+    };
+    StorageService.saveConfig(nextTallerCfg);
+    if (onUpdateConfig) {
+      onUpdateConfig(nextTallerCfg);
+    } else {
+      await CloudSyncService.saveConfiguracion(nextTallerCfg);
+    }
+  };
+
+  const resetCustomGroupForm = () => {
+    setShowNewGroupForm(false);
+    setEditingChannelKey(null);
+    setCustomGroupLabel('');
+    setCustomGroupDesc('');
+    setCustomGroupAudiencia('equipo');
+    setCustomGroupJid('');
+    setCustomGroupNombre('');
+  };
+
+  const handleSaveCustomGroup = async () => {
+    const cleanLabel = customGroupLabel.trim();
+    const cleanJid = customGroupJid.trim();
+    if (!cleanLabel) {
+      toast.warning('Ingresa un nombre para el canal o grupo.');
+      return;
+    }
+    if (!cleanJid) {
+      toast.warning('Selecciona un grupo de WhatsApp o pega el ID (@g.us).');
+      return;
+    }
+
+    const foundWa = waGroups.find(g => g.id === cleanJid);
+    const slugBase = normalizeTextKey(cleanLabel)
+      .replace(/[^a-z0-9]+/g, '_')
+      .replace(/^_|_$/g, '')
+      .slice(0, 24) || 'canal';
+    const key =
+      editingChannelKey ||
+      `custom_${slugBase}_${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const entry: GrupoWhatsAppConfig = {
+      jid: cleanJid,
+      nombre: foundWa?.subject || customGroupNombre.trim() || cleanLabel,
+      etiqueta: cleanLabel,
+      descripcion: customGroupDesc.trim() || undefined,
+      audiencia: customGroupAudiencia,
+      esPersonalizado: true
+    };
+
+    const nextGrupos: MapaGruposWhatsApp = {
+      ...(config.gruposConfig || {}),
+      [key]: entry
+    };
+
+    await persistGruposMap(nextGrupos);
+    toast.success(
+      editingChannelKey
+        ? `Grupo "${cleanLabel}" actualizado y sincronizado.`
+        : `Grupo "${cleanLabel}" agregado y sincronizado en Supabase.`
+    );
+    resetCustomGroupForm();
+  };
+
+  const handleConfirmDeleteCustomGroup = async () => {
+    if (!channelToDelete) return;
+    const nextGrupos: MapaGruposWhatsApp = { ...(config.gruposConfig || {}) };
+    delete nextGrupos[channelToDelete.id];
+    await persistGruposMap(nextGrupos);
+    if (testGroupChannel === channelToDelete.id) {
+      setTestGroupChannel('tareas');
+    }
+    toast.info(`Canal "${channelToDelete.label}" eliminado de la lista (el historial de mensajes enviados se conserva).`);
+    setChannelToDelete(null);
+  };
+
+  const handleSendTestWhatsApp = async (phoneToUse?: string, nombreDestino?: string) => {
     const target = phoneToUse || testPhone;
     if (!target) {
       toast.error('Ingresa un número de teléfono de destino.');
@@ -161,13 +341,19 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
 
     setIsSendingWa(true);
     try {
-      const testMsg = `🧪 *WJGEEKS 3D - Mensaje de Prueba*\n\nHola! Esta es una prueba del canal oficial de WhatsApp de WJGEEKS (+57 320 2796115).\n\n✅ Canal: ${config.provider === 'qr_gateway' ? 'Gateway QR (Sesión Empresa)' : 'Meta Cloud API'}\n🕒 Fecha: ${new Date().toLocaleTimeString('es-CO')}\n\n_Mensaje automático del sistema 3D PRO._`;
-      
-      const res = await WhatsAppNotificationService.despacharNotificacionAutomatica(target, testMsg);
-      if (res.success) {
-        toast.success(`WhatsApp enviado correctamente a ${target}`);
+      const res = await MessagingHubService.sendLiveTest({
+        mode: 'whatsapp_individual',
+        targetPhoneOrJid: target,
+        targetName: nombreDestino || target,
+        config: tallerConfig,
+        usuarios
+      });
+      if (res.whatsappOkCount > 0) {
+        toast.success(`WhatsApp enviado correctamente a ${nombreDestino || target}`);
       } else {
-        toast.warning(res.error || 'Mensaje no enviado automáticamente; enlace de WhatsApp abierto.');
+        const fb = res.fallbackUrls[0]?.url;
+        toast.warning(res.results[0]?.error || 'No se pudo enviar automáticamente.');
+        if (fb) window.open(fb, '_blank', 'noopener,noreferrer');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error al enviar WhatsApp.');
@@ -176,31 +362,61 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
     }
   };
 
+  const handleSendTestGroup = async () => {
+    const group = resolveGroupDestination(testGroupChannel, tallerConfig);
+    if (!group?.jid) {
+      toast.warning(`Configura primero un grupo para "${testGroupChannel}" en Ajustes.`);
+      setActiveTab('settings');
+      return;
+    }
+
+    setIsSendingWa(true);
+    try {
+      const res = await MessagingHubService.sendLiveTest({
+        mode: 'whatsapp_group',
+        groupChannel: testGroupChannel,
+        targetPhoneOrJid: group.jid,
+        targetName: group.nombre,
+        config: tallerConfig,
+        usuarios
+      });
+      if (res.whatsappOkCount > 0) {
+        toast.success(`Mensaje de prueba enviado al grupo "${group.nombre}"`);
+      } else {
+        toast.error(res.results[0]?.error || 'No se pudo enviar al grupo.');
+      }
+    } catch (err: any) {
+      toast.error(err?.message || 'Error enviando prueba al grupo.');
+    } finally {
+      setIsSendingWa(false);
+    }
+  };
+
   const handleSendTestEmail = async () => {
-    if (!testEmail) {
-      toast.error('Ingresa un correo electrónico.');
+    if (!testEmail || !testEmail.includes('@')) {
+      toast.error('Ingresa un correo electrónico válido.');
       return;
     }
 
     setIsSendingEmail(true);
+    setEmailUpdateWarning(null);
     try {
-      const res = await EmailNotificationService.enviarCorreoTransaccional({
-        tipo: 'alerta_equipo',
-        destinatario_correo: testEmail,
-        destinatario_nombre: 'Equipo WJGEEKS',
-        asunto: '🧪 Verificación de Correo WJGEEKS 3D (wjgeeks3d@gmail.com)',
-        tracking_url: window.location.origin,
-        datos: {
-          numero_doc: 'PRUEBA-001',
-          mensaje_personalizado: 'Este correo certifica que el canal transaccional de WJGEEKS 3D PRO está funcionando desde la cuenta oficial wjgeeks3d@gmail.com a través de Google Apps Script.',
-          fecha: new Date().toLocaleString('es-CO')
-        }
+      const res = await MessagingHubService.sendLiveTest({
+        mode: 'email',
+        targetEmail: testEmail,
+        targetName: 'Equipo WJGEEKS',
+        config: tallerConfig,
+        usuarios
       });
 
-      if (res.success) {
-        toast.success(`Correo enviado exitosamente a ${testEmail} desde wjgeeks3d@gmail.com`);
+      if (res.emailOkCount > 0) {
+        toast.success(`Correo verificado y enviado exitosamente a ${testEmail} (${res.results[0]?.provider || 'verificado'})`);
       } else {
-        toast.error(`Error al despachar correo: ${res.error}`);
+        const errMsg = res.results[0]?.error || 'No se pudo confirmar la entrega del correo.';
+        if (res.needsAppsScriptUpdate) {
+          setEmailUpdateWarning(errMsg);
+        }
+        toast.error(`Error al despachar correo: ${errMsg}`);
       }
     } catch (err: any) {
       toast.error(`Error: ${err.message}`);
@@ -674,59 +890,74 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                 </p>
 
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '0.5rem', marginBottom: '1rem' }}>
-                  <button
-                    onClick={() => handleSendTestWhatsApp('3217273025')}
-                    disabled={isSendingWa}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      color: '#f8fafc',
-                      fontSize: '0.8rem',
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <strong style={{ display: 'block', color: '#38bdf8' }}>Juan (Impresión)</strong>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+57 321 727 3025</span>
-                  </button>
+                  {teamContacts.map(member => (
+                    <button
+                      key={member.id}
+                      type="button"
+                      onClick={() => handleSendTestWhatsApp(member.telefonoE164 || member.telefono, member.nombreCorto)}
+                      disabled={isSendingWa}
+                      style={{
+                        padding: '0.5rem 0.75rem',
+                        backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        borderRadius: '8px',
+                        color: '#f8fafc',
+                        fontSize: '0.8rem',
+                        textAlign: 'left',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <strong style={{ display: 'block', color: '#38bdf8' }}>{member.nombreCorto}</strong>
+                      <span style={{ fontSize: '0.73rem', color: '#94a3b8', display: 'block' }}>+{member.telefonoE164 || member.telefono}</span>
+                      <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{member.correo}</span>
+                    </button>
+                  ))}
+                </div>
 
-                  <button
-                    onClick={() => handleSendTestWhatsApp('3204814702')}
-                    disabled={isSendingWa}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      color: '#f8fafc',
-                      fontSize: '0.8rem',
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <strong style={{ display: 'block', color: '#ec4899' }}>Wendy (Pintura)</strong>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+57 320 481 4702</span>
-                  </button>
-
-                  <button
-                    onClick={() => handleSendTestWhatsApp('3503443140')}
-                    disabled={isSendingWa}
-                    style={{
-                      padding: '0.5rem 0.75rem',
-                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                      border: '1px solid rgba(255, 255, 255, 0.1)',
-                      borderRadius: '8px',
-                      color: '#f8fafc',
-                      fontSize: '0.8rem',
-                      textAlign: 'left',
-                      cursor: 'pointer'
-                    }}
-                  >
-                    <strong style={{ display: 'block', color: '#a855f7' }}>Germán (Dirección)</strong>
-                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>+57 350 344 3140</span>
-                  </button>
+                <div style={{
+                  padding: '0.75rem',
+                  borderRadius: '10px',
+                  backgroundColor: 'rgba(15, 23, 42, 0.65)',
+                  border: '1px solid rgba(34, 197, 94, 0.25)',
+                  marginBottom: '1rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '0.55rem'
+                }}>
+                  <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4ade80' }}>
+                    Probar envío a Grupo de WhatsApp:
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+                    <div style={{ flex: '1 1 220px' }}>
+                      <WjgSelect
+                        compact
+                        value={testGroupChannel}
+                        onChange={val => setTestGroupChannel(val as CanalGrupoWhatsApp)}
+                        options={allChannels.map(g => {
+                          const resolved = resolveGroupDestination(g.id, {
+                            ...(tallerConfig || StorageService.getConfig()),
+                            whatsapp_grupos_config: config.gruposConfig,
+                            whatsapp_internal_group_jid: config.internalGroupJid,
+                            whatsapp_internal_group_name: config.internalGroupName
+                          });
+                          return {
+                            value: g.id,
+                            label: g.label,
+                            subtitle: resolved ? `${resolved.nombre}` : 'Sin grupo asignado'
+                          };
+                        })}
+                      />
+                    </div>
+                    <WjgButton
+                      variant="whatsapp"
+                      size="sm"
+                      loading={isSendingWa}
+                      leftIcon={<Send size={14} />}
+                      onClick={handleSendTestGroup}
+                    >
+                      Probar Grupo
+                    </WjgButton>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
@@ -786,7 +1017,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                   Prueba el envío con diseño HTML cyberpunk ejecutado desde el Google Apps Script oficial de la empresa.
                 </p>
 
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <input
                     type="email"
                     value={testEmail}
@@ -794,6 +1025,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                     placeholder="Correo de destino"
                     style={{
                       flex: 1,
+                      minWidth: '200px',
                       padding: '0.5rem 0.75rem',
                       backgroundColor: 'rgba(15, 23, 42, 0.8)',
                       border: '1px solid rgba(255, 255, 255, 0.15)',
@@ -803,6 +1035,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                     }}
                   />
                   <button
+                    type="button"
                     onClick={handleSendTestEmail}
                     disabled={isSendingEmail}
                     style={{
@@ -820,9 +1053,24 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                     }}
                   >
                     <Mail size={14} />
-                    {isSendingEmail ? 'Enviando...' : 'Probar Correo'}
+                    {isSendingEmail ? 'Verificando...' : 'Probar Correo Real'}
                   </button>
                 </div>
+
+                {emailUpdateWarning && (
+                  <div style={{
+                    marginTop: '0.75rem',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(245, 158, 11, 0.12)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    color: '#fde68a',
+                    fontSize: '0.76rem',
+                    lineHeight: 1.45
+                  }}>
+                    <strong>⚠️ Acción requerida para correo directo:</strong> {emailUpdateWarning}
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -1010,7 +1258,7 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                 </label>
               </div>
 
-              {/* Grupo Interno de WhatsApp para Revisiones del Equipo */}
+              {/* Gestor Multi-Grupo de WhatsApp sincronizado en Supabase */}
               <div style={{
                 padding: '0.9rem',
                 borderRadius: '10px',
@@ -1018,76 +1266,338 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                 border: '1px solid rgba(56, 189, 248, 0.25)',
                 display: 'flex',
                 flexDirection: 'column',
-                gap: '0.65rem'
+                gap: '0.75rem'
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
                   <div>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8' }}>
-                      Grupo Interno de WhatsApp del Equipo
+                    <div style={{ fontSize: '0.84rem', fontWeight: 700, color: '#38bdf8' }}>
+                      Grupos y Canales de Difusión WhatsApp (Sincronizados en la Nube)
                     </div>
                     <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
-                      Opcional: para enviar desgloses e informes PDF del cotizador directo al grupo interno.
+                      Configura los 5 canales base o crea grupos ilimitados internos y de difusión para clientes.
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    className="btn btn-secondary btn-sm"
-                    disabled={loadingGroups}
-                    onClick={async () => {
-                      setLoadingGroups(true);
-                      const res = await WhatsAppGatewayService.listGroups();
-                      setLoadingGroups(false);
-                      if (res.success) {
-                        setWaGroups(res.groups);
-                        toast.success(`${res.groups.length} grupo(s) cargados desde WhatsApp.`);
-                      } else {
-                        toast.warning(res.error || 'Conecta WhatsApp primero para listar los grupos.');
-                      }
-                    }}
-                  >
-                    <RefreshCw size={13} className={loadingGroups ? 'animate-spin' : ''} />
-                    <span>{loadingGroups ? 'Cargando...' : 'Cargar Grupos'}</span>
-                  </button>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <WjgButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      leftIcon={<HelpCircle size={13} />}
+                      onClick={() => setShowBroadcastGuide(v => !v)}
+                    >
+                      {showBroadcastGuide ? 'Ocultar Guía' : '¿Cómo crearlos?'}
+                    </WjgButton>
+                    <WjgButton
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      loading={loadingGroups}
+                      leftIcon={<RefreshCw size={13} />}
+                      onClick={async () => {
+                        setLoadingGroups(true);
+                        const res = await WhatsAppGatewayService.listGroups();
+                        setLoadingGroups(false);
+                        if (res.success) {
+                          setWaGroups(res.groups);
+                          toast.success(`${res.groups.length} grupo(s) cargados desde WhatsApp.`);
+                        } else {
+                          toast.warning(res.error || 'Conecta WhatsApp primero para listar los grupos.');
+                        }
+                      }}
+                    >
+                      {loadingGroups ? 'Cargando...' : 'Cargar Grupos'}
+                    </WjgButton>
+                    <WjgButton
+                      type="button"
+                      variant="cyan"
+                      size="sm"
+                      leftIcon={<Plus size={13} />}
+                      onClick={() => {
+                        if (showNewGroupForm) {
+                          resetCustomGroupForm();
+                        } else {
+                          setEditingChannelKey(null);
+                          setShowNewGroupForm(true);
+                        }
+                      }}
+                    >
+                      {showNewGroupForm ? 'Cancelar' : 'Nuevo Grupo'}
+                    </WjgButton>
+                  </div>
                 </div>
 
-                {waGroups.length > 0 && (
-                  <WjgSelect
-                    compact
-                    value={config.internalGroupJid || ''}
-                    onChange={(val) => {
-                      const found = waGroups.find(g => g.id === val);
-                      setConfig({
-                        ...config,
-                        internalGroupJid: val,
-                        internalGroupName: found?.subject || ''
-                      });
-                    }}
-                    placeholder="Seleccionar grupo interno de WhatsApp..."
-                    options={[
-                      { value: '', label: 'Sin grupo seleccionado' },
-                      ...waGroups.map(g => ({
-                        value: g.id,
-                        label: g.subject,
-                        subtitle: `${g.size} integrantes • ${g.id}`
-                      }))
-                    ]}
-                  />
-                )}
-
-                <input
-                  type="text"
-                  value={config.internalGroupJid || ''}
-                  onChange={(e) => setConfig({ ...config, internalGroupJid: e.target.value })}
-                  placeholder="ID del grupo (ej: 120363012345678901@g.us)"
-                  className="form-input"
-                  style={{ fontSize: '0.82rem' }}
-                />
-                {config.internalGroupName && (
-                  <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
-                    ✓ Grupo vinculado: {config.internalGroupName}
+                {showBroadcastGuide && (
+                  <div style={{
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    backgroundColor: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    fontSize: '0.74rem',
+                    color: '#cbd5e1',
+                    lineHeight: 1.5
+                  }}>
+                    <strong style={{ color: '#34d399', display: 'block', marginBottom: '4px' }}>
+                      📘 Guía Rápida: Grupos Internos vs. Canales de Difusión para Clientes
+                    </strong>
+                    <div>
+                      <strong>1. Grupo Interno (Equipo):</strong> Crea un grupo normal en WhatsApp desde el celular oficial (<code>+57 320 2796115</code>) agregando a Germán, Juan y Wendy (ej. <em>&quot;WJGEEKS Pintura&quot;</em> o <em>&quot;WJGEEKS Entregas&quot;</em>). Luego pulsa <strong>Cargar Grupos</strong> aquí y asígnalo.
+                    </div>
+                    <div style={{ marginTop: '4px' }}>
+                      <strong>2. Grupo de Difusión para Clientes:</strong> Crea un grupo en WhatsApp (ej. <em>&quot;Novedades WJGEEKS 3D&quot;</em>), entra en <em>Info del grupo → Permisos del grupo</em> y activa <strong>&quot;Enviar mensajes: Solo administradores&quot;</strong>. Así solo la línea oficial publica catálogos o promociones sin que los clientes chateen entre sí. Luego agrégalo aquí marcando audiencia <strong>Difusión Clientes</strong>.
+                    </div>
                   </div>
                 )}
+
+                {showNewGroupForm && (
+                  <div style={{
+                    padding: '0.85rem',
+                    borderRadius: '10px',
+                    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: '0.6rem'
+                  }}>
+                    <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#7dd3fc' }}>
+                      {editingChannelKey ? '✏️ Editar Canal / Grupo Personalizado' : '➕ Agregar Nuevo Grupo / Canal'}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
+                      <WjgTextInput
+                        label="Nombre del Canal en la App"
+                        value={customGroupLabel}
+                        onChange={setCustomGroupLabel}
+                        placeholder="Ej: Novedades Clientes VIP"
+                      />
+                      <div>
+                        <label className="form-label">Audiencia del Grupo</label>
+                        <WjgSelect
+                          compact
+                          value={customGroupAudiencia}
+                          onChange={val => setCustomGroupAudiencia(val as 'equipo' | 'clientes')}
+                          options={[
+                            { value: 'equipo', label: '👥 Equipo Interno (Taller)', subtitle: 'Mantiene opción de correo al equipo' },
+                            { value: 'clientes', label: '📢 Difusión Clientes', subtitle: 'Solo WhatsApp por defecto (sin spam interno)' }
+                          ]}
+                        />
+                      </div>
+                    </div>
+                    <WjgTextInput
+                      label="Descripción / Uso (opcional)"
+                      value={customGroupDesc}
+                      onChange={setCustomGroupDesc}
+                      placeholder="Ej: Lanzamientos de figuras y disponibilidad semanal"
+                    />
+                    {waGroups.length > 0 ? (
+                      <div>
+                        <label className="form-label">Grupo Vinculado de WhatsApp</label>
+                        <WjgSelect
+                          compact
+                          value={customGroupJid}
+                          onChange={val => {
+                            setCustomGroupJid(val);
+                            const f = waGroups.find(g => g.id === val);
+                            if (f) setCustomGroupNombre(f.subject);
+                          }}
+                          placeholder="Seleccionar grupo cargado de WhatsApp..."
+                          options={waGroups.map(g => ({
+                            value: g.id,
+                            label: g.subject,
+                            subtitle: `${g.size} integrantes • ${g.id}`
+                          }))}
+                        />
+                      </div>
+                    ) : (
+                      <WjgTextInput
+                        label="ID del Grupo WhatsApp (@g.us)"
+                        value={customGroupJid}
+                        onChange={setCustomGroupJid}
+                        placeholder="Ej: 120363012345678901@g.us (o pulsa Cargar Grupos arriba)"
+                      />
+                    )}
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                      <WjgButton type="button" variant="secondary" size="sm" onClick={resetCustomGroupForm}>
+                        Cancelar
+                      </WjgButton>
+                      <WjgButton type="button" variant="save" size="sm" onClick={handleSaveCustomGroup}>
+                        {editingChannelKey ? 'Guardar Canal' : 'Agregar Canal'}
+                      </WjgButton>
+                    </div>
+                  </div>
+                )}
+
+                {allChannels.map(canal => {
+                  const currentGroup = config.gruposConfig?.[String(canal.id)] ||
+                    (canal.id === 'general' && config.internalGroupJid
+                      ? { jid: config.internalGroupJid, nombre: config.internalGroupName || '' }
+                      : undefined);
+                  const currentJid = currentGroup?.jid || '';
+
+                  return (
+                    <div
+                      key={String(canal.id)}
+                      style={{
+                        padding: '0.65rem 0.75rem',
+                        borderRadius: '8px',
+                        backgroundColor: 'rgba(2, 6, 23, 0.55)',
+                        border: canal.audiencia === 'clientes'
+                          ? '1px solid rgba(245, 158, 11, 0.32)'
+                          : '1px solid rgba(255, 255, 255, 0.08)',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '0.4rem'
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#e2e8f0' }}>{canal.label}</span>
+                          {canal.audiencia === 'clientes' && (
+                            <WjgBadge variant="warning">
+                              <Megaphone size={10} /> Difusión Clientes
+                            </WjgBadge>
+                          )}
+                          {canal.esPersonalizado && (
+                            <WjgBadge variant="cyan">Personalizado</WjgBadge>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span style={{ fontSize: '0.68rem', color: '#64748b' }}>{canal.subtitle}</span>
+                          {canal.esPersonalizado && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingChannelKey(String(canal.id));
+                                  setCustomGroupLabel(currentGroup?.etiqueta || canal.label.replace(/^[📢🏷️]\s*/u, ''));
+                                  setCustomGroupDesc(currentGroup?.descripcion || '');
+                                  setCustomGroupAudiencia(canal.audiencia);
+                                  setCustomGroupJid(currentJid);
+                                  setCustomGroupNombre(currentGroup?.nombre || canal.nombre);
+                                  setShowNewGroupForm(true);
+                                }}
+                                title="Editar canal personalizado"
+                                style={{
+                                  background: 'rgba(56, 189, 248, 0.12)',
+                                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                                  color: '#7dd3fc',
+                                  borderRadius: '6px',
+                                  padding: '3px 6px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <Edit3 size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setChannelToDelete({ id: String(canal.id), label: canal.label })}
+                                title="Eliminar canal personalizado"
+                                style={{
+                                  background: 'rgba(239, 68, 68, 0.12)',
+                                  border: '1px solid rgba(239, 68, 68, 0.3)',
+                                  color: '#fca5a5',
+                                  borderRadius: '6px',
+                                  padding: '3px 6px',
+                                  cursor: 'pointer'
+                                }}
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+
+                      {waGroups.length > 0 ? (
+                        <WjgSelect
+                          compact
+                          value={currentJid}
+                          onChange={(val) => {
+                            const found = waGroups.find(g => g.id === val);
+                            const nextGrupos: MapaGruposWhatsApp = { ...(config.gruposConfig || {}) };
+                            if (val) {
+                              nextGrupos[String(canal.id)] = {
+                                ...(currentGroup || {}),
+                                jid: val,
+                                nombre: found?.subject || val,
+                                audiencia: canal.audiencia,
+                                esPersonalizado: canal.esPersonalizado
+                              };
+                            } else if (!canal.esPersonalizado) {
+                              delete nextGrupos[String(canal.id)];
+                            }
+                            setConfig({
+                              ...config,
+                              gruposConfig: nextGrupos,
+                              ...(canal.id === 'general'
+                                ? { internalGroupJid: val, internalGroupName: found?.subject || '' }
+                                : {})
+                            });
+                          }}
+                          placeholder={canal.id === 'general' ? 'Seleccionar grupo principal...' : 'Heredar del Grupo Principal'}
+                          options={[
+                            {
+                              value: '',
+                              label: canal.id === 'general' ? 'Sin grupo seleccionado' : 'Heredar del Grupo Principal'
+                            },
+                            ...waGroups.map(g => ({
+                              value: g.id,
+                              label: g.subject,
+                              subtitle: `${g.size} integrantes • ${g.id}`
+                            }))
+                          ]}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={currentJid}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            const nextGrupos: MapaGruposWhatsApp = { ...(config.gruposConfig || {}) };
+                            if (val.trim()) {
+                              nextGrupos[String(canal.id)] = {
+                                ...(currentGroup || {}),
+                                jid: val.trim(),
+                                nombre: currentGroup?.nombre || canal.label,
+                                audiencia: canal.audiencia,
+                                esPersonalizado: canal.esPersonalizado
+                              };
+                            } else if (!canal.esPersonalizado) {
+                              delete nextGrupos[String(canal.id)];
+                            }
+                            setConfig({
+                              ...config,
+                              gruposConfig: nextGrupos,
+                              ...(canal.id === 'general' ? { internalGroupJid: val } : {})
+                            });
+                          }}
+                          placeholder={
+                            canal.id === 'general'
+                              ? 'ID del grupo principal (ej: 120363012345678901@g.us)'
+                              : 'Opcional: ID @g.us o presiona "Cargar Grupos"'
+                          }
+                          className="form-input"
+                          style={{ fontSize: '0.78rem', minHeight: '36px' }}
+                        />
+                      )}
+
+                      {currentGroup?.nombre && (
+                        <div style={{ fontSize: '0.7rem', color: '#34d399', fontWeight: 600 }}>
+                          ✓ Vinculado: {currentGroup.nombre}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
+
+              <WjgConfirmModal
+                isOpen={Boolean(channelToDelete)}
+                onClose={() => setChannelToDelete(null)}
+                onConfirm={handleConfirmDeleteCustomGroup}
+                title="Eliminar Grupo Personalizado"
+                message={`¿Eliminar el canal "${channelToDelete?.label || ''}" de la configuración? Los mensajes históricos registrados en Supabase se mantendrán intactos.`}
+                confirmText="Sí, eliminar canal"
+                variant="danger"
+              />
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <button

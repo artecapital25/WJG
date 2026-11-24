@@ -19,7 +19,7 @@ import {
   Store
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { WjgButton, WjgConfirmModal, WjgSearchInput, WjgSelect } from '../ui';
+import { WjgButton, WjgConfirmModal, WjgModal, WjgSearchInput, WjgSelect, WjgSwitch, WjgTextArea, WjgTextInput, toast } from '../ui';
 import {
   TareaEquipo,
   IntegranteEquipo,
@@ -33,13 +33,13 @@ import {
   Filamento,
   ConfiguracionTaller
 } from '../../types';
+import { UsuarioTaller } from '../../types/usuarios.types';
 import {
-  openWhatsApp,
-  EQUIPO_WJG,
-  LISTA_MIEMBROS_WJG,
-  generateTareaWhatsAppUrl,
-  generateSOSInsumoWhatsAppUrl
-} from '../../services/whatsappService';
+  MessagingHubService,
+  buildSOSInsumoMessage,
+  resolveTaskRecipients
+} from '../../services/messaging';
+import { WjgMessageDispatcherModal } from '../messaging/WjgMessageDispatcherModal';
 import { ModalEnviarTareaWhatsApp } from './ModalEnviarTareaWhatsApp';
 import { TareaCard } from './TareaCard';
 import { BitacoraTareaModal } from './BitacoraTareaModal';
@@ -52,6 +52,7 @@ interface TeamTasksViewProps {
   resinasCatalogo?: Resina[];
   filamentosCatalogo?: Filamento[];
   config: ConfiguracionTaller;
+  usuarios?: UsuarioTaller[];
   onGuardarTarea: (nueva: TareaEquipo) => void;
   onActualizarTarea: (tarea: TareaEquipo) => void;
   onEliminarTarea: (id: string) => void;
@@ -112,19 +113,14 @@ const ESTADOS_ORDEN_CONFIG: Record<
   }
 };
 
-function getPhoneForMember(nombre?: string): string {
-  const n = (nombre || '').toLowerCase();
-  if (n.includes('germ')) return EQUIPO_WJG.german.telefonoLimpio;
-  if (n.includes('juan')) return EQUIPO_WJG.juan.telefonoLimpio;
-  return EQUIPO_WJG.wendy.telefonoLimpio;
-}
-
 export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   tareas,
   solicitudesInsumos,
   insumosCatalogo,
   resinasCatalogo = [],
   filamentosCatalogo = [],
+  config,
+  usuarios,
   onGuardarTarea,
   onActualizarTarea,
   onEliminarTarea,
@@ -188,11 +184,23 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   const [enviarSOSATodos, setEnviarSOSATodos] = useState(true);
   const [sumarAlInventarioOnSave, setSumarAlInventarioOnSave] = useState(true);
 
-  // Estados para WhatsApp de Tareas
+  // Estados para Mensajería Centralizada, Edición y Confirmaciones
   const [tareaParaWhatsApp, setTareaParaWhatsApp] = useState<TareaEquipo | null>(null);
-  const [notificarATodosAlCrear, setNotificarATodosAlCrear] = useState(false);
-  const [notifBanner, setNotifBanner] = useState<string | null>(null);
+  const [notificarInstantaneo, setNotificarInstantaneo] = useState(true);
+  const [fechaLimiteTarea, setFechaLimiteTarea] = useState('');
+  const [notifBanner, setNotifBanner] = useState<{ text: string; fallbackUrl?: string; tarea?: TareaEquipo } | null>(null);
   const [deleteSolTarget, setDeleteSolTarget] = useState<SolicitudInsumo | null>(null);
+  const [deleteTaskTarget, setDeleteTaskTarget] = useState<TareaEquipo | null>(null);
+  const [editingTask, setEditingTask] = useState<TareaEquipo | null>(null);
+  const [editTitulo, setEditTitulo] = useState('');
+  const [editDesc, setEditDesc] = useState('');
+  const [editAsignado, setEditAsignado] = useState<IntegranteEquipo>('Germán');
+  const [editPrioridad, setEditPrioridad] = useState<'baja' | 'media' | 'alta' | 'urgente'>('media');
+  const [editTipo, setEditTipo] = useState<'puntual' | 'periodica'>('puntual');
+  const [editFrecuencia, setEditFrecuencia] = useState<'diaria' | 'semanal' | 'quincenal' | 'mensual'>('semanal');
+  const [editFechaLimite, setEditFechaLimite] = useState('');
+  const [taskToAskRenotify, setTaskToAskRenotify] = useState<TareaEquipo | null>(null);
+  const [sosParaNotificar, setSosParaNotificar] = useState<SolicitudInsumo | null>(null);
 
   // Opciones combinadas del catálogo de bodega para vincular pedidos con auto-reabastecimiento
   const catalogoOpciones = useMemo(() => {
@@ -241,6 +249,40 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
     return opts;
   }, [resinasCatalogo, filamentosCatalogo, insumosCatalogo]);
 
+  const notificarTareaEnSegundoPlano = async (
+    tareaObj: TareaEquipo,
+    evento: 'asignada' | 'actualizada' | 'completada'
+  ) => {
+    try {
+      const res = await MessagingHubService.notifyTask(tareaObj, evento, {
+        usuarios,
+        config
+      });
+
+      if (res.whatsappFailCount === 0 && res.emailFailCount === 0 && res.results.length > 0) {
+        toast.success(`Notificado al instante: ${res.summaryText}`);
+        setNotifBanner({ text: `🚀 "${tareaObj.titulo}" enviada (${res.summaryText}).` });
+        setTimeout(() => setNotifBanner(null), 6000);
+      } else if (res.success) {
+        toast.warning(`Envío parcial: ${res.summaryText}`);
+        setNotifBanner({
+          text: `⚠️ ${res.summaryText}`,
+          fallbackUrl: res.fallbackUrls[0]?.url,
+          tarea: tareaObj
+        });
+      } else {
+        toast.error(`Error notificando tarea: ${res.summaryText || 'Revisa la conexión de WhatsApp/Correo'}`);
+        setNotifBanner({
+          text: `❌ No se pudo despachar automáticamente (${res.summaryText}).`,
+          fallbackUrl: res.fallbackUrls[0]?.url,
+          tarea: tareaObj
+        });
+      }
+    } catch {
+      toast.error('No se pudo ejecutar la notificación automática.');
+    }
+  };
+
   // Guardar Tarea / Idea
   const handleCrearTarea = (e: React.FormEvent) => {
     e.preventDefault();
@@ -254,6 +296,7 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
       tipo: tipoTarea,
       frecuencia: tipoTarea === 'periodica' ? frecuencia : undefined,
       prioridad: prioridad,
+      fecha_limite: fechaLimiteTarea || undefined,
       completada: false,
       origen: origenWhatsApp ? 'whatsapp' : 'manual',
       fecha_creacion: new Date().toISOString().slice(0, 10)
@@ -262,18 +305,46 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
     onGuardarTarea(nueva);
     setTituloTarea('');
     setDescripcionTarea('');
+    setFechaLimiteTarea('');
     setOrigenWhatsApp(false);
 
-    if (notificarATodosAlCrear) {
-      LISTA_MIEMBROS_WJG.forEach((miembro, index) => {
-        setTimeout(() => {
-          const url = generateTareaWhatsAppUrl(nueva, miembro.telefonoLimpio, miembro.nombre);
-          openWhatsApp(url);
-        }, index * 400);
-      });
-      setNotifBanner(`🚀 Tarea "${nueva.titulo}" guardada y enviada a los 3 (Germán, Juan y Wendy) por WhatsApp.`);
-      setTimeout(() => setNotifBanner(null), 5000);
+    if (notificarInstantaneo) {
+      notificarTareaEnSegundoPlano(nueva, 'asignada');
+    } else {
+      toast.success(`Tarea "${nueva.titulo}" agregada.`);
     }
+  };
+
+  const handleOpenEditarTarea = (t: TareaEquipo) => {
+    setEditingTask(t);
+    setEditTitulo(t.titulo);
+    setEditDesc(t.descripcion || '');
+    setEditAsignado(t.asignado_a);
+    setEditPrioridad(t.prioridad);
+    setEditTipo(t.tipo);
+    setEditFrecuencia(t.frecuencia || 'semanal');
+    setEditFechaLimite(t.fecha_limite || '');
+  };
+
+  const handleSaveEditarTarea = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTask || !editTitulo.trim()) return;
+
+    const actualizada: TareaEquipo = {
+      ...editingTask,
+      titulo: editTitulo.trim(),
+      descripcion: editDesc.trim() || undefined,
+      asignado_a: editAsignado,
+      prioridad: editPrioridad,
+      tipo: editTipo,
+      frecuencia: editTipo === 'periodica' ? editFrecuencia : undefined,
+      fecha_limite: editFechaLimite || undefined
+    };
+
+    onActualizarTarea(actualizada);
+    setEditingTask(null);
+    toast.success(`Tarea "${actualizada.titulo}" actualizada.`);
+    setTaskToAskRenotify(actualizada);
   };
 
   // Alternar estado de tarea (completada / pendiente)
@@ -287,6 +358,7 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
 
     if (updated.completada) {
       confetti({ particleCount: 40, spread: 50 });
+      notificarTareaEnSegundoPlano(updated, 'completada');
     }
   };
 
@@ -425,18 +497,34 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
         onActualizarSolicitudInsumo(solicitudFinal, { sumarAlInventario: true });
       }
       if (enviarSOSATodos || encargadoCompra === 'Todos') {
-        LISTA_MIEMBROS_WJG.forEach((miembro, index) => {
-          setTimeout(() => {
-            const url = generateSOSInsumoWhatsAppUrl(solicitudFinal, miembro.telefonoLimpio, miembro.nombre);
-            openWhatsApp(url);
-          }, index * 400);
+        MessagingHubService.notifySOSInsumo(solicitudFinal, {
+          enviarAlGrupo: true,
+          evento: 'creada',
+          usuarios,
+          config
+        }).then(res => {
+          if (res.success) {
+            setNotifBanner({ text: `🚨 Alerta S.O.S despachada (${res.summaryText}).` });
+            toast.success(`S.O.S enviado: ${res.summaryText}`);
+          } else {
+            setNotifBanner({
+              text: `⚠️ S.O.S guardado, pero falló notificación (${res.summaryText}).`,
+              fallbackUrl: res.fallbackUrls[0]?.url
+            });
+            toast.warning(`S.O.S guardado. Revisa el envío (${res.summaryText}).`);
+          }
+          setTimeout(() => setNotifBanner(null), 6500);
         });
-        setNotifBanner(`🚨 Alerta S.O.S enviada por WhatsApp a los 3 (Germán, Juan y Wendy).`);
-        setTimeout(() => setNotifBanner(null), 5000);
       } else {
-        const tel = getPhoneForMember(encargadoCompra);
-        const url = generateSOSInsumoWhatsAppUrl(solicitudFinal, tel, encargadoCompra);
-        openWhatsApp(url);
+        MessagingHubService.notifySOSInsumo(solicitudFinal, {
+          enviarAlGrupo: false,
+          evento: 'creada',
+          usuarios,
+          config
+        }).then(res => {
+          if (res.success) toast.success(`S.O.S notificado: ${res.summaryText}`);
+          else toast.warning(`S.O.S guardado; no se pudo notificar automáticamente (${res.summaryText}).`);
+        });
       }
     }
 
@@ -518,25 +606,51 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
         </div>
       </div>
 
-      {/* Alerta de Envío Automático por WhatsApp */}
+      {/* Alerta de Envío Automático por WhatsApp + Correo */}
       {notifBanner && (
         <div
           style={{
-            background: 'rgba(34, 197, 94, 0.15)',
-            border: '1px solid rgba(34, 197, 94, 0.4)',
-            color: '#4ade80',
+            background: notifBanner.fallbackUrl ? 'rgba(245, 158, 11, 0.14)' : 'rgba(34, 197, 94, 0.15)',
+            border: `1px solid ${notifBanner.fallbackUrl ? 'rgba(245, 158, 11, 0.45)' : 'rgba(34, 197, 94, 0.4)'}`,
+            color: notifBanner.fallbackUrl ? '#fde68a' : '#4ade80',
             padding: '10px 14px',
             borderRadius: '8px',
             marginBottom: '16px',
-            fontSize: '0.86rem',
+            fontSize: '0.84rem',
             fontWeight: 700,
             display: 'flex',
             alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
             gap: '8px'
           }}
         >
-          <Send size={16} />
-          <span>{notifBanner}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <Send size={16} />
+            <span>{notifBanner.text}</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+            {notifBanner.tarea && (
+              <WjgButton
+                variant="secondary"
+                size="sm"
+                onClick={() => setTareaParaWhatsApp(notifBanner.tarea!)}
+                style={{ minHeight: '32px', padding: '4px 10px', fontSize: '0.75rem' }}
+              >
+                Reintentar
+              </WjgButton>
+            )}
+            {notifBanner.fallbackUrl && (
+              <WjgButton
+                variant="whatsapp"
+                size="sm"
+                onClick={() => window.open(notifBanner.fallbackUrl!, '_blank', 'noopener,noreferrer')}
+                style={{ minHeight: '32px', padding: '4px 10px', fontSize: '0.75rem' }}
+              >
+                Abrir WhatsApp Web
+              </WjgButton>
+            )}
+          </div>
         </div>
       )}
 
@@ -840,13 +954,9 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                         <button
                           type="button"
                           className="btn btn-whatsapp btn-sm"
-                          onClick={() => {
-                            const tel = getPhoneForMember(sol.encargado_compra);
-                            const msg = `Hola ${sol.encargado_compra}, sobre la orden de *${sol.insumo_nombre}* (Cant: ${sol.cantidad} ${sol.unidad} • Estado: ${estadoInfo.label}): ¿alguna novedad con la compra o guía${sol.numero_guia ? ` #${sol.numero_guia}` : ''}?`;
-                            openWhatsApp(`https://wa.me/${tel}?text=${encodeURIComponent(msg)}`);
-                          }}
+                          onClick={() => setSosParaNotificar(sol)}
                           style={{ fontSize: '0.74rem' }}
-                          title="Consultar al encargado por WhatsApp"
+                          title="Notificar por WhatsApp y Correo"
                         >
                           <Send size={13} />
                         </button>
@@ -1008,7 +1118,19 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 )}
               </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+              <div style={{ marginBottom: '12px' }}>
+                <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '4px' }}>
+                  FECHA LÍMITE (OPCIONAL):
+                </label>
+                <input
+                  type="date"
+                  className="form-input"
+                  value={fechaLimiteTarea}
+                  onChange={e => setFechaLimiteTarea(e.target.value)}
+                />
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                 <input
                   type="checkbox"
                   id="chkWhatsapp"
@@ -1020,25 +1142,25 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 </label>
               </div>
 
-              <div
-                style={{
-                  marginBottom: '16px',
-                  background: 'rgba(34, 197, 94, 0.08)',
-                  border: '1px solid rgba(34, 197, 94, 0.3)',
-                  borderRadius: '8px',
-                  padding: '8px 10px'
-                }}
-              >
-                <label htmlFor="chkNotificarATodos" style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.78rem', color: '#4ade80', fontWeight: 700 }}>
-                  <input
-                    type="checkbox"
-                    id="chkNotificarATodos"
-                    checked={notificarATodosAlCrear}
-                    onChange={e => setNotificarATodosAlCrear(e.target.checked)}
-                    style={{ accentColor: '#10b981', width: '16px', height: '16px' }}
-                  />
-                  <span>🚀 Enviar a los 3 (Germán, Juan, Wendy) por WhatsApp al guardar</span>
-                </label>
+              <div style={{ marginBottom: '16px' }}>
+                {(() => {
+                  const preview = resolveTaskRecipients(asignadoA, usuarios, config, 'tareas', false);
+                  const desc =
+                    asignadoA === 'Todos'
+                      ? preview.groupConfigured
+                        ? `Grupo WhatsApp "${preview.groupConfigured.nombre}" + correo a ${preview.emailTargets.length} integrantes`
+                        : `WhatsApp a los 3 + correo a ${preview.emailTargets.length} integrantes`
+                      : `WhatsApp directo a ${asignadoA} + correo a ${preview.emailTargets[0]?.correo || 'su correo'}`;
+                  return (
+                    <WjgSwitch
+                      checked={notificarInstantaneo}
+                      onChange={setNotificarInstantaneo}
+                      accentColor="#25D366"
+                      label="🚀 Notificar instantáneamente (WhatsApp + Correo)"
+                      description={desc}
+                    />
+                  );
+                })()}
               </div>
 
               <button
@@ -1073,7 +1195,11 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                     tarea={t}
                     conteoAvances={conteos[t.id] || 0}
                     onToggleCompletada={handleToggleCompletada}
-                    onEliminarTarea={onEliminarTarea}
+                    onEditarTarea={handleOpenEditarTarea}
+                    onEliminarTarea={(id) => {
+                      const found = tareas.find(x => x.id === id);
+                      if (found) setDeleteTaskTarget(found);
+                    }}
                     onOpenWhatsApp={setTareaParaWhatsApp}
                     onOpenBitacora={(selectedTarea) => {
                       setTareaParaBitacora(selectedTarea);
@@ -1495,11 +1621,167 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
         </div>
       )}
 
-      {/* MODAL ENVIAR TAREA POR WHATSAPP A LOS 3 INTEGRANTES */}
+      {/* MODAL NOTIFICAR TAREA (WHATSAPP + CORREO + GRUPO) */}
       <ModalEnviarTareaWhatsApp
         isOpen={Boolean(tareaParaWhatsApp)}
         tarea={tareaParaWhatsApp}
+        usuarios={usuarios}
+        config={config}
         onClose={() => setTareaParaWhatsApp(null)}
+      />
+
+      {/* MODAL NOTIFICAR SEGUIMIENTO S.O.S INSUMO */}
+      {sosParaNotificar && (() => {
+        const builtSos = buildSOSInsumoMessage(sosParaNotificar, 'seguimiento');
+        return (
+          <WjgMessageDispatcherModal
+            isOpen={true}
+            onClose={() => setSosParaNotificar(null)}
+            title={`Notificar Orden S.O.S: ${sosParaNotificar.insumo_nombre}`}
+            subtitle={`Encargado: ${sosParaNotificar.encargado_compra} • Cant: ${sosParaNotificar.cantidad} ${sosParaNotificar.unidad}`}
+            context="sos_insumo"
+            defaultGroupChannel="insumos"
+            defaultTargetMode={sosParaNotificar.encargado_compra === 'Todos' ? 'grupo' : 'individual'}
+            defaultAssigneeName={sosParaNotificar.encargado_compra}
+            initialWhatsAppText={builtSos.whatsappText}
+            initialEmailSubject={builtSos.emailSubject}
+            emailType={builtSos.emailType}
+            emailData={builtSos.emailData}
+            trackingUrl={builtSos.trackingUrl}
+            entidadTipo="solicitud_insumo"
+            entidadId={sosParaNotificar.id}
+            usuarios={usuarios}
+            config={config}
+          />
+        );
+      })()}
+
+      {/* MODAL EDITAR TAREA */}
+      <WjgModal
+        isOpen={Boolean(editingTask)}
+        onClose={() => setEditingTask(null)}
+        title="Editar Tarea del Equipo"
+        subtitle={editingTask ? `ID: ${editingTask.id}` : undefined}
+        maxWidth="520px"
+      >
+        <form onSubmit={handleSaveEditarTarea} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          <WjgTextInput
+            label="Título de la tarea"
+            value={editTitulo}
+            onChange={setEditTitulo}
+            required
+          />
+          <WjgTextArea
+            label="Detalles o notas"
+            value={editDesc}
+            onChange={setEditDesc}
+            rows={3}
+          />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label className="form-label">Responsable</label>
+              <WjgSelect
+                value={editAsignado}
+                onChange={val => setEditAsignado(val as IntegranteEquipo)}
+                options={INTEGRANTES.map(i => ({ value: i, label: i }))}
+              />
+            </div>
+            <div>
+              <label className="form-label">Prioridad</label>
+              <WjgSelect
+                value={editPrioridad}
+                onChange={val => setEditPrioridad(val as any)}
+                options={[
+                  { value: 'baja', label: 'Baja' },
+                  { value: 'media', label: 'Media' },
+                  { value: 'alta', label: 'Alta' },
+                  { value: 'urgente', label: '🔥 Urgente' }
+                ]}
+              />
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <div>
+              <label className="form-label">Tipo</label>
+              <WjgSelect
+                value={editTipo}
+                onChange={val => setEditTipo(val as any)}
+                options={[
+                  { value: 'puntual', label: 'Puntual' },
+                  { value: 'periodica', label: 'Rutina Periódica' }
+                ]}
+              />
+            </div>
+            <div>
+              <label className="form-label">Fecha límite</label>
+              <input
+                type="date"
+                className="form-input"
+                value={editFechaLimite}
+                onChange={e => setEditFechaLimite(e.target.value)}
+              />
+            </div>
+          </div>
+          {editTipo === 'periodica' && (
+            <div>
+              <label className="form-label">Frecuencia</label>
+              <WjgSelect
+                value={editFrecuencia}
+                onChange={val => setEditFrecuencia(val as any)}
+                options={[
+                  { value: 'diaria', label: 'Diaria' },
+                  { value: 'semanal', label: 'Semanal' },
+                  { value: 'quincenal', label: 'Quincenal' },
+                  { value: 'mensual', label: 'Mensual' }
+                ]}
+              />
+            </div>
+          )}
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>
+            <WjgButton variant="secondary" size="sm" onClick={() => setEditingTask(null)}>
+              Cancelar
+            </WjgButton>
+            <WjgButton type="submit" variant="save" size="sm">
+              Guardar Cambios
+            </WjgButton>
+          </div>
+        </form>
+      </WjgModal>
+
+      {/* CONFIRMACIÓN DE RE-NOTIFICACIÓN AL EDITAR TAREA */}
+      <WjgConfirmModal
+        isOpen={Boolean(taskToAskRenotify)}
+        onClose={() => setTaskToAskRenotify(null)}
+        onConfirm={async () => {
+          if (taskToAskRenotify) {
+            await notificarTareaEnSegundoPlano(taskToAskRenotify, 'actualizada');
+          }
+        }}
+        title="¿Re-notificar cambios de la tarea?"
+        message={
+          taskToAskRenotify
+            ? `Los cambios en "${taskToAskRenotify.titulo}" ya se guardaron.\n\n¿Deseas notificar la actualización inmediatamente por WhatsApp y Correo a ${taskToAskRenotify.asignado_a === 'Todos' ? 'el Grupo de WhatsApp y todo el equipo' : taskToAskRenotify.asignado_a}?`
+            : ''
+        }
+        confirmText="Sí, Re-notificar Ahora"
+        cancelText="No, Solo Guardar"
+        variant="primary"
+      />
+
+      {/* CONFIRMACIÓN SEGURA AL ELIMINAR TAREA */}
+      <WjgConfirmModal
+        isOpen={Boolean(deleteTaskTarget)}
+        onClose={() => setDeleteTaskTarget(null)}
+        onConfirm={() => {
+          if (deleteTaskTarget) {
+            onEliminarTarea(deleteTaskTarget.id);
+            toast.info(`Tarea "${deleteTaskTarget.titulo}" eliminada.`);
+          }
+        }}
+        title="Eliminar Tarea"
+        message={deleteTaskTarget ? `¿Eliminar definitivamente la tarea "${deleteTaskTarget.titulo}"?` : ''}
+        confirmText="Eliminar Tarea"
+        variant="danger"
       />
 
       {/* MODAL DE BITÁCORA Y AVANCES DE TAREA */}
@@ -1512,6 +1794,8 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
         tarea={tareaParaBitacora}
         activeOperator={activeOperator}
         currentUser={currentUser}
+        usuarios={usuarios}
+        config={config}
         onAvanceGuardado={(tareaActualizada) => {
           onActualizarTarea(tareaActualizada);
           setTareaParaBitacora(tareaActualizada);

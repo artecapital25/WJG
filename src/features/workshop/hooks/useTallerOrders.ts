@@ -6,15 +6,16 @@ import {
   EstadoSTL, 
   Cotizacion, 
   EstadoCotizacion, 
-  DatosPagoRegistro 
+  DatosPagoRegistro,
+  TratamientoAbonoOT
 } from '../../../types';
 import { toast } from '../../../components/ui/ToastProvider';
-import { formatWhatsAppPhone, openWhatsApp } from '../../../services/whatsappService';
+import { openWhatsApp } from '../../../services/whatsappService';
 import { processAndOptimizeImage } from '../../../services/imageService';
 import { StorageService } from '../../../services/storageService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
-import { CloudSyncService } from '../../../services/cloudSyncService';
 import { EmailNotificationService } from '../../../services/emailNotificationService';
+import { MessagingHubService } from '../../../services/messaging';
 import { WorkOrdersPipelineProps, ModalLinkItem } from '../types/workshop.types';
 import { 
   getSiguienteEstado,
@@ -29,6 +30,7 @@ export function useTallerOrders({
   cotizaciones = [],
   tarifasTamanos = [],
   clientes = [],
+  usuarios = [],
   onUpdateEstado,
   onCrearOrdenRapida,
   onActualizarOT,
@@ -81,11 +83,12 @@ export function useTallerOrders({
     otId: string, 
     motivo: string, 
     revertirCotizacion?: boolean, 
-    nuevoEstadoCot?: EstadoCotizacion
+    nuevoEstadoCot?: EstadoCotizacion,
+    tratamientoAbono?: TratamientoAbonoOT
   ) => {
     if (onEliminarOT) {
       const otBorrada = ordenes.find(o => o.id === otId);
-      onEliminarOT(otId, motivo, revertirCotizacion, nuevoEstadoCot);
+      onEliminarOT(otId, motivo, revertirCotizacion, nuevoEstadoCot, tratamientoAbono);
       setNotifEliminacion(`✅ Orden ${otBorrada?.numero_ot || ''} eliminada correctamente.`);
       setTimeout(() => setNotifEliminacion(null), 4500);
     }
@@ -147,60 +150,80 @@ export function useTallerOrders({
   };
 
   const handleNotificarCliente = (ot: OrdenTrabajo) => {
-    const phone = formatWhatsAppPhone(ot.cliente_telefono);
     const trackingUrl = `${window.location.origin}/?portal=cliente&ot=${encodeURIComponent(ot.numero_ot)}`;
     const mensaje = buildClienteNotificationMessage(ot, trackingUrl);
+    const clienteMatch = clientes.find(
+      c => c.nombre.toLowerCase().trim() === ot.cliente_nombre.toLowerCase().trim()
+    );
 
-    // 1. Encolar en backend para despacho oficial desde la línea central (+57 320 2796115)
-    CloudSyncService.enqueueNotification({
-      orden_trabajo_id: ot.id,
-      destinatario_nombre: ot.cliente_nombre,
-      destinatario_telefono: phone,
-      rol_destinatario: 'CLIENTE',
-      mensaje_plano: mensaje
-    });
-
-    // 2. Disparo dual de contingencia por correo si tiene email
-    const clienteMatch = clientes.find(c => c.nombre.toLowerCase().trim() === ot.cliente_nombre.toLowerCase().trim());
-    if (clienteMatch?.correo) {
-      if (ot.estado === 'Listo para Entrega' || (ot.estado as string) === 'Entregado') {
-        EmailNotificationService.enviarCorreoPiezaTerminada(ot, clienteMatch.correo, trackingUrl);
-      }
-    }
-
-    // 3. Abrir ventana de WhatsApp opcional
-    openWhatsApp(`https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`);
+    MessagingHubService.notifyExternalClient({
+      context: 'ot',
+      entidadTipo: 'orden_trabajo',
+      entidadId: ot.id,
+      clienteNombre: ot.cliente_nombre,
+      clienteTelefono: ot.cliente_telefono,
+      clienteCorreo: clienteMatch?.correo,
+      whatsappText: mensaje,
+      emailSubject: `🛠️ Actualización OT ${ot.numero_ot} (${ot.estado}) — WJGEEKS 3D`,
+      emailType: 'pieza_terminada',
+      emailData: {
+        numero_doc: ot.numero_ot,
+        item_nombre: ot.item_nombre,
+        estado_ot: ot.estado,
+        saldo_pendiente: ot.saldo_pendiente || 0,
+        mensaje_personalizado: mensaje
+      },
+      trackingUrl,
+      config
+    })
+      .then(summary => {
+        if (summary.success) {
+          toast.success(`Cliente notificado (${ot.numero_ot}): ${summary.summaryText}`);
+        } else {
+          toast.warning(summary.summaryText || 'No se pudo enviar automáticamente.');
+          if (summary.fallbackUrls[0]?.url) {
+            openWhatsApp(summary.fallbackUrls[0].url);
+          }
+        }
+      })
+      .catch(() => toast.error('Error al despachar notificación al cliente.'));
   };
 
   const handleHandoffPorRol = (ot: OrdenTrabajo) => {
-    const configHandoff = getHandoffConfig(ot, config);
-    if (!configHandoff.telefono) {
-      toast.warning('No hay un teléfono registrado para este destinatario.');
+    const configHandoff = getHandoffConfig(ot, config, usuarios);
+    if (!configHandoff.isGrupoEquipo && !configHandoff.telefono && !configHandoff.correo) {
+      toast.warning('No hay un teléfono o correo registrado para este destinatario.');
       return;
     }
 
-    // Encolar en backend para despacho desde la línea central (+57 320 2796115) hacia el colaborador
-    const rolEnum = configHandoff.nombre.includes('Juan') 
-      ? 'JUAN_TALLER' 
-      : configHandoff.nombre.includes('Wendy') 
-      ? 'WENDY_PINTURA' 
-      : 'TRIPARTITO';
+    const clienteMatch = configHandoff.isCliente
+      ? clientes.find(c => c.nombre.toLowerCase().trim() === ot.cliente_nombre.toLowerCase().trim())
+      : undefined;
 
-    CloudSyncService.enqueueNotification({
-      orden_trabajo_id: ot.id,
-      destinatario_nombre: configHandoff.nombre,
-      destinatario_telefono: configHandoff.telefono,
-      rol_destinatario: rolEnum,
-      mensaje_plano: configHandoff.mensaje
-    });
-
-    openWhatsApp(`https://wa.me/${configHandoff.telefono}?text=${encodeURIComponent(configHandoff.mensaje)}`);
-    toast.success(`Aviso oficial preparado para ${configHandoff.nombre}`);
+    MessagingHubService.notifyWorkshopHandoff({
+      ot,
+      destinatarioNombre: configHandoff.nombre,
+      destinatarioTelefono: configHandoff.telefono,
+      destinatarioCorreo: configHandoff.isCliente ? clienteMatch?.correo : configHandoff.correo,
+      isGrupoEquipo: configHandoff.isGrupoEquipo,
+      isCliente: configHandoff.isCliente,
+      whatsappText: configHandoff.mensaje,
+      config,
+      usuarios
+    })
+      .then(summary => {
+        if (summary.success) {
+          toast.success(`Aviso enviado a ${configHandoff.nombre}: ${summary.summaryText}`);
+        } else {
+          toast.warning(summary.summaryText || `No se pudo enviar aviso a ${configHandoff.nombre}.`);
+        }
+      })
+      .catch(() => toast.error(`Error preparando aviso para ${configHandoff.nombre}.`));
   };
 
   const handleAbrirTransicionModal = (ot: OrdenTrabajo) => {
     const sig = getSiguienteEstado(ot.estado);
-    const cfg = getHandoffConfig(ot, config);
+    const cfg = getHandoffConfig(ot, config, usuarios);
     setOtParaTransicion(ot);
     setSiguienteEstadoTransicion(sig);
     setConfigHandoffTransicion(cfg);
@@ -212,14 +235,42 @@ export function useTallerOrders({
     setConfigHandoffTransicion(null);
   };
 
-  const handleConfirmarTransicionModal = (enviarWhatsApp: boolean) => {
+  const handleConfirmarTransicionModal = (enviarWhatsApp: boolean, enviarCorreo: boolean = true) => {
     if (!otParaTransicion || !siguienteEstadoTransicion) return;
 
-    onUpdateEstado(otParaTransicion.id, siguienteEstadoTransicion);
-    toast.success(`OT #${otParaTransicion.numero_ot} avanzada a "${siguienteEstadoTransicion}".`);
+    const otRef = otParaTransicion;
+    const nextStage = siguienteEstadoTransicion;
+    const handoff = configHandoffTransicion;
 
-    if (enviarWhatsApp && configHandoffTransicion?.telefono) {
-      openWhatsApp(`https://wa.me/${configHandoffTransicion.telefono}?text=${encodeURIComponent(configHandoffTransicion.mensaje)}`);
+    onUpdateEstado(otRef.id, nextStage);
+    toast.success(`OT #${otRef.numero_ot} avanzada a "${nextStage}".`);
+
+    if ((enviarWhatsApp || enviarCorreo) && handoff) {
+      const clienteMatch = handoff.isCliente
+        ? clientes.find(c => c.nombre.toLowerCase().trim() === otRef.cliente_nombre.toLowerCase().trim())
+        : undefined;
+
+      MessagingHubService.notifyWorkshopHandoff({
+        ot: otRef,
+        destinatarioNombre: handoff.nombre,
+        destinatarioTelefono: handoff.telefono,
+        destinatarioCorreo: handoff.isCliente ? clienteMatch?.correo : handoff.correo,
+        isGrupoEquipo: handoff.isGrupoEquipo,
+        isCliente: handoff.isCliente,
+        whatsappText: handoff.mensaje,
+        whatsappEnabled: enviarWhatsApp,
+        emailEnabled: enviarCorreo,
+        config,
+        usuarios
+      })
+        .then(summary => {
+          if (summary.success) {
+            toast.info(`Notificación de transición: ${summary.summaryText}`);
+          } else if (summary.results.length > 0) {
+            toast.warning(summary.summaryText);
+          }
+        })
+        .catch(() => {});
     }
 
     handleCerrarTransicionModal();

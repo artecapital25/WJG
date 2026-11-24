@@ -8,7 +8,11 @@ import {
   Sparkles
 } from 'lucide-react';
 import { TareaEquipo } from '../../types/tasks';
+import { ConfiguracionTaller } from '../../types';
+import { UsuarioTaller } from '../../types/usuarios.types';
 import { useTareaAvances } from '../../hooks/useTareaAvances';
+import { MessagingHubService } from '../../services/messaging';
+import { WjgSwitch, toast } from '../ui';
 
 interface BitacoraTareaModalProps {
   isOpen: boolean;
@@ -16,6 +20,8 @@ interface BitacoraTareaModalProps {
   tarea: TareaEquipo | null;
   activeOperator?: string;
   currentUser?: { id?: string; nombre: string; rol?: string };
+  usuarios?: UsuarioTaller[];
+  config?: ConfiguracionTaller;
   onAvanceGuardado?: (tareaActualizada: TareaEquipo) => void;
 }
 
@@ -86,10 +92,13 @@ export const BitacoraTareaModal: React.FC<BitacoraTareaModalProps> = ({
   tarea,
   activeOperator = 'Juan',
   currentUser,
+  usuarios,
+  config,
   onAvanceGuardado
 }) => {
   const [nota, setNota] = useState('');
   const [porcentaje, setPorcentaje] = useState<number>(0);
+  const [notificarAvance, setNotificarAvance] = useState<boolean>(true);
 
   const {
     avances,
@@ -129,6 +138,7 @@ export const BitacoraTareaModal: React.FC<BitacoraTareaModalProps> = ({
     );
 
     if (saved) {
+      const notaEnviada = nota.trim();
       setNota('');
       // Notificar al componente padre para que la tarjeta actualice la barra de progreso reactivamente
       if (onAvanceGuardado) {
@@ -138,6 +148,22 @@ export const BitacoraTareaModal: React.FC<BitacoraTareaModalProps> = ({
           ultimo_avance_at: saved.created_at,
           total_avances: (tarea.total_avances || 0) + 1
         });
+      }
+
+      if (notificarAvance) {
+        MessagingHubService.notifyTaskAdvance(
+          tarea,
+          { nota: notaEnviada, porcentaje, autor: activeOperator },
+          { usuarios, config }
+        )
+          .then(res => {
+            if (res.success) {
+              toast.success(`Avance notificado: ${res.summaryText}`);
+            } else if (res.results.length > 0) {
+              toast.warning(`Avance guardado en bitácora, pero falló la notificación (${res.summaryText})`);
+            }
+          })
+          .catch(() => {});
       }
     }
   };
@@ -385,6 +411,20 @@ export const BitacoraTareaModal: React.FC<BitacoraTareaModalProps> = ({
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div style={{ marginBottom: '12px' }}>
+              <WjgSwitch
+                checked={notificarAvance}
+                onChange={setNotificarAvance}
+                accentColor="#25D366"
+                label="Notificar avance por WhatsApp + Correo"
+                description={
+                  tarea.asignado_a === 'Todos'
+                    ? 'Se enviará al Grupo de WhatsApp y correo de los 3'
+                    : `Se notificará a ${tarea.asignado_a}`
+                }
+              />
             </div>
 
             <button

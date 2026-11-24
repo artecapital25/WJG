@@ -1,7 +1,8 @@
-import React from 'react';
-import { Send, Check, X, ArrowRight, Activity } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Send, Check, ArrowRight, Activity, Mail, MessageCircle, Users } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../../types';
 import { HandoffConfig } from '../types/workshop.types';
+import { WjgBadge, WjgButton, WjgModal, WjgSwitch } from '../../../components/ui';
 
 interface OTStatusTransitionModalProps {
   isOpen: boolean;
@@ -9,7 +10,7 @@ interface OTStatusTransitionModalProps {
   handoffConfig: HandoffConfig | null;
   siguienteEstado: EstadoOT | null;
   onClose: () => void;
-  onConfirmHandoff: (enviarWhatsApp: boolean) => void;
+  onConfirmHandoff: (enviarWhatsApp: boolean, enviarCorreo?: boolean) => void;
   onOpenConsumoReal?: (ot: OrdenTrabajo) => void;
 }
 
@@ -22,46 +23,76 @@ export const OTStatusTransitionModal: React.FC<OTStatusTransitionModalProps> = R
   onConfirmHandoff,
   onOpenConsumoReal
 }) => {
+  const [enviarWhatsApp, setEnviarWhatsApp] = useState(true);
+  const [enviarCorreo, setEnviarCorreo] = useState(true);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setEnviarWhatsApp(true);
+    setEnviarCorreo(handoffConfig?.isCliente ? Boolean(handoffConfig?.correo) : true);
+  }, [isOpen, handoffConfig]);
+
   if (!isOpen || !ot || !handoffConfig) return null;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div 
-        className="modal-content" 
-        onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '480px', padding: '20px' }}
-      >
-        {/* Header */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ fontSize: '1.4rem' }}>{handoffConfig.icono}</span>
-            <div>
-              <h3 style={{ fontSize: '1.05rem', margin: 0, fontWeight: 700, color: '#fff' }}>
-                {handoffConfig.title}
-              </h3>
-              <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                OT #{ot.numero_ot} • {ot.item_nombre}
-              </span>
-            </div>
+    <WjgModal
+      isOpen={isOpen}
+      onClose={onClose}
+      title={handoffConfig.title}
+      subtitle={`OT #${ot.numero_ot} • ${ot.item_nombre}`}
+      icon={<span style={{ fontSize: '1.15rem' }}>{handoffConfig.icono}</span>}
+      maxWidth="520px"
+      borderColor="rgba(56, 189, 248, 0.35)"
+      footer={
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+          {onOpenConsumoReal && (
+            <WjgButton
+              variant="secondary"
+              size="sm"
+              fullWidth
+              leftIcon={<Activity size={14} />}
+              onClick={() => {
+                onClose();
+                onOpenConsumoReal(ot);
+              }}
+              style={{ borderColor: 'rgba(56, 189, 248, 0.45)', color: '#38bdf8' }}
+            >
+              Registrar Consumos Reales Antes de Avanzar
+            </WjgButton>
+          )}
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', flexWrap: 'wrap' }}>
+            <WjgButton variant="secondary" size="sm" onClick={onClose}>
+              Cancelar
+            </WjgButton>
+            <WjgButton
+              variant="primary"
+              size="sm"
+              leftIcon={<Check size={14} />}
+              onClick={() => onConfirmHandoff(false, false)}
+            >
+              Solo Avanzar Fase
+            </WjgButton>
+            <WjgButton
+              variant="whatsapp"
+              size="sm"
+              leftIcon={<Send size={14} />}
+              onClick={() => onConfirmHandoff(enviarWhatsApp, enviarCorreo)}
+            >
+              Notificar y Avanzar
+            </WjgButton>
           </div>
-          <button 
-            type="button" 
-            className="btn btn-secondary btn-sm"
-            onClick={onClose}
-            style={{ padding: '4px 8px' }}
-          >
-            <X size={15} />
-          </button>
         </div>
-
-        {/* Transition Summary Box */}
-        <div style={{
-          background: 'rgba(0, 0, 0, 0.3)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: '10px',
-          padding: '12px 14px',
-          marginBottom: '16px'
-        }}>
+      }
+    >
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        <div
+          style={{
+            background: 'rgba(0, 0, 0, 0.3)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: '10px',
+            padding: '12px 14px'
+          }}
+        >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: '0.82rem' }}>
             <div>
               <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.7rem' }}>Fase Actual:</span>
@@ -74,80 +105,81 @@ export const OTStatusTransitionModal: React.FC<OTStatusTransitionModalProps> = R
             </div>
           </div>
 
-          <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid var(--border-subtle)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
-            Destinatario del pase de turno: <strong style={{ color: '#fff' }}>{handoffConfig.nombre} ({handoffConfig.label})</strong> • Tel: {handoffConfig.telefono}
+          <div
+            style={{
+              marginTop: '10px',
+              paddingTop: '8px',
+              borderTop: '1px solid var(--border-subtle)',
+              fontSize: '0.76rem',
+              color: 'var(--text-muted)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              flexWrap: 'wrap'
+            }}
+          >
+            <span>
+              Destinatario: <strong style={{ color: '#fff' }}>{handoffConfig.nombre}</strong>
+            </span>
+            {handoffConfig.isGrupoEquipo ? (
+              <WjgBadge variant="purple">
+                <Users size={11} /> Grupo WhatsApp Taller + 3 Correos
+              </WjgBadge>
+            ) : (
+              <WjgBadge variant="cyan">Tel: {handoffConfig.telefono || 'Sin teléfono'}</WjgBadge>
+            )}
           </div>
         </div>
 
-        {/* Preview of WhatsApp Message */}
-        <div style={{
-          background: 'rgba(34, 197, 94, 0.08)',
-          border: '1px solid rgba(34, 197, 94, 0.25)',
-          borderRadius: '8px',
-          padding: '10px 12px',
-          marginBottom: '16px',
-          fontSize: '0.76rem',
-          color: '#86efac'
-        }}>
-          <div style={{ fontWeight: 700, marginBottom: '4px' }}>💬 Mensaje preconfigurado para WhatsApp:</div>
-          <p style={{ margin: 0, fontStyle: 'italic', whiteSpace: 'pre-wrap' }}>
-            "{handoffConfig.mensaje}"
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '8px' }}>
+          <WjgSwitch
+            checked={enviarWhatsApp}
+            onChange={setEnviarWhatsApp}
+            accentColor="#25D366"
+            label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <MessageCircle size={14} color="#4ade80" />
+                Notificar por WhatsApp
+              </span>
+            }
+            description={handoffConfig.isGrupoEquipo ? 'Canal Grupo Taller' : handoffConfig.nombre}
+          />
+          <WjgSwitch
+            checked={enviarCorreo}
+            onChange={setEnviarCorreo}
+            accentColor="#38bdf8"
+            label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                <Mail size={14} color="#38bdf8" />
+                Notificar por Correo
+              </span>
+            }
+            description={
+              handoffConfig.isGrupoEquipo
+                ? 'Correos de Germán, Juan y Wendy'
+                : handoffConfig.correo || (handoffConfig.isCliente ? 'Solo si el cliente tiene email' : 'Correo del responsable')
+            }
+          />
+        </div>
+
+        <div
+          style={{
+            background: 'rgba(34, 197, 94, 0.08)',
+            border: '1px solid rgba(34, 197, 94, 0.25)',
+            borderRadius: '10px',
+            padding: '10px 12px',
+            fontSize: '0.76rem',
+            color: '#86efac'
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: '4px' }}>💬 Mensaje que se enviará:</div>
+          <p style={{ margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.45 }}>
+            {handoffConfig.mensaje}
           </p>
         </div>
-
-        {/* Action Buttons */}
-        <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
-          {onOpenConsumoReal && (
-            <button
-              type="button"
-              className="btn btn-secondary"
-              onClick={() => {
-                onClose();
-                onOpenConsumoReal(ot);
-              }}
-              style={{
-                justifyContent: 'center',
-                borderColor: 'rgba(56, 189, 248, 0.45)',
-                color: '#38bdf8',
-                fontWeight: 700
-              }}
-            >
-              <Activity size={15} />
-              <span>Registrar Consumos Reales Antes de Avanzar</span>
-            </button>
-          )}
-
-          <button 
-            type="button" 
-            className="btn btn-whatsapp" 
-            onClick={() => onConfirmHandoff(true)}
-            style={{ fontWeight: 700, justifyContent: 'center' }}
-          >
-            <Send size={15} />
-            <span>Notificar por WhatsApp y Avanzar Fase</span>
-          </button>
-
-          <button 
-            type="button" 
-            className="btn btn-primary" 
-            onClick={() => onConfirmHandoff(false)}
-            style={{ justifyContent: 'center' }}
-          >
-            <Check size={15} />
-            <span>Avanzar Fase sin Enviar WhatsApp</span>
-          </button>
-
-          <button 
-            type="button" 
-            className="btn btn-secondary" 
-            onClick={onClose}
-            style={{ justifyContent: 'center' }}
-          >
-            Cancelar
-          </button>
-        </div>
       </div>
-    </div>
+    </WjgModal>
   );
 });
 OTStatusTransitionModal.displayName = 'OTStatusTransitionModal';

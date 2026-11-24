@@ -230,6 +230,21 @@ export interface Proveedor {
   enlace_web?: string;
 }
 
+export type CanalGrupoWhatsAppBase = 'general' | 'tareas' | 'insumos' | 'cotizaciones' | 'taller';
+
+export type CanalGrupoWhatsApp = CanalGrupoWhatsAppBase | (string & {});
+
+export interface GrupoWhatsAppConfig {
+  jid: string;
+  nombre: string;
+  etiqueta?: string;
+  descripcion?: string;
+  audiencia?: 'equipo' | 'clientes';
+  esPersonalizado?: boolean;
+}
+
+export type MapaGruposWhatsApp = Record<string, GrupoWhatsAppConfig | undefined>;
+
 export interface ConfiguracionTaller {
   tarifa_kwh: number;
   margen_merma_resina: number;
@@ -253,6 +268,14 @@ export interface ConfiguracionTaller {
   comision_pasarela_default_pct?: number;
   modo_margen_default?: ModoMargen;
   piso_margen_alerta_pct?: number;
+  // Mensajería Centralizada (Sincronizada en Supabase)
+  whatsapp_gateway_url?: string;
+  whatsapp_auto_send?: boolean;
+  whatsapp_internal_group_jid?: string;
+  whatsapp_internal_group_name?: string;
+  whatsapp_grupos_config?: MapaGruposWhatsApp;
+  email_apps_script_url?: string;
+  email_auto_send?: boolean;
 }
 
 export interface MaquinaInvolucrada {
@@ -595,15 +618,48 @@ export interface PaymentRecord {
   comprobante_url?: string;
   nota?: string;
   cliente_id?: string;
+  cliente_nombre?: string;
   cotizacion_id?: string;
   orden_trabajo_id?: string;
   pos_venta_id?: string;
   cuenta_cobro_id?: string;
   origen_modulo: 'pos' | 'cotizacion' | 'taller' | 'cuenta_cobro';
+  tipo_movimiento?: 'INGRESO' | 'RETENIDO_CANCELACION' | 'AJUSTE';
   registrado_por?: string;
   fecha_pago?: string;
   created_at?: string;
+  updated_at?: string;
 }
+
+export type CategoriaEgresoTaller =
+  | 'INSUMOS_RESINA'
+  | 'FILAMENTO'
+  | 'SERVICIOS_LUZ'
+  | 'MANTENIMIENTO'
+  | 'ENVIOS'
+  | 'MARKETING'
+  | 'DEVOLUCION_CLIENTE'
+  | 'NOMINA_MANO_OBRA'
+  | 'OTROS';
+
+export interface EgresoTaller {
+  id: string;
+  fecha: string;
+  categoria: CategoriaEgresoTaller;
+  concepto: string;
+  monto: number;
+  metodo_pago: string;
+  proveedor_o_beneficiario?: string;
+  orden_trabajo_id?: string;
+  solicitud_insumo_id?: string;
+  comprobante_url?: string;
+  registrado_por?: string;
+  notas?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export type TratamientoAbonoOT = 'retener_abono' | 'devolver_abono' | 'purgar_prueba';
 
 export interface WhatsAppHealthStatus {
   status: 'operativo' | 'alerta_critica' | 'desconocido';

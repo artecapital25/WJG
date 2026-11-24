@@ -341,7 +341,22 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
           subtitulo="Valida las piezas y valores antes de despachar desde el WhatsApp corporativo."
           clienteNombre={b.cotizacionParaConfirmarWhatsApp.cliente.nombre}
           clienteTelefono={b.cotizacionParaConfirmarWhatsApp.cliente.telefono}
+          clienteCorreo={b.cotizacionParaConfirmarWhatsApp.cliente.correo}
           mensajeWhatsApp={generateCotizacionWhatsAppText(b.cotizacionParaConfirmarWhatsApp, props.config)}
+          context="cotizacion"
+          emailType="cotizacion"
+          emailSubject={`📄 Cotización N° ${b.cotizacionParaConfirmarWhatsApp.numero_cot} — WJGEEKS 3D`}
+          emailData={{
+            numero_doc: b.cotizacionParaConfirmarWhatsApp.numero_cot,
+            total: b.cotizacionParaConfirmarWhatsApp.total,
+            abono: b.cotizacionParaConfirmarWhatsApp.abono || 0,
+            saldo_pendiente: b.cotizacionParaConfirmarWhatsApp.saldo_pendiente || 0,
+            tiempo_entrega: b.cotizacionParaConfirmarWhatsApp.tiempo_entrega_estimado,
+            fecha: b.cotizacionParaConfirmarWhatsApp.fecha
+          }}
+          entidadTipo="cotizacion"
+          entidadId={b.cotizacionParaConfirmarWhatsApp.id}
+          config={props.config}
           resumenDetalle={[
             { etiqueta: 'Cliente', valor: b.cotizacionParaConfirmarWhatsApp.cliente.nombre },
             { etiqueta: 'Piezas Cotizadas', valor: `${b.cotizacionParaConfirmarWhatsApp.items.length} pieza(s)` },

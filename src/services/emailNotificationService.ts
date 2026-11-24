@@ -5,7 +5,7 @@
 
 import { supabase } from './supabaseClient';
 import { Cotizacion, OrdenTrabajo } from '../types';
-import { GoogleSheetsSyncService, OFFICIAL_APPS_SCRIPT_URL } from './googleSheetsSyncService';
+import { sendVerifiedEmail } from './messaging/emailAdapter';
 
 export const LINEA_CENTRAL_EMPRESA = {
   nombre: 'WJGEEKS Central Oficial',
@@ -59,7 +59,7 @@ export const EmailNotificationService = {
    * Invoca la Edge Function send-transactional-email de Supabase de manera desacoplada
    * o encola en registro_notificaciones para evitar fallos de red/CORS en consola
    */
-  async enviarCorreoTransaccional(payload: TransactionalEmailPayload): Promise<{ success: boolean; error?: string }> {
+  async enviarCorreoTransaccional(payload: TransactionalEmailPayload): Promise<{ success: boolean; error?: string; needsAppsScriptUpdate?: boolean }> {
     try {
       if (!supabase) {
         return { success: false, error: 'Supabase desconectado' };
@@ -69,70 +69,46 @@ export const EmailNotificationService = {
         return { success: false, error: 'Correo de destinatario inválido o no suministrado' };
       }
 
-      // 1. Despacho prioritario vía Google Apps Script Webhook (wjgeeks3d@gmail.com)
-      const sheetsCfg = GoogleSheetsSyncService.getConfig();
-      const googleScriptUrl = ((import.meta as any).env?.VITE_GOOGLE_APPS_SCRIPT_URL || sheetsCfg.webAppUrl || OFFICIAL_APPS_SCRIPT_URL || '').trim();
-      let functionInvokedOk = false;
-
-      if (googleScriptUrl && googleScriptUrl.startsWith('https://script.google.com/')) {
-        try {
-          await fetch(googleScriptUrl, {
-            method: 'POST',
-            mode: 'no-cors',
-            headers: {
-              'Content-Type': 'text/plain;charset=utf-8'
-            },
-            body: JSON.stringify({
-              action: 'send_email',
-              ...payload,
-              remitente: LINEA_CENTRAL_EMPRESA.correo
-            })
-          });
-          functionInvokedOk = true;
-        } catch (gasErr) {
-          console.warn('[EmailNotification] Fallo al despachar por Google Apps Script:', gasErr);
-        }
-      }
-
-      // 2. Despacho alternativo vía Edge Function de Supabase
-      if (!functionInvokedOk) {
-        try {
-          const { data, error } = await supabase.functions.invoke('send-transactional-email', {
-            body: {
-              ...payload,
-              remitente: LINEA_CENTRAL_EMPRESA.correo
-            }
-          });
-
-          if (!error && (data?.success || data?.id)) {
-            functionInvokedOk = true;
+      const emailRes = await sendVerifiedEmail({
+        tipo: payload.tipo,
+        destinatarios: [
+          {
+            correo: payload.destinatario_correo.trim(),
+            nombre: payload.destinatario_nombre || 'Cliente WJGEEKS'
           }
-        } catch (_) {
-          // Fallback
-        }
-      }
+        ],
+        asunto: payload.asunto || `Notificación WJGEEKS 3D - ${payload.tipo}`,
+        tracking_url: payload.tracking_url,
+        datos: payload.datos
+      });
 
-      // 3. Registro canónico en Supabase: tabla registro_notificaciones para trazabilidad
+      // Registro canónico en Supabase: tabla registro_notificaciones con canal real EMAIL
       try {
         const idempotency = `mail-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         await supabase.from('registro_notificaciones').insert([{
           idempotency_key: idempotency,
           destinatario_nombre: payload.destinatario_nombre || 'Cliente WJGEEKS',
           destinatario_telefono: ((payload as any).destinatario_telefono || '573202796115').toString().replace(/[^0-9]/g, '').slice(0, 25) || '573202796115',
+          destinatario_correo: payload.destinatario_correo.trim(),
           rol_destinatario: 'CLIENTE',
-          canal: 'WHATSAPP_CLOUD_API',
+          canal: 'EMAIL',
           mensaje_plano: `[EMAIL ${payload.tipo?.toUpperCase()}] Asunto: ${payload.asunto || 'Notificación'}\nDestinatario: ${payload.destinatario_correo}`,
-          estado: functionInvokedOk ? 'ENVIADO' : 'PENDIENTE',
-          enviado_at: functionInvokedOk ? new Date().toISOString() : null
+          estado: emailRes.success ? 'ENVIADO' : 'FALLIDO',
+          enviado_at: emailRes.success ? new Date().toISOString() : null,
+          ultimo_error: emailRes.success ? null : (emailRes.error || 'Error enviando correo'),
+          entidad_tipo: payload.tipo,
+          entidad_id: payload.datos?.numero_doc || null,
+          proveedor: emailRes.provider || 'edge_email'
         }]);
       } catch (dbErr) {
         console.debug('Nota de auditoría: registro_notificaciones correo respaldado');
       }
 
-      if (!functionInvokedOk) {
+      if (!emailRes.success) {
         return {
           success: false,
-          error: 'No hay un canal de correo activo. Para enviar desde wjgeeks3d@gmail.com, configura la URL de tu Google Apps Script en Ajustes de Drive o habilita Resend en Supabase.'
+          needsAppsScriptUpdate: emailRes.needsAppsScriptUpdate,
+          error: emailRes.error || 'El envío de correo no fue confirmado por el servidor.'
         };
       }
 

@@ -25,6 +25,7 @@ const DEFAULT_CONFIG: GoogleSheetsConfig = {
 export const GoogleSheetsSyncService = {
   getConfig: (): GoogleSheetsConfig => {
     try {
+      if (typeof localStorage === 'undefined') return DEFAULT_CONFIG;
       const saved = localStorage.getItem(STORAGE_KEY);
       if (saved) {
         const parsed = JSON.parse(saved);
@@ -362,6 +363,40 @@ function doPost(e) {
     }
 
     var data = JSON.parse(contents);
+
+    // Enrutador de Correo Transaccional Oficial (wjgeeks3d@gmail.com)
+    if (data.action === "send_email") {
+      var targetEmail = String(data.to || data.destinatario_correo || "").trim();
+      var subject = String(data.subject || data.asunto || "Notificación WJGEEKS 3D PRO");
+      var htmlBody = data.htmlBody || "";
+      var plainBody = data.plainBody || data.texto_plano || subject;
+
+      if (!targetEmail || targetEmail.indexOf("@") === -1) {
+        return ContentService.createTextOutput(JSON.stringify({
+          success: false,
+          status: "error",
+          emailSent: false,
+          message: "Correo de destinatario inválido."
+        })).setMimeType(ContentService.MimeType.JSON);
+      }
+
+      MailApp.sendEmail({
+        to: targetEmail,
+        subject: subject,
+        body: plainBody,
+        htmlBody: htmlBody || undefined,
+        name: "WJGEEKS 3D PRO"
+      });
+
+      return ContentService.createTextOutput(JSON.stringify({
+        success: true,
+        status: "sent",
+        emailSent: true,
+        channel: "gmail_apps_script",
+        recipient: targetEmail,
+        message: "Correo enviado exitosamente desde wjgeeks3d@gmail.com"
+      })).setMimeType(ContentService.MimeType.JSON);
+    }
 
     // Enrutador de Respaldo Automático en Google Drive
     if (data.action === "trigger_backup_drive" || data.action === "backup_now") {

@@ -26,7 +26,8 @@ import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosP
 import { WjgButton, WjgSearchInput, WjgSelect } from '../ui';
 import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
-import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
+import { generateCotizacionWhatsAppText } from '../../services/whatsappService';
+import { WjgMessageDispatcherModal } from '../messaging/WjgMessageDispatcherModal';
 import { detect3DPlatform, formatExternalUrl } from '../../services/platformUtils';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { StorageService } from '../../services/storageService';
@@ -65,6 +66,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   onNuevaCotizacion
 }) => {
   const [syncingLocals, setSyncingLocals] = useState(false);
+  const [cotParaNotificar, setCotParaNotificar] = useState<Cotizacion | null>(null);
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [filtroPago, setFiltroPago] = useState<'todos' | 'pendiente' | 'abono' | 'pagado'>('todos');
   const [filtroTipoCliente, setFiltroTipoCliente] = useState<FiltroTipoCliente>('todos');
@@ -764,11 +766,11 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
                 <button 
                   className="btn btn-whatsapp btn-sm"
-                  onClick={() => openWhatsApp(generateCotizacionWhatsAppUrl(cot, config))}
-                  title="Enviar resumen escrito por WhatsApp"
+                  onClick={() => setCotParaNotificar(cot)}
+                  title="Enviar cotización por WhatsApp y/o Correo"
                 >
                   <Send size={14} />
-                  <span>WhatsApp</span>
+                  <span>Notificar</span>
                 </button>
 
                 <button 
@@ -1101,6 +1103,45 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {cotParaNotificar && (
+        <WjgMessageDispatcherModal
+          isOpen={Boolean(cotParaNotificar)}
+          onClose={() => setCotParaNotificar(null)}
+          title={`Notificar Cotización N° ${cotParaNotificar.numero_cot}`}
+          subtitle="Envía la cotización oficial por WhatsApp y/o Correo electrónico verificado"
+          context="cotizacion"
+          defaultTargetMode="cliente"
+          hideModeSelector={true}
+          externalRecipient={{
+            nombre: cotParaNotificar.cliente.nombre,
+            telefono: cotParaNotificar.cliente.telefono,
+            correo: cotParaNotificar.cliente.correo
+          }}
+          initialWhatsAppText={generateCotizacionWhatsAppText(cotParaNotificar, config)}
+          initialEmailSubject={`📄 Cotización N° ${cotParaNotificar.numero_cot} — WJGEEKS 3D`}
+          emailType="cotizacion"
+          emailData={{
+            numero_doc: cotParaNotificar.numero_cot,
+            total: cotParaNotificar.total,
+            abono: cotParaNotificar.abono || 0,
+            saldo_pendiente: cotParaNotificar.saldo_pendiente || 0,
+            tiempo_entrega: cotParaNotificar.tiempo_entrega_estimado,
+            fecha: cotParaNotificar.fecha
+          }}
+          resumenDetalle={[
+            { etiqueta: 'Cliente', valor: cotParaNotificar.cliente.nombre },
+            { etiqueta: 'Piezas', valor: `${cotParaNotificar.items.length} pieza(s)` },
+            { etiqueta: 'Total', valor: `$${cotParaNotificar.total.toLocaleString('es-CO')} COP`, destacado: true },
+            { etiqueta: 'Abono', valor: `$${(cotParaNotificar.abono || 0).toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Saldo Pendiente', valor: `$${(cotParaNotificar.saldo_pendiente || 0).toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Entrega Estimada', valor: cotParaNotificar.tiempo_entrega_estimado }
+          ]}
+          entidadTipo="cotizacion"
+          entidadId={cotParaNotificar.id}
+          config={config}
+        />
       )}
     </div>
   );

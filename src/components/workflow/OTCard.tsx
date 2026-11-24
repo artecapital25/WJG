@@ -6,7 +6,8 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../types';
-import { openWhatsApp } from '../../services/whatsappService';
+import { findTeamContactByName, MessagingHubService } from '../../services/messaging';
+import { toast } from '../ui';
 import { WjgSelect } from '../ui/WjgSelect';
 
 interface OTCardProps {
@@ -64,40 +65,53 @@ export const OTCard: React.FC<OTCardProps> = ({
 
   // Traspaso dinámico según rol operativo
   const getHandoffConfig = () => {
+    const juan = findTeamContactByName('Juan');
+    const wendy = findTeamContactByName('Wendy');
+    const german = findTeamContactByName('Germán');
+    const telJuan = juan?.telefonoE164 || '573217273025';
+    const telWendy = wendy?.telefonoE164 || '573204814702';
+    const telGerman = german?.telefonoE164 || '573503443140';
+
     switch (ot.estado) {
       case 'En Cola':
         return {
           label: 'A Juan (Impresión)',
-          nombre: 'Juan',
-          telefono: '573217273025',
+          nombre: juan?.nombreCorto || 'Juan',
+          telefono: telJuan,
+          correo: juan?.correo,
           mensaje: `👋 ¡Hola Juan! Te paso la orden *${ot.numero_ot}* (${ot.item_nombre}) para impresión en WJGEEKS 3D. ¡Abono registrado: $${abonado.toLocaleString('es-CO')} COP!`
         };
       case 'Imprimiendo':
         return {
           label: 'Curado (Juan)',
-          nombre: 'Juan',
-          telefono: '573217273025',
+          nombre: juan?.nombreCorto || 'Juan',
+          telefono: telJuan,
+          correo: juan?.correo,
           mensaje: `👋 ¡Hola Juan! La pieza *${ot.numero_ot}* (${ot.item_nombre}) completó impresión. Proceder con lavado y curado UV.`
         };
       case 'Curado':
         return {
           label: 'A Wendy (Pintura)',
-          nombre: 'Wendy',
-          telefono: '573204814702',
+          nombre: wendy?.nombreCorto || 'Wendy',
+          telefono: telWendy,
+          correo: wendy?.correo,
           mensaje: `👋 ¡Hola Wendy! La pieza *${ot.numero_ot}* (${ot.item_nombre}) está curada y lista para acabados y pintura en WJGEEKS 3D.`
         };
       case 'Pintura y Armado':
         return {
           label: 'A Calidad',
-          nombre: 'Equipo',
-          telefono: '573503443140',
+          nombre: 'Equipo Tripartito',
+          telefono: telGerman,
+          correo: german?.correo,
+          isGrupoEquipo: true,
           mensaje: `🚨 [CONTROL DE CALIDAD] La orden *${ot.numero_ot}* (${ot.item_nombre}) completó pintura y armado. Lista para inspección tripartita.`
         };
       case 'Control de Calidad':
         return {
           label: 'A Germán',
-          nombre: 'Germán',
-          telefono: '573503443140',
+          nombre: german?.nombreCorto || 'Germán',
+          telefono: telGerman,
+          correo: german?.correo,
           mensaje: `👋 ¡Hola Germán! La orden *${ot.numero_ot}* superó calidad. Saldo pendiente: $${saldo.toLocaleString('es-CO')} COP. Lista para cobro y despacho.`
         };
       default:
@@ -105,6 +119,7 @@ export const OTCard: React.FC<OTCardProps> = ({
           label: 'Avisar Cliente',
           nombre: ot.cliente_nombre || 'Cliente',
           telefono: ot.cliente_telefono?.replace(/\D/g, '') || '',
+          isCliente: true,
           mensaje: `👋 ¡Hola ${ot.cliente_nombre}! Tu pedido *${ot.numero_ot}* está listo para entrega en WJGEEKS 3D. Saldo pendiente: $${saldo.toLocaleString('es-CO')} COP.`
         };
     }
@@ -112,12 +127,27 @@ export const OTCard: React.FC<OTCardProps> = ({
 
   const handleHandoff = () => {
     const handoff = getHandoffConfig();
-    if (!handoff.telefono) {
-      alert('No hay teléfono registrado para este aviso.');
+    if (!handoff.isGrupoEquipo && !handoff.telefono && !handoff.correo) {
+      toast.warning('No hay teléfono o correo registrado para este aviso.');
       return;
     }
-    const url = `https://wa.me/${handoff.telefono}?text=${encodeURIComponent(handoff.mensaje)}`;
-    openWhatsApp(url, handoff.telefono, handoff.mensaje);
+    MessagingHubService.notifyWorkshopHandoff({
+      ot,
+      destinatarioNombre: handoff.nombre,
+      destinatarioTelefono: handoff.telefono,
+      destinatarioCorreo: handoff.correo,
+      isGrupoEquipo: handoff.isGrupoEquipo,
+      isCliente: handoff.isCliente,
+      whatsappText: handoff.mensaje
+    })
+      .then(summary => {
+        if (summary.success) {
+          toast.success(`Notificación enviada: ${summary.summaryText}`);
+        } else {
+          toast.warning(summary.summaryText || 'No se pudo enviar automáticamente.');
+        }
+      })
+      .catch(() => toast.error('Error enviando notificación de orden de trabajo.'));
   };
 
   return (

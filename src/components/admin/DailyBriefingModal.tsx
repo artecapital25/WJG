@@ -8,24 +8,39 @@ import {
   DollarSign, 
   Package, 
   Copy, 
-  ExternalLink, 
   RefreshCw,
   Sun,
-  Zap
+  Zap,
+  Users
 } from 'lucide-react';
-import { WhatsAppHealthStatus, WhatsAppPingResult, DailyBriefingData } from '../../types';
+import {
+  ConfiguracionTaller,
+  WhatsAppHealthStatus,
+  WhatsAppPingResult,
+  DailyBriefingData
+} from '../../types';
+import { UsuarioTaller } from '../../types/usuarios.types';
 import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
-import { openWhatsApp } from '../../services/whatsappService';
+import {
+  MessagingHubService,
+  getTeamContacts,
+  resolveGroupDestination
+} from '../../services/messaging';
+import { WjgButton, toast } from '../ui';
 
 interface DailyBriefingModalProps {
   isOpen: boolean;
   onClose: () => void;
+  config?: ConfiguracionTaller | null;
+  usuarios?: UsuarioTaller[];
   onSuccessDispatch?: () => void;
 }
 
 export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
   isOpen,
   onClose,
+  config,
+  usuarios,
   onSuccessDispatch
 }) => {
   const [loading, setLoading] = useState<boolean>(true);
@@ -92,18 +107,35 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
     setTimeout(() => setCopied(false), 2500);
   };
 
+  const teamContacts = getTeamContacts(usuarios);
+  const resolvedGroup = resolveGroupDestination('general', config);
+
   const handleDespacho = async () => {
+    if (!briefing?.mensaje_whatsapp) return;
     setDispatchLoading(true);
     setFeedbackMsg(null);
     try {
-      await WhatsAppNotificationService.despacharDailyBriefing({ force: true });
-      setFeedbackMsg({
-        tipo: 'success',
-        texto: '¡Reporte diario despachado exitosamente por WhatsApp a Germán, Wendy y Juan!'
+      const summary = await MessagingHubService.notifyDailyBriefing({
+        mensajeWhatsApp: briefing.mensaje_whatsapp,
+        mode: resolvedGroup ? 'grupo' : 'todos_individual',
+        config,
+        usuarios
       });
-      if (onSuccessDispatch) onSuccessDispatch();
-      // Recargar métricas
-      await cargarDatos();
+
+      if (summary.success) {
+        setFeedbackMsg({
+          tipo: 'success',
+          texto: `¡Reporte diario despachado (${summary.summaryText})!`
+        });
+        toast.success(`Daily Briefing enviado: ${summary.summaryText}`);
+        if (onSuccessDispatch) onSuccessDispatch();
+        await cargarDatos();
+      } else {
+        setFeedbackMsg({
+          tipo: 'error',
+          texto: summary.summaryText || 'No se pudo completar el despacho automático.'
+        });
+      }
     } catch (err: any) {
       setFeedbackMsg({
         tipo: 'error',
@@ -114,17 +146,31 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
     }
   };
 
-  const urlWhatsAppGerman = briefing?.mensaje_whatsapp 
-    ? WhatsAppNotificationService.generarEnlaceWhatsAppBriefing(briefing.mensaje_whatsapp, '573503443140')
-    : '#';
-
-  const urlWhatsAppWendy = briefing?.mensaje_whatsapp 
-    ? WhatsAppNotificationService.generarEnlaceWhatsAppBriefing(briefing.mensaje_whatsapp, '573204814702')
-    : '#';
-
-  const urlWhatsAppJuan = briefing?.mensaje_whatsapp 
-    ? WhatsAppNotificationService.generarEnlaceWhatsAppBriefing(briefing.mensaje_whatsapp, '573217273025')
-    : '#';
+  const handleEnviarMiembro = async (nombreCorto: string) => {
+    if (!briefing?.mensaje_whatsapp) return;
+    setDispatchLoading(true);
+    try {
+      const summary = await MessagingHubService.notifyDailyBriefing({
+        mensajeWhatsApp: briefing.mensaje_whatsapp,
+        mode: 'individual',
+        targetMemberName: nombreCorto,
+        config,
+        usuarios
+      });
+      if (summary.success) {
+        toast.success(`Briefing enviado a ${nombreCorto}: ${summary.summaryText}`);
+      } else {
+        toast.warning(summary.summaryText || `No se pudo enviar automáticamente a ${nombreCorto}.`);
+        if (summary.fallbackUrls[0]?.url) {
+          window.open(summary.fallbackUrls[0].url, '_blank', 'noopener,noreferrer');
+        }
+      }
+    } catch {
+      toast.error(`Error enviando briefing a ${nombreCorto}.`);
+    } finally {
+      setDispatchLoading(false);
+    }
+  };
 
   const isOperativo = health?.status === 'operativo' || health?.motor_activo;
 
@@ -489,85 +535,44 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
           gap: '12px'
         }}>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => openWhatsApp(urlWhatsAppGerman, '573503443140', briefing?.mensaje_whatsapp)}
-              className="btn btn-secondary btn-sm"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.78rem',
-                color: '#38bdf8',
-                borderColor: 'rgba(56, 189, 248, 0.3)'
-              }}
-            >
-              <ExternalLink size={13} />
-              <span>WhatsApp Germán</span>
-            </button>
-
-            <button
-              onClick={() => openWhatsApp(urlWhatsAppWendy, '573204814702', briefing?.mensaje_whatsapp)}
-              className="btn btn-secondary btn-sm"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.78rem',
-                color: '#ec4899',
-                borderColor: 'rgba(236, 72, 153, 0.3)'
-              }}
-            >
-              <ExternalLink size={13} />
-              <span>WhatsApp Wendy</span>
-            </button>
-
-            <button
-              onClick={() => openWhatsApp(urlWhatsAppJuan, '573217273025', briefing?.mensaje_whatsapp)}
-              className="btn btn-secondary btn-sm"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '5px',
-                fontSize: '0.78rem',
-                color: '#34d399',
-                borderColor: 'rgba(52, 211, 153, 0.3)'
-              }}
-            >
-              <ExternalLink size={13} />
-              <span>WhatsApp Juan</span>
-            </button>
+            {teamContacts.map(member => (
+              <WjgButton
+                key={member.id}
+                variant="secondary"
+                size="sm"
+                disabled={dispatchLoading || !briefing?.mensaje_whatsapp}
+                leftIcon={<Send size={13} />}
+                onClick={() => handleEnviarMiembro(member.nombreCorto)}
+              >
+                {member.nombreCorto} (WA + Correo)
+              </WjgButton>
+            ))}
           </div>
 
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <WjgButton
+              variant="secondary"
+              size="sm"
               onClick={onClose}
-              className="btn btn-secondary btn-sm"
               disabled={dispatchLoading}
             >
               Cerrar
-            </button>
+            </WjgButton>
 
-            <button
+            <WjgButton
+              variant="whatsapp"
+              size="md"
+              loading={dispatchLoading}
+              disabled={!briefing?.mensaje_whatsapp}
+              leftIcon={resolvedGroup ? <Users size={15} /> : <Send size={15} />}
               onClick={handleDespacho}
-              disabled={dispatchLoading}
-              className="btn btn-primary"
-              style={{
-                background: 'linear-gradient(135deg, #10b981 0%, #059669 100%)',
-                borderColor: '#10b981',
-                color: '#fff',
-                fontWeight: 800,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '8px',
-                padding: '9px 18px',
-                boxShadow: '0 0 15px rgba(16, 185, 129, 0.3)'
-              }}
             >
-              <Send size={15} />
-              <span>
-                {dispatchLoading ? 'Despachando a Admins...' : '🚀 Despachar Reporte Diario Ahora'}
-              </span>
-            </button>
+              {dispatchLoading
+                ? 'Despachando...'
+                : resolvedGroup
+                ? `Enviar al Grupo (${resolvedGroup.nombre}) + Correos`
+                : 'Despachar Reporte (WA + Correos)'}
+            </WjgButton>
           </div>
         </div>
       </div>

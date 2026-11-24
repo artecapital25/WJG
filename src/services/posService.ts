@@ -135,15 +135,13 @@ export function generarWhatsAppComprobantePOS(
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 
-export function generarWhatsAppRecordatorioCobro(
+export function generarTextoRecordatorioCobro(
   venta: VentaExpress,
   config: ConfiguracionTaller
 ): string {
-  const phone = formatWhatsAppPhone(venta.cliente_telefono);
   const alerta = calcularAlertaCobro(venta.fecha_prometida_pago, venta.saldo_pendiente);
 
-  const mensaje = 
-`👋 Hola *${venta.cliente_nombre}*, ¿cómo estás?
+  return `👋 Hola *${venta.cliente_nombre}*, ¿cómo estás?
 Te escribimos desde el taller de *WJGEEKS 3D* con respecto a tu figura *${venta.nombre_producto}* (Recibo *${venta.numero_venta}*).
 
 Te recordamos cordialmente que tienes un saldo pendiente por valor de *$${venta.saldo_pendiente.toLocaleString('es-CO')} COP* ${venta.fecha_prometida_pago ? `(Fecha acordada: ${venta.fecha_prometida_pago} — ${alerta.texto})` : ''}.
@@ -153,7 +151,14 @@ Te recordamos cordialmente que tienes un saldo pendiente por valor de *$${venta.
 • *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Agradecemos nos compartas el comprobante para mantener tu cuenta al día. ¡Cualquier duda quedamos muy atentos! ✨`;
+}
 
+export function generarWhatsAppRecordatorioCobro(
+  venta: VentaExpress,
+  config: ConfiguracionTaller
+): string {
+  const phone = formatWhatsAppPhone(venta.cliente_telefono);
+  const mensaje = generarTextoRecordatorioCobro(venta, config);
   return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 }
 

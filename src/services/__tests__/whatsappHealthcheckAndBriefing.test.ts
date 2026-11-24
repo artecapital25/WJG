@@ -45,6 +45,7 @@ Llave Bre-B: 0090778625
 }));
 
 import { WhatsAppNotificationService } from '../whatsappNotificationService';
+import { WhatsAppGatewayService } from '../whatsappGatewayService';
 
 describe('WhatsApp Healthcheck & Daily Briefing Suite', () => {
   beforeEach(() => {
@@ -97,9 +98,19 @@ describe('WhatsApp Healthcheck & Daily Briefing Suite', () => {
   });
 
   it('5. despacharDailyBriefing: Ejecuta el despacho simulado cuando no hay API externa conectada', async () => {
-    const res = await WhatsAppNotificationService.despacharDailyBriefing({ force: true });
+    const statusSpy = vi.spyOn(WhatsAppGatewayService, 'checkStatus').mockResolvedValue({
+      connected: false,
+      status: 'disconnected',
+      message: 'Sin API externa en prueba'
+    });
 
-    expect(res).toBeDefined();
-    expect(res.success).toBe(true);
+    try {
+      const res = await WhatsAppNotificationService.despacharDailyBriefing({ force: true });
+
+      expect(res).toBeDefined();
+      expect(res.success).toBe(true);
+    } finally {
+      statusSpy.mockRestore();
+    }
   });
 });

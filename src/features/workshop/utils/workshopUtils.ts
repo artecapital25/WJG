@@ -7,6 +7,8 @@ import {
   EnlaceReferenciaCompra
 } from '../../../types';
 import { formatWhatsAppPhone } from '../../../services/whatsappService';
+import { findTeamContactByName } from '../../../services/messaging';
+import { UsuarioTaller } from '../../../types/usuarios.types';
 import { HandoffConfig } from '../types/workshop.types';
 
 export const ETAPAS: EstadoOT[] = [
@@ -55,16 +57,28 @@ export function getSiguienteEstado(actual: any): EstadoOT | null {
   return null;
 }
 
-export function getHandoffConfig(ot: OrdenTrabajo, config: ConfiguracionTaller): HandoffConfig {
+export function getHandoffConfig(
+  ot: OrdenTrabajo,
+  config: ConfiguracionTaller,
+  usuarios?: UsuarioTaller[]
+): HandoffConfig {
+  const juan = findTeamContactByName('Juan', usuarios);
+  const wendy = findTeamContactByName('Wendy', usuarios);
+  const german = findTeamContactByName('Germán', usuarios);
+  const telJuan = juan?.telefonoE164 || '573217273025';
+  const telWendy = wendy?.telefonoE164 || '573204814702';
+  const telGerman = german?.telefonoE164 || '573503443140';
+
   const estadoNorm = normalizarEstadoOT(ot.estado || (ot as any).estado_actual);
   switch (estadoNorm) {
     case 'En Cola':
       return {
         label: 'Pasar a Juan (Impresión)',
-        nombre: 'Juan',
-        telefono: '573217273025',
+        nombre: juan?.nombreCorto || 'Juan',
+        telefono: telJuan,
+        correo: juan?.correo,
         icono: '🖨️',
-        title: 'Notificar a Juan (+57 321 7273025) para preparar archivo e iniciar impresión 3D',
+        title: `Notificar a ${juan?.nombreCorto || 'Juan'} (+${telJuan}) para preparar archivo e iniciar impresión 3D`,
         mensaje: 
 `👋 ¡Hola Juan! 🖨️
 Te paso la orden *${ot.numero_ot}* para preparación en slicer e impresión en *WJGEEKS 3D*:
@@ -81,10 +95,11 @@ ${ot.stl_url ? `🔗 *Enlace STL:* ${ot.stl_url}\n` : ''}💰 *Abono registrado:
     case 'Imprimiendo':
       return {
         label: 'Avisar Curado (Juan)',
-        nombre: 'Juan',
-        telefono: '573217273025',
+        nombre: juan?.nombreCorto || 'Juan',
+        telefono: telJuan,
+        correo: juan?.correo,
         icono: '☀️',
-        title: 'Notificar a Juan (+57 321 7273025) para desmonte de máquina, lavado y curado UV',
+        title: `Notificar a ${juan?.nombreCorto || 'Juan'} (+${telJuan}) para desmonte de máquina, lavado y curado UV`,
         mensaje: 
 `👋 ¡Hola Juan! ☀️🧪
 La pieza de la orden *${ot.numero_ot}* (${ot.item_nombre}) finaliza o avanza en impresión.
@@ -101,10 +116,11 @@ Por favor realizar lavado con IPA y curado en la cámara UV:
     case 'Curado':
       return {
         label: 'Pasar a Wendy (Pintura)',
-        nombre: 'Wendy',
-        telefono: '573204814702',
+        nombre: wendy?.nombreCorto || 'Wendy',
+        telefono: telWendy,
+        correo: wendy?.correo,
         icono: '🎨',
-        title: 'Notificar a Wendy (+57 320 4814702) para lijado, acabados y pintura',
+        title: `Notificar a ${wendy?.nombreCorto || 'Wendy'} (+${telWendy}) para lijado, acabados y pintura`,
         mensaje: 
 `👋 ¡Hola Wendy! 🎨✨
 La pieza de la orden *${ot.numero_ot}* completó impresión y curado UV. Pasa a tu área de acabados y pintura en *WJGEEKS 3D*:
@@ -120,10 +136,12 @@ ${ot.detalles_tecnicos ? `📝 *Detalles:* ${ot.detalles_tecnicos}\n` : ''}
     case 'Pintura y Armado':
       return {
         label: 'Pasar a Calidad (Equipo)',
-        nombre: 'Equipo Tripartito (Juan, Wendy, Germán)',
-        telefono: '573503443140',
+        nombre: 'Equipo Tripartito (Grupo Taller)',
+        telefono: telGerman,
+        correo: german?.correo,
+        isGrupoEquipo: true,
         icono: '🔍',
-        title: 'Notificar para inspección tripartita de calidad (Juan, Wendy, Germán)',
+        title: 'Notificar al Grupo Taller / Equipo (Juan, Wendy, Germán) para control de calidad',
         mensaje: 
 `🚨 [CONTROL DE CALIDAD WJG] 🔍
 La orden *${ot.numero_ot}* (${ot.item_nombre}) ha terminado el proceso de pintura y armado.
@@ -139,10 +157,11 @@ Equipo (Juan, Wendy, Germán): Por favor verificar tolerancias, curado y acabado
     case 'Control de Calidad':
       return {
         label: 'Pasar a Germán (Cobranzas)',
-        nombre: 'Germán',
-        telefono: '573503443140',
+        nombre: german?.nombreCorto || 'Germán',
+        telefono: telGerman,
+        correo: german?.correo,
         icono: '💰',
-        title: 'Notificar a Germán (+57 350 3443140) para cobro y despacho',
+        title: `Notificar a ${german?.nombreCorto || 'Germán'} (+${telGerman}) para cobro y despacho`,
         mensaje: 
 `👋 ¡Hola Germán! 💼📦
 La orden *${ot.numero_ot}* (${ot.item_nombre}) superó exitosamente el control de calidad.
@@ -159,8 +178,9 @@ Lista para cobrar saldo y autorizar despacho. ✨`
         label: 'Avisar a Cliente',
         nombre: ot.cliente_nombre || 'Cliente',
         telefono: formatWhatsAppPhone(ot.cliente_telefono || ''),
+        isCliente: true,
         icono: '📦',
-        title: 'Enviar aviso de entrega y cobro final al cliente por WhatsApp',
+        title: 'Enviar aviso de entrega y cobro final al cliente por WhatsApp y Correo',
         mensaje: 
 `👋 ¡Hola *${ot.cliente_nombre || 'Cliente'}*! Un cordial saludo desde *WJGEEKS 3D* 🚀
 

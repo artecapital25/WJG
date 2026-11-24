@@ -1,12 +1,13 @@
 import React from 'react';
-import { 
-  Check, 
-  Trash2, 
-  Send, 
-  MessageSquare, 
-  Plus, 
-  Flame, 
-  TrendingUp
+import {
+  Check,
+  Trash2,
+  Send,
+  MessageSquare,
+  Plus,
+  Flame,
+  TrendingUp,
+  Edit3
 } from 'lucide-react';
 import { TareaEquipo } from '../../types/tasks';
 
@@ -14,6 +15,7 @@ interface TareaCardProps {
   tarea: TareaEquipo;
   conteoAvances?: number;
   onToggleCompletada: (tarea: TareaEquipo) => void;
+  onEditarTarea?: (tarea: TareaEquipo) => void;
   onEliminarTarea: (id: string) => void;
   onOpenWhatsApp: (tarea: TareaEquipo) => void;
   onOpenBitacora: (tarea: TareaEquipo) => void;
@@ -23,6 +25,7 @@ export const TareaCard: React.FC<TareaCardProps> = ({
   tarea,
   conteoAvances = 0,
   onToggleCompletada,
+  onEditarTarea,
   onEliminarTarea,
   onOpenWhatsApp,
   onOpenBitacora
@@ -179,7 +182,7 @@ export const TareaCard: React.FC<TareaCardProps> = ({
           </div>
         </div>
 
-        {/* Acciones de la derecha: WhatsApp + Eliminar */}
+        {/* Acciones de la derecha: Notificar (WA+Correo) + Editar + Eliminar */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
           <button
             type="button"
@@ -192,11 +195,32 @@ export const TareaCard: React.FC<TareaCardProps> = ({
               alignItems: 'center',
               gap: '4px'
             }}
-            title="Enviar tarea por WhatsApp a Germán, Juan y Wendy"
+            title="Notificar tarea por WhatsApp y Correo"
           >
             <Send size={12} />
-            <span className="hidden-mobile">WhatsApp</span>
+            <span className="hidden-mobile">Notificar</span>
           </button>
+
+          {onEditarTarea && (
+            <button
+              type="button"
+              onClick={() => onEditarTarea(tarea)}
+              style={{
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.22)',
+                color: '#38bdf8',
+                cursor: 'pointer',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}
+              title="Editar tarea"
+            >
+              <Edit3 size={14} />
+            </button>
+          )}
 
           <button
             type="button"

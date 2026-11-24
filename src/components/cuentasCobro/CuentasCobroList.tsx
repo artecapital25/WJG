@@ -25,8 +25,9 @@ import {
   DatosPagoRegistro 
 } from '../../types';
 import { generarPDFCuentaCobro, obtenerBlobURLCuentaCobro } from '../../services/pdfService';
-import { generateCuentaCobroWhatsAppUrl, generateCuentaCobroWhatsAppText, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
-import { calcularAlertaCobro, generarWhatsAppRecordatorioCobro } from '../../services/posService';
+import { generateCuentaCobroWhatsAppText, openWhatsApp, formatWhatsAppPhone } from '../../services/whatsappService';
+import { calcularAlertaCobro, generarTextoRecordatorioCobro } from '../../services/posService';
+import { WjgMessageDispatcherModal } from '../messaging/WjgMessageDispatcherModal';
 import { ModalRegistrarDeudaManual } from '../common/ModalRegistrarDeudaManual';
 import { ModalRegistrarPago } from '../common/ModalRegistrarPago';
 import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
@@ -44,14 +45,12 @@ import {
   ventaMatchesCuenta 
 } from './cuentasCobroUtils';
 
-// Helper para generar mensaje de cobro por WhatsApp de una Orden de Trabajo
-const generarWhatsAppCobroOT = (ot: OrdenTrabajo, config: ConfiguracionTaller): string => {
-  const phone = formatWhatsAppPhone(ot.cliente_telefono || '');
+// Helper para generar texto y enlace de cobro por WhatsApp de una Orden de Trabajo
+const generarTextoCobroOT = (ot: OrdenTrabajo, config: ConfiguracionTaller): string => {
   const saldoOT = ot.saldo_pendiente ?? Math.max(0, (ot.precio_cobrado || 0) - (ot.abono || 0));
   const totalOT = ot.precio_cobrado || ((ot.abono || 0) + saldoOT);
-  
-  const mensaje = 
-`👋 Hola *${ot.cliente_nombre || 'Cliente'}*, un saludo desde *WJGEEKS 3D* 🚀
+
+  return `👋 Hola *${ot.cliente_nombre || 'Cliente'}*, un saludo desde *WJGEEKS 3D* 🚀
 
 Te escribimos referente a tu orden de trabajo:
 🛠️ *Orden:* *${ot.numero_ot}*
@@ -69,8 +68,6 @@ Te escribimos referente a tu orden de trabajo:
 • *Nequi:* ${config.nequi} (${config.titular_cuenta})
 
 Por favor envíanos el soporte una vez realices tu abono para actualizar tu orden en taller. ¡Muchas gracias por tu confianza! ✨🎨`;
-
-  return `https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`;
 };
 
 interface CuentasCobroListProps {
@@ -115,6 +112,31 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [cobroParaEliminar, setCobroParaEliminar] = useState<InfoCobroAEliminar | null>(null);
+  const [cobroParaNotificar, setCobroParaNotificar] = useState<{
+    titulo: string;
+    subtitulo: string;
+    clienteNombre: string;
+    clienteTelefono: string;
+    clienteCorreo?: string;
+    whatsappText: string;
+    emailSubject: string;
+    emailData: Record<string, any>;
+    resumenDetalle: Array<{ etiqueta: string; valor: string; destacado?: boolean }>;
+    entidadTipo: string;
+    entidadId?: string;
+  } | null>(null);
+
+  const resolveCorreoCliente = (nombre?: string, telefono?: string, directo?: string): string => {
+    if (directo && directo.includes('@')) return directo.trim();
+    const nomNorm = (nombre || '').trim().toLowerCase();
+    const telClean = formatWhatsAppPhone(telefono || '');
+    const match = clientes.find(
+      c =>
+        (nomNorm && c.nombre.trim().toLowerCase() === nomNorm) ||
+        (telClean && formatWhatsAppPhone(c.telefono || '') === telClean)
+    );
+    return match?.correo || '';
+  };
 
   // Modal Visualizador Universal de Documentos PDF y Texto
   const [documentoVisualizar, setDocumentoVisualizar] = useState<{
@@ -564,9 +586,8 @@ export const CuentasCobroList: React.FC<CuentasCobroListProps> = ({
   const ventasExpressPendientes = ventasExpress.filter(v => v.saldo_pendiente > 0);
   const cuentasFormalesPendientes = cuentas.filter(c => c.saldo_pendiente > 0);
 
-  // Enviar estado de cuenta consolidado por WhatsApp a un deudor
+  // Enviar estado de cuenta consolidado por WhatsApp y Correo a un deudor
   const handleEnviarEstadoCuenta = (deudor: DeudorConsolidado) => {
-    const phone = formatWhatsAppPhone(deudor.cliente_telefono);
     const conceptos: string[] = [];
 
     deudor.items.forEach(it => {
@@ -591,7 +612,30 @@ ${conceptos.join('\n')}
 
 Agradecemos nos compartas el soporte una vez realizado el abono para actualizar tu saldo de inmediato. ¡Muchas gracias por tu apoyo a nuestro arte! ✨🎨`;
 
-    openWhatsApp(`https://wa.me/${phone}?text=${encodeURIComponent(mensaje)}`);
+    setCobroParaNotificar({
+      titulo: `Estado de Cuenta • ${deudor.cliente_nombre}`,
+      subtitulo: `Cobranza consolidada (${deudor.items.length} ítem(s) pendientes)`,
+      clienteNombre: deudor.cliente_nombre,
+      clienteTelefono: deudor.cliente_telefono,
+      clienteCorreo: resolveCorreoCliente(deudor.cliente_nombre, deudor.cliente_telefono),
+      whatsappText: mensaje,
+      emailSubject: `💳 Estado de Cuenta Consolidado — WJGEEKS 3D ($${deudor.saldo_pendiente.toLocaleString('es-CO')} COP)`,
+      emailData: {
+        numero_doc: `CARTERA-${deudor.items.length}`,
+        total: deudor.total_deuda,
+        abono: deudor.total_abonos,
+        saldo_pendiente: deudor.saldo_pendiente,
+        mensaje_personalizado: mensaje
+      },
+      resumenDetalle: [
+        { etiqueta: 'Cliente', valor: deudor.cliente_nombre },
+        { etiqueta: 'Total Facturado', valor: `$${deudor.total_deuda.toLocaleString('es-CO')} COP` },
+        { etiqueta: 'Total Abonado', valor: `$${deudor.total_abonos.toLocaleString('es-CO')} COP` },
+        { etiqueta: 'Saldo Pendiente', valor: `$${deudor.saldo_pendiente.toLocaleString('es-CO')} COP`, destacado: true }
+      ],
+      entidadTipo: 'deudor_consolidado',
+      entidadId: deudor.cliente_telefono || deudor.cliente_nombre
+    });
   };
 
   return (
@@ -1025,11 +1069,35 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                     <button 
                       type="button"
                       className="btn btn-whatsapp btn-sm"
-                      onClick={() => openWhatsApp(generarWhatsAppCobroOT(ot, config))}
+                      onClick={() =>
+                        setCobroParaNotificar({
+                          titulo: `Cobro OT ${ot.numero_ot}`,
+                          subtitulo: `${ot.item_nombre} • ${ot.cliente_nombre}`,
+                          clienteNombre: ot.cliente_nombre,
+                          clienteTelefono: ot.cliente_telefono || '',
+                          clienteCorreo: resolveCorreoCliente(ot.cliente_nombre, ot.cliente_telefono),
+                          whatsappText: generarTextoCobroOT(ot, config),
+                          emailSubject: `💳 Saldo Pendiente ${ot.numero_ot} — WJGEEKS 3D`,
+                          emailData: {
+                            numero_doc: ot.numero_ot,
+                            total: totalOT,
+                            abono: ot.abono || 0,
+                            saldo_pendiente: saldoOT
+                          },
+                          resumenDetalle: [
+                            { etiqueta: 'Orden', valor: ot.numero_ot },
+                            { etiqueta: 'Total', valor: `$${totalOT.toLocaleString('es-CO')} COP` },
+                            { etiqueta: 'Abonado', valor: `$${(ot.abono || 0).toLocaleString('es-CO')} COP` },
+                            { etiqueta: 'Saldo Pendiente', valor: `$${saldoOT.toLocaleString('es-CO')} COP`, destacado: true }
+                          ],
+                          entidadTipo: 'orden_trabajo',
+                          entidadId: ot.id
+                        })
+                      }
                       style={{ fontWeight: 700 }}
                     >
                       <Send size={14} />
-                      <span>Cobrar por WhatsApp</span>
+                      <span>Cobrar / Notificar</span>
                     </button>
 
                     {onActualizarOT && (
@@ -1164,7 +1232,32 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                       <button
                         type="button"
                         className="btn btn-whatsapp btn-sm"
-                        onClick={() => openWhatsApp(generarWhatsAppRecordatorioCobro(v, config))}
+                        onClick={() =>
+                          setCobroParaNotificar({
+                            titulo: `Cobro POS ${v.numero_venta}`,
+                            subtitulo: `${v.nombre_producto} • ${v.cliente_nombre}`,
+                            clienteNombre: v.cliente_nombre,
+                            clienteTelefono: v.cliente_telefono,
+                            clienteCorreo: resolveCorreoCliente(v.cliente_nombre, v.cliente_telefono, v.cliente_correo),
+                            whatsappText: generarTextoRecordatorioCobro(v, config),
+                            emailSubject: `💳 Recordatorio de Pago ${v.numero_venta} — WJGEEKS 3D`,
+                            emailData: {
+                              numero_doc: v.numero_venta,
+                              total: v.total,
+                              abono: v.abono,
+                              saldo_pendiente: v.saldo_pendiente
+                            },
+                            resumenDetalle: [
+                              { etiqueta: 'Recibo', valor: v.numero_venta },
+                              { etiqueta: 'Total', valor: `$${v.total.toLocaleString('es-CO')} COP` },
+                              { etiqueta: 'Abono', valor: `$${v.abono.toLocaleString('es-CO')} COP` },
+                              { etiqueta: 'Saldo Pendiente', valor: `$${v.saldo_pendiente.toLocaleString('es-CO')} COP`, destacado: true }
+                            ],
+                            entidadTipo: 'venta_express',
+                            entidadId: v.id
+                          })
+                        }
+                        title="Notificar cobro por WhatsApp y Correo"
                       >
                         <Send size={14} />
                       </button>
@@ -1247,10 +1340,34 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
 
                   <button 
                     className="btn btn-whatsapp btn-sm"
-                    onClick={() => openWhatsApp(generateCuentaCobroWhatsAppUrl(cuenta, config))}
+                    onClick={() =>
+                      setCobroParaNotificar({
+                        titulo: `Cuenta de Cobro ${cuenta.numero_cc}`,
+                        subtitulo: `${cuenta.cliente.nombre} • Ref: ${cuenta.cotizacion_numero}`,
+                        clienteNombre: cuenta.cliente.nombre,
+                        clienteTelefono: cuenta.cliente.telefono,
+                        clienteCorreo: resolveCorreoCliente(cuenta.cliente.nombre, cuenta.cliente.telefono, cuenta.cliente.correo),
+                        whatsappText: generateCuentaCobroWhatsAppText(cuenta, config),
+                        emailSubject: `🧾 Cuenta de Cobro ${cuenta.numero_cc} — WJGEEKS 3D`,
+                        emailData: {
+                          numero_doc: cuenta.numero_cc,
+                          total: cuenta.total,
+                          abono: cuenta.abono,
+                          saldo_pendiente: cuenta.saldo_pendiente
+                        },
+                        resumenDetalle: [
+                          { etiqueta: 'Cuenta de Cobro', valor: cuenta.numero_cc },
+                          { etiqueta: 'Total', valor: `$${cuenta.total.toLocaleString('es-CO')} COP` },
+                          { etiqueta: 'Abono', valor: `$${cuenta.abono.toLocaleString('es-CO')} COP` },
+                          { etiqueta: 'Saldo Pendiente', valor: `$${cuenta.saldo_pendiente.toLocaleString('es-CO')} COP`, destacado: true }
+                        ],
+                        entidadTipo: 'cuenta_cobro',
+                        entidadId: cuenta.id
+                      })
+                    }
                   >
                     <Send size={14} />
-                    <span>Cobrar por WhatsApp</span>
+                    <span>Cobrar / Notificar</span>
                   </button>
 
                   <button 
@@ -1557,6 +1674,32 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
               openWhatsApp(url);
             }
           }}
+        />
+      )}
+
+      {/* DESPACHADOR CENTRALIZADO WHATSAPP + CORREO PARA COBROS */}
+      {cobroParaNotificar && (
+        <WjgMessageDispatcherModal
+          isOpen={Boolean(cobroParaNotificar)}
+          onClose={() => setCobroParaNotificar(null)}
+          title={cobroParaNotificar.titulo}
+          subtitle={cobroParaNotificar.subtitulo}
+          context="cobro"
+          defaultTargetMode="cliente"
+          hideModeSelector={true}
+          externalRecipient={{
+            nombre: cobroParaNotificar.clienteNombre,
+            telefono: cobroParaNotificar.clienteTelefono,
+            correo: cobroParaNotificar.clienteCorreo
+          }}
+          initialWhatsAppText={cobroParaNotificar.whatsappText}
+          initialEmailSubject={cobroParaNotificar.emailSubject}
+          emailType="cuenta_cobro"
+          emailData={cobroParaNotificar.emailData}
+          resumenDetalle={cobroParaNotificar.resumenDetalle}
+          entidadTipo={cobroParaNotificar.entidadTipo}
+          entidadId={cobroParaNotificar.entidadId}
+          config={config}
         />
       )}
     </div>

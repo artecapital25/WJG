@@ -12,6 +12,7 @@
  */
 
 import { formatWhatsAppPhone } from './whatsappService';
+import { CanalGrupoWhatsApp, ConfiguracionTaller, GrupoWhatsAppConfig, MapaGruposWhatsApp } from '../types';
 
 export interface WhatsAppGatewayConfig {
   provider: 'qr_gateway' | 'meta_cloud_api';
@@ -24,6 +25,7 @@ export interface WhatsAppGatewayConfig {
   metaPhoneNumberId?: string;
   internalGroupJid?: string;
   internalGroupName?: string;
+  gruposConfig?: MapaGruposWhatsApp;
 }
 
 const STORAGE_KEY_WA_GATEWAY = 'wjg_whatsapp_gateway_config';
@@ -90,6 +92,72 @@ export const WhatsAppGatewayService = {
       } catch (_) {}
     }
     return updated;
+  },
+
+  /**
+   * Sincroniza la configuración compartida de Supabase (`configuracion_taller`) hacia el almacenamiento local del Gateway.
+   */
+  syncFromTallerConfig(cfg?: ConfiguracionTaller | null): WhatsAppGatewayConfig {
+    const current = this.getConfig();
+    if (!cfg) return current;
+
+    const mergedGrupos: MapaGruposWhatsApp = {
+      ...(current.gruposConfig || {}),
+      ...(cfg.whatsapp_grupos_config || {})
+    };
+    if (!mergedGrupos.general && cfg.whatsapp_internal_group_jid) {
+      mergedGrupos.general = {
+        jid: cfg.whatsapp_internal_group_jid,
+        nombre: cfg.whatsapp_internal_group_name || 'Grupo General WJGEEKS'
+      };
+    }
+
+    const patch: Partial<WhatsAppGatewayConfig> = {
+      ...(cfg.whatsapp_gateway_url ? { gatewayUrl: cfg.whatsapp_gateway_url } : {}),
+      ...(cfg.whatsapp_auto_send !== undefined ? { autoSendEnabled: cfg.whatsapp_auto_send } : {}),
+      ...(cfg.whatsapp_internal_group_jid
+        ? {
+            internalGroupJid: cfg.whatsapp_internal_group_jid,
+            internalGroupName: cfg.whatsapp_internal_group_name || current.internalGroupName
+          }
+        : {}),
+      ...(Object.keys(mergedGrupos).length > 0 ? { gruposConfig: mergedGrupos } : {})
+    };
+
+    return this.saveConfig(patch);
+  },
+
+  /**
+   * Resuelve el grupo de WhatsApp configurado para un canal específico.
+   * Los canales internos base hacen fallback al grupo general; los de difusión a clientes nunca redirigen al grupo interno.
+   */
+  resolveGroup(canal: CanalGrupoWhatsApp = 'general', tallerConfig?: ConfiguracionTaller | null): GrupoWhatsAppConfig | null {
+    const localCfg = this.getConfig();
+    const gruposNube = tallerConfig?.whatsapp_grupos_config || {};
+    const gruposLocal = localCfg.gruposConfig || {};
+
+    const matchCanal = gruposNube[canal] || gruposLocal[canal];
+    if (matchCanal?.jid) return matchCanal;
+
+    if (matchCanal?.audiencia === 'clientes') return null;
+
+    const isBaseCanal = ['general', 'tareas', 'insumos', 'cotizaciones', 'taller'].includes(canal);
+    if (!isBaseCanal && matchCanal?.audiencia !== 'equipo') {
+      return null;
+    }
+
+    const matchGeneral = gruposNube.general || gruposLocal.general;
+    if (matchGeneral?.jid) return matchGeneral;
+
+    const fallbackJid = tallerConfig?.whatsapp_internal_group_jid || localCfg.internalGroupJid;
+    if (fallbackJid) {
+      return {
+        jid: fallbackJid,
+        nombre: tallerConfig?.whatsapp_internal_group_name || localCfg.internalGroupName || 'Grupo WJGEEKS'
+      };
+    }
+
+    return null;
   },
 
   /**

@@ -89,6 +89,7 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
   const [sendingShare, setSendingShare] = useState(false);
 
   const gwConfig = WhatsAppGatewayService.getConfig();
+  const grupoCotizaciones = WhatsAppGatewayService.resolveGroup('cotizaciones', config);
   const safeConfig: ConfiguracionTaller = config || {
     tarifa_kwh: 900,
     margen_merma_resina: 0.20,
@@ -170,12 +171,12 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
 
       const targets: { label: string; dest: string }[] = [];
       if (shareTarget === 'grupo') {
-        if (!gwConfig.internalGroupJid) {
+        if (!grupoCotizaciones?.jid) {
           toast.warning('Configura primero el Grupo Interno de WhatsApp en el modal de Vinculación WhatsApp.');
           setSendingShare(false);
           return;
         }
-        targets.push({ label: gwConfig.internalGroupName || 'Grupo WJGEEKS', dest: gwConfig.internalGroupJid });
+        targets.push({ label: grupoCotizaciones.nombre || 'Grupo WJGEEKS', dest: grupoCotizaciones.jid });
       } else if (shareTarget === 'todos') {
         LISTA_MIEMBROS_WJG.forEach(m => {
           targets.push({ label: m.nombre, dest: m.telefonoLimpio });
@@ -913,10 +914,10 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
                   },
                   {
                     value: 'grupo',
-                    label: gwConfig.internalGroupJid
-                      ? `💬 Grupo Interno: ${gwConfig.internalGroupName || gwConfig.internalGroupJid}`
+                    label: grupoCotizaciones?.jid
+                      ? `💬 Grupo Interno: ${grupoCotizaciones.nombre || grupoCotizaciones.jid}`
                       : '💬 Grupo Interno del Equipo (Configurar en Vinculación WA)',
-                    subtitle: gwConfig.internalGroupJid
+                    subtitle: grupoCotizaciones?.jid
                       ? 'Un solo envío al grupo configurado'
                       : 'Selecciona el grupo en el modal de Vinculación WhatsApp primero'
                   },

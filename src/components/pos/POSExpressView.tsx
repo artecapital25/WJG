@@ -32,12 +32,13 @@ import {
   generarConsecutivoPOS, 
   generarTextoComprobantePOS,
   generarWhatsAppComprobantePOS, 
-  generarWhatsAppRecordatorioCobro 
+  generarTextoRecordatorioCobro
 } from '../../services/posService';
 import { openWhatsApp } from '../../services/whatsappService';
 import { ModalEditarVentaExpress } from './ModalEditarVentaExpress';
 import { ModalConfirmacionWhatsApp } from '../common/ModalConfirmacionWhatsApp';
 import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
+import { WjgMessageDispatcherModal } from '../messaging/WjgMessageDispatcherModal';
 import { obtenerBlobURLReciboPOS } from '../../services/pdfService';
 import { LEYENDA_IVA_CERO } from '../../features/cotizador/utils/pricingCalculator';
 import { EmailNotificationService } from '../../services/emailNotificationService';
@@ -153,6 +154,17 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
 
   // Modales de Edición, Eliminación y Gestión / Corrección de Pago Rápido
   const [ventaParaEditar, setVentaParaEditar] = useState<VentaExpress | null>(null);
+  const [ventaParaNotificar, setVentaParaNotificar] = useState<{ venta: VentaExpress; modo: 'comprobante' | 'cobro' } | null>(null);
+
+  const resolveClienteCorreoPOS = (v: VentaExpress): string => {
+    if (v.cliente_correo && v.cliente_correo.includes('@')) return v.cliente_correo.trim();
+    const match = clientes.find(
+      c =>
+        (v.cliente_id && c.id === v.cliente_id) ||
+        c.nombre.trim().toLowerCase() === v.cliente_nombre.trim().toLowerCase()
+    );
+    return match?.correo || '';
+  };
   const [ventaParaEliminar, setVentaParaEliminar] = useState<VentaExpress | null>(null);
   const [ventaParaAbono, setVentaParaAbono] = useState<VentaExpress | null>(null);
   const [estadoPagoModal, setEstadoPagoModal] = useState<EstadoPagoExpress>('Abono Parcial');
@@ -1792,21 +1804,21 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                               <span>{esPagado ? 'Cambiar Pago' : 'Abonar'}</span>
                             </button>
 
-                            {/* Botón WhatsApp Comprobante / Cobro */}
+                            {/* Botón WhatsApp y Correo Comprobante / Cobro */}
                             <button
                               type="button"
                               className="btn btn-whatsapp btn-sm"
-                              onClick={() => {
-                                const url = esPagado 
-                                  ? generarWhatsAppComprobantePOS(venta, config)
-                                  : generarWhatsAppRecordatorioCobro(venta, config);
-                                openWhatsApp(url);
-                              }}
+                              onClick={() =>
+                                setVentaParaNotificar({
+                                  venta,
+                                  modo: esPagado ? 'comprobante' : 'cobro'
+                                })
+                              }
                               style={{ fontSize: '0.75rem', padding: '4px 10px' }}
-                              title={esPagado ? 'Enviar recibo de pago por WhatsApp' : 'Enviar recordatorio de cobro por WhatsApp'}
+                              title={esPagado ? 'Enviar recibo de pago por WhatsApp y Correo' : 'Enviar recordatorio de cobro por WhatsApp y Correo'}
                             >
                               <Send size={13} />
-                              <span>{esPagado ? 'Comprobante' : 'Cobrar WhatsApp'}</span>
+                              <span>{esPagado ? 'Comprobante' : 'Cobrar / Notificar'}</span>
                             </button>
 
                             {/* Botón Eliminar Venta */}
@@ -2207,16 +2219,35 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
         </div>
       )}
 
-      {/* Modal de Confirmación y Despacho WhatsApp Corporativo */}
+      {/* Modal de Confirmación y Despacho WhatsApp + Correo Corporativo */}
       {ventaParaConfirmarWhatsApp && (
         <ModalConfirmacionWhatsApp
           isOpen={Boolean(ventaParaConfirmarWhatsApp)}
           onClose={() => setVentaParaConfirmarWhatsApp(null)}
           titulo={`Confirmar Recibo ${ventaParaConfirmarWhatsApp.numero_venta}`}
-          subtitulo="Valida los datos y el comprobante antes de despachar desde el WhatsApp corporativo."
+          subtitulo="Valida los datos y el comprobante antes de despachar por WhatsApp y Correo."
           clienteNombre={ventaParaConfirmarWhatsApp.cliente_nombre}
           clienteTelefono={ventaParaConfirmarWhatsApp.cliente_telefono}
+          clienteCorreo={resolveClienteCorreoPOS(ventaParaConfirmarWhatsApp)}
           mensajeWhatsApp={generarTextoComprobantePOS(ventaParaConfirmarWhatsApp, config)}
+          context="pos"
+          emailType={ventaParaConfirmarWhatsApp.saldo_pendiente <= 0 ? 'abono' : 'cuenta_cobro'}
+          emailSubject={
+            ventaParaConfirmarWhatsApp.saldo_pendiente <= 0
+              ? `🧾 Comprobante de Compra ${ventaParaConfirmarWhatsApp.numero_venta} — WJGEEKS 3D`
+              : `💳 Recibo ${ventaParaConfirmarWhatsApp.numero_venta} y Saldo Pendiente — WJGEEKS 3D`
+          }
+          emailData={{
+            numero_doc: ventaParaConfirmarWhatsApp.numero_venta,
+            total: ventaParaConfirmarWhatsApp.total,
+            abono: ventaParaConfirmarWhatsApp.abono,
+            saldo_pendiente: ventaParaConfirmarWhatsApp.saldo_pendiente,
+            metodo_pago: ventaParaConfirmarWhatsApp.metodo_pago || 'Bre-B',
+            fecha: ventaParaConfirmarWhatsApp.fecha_venta
+          }}
+          entidadTipo="venta_express"
+          entidadId={ventaParaConfirmarWhatsApp.id}
+          config={config}
           resumenDetalle={[
             { etiqueta: 'Figura / Producto', valor: ventaParaConfirmarWhatsApp.nombre_producto },
             { etiqueta: 'Valor Total', valor: `$${ventaParaConfirmarWhatsApp.total.toLocaleString('es-CO')} COP`, destacado: true },
@@ -2226,6 +2257,56 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
           ]}
           onConfirmadoExitoso={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
           onConfirmarSinEnvio={() => ejecutarGuardadoFinalVenta(ventaParaConfirmarWhatsApp)}
+        />
+      )}
+
+      {/* Despacho Centralizado desde Historial POS */}
+      {ventaParaNotificar && (
+        <WjgMessageDispatcherModal
+          isOpen={Boolean(ventaParaNotificar)}
+          onClose={() => setVentaParaNotificar(null)}
+          title={
+            ventaParaNotificar.modo === 'comprobante'
+              ? `Enviar Comprobante ${ventaParaNotificar.venta.numero_venta}`
+              : `Cobrar Saldo • ${ventaParaNotificar.venta.numero_venta}`
+          }
+          subtitle="Despacho directo por WhatsApp (+57 320 2796115) y Correo Verificado"
+          context="pos"
+          defaultTargetMode="cliente"
+          hideModeSelector={true}
+          externalRecipient={{
+            nombre: ventaParaNotificar.venta.cliente_nombre,
+            telefono: ventaParaNotificar.venta.cliente_telefono,
+            correo: resolveClienteCorreoPOS(ventaParaNotificar.venta)
+          }}
+          initialWhatsAppText={
+            ventaParaNotificar.modo === 'comprobante'
+              ? generarTextoComprobantePOS(ventaParaNotificar.venta, config)
+              : generarTextoRecordatorioCobro(ventaParaNotificar.venta, config)
+          }
+          initialEmailSubject={
+            ventaParaNotificar.modo === 'comprobante'
+              ? `🧾 Comprobante de Pago ${ventaParaNotificar.venta.numero_venta} — WJGEEKS 3D`
+              : `💳 Recordatorio de Saldo ${ventaParaNotificar.venta.numero_venta} — WJGEEKS 3D`
+          }
+          emailType={ventaParaNotificar.modo === 'comprobante' ? 'abono' : 'cuenta_cobro'}
+          emailData={{
+            numero_doc: ventaParaNotificar.venta.numero_venta,
+            total: ventaParaNotificar.venta.total,
+            abono: ventaParaNotificar.venta.abono,
+            saldo_pendiente: ventaParaNotificar.venta.saldo_pendiente,
+            metodo_pago: ventaParaNotificar.venta.metodo_pago || 'Bre-B',
+            fecha: ventaParaNotificar.venta.fecha_venta
+          }}
+          resumenDetalle={[
+            { etiqueta: 'Producto', valor: ventaParaNotificar.venta.nombre_producto },
+            { etiqueta: 'Total', valor: `$${ventaParaNotificar.venta.total.toLocaleString('es-CO')} COP`, destacado: true },
+            { etiqueta: 'Abonado', valor: `$${ventaParaNotificar.venta.abono.toLocaleString('es-CO')} COP` },
+            { etiqueta: 'Saldo Pendiente', valor: `$${ventaParaNotificar.venta.saldo_pendiente.toLocaleString('es-CO')} COP` }
+          ]}
+          entidadTipo="venta_express"
+          entidadId={ventaParaNotificar.venta.id}
+          config={config}
         />
       )}
 

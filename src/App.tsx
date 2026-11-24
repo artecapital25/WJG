@@ -61,7 +61,8 @@ import {
   TareaEquipo,
   SolicitudInsumo,
   ConsumoRealProduccion,
-  ModoMargen
+  ModoMargen,
+  TratamientoAbonoOT
 } from './types';
 import {
   type ItemDeudaConsolidado,
@@ -72,11 +73,13 @@ import {
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 import { WhatsAppGatewayService } from './services/whatsappGatewayService';
+import { MessagingHubService } from './services/messaging';
 import { mergeRemoteWithLocalEntities } from './utils/realtimeMerge';
 import {
   detectarYCrearSolicitudesStockBajo,
   calcularReabastecimientoAlRecibir
 } from './services/inventoryReplenishmentService';
+import { calcularGramosADescontarConsumoReal } from './services/inventoryDeductionHelper';
 import { calcularDescuentoVolumenSugerido, calcularTotalesCotizacion } from './features/cotizador/utils/pricingCalculator';
 import { calcularCotizacionIntegral, recalcularPiezaPorModoMargen, ParametrosPiezaInput } from './services/calculationEngine';
 import { decodeDraftReviewPayload } from './services/cotizadorInternalShareService';
@@ -711,6 +714,7 @@ export const App: React.FC = () => {
         if (cloudConfig !== null) {
           setConfig(cloudConfig);
           StorageService.saveConfig(cloudConfig);
+          WhatsAppGatewayService.syncFromTallerConfig(cloudConfig);
         } else {
           CloudSyncService.saveConfiguracion(config);
         }
@@ -2027,6 +2031,10 @@ export const App: React.FC = () => {
       setSolicitudesInsumos(merged);
       StorageService.saveSolicitudesInsumos(merged);
       nuevas.forEach(s => CloudSyncService.saveSolicitudInsumo(s));
+      MessagingHubService.notifyLowStockBatch(nuevas, {
+        config,
+        usuarios: usuariosTaller
+      }).catch(() => {});
       toast.warning(
         `🚨 Stock bajo detectado: se generó ${nuevas.length} orden(es) S.O.S automática(s) (${nuevas.map(n => n.insumo_nombre).join(', ')})`
       );
@@ -2196,19 +2204,26 @@ export const App: React.FC = () => {
   const handleSaveConsumoReal = async (consumo: ConsumoRealProduccion, descontarInventario: boolean) => {
     markLocalMutation();
     let consumoFinal = { ...consumo };
+    const otVinculada = ordenes.find(o => o.id === consumo.orden_trabajo_id);
 
     if (descontarInventario && !consumo.descontado_de_inventario) {
       const resAfectadas: Resina[] = [];
       const filAfectados: Filamento[] = [];
       const insAfectados: Insumo[] = [];
 
-      // 1. Ajustar material principal si se reportaron gramos reales
-      if (consumo.material_real_g && consumo.material_real_g > 0 && consumo.material_id) {
+      // 1. Ajustar material principal aplicando delta si la OT ya había descontado en etapa Curado
+      const gramosAjuste = calcularGramosADescontarConsumoReal({
+        materialRealG: consumo.material_real_g || 0,
+        materialEstimadoG: consumo.material_estimado_g ?? otVinculada?.peso_estimado_g ?? 0,
+        yaDescontadoEnOT: Boolean(otVinculada?.inventario_descontado),
+      });
+
+      if (gramosAjuste !== 0 && consumo.material_id) {
         const esFDM = consumo.tecnologia === 'FDM_FILAMENTO';
         if (esFDM) {
           const updFil = filamentos.map(f => {
             if (f.id === consumo.material_id) {
-              const upd = { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 1000) - consumo.material_real_g!) * 10) / 10) };
+              const upd = { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 1000) - gramosAjuste) * 10) / 10) };
               filAfectados.push(upd);
               return upd;
             }
@@ -2220,7 +2235,7 @@ export const App: React.FC = () => {
         } else {
           const updRes = resinas.map(r => {
             if (r.id === consumo.material_id) {
-              const upd = { ...r, peso_g: Math.max(0, Math.round((r.peso_g - consumo.material_real_g!) * 10) / 10) };
+              const upd = { ...r, peso_g: Math.max(0, Math.round((r.peso_g - gramosAjuste) * 10) / 10) };
               resAfectadas.push(upd);
               return upd;
             }
@@ -2271,14 +2286,18 @@ export const App: React.FC = () => {
     setConsumosReales(updatedConsumos);
     StorageService.saveConsumosReales(updatedConsumos);
 
-    // Recalcular costo_real_acumulado de la OT vinculada
+    // Recalcular costo_real_acumulado y marcar inventario_descontado en la OT vinculada para evitar doble descuento
     const totalRealOT = updatedConsumos
       .filter(c => c.orden_trabajo_id === consumoFinal.orden_trabajo_id)
       .reduce((sum, c) => sum + (Number(c.costo_total_real) || 0), 0);
 
     const updatedOTs = ordenes.map(o => {
       if (o.id === consumoFinal.orden_trabajo_id) {
-        return { ...o, costo_real_acumulado: Math.round(totalRealOT) };
+        return {
+          ...o,
+          costo_real_acumulado: Math.round(totalRealOT),
+          inventario_descontado: Boolean(o.inventario_descontado || consumoFinal.descontado_de_inventario),
+        };
       }
       return o;
     });
@@ -2307,11 +2326,85 @@ export const App: React.FC = () => {
     StorageService.saveConsumosReales(updatedConsumos);
 
     if (target) {
+      const otVinculada = ordenes.find(o => o.id === target.orden_trabajo_id);
+      const etapasDescuento = ['Curado', 'Pintura y Armado', 'Control de Calidad', 'Listo para Entrega', 'Entregado'];
+      const otYaEnEtapaCurado = Boolean(otVinculada && etapasDescuento.includes(otVinculada.estado));
+
+      // Revertir stock consumido si el registro había descontado de bodega
+      if (target.descontado_de_inventario) {
+        const gramosARevertir = calcularGramosADescontarConsumoReal({
+          materialRealG: target.material_real_g || 0,
+          materialEstimadoG: target.material_estimado_g ?? otVinculada?.peso_estimado_g ?? 0,
+          yaDescontadoEnOT: otYaEnEtapaCurado,
+        });
+
+        if (gramosARevertir !== 0 && target.material_id) {
+          if (target.tecnologia === 'FDM_FILAMENTO') {
+            const filAfectados: Filamento[] = [];
+            const updFil = filamentos.map(f => {
+              if (f.id === target.material_id) {
+                const upd = { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 0) + gramosARevertir) * 10) / 10) };
+                filAfectados.push(upd);
+                return upd;
+              }
+              return f;
+            });
+            setFilamentos(updFil);
+            StorageService.saveFilamentos(updFil);
+            filAfectados.forEach(f => CloudSyncService.saveFilamento(f));
+          } else {
+            const resAfectadas: Resina[] = [];
+            const updRes = resinas.map(r => {
+              if (r.id === target.material_id) {
+                const upd = { ...r, peso_g: Math.max(0, Math.round((r.peso_g + gramosARevertir) * 10) / 10) };
+                resAfectadas.push(upd);
+                return upd;
+              }
+              return r;
+            });
+            setResinas(updRes);
+            StorageService.saveResinas(updRes);
+            resAfectadas.forEach(r => CloudSyncService.saveResina(r));
+          }
+        }
+
+        if (target.insumos_consumidos && target.insumos_consumidos.length > 0) {
+          const insAfectados: Insumo[] = [];
+          const updIns = insumos.map(ins => {
+            const matches = target.insumos_consumidos.filter(
+              ic => (ic.insumo_id && ic.insumo_id === ins.id) || ic.nombre.trim().toLowerCase() === ins.nombre.trim().toLowerCase()
+            );
+            if (matches.length === 0) return ins;
+            const totalUsado = matches.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+            const stockBase = ins.stock_actual !== undefined ? ins.stock_actual : ins.presentacion;
+            const nuevoStock = Math.max(0, Math.round((stockBase + totalUsado) * 100) / 100);
+            const upd = { ...ins, stock_actual: nuevoStock, presentacion: nuevoStock };
+            insAfectados.push(upd);
+            return upd;
+          });
+          if (insAfectados.length > 0) {
+            setInsumos(updIns);
+            StorageService.saveInsumos(updIns);
+            insAfectados.forEach(i => CloudSyncService.saveInsumo(i));
+          }
+        }
+      }
+
+      const quedanOtrosDescontados = updatedConsumos.some(
+        c => c.orden_trabajo_id === target.orden_trabajo_id && c.descontado_de_inventario
+      );
       const totalRealOT = updatedConsumos
         .filter(c => c.orden_trabajo_id === target.orden_trabajo_id)
         .reduce((sum, c) => sum + (Number(c.costo_total_real) || 0), 0);
+
       const updatedOTs = ordenes.map(o =>
-        o.id === target.orden_trabajo_id ? { ...o, costo_real_acumulado: Math.round(totalRealOT) } : o
+        o.id === target.orden_trabajo_id
+          ? {
+              ...o,
+              costo_real_acumulado: Math.round(totalRealOT),
+              inventario_descontado: otYaEnEtapaCurado ? o.inventario_descontado : quedanOtrosDescontados,
+            }
+          : o
       );
       setOrdenes(updatedOTs);
       StorageService.saveOrdenes(updatedOTs);
@@ -2320,7 +2413,7 @@ export const App: React.FC = () => {
     }
 
     await CloudSyncService.deleteConsumoReal(consumoId);
-    toast.info('Registro de consumo real eliminado.');
+    toast.info('Registro de consumo real eliminado y stock revertido.');
   };
 
   // Generar Cuenta de Cobro a partir de una OT terminada (sin duplicaciones ni abonos inventados)
@@ -2653,6 +2746,7 @@ export const App: React.FC = () => {
     const updated = produccionesInternas.filter(p => p.id !== id);
     setProduccionesInternas(updated);
     StorageService.saveProduccionesInternas(updated);
+    CloudSyncService.deleteProduccionInterna(id);
     toast.info('Registro de producción interna eliminado.');
   };
 
@@ -3498,20 +3592,98 @@ export const App: React.FC = () => {
     otId: string,
     motivo: string,
     revertirCotizacion?: boolean,
-    nuevoEstadoCot?: EstadoCotizacion
+    nuevoEstadoCot?: EstadoCotizacion,
+    tratamientoAbono?: TratamientoAbonoOT
   ) => {
     const otAEliminar = ordenes.find(o => o.id === otId);
     if (!otAEliminar) return;
+
+    const tratamiento: TratamientoAbonoOT =
+      tratamientoAbono ||
+      (motivo.includes('Registro de prueba')
+        ? 'purgar_prueba'
+        : (otAEliminar.abono || 0) > 0
+        ? 'retener_abono'
+        : 'purgar_prueba');
+
+    const montoAbonado =
+      Number(
+        otAEliminar.abono ||
+          (otAEliminar.estado_pago === 'Pagado Total' ? otAEliminar.precio_cobrado || 0 : 0)
+      ) || 0;
 
     // 1. Filtrar lista de órdenes de trabajo
     const updatedOTs = ordenes.filter(o => o.id !== otId);
     setOrdenes(updatedOTs);
     StorageService.saveOrdenes(updatedOTs);
 
-    // 2. Eliminar de la base de datos de Supabase si aplica
-    CloudSyncService.deleteOrdenTrabajo(otAEliminar.id, otAEliminar.numero_ot);
+    // 2. Si es purga de prueba/duplicado, limpiar cuentas locales vinculadas
+    if (tratamiento === 'purgar_prueba') {
+      const updatedCuentas = cuentas.filter(cc => {
+        const matchCotId = Boolean(otAEliminar.cotizacion_id && cc.cotizacion_id === otAEliminar.cotizacion_id);
+        const matchCotNum = Boolean(otAEliminar.cotizacion_numero && cc.cotizacion_numero === otAEliminar.cotizacion_numero);
+        const matchOtText = Boolean(otAEliminar.numero_ot && cc.items_resumen?.includes(otAEliminar.numero_ot));
+        return !(matchCotId || matchCotNum || matchOtText);
+      });
+      if (updatedCuentas.length !== cuentas.length) {
+        setCuentas(updatedCuentas);
+        StorageService.saveCuentas(updatedCuentas);
+      }
+    }
 
-    // 3. Si se solicitó actualizar la cotización vinculada (ej: rechazada por cliente)
+    // 3. Ejecutar política contable de 3 vías en Supabase antes de eliminar la OT
+    void (async () => {
+      try {
+        if (tratamiento === 'retener_abono') {
+          const abonosOT = await CloudSyncService.fetchPayments({
+            orden_trabajo_id: otAEliminar.id,
+          });
+          for (const ab of abonosOT) {
+            await CloudSyncService.updateAbono(ab.id, {
+              tipo_movimiento: 'RETENIDO_CANCELACION',
+              nota: `[RETENIDO POR CANCELACIÓN ${otAEliminar.numero_ot}] ${motivo}`,
+            });
+          }
+          if (abonosOT.length > 0) {
+            toast.warning(`Abono retenido en caja para ${otAEliminar.numero_ot} y documentado en Libro de Recaudos.`);
+          }
+        } else if (tratamiento === 'devolver_abono' && montoAbonado > 0) {
+          await CloudSyncService.saveEgreso({
+            id:
+              typeof crypto !== 'undefined' && crypto.randomUUID
+                ? crypto.randomUUID()
+                : `egr_dev_${Date.now()}`,
+            fecha: new Date().toISOString().slice(0, 10),
+            categoria: 'DEVOLUCION_CLIENTE',
+            concepto: `Devolución abono por cancelación ${otAEliminar.numero_ot} (${otAEliminar.cliente_nombre})`,
+            monto: Math.round(montoAbonado),
+            metodo_pago: otAEliminar.metodo_pago || 'Efectivo',
+            proveedor_o_beneficiario: otAEliminar.cliente_nombre,
+            registrado_por: activeOperator,
+            notas: motivo,
+          });
+          toast.info(`Devolución de $${montoAbonado.toLocaleString('es-CO')} registrada en Egresos.`);
+        } else if (tratamiento === 'purgar_prueba') {
+          await CloudSyncService.reconciliarPagoEnLedger({
+            orden_trabajo_id: otAEliminar.id,
+            numero_ot: otAEliminar.numero_ot,
+            cotizacion_id: otAEliminar.cotizacion_id,
+            numero_cot: otAEliminar.cotizacion_numero,
+            pos_venta_id: otAEliminar.pos_venta_id,
+            nuevoAbonoTotal: 0,
+            nota: `Purga por eliminación de OT (${motivo})`,
+          });
+          toast.info(`Registros contables asociados a ${otAEliminar.numero_ot} depurados.`);
+        }
+
+        await CloudSyncService.deleteOrdenTrabajo(otAEliminar.id, otAEliminar.numero_ot);
+        window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      } catch (err) {
+        console.warn('Error ejecutando política contable al eliminar OT:', err);
+      }
+    })();
+
+    // 4. Si se solicitó actualizar la cotización vinculada (ej: rechazada por cliente)
     if (revertirCotizacion && (otAEliminar.cotizacion_id || otAEliminar.cotizacion_numero)) {
       const estadoDestino = nuevoEstadoCot || 'Rechazada';
       const updatedCots = cotizaciones.map(c => {
@@ -3667,6 +3839,7 @@ export const App: React.FC = () => {
                   resinas={resinas}
                   filamentos={filamentos}
                   personal={personal}
+                  usuarios={usuariosTaller}
                   consumosReales={consumosReales}
                   activeOperator={activeOperator}
                   activeOperatorId={currentUser?.id}
@@ -3886,6 +4059,8 @@ export const App: React.FC = () => {
                   cuentas={cuentas}
                   resinas={resinas}
                   ventasExpress={ventasExpress}
+                  solicitudesInsumos={solicitudesInsumos}
+                  activeOperator={activeOperator}
                   whatsappStatus={whatsappHealthStatus}
                   onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
                   onOpenBackup={() => setShowBackupModal(true)}
@@ -3908,6 +4083,7 @@ export const App: React.FC = () => {
                   resinasCatalogo={resinas}
                   filamentosCatalogo={filamentos}
                   config={config}
+                  usuarios={usuariosTaller}
                   onGuardarTarea={handleGuardarTarea}
                   onActualizarTarea={handleActualizarTarea}
                   onEliminarTarea={handleEliminarTarea}
@@ -4015,8 +4191,10 @@ export const App: React.FC = () => {
         <DailyBriefingModal
           isOpen={showDailyBriefingModal}
           onClose={() => setShowDailyBriefingModal(false)}
+          config={config}
+          usuarios={usuariosTaller}
           onSuccessDispatch={() => {
-            toast.success('Daily Briefing despachado por WhatsApp a Germán y Wendy');
+            toast.success('Daily Briefing despachado al equipo por WhatsApp y Correo');
           }}
         />
       </React.Suspense>
@@ -4026,6 +4204,13 @@ export const App: React.FC = () => {
         <WhatsAppConnectModal
           isOpen={showWhatsAppModal}
           onClose={() => setShowWhatsAppModal(false)}
+          config={config}
+          usuarios={usuariosTaller}
+          onUpdateConfig={cfg => {
+            setConfig(cfg);
+            StorageService.saveConfig(cfg);
+            CloudSyncService.saveConfiguracion(cfg);
+          }}
         />
       </React.Suspense>
       {/* Modal de Producción Interna, Pruebas & Exhibición */}
