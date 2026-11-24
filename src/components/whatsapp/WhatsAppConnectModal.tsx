@@ -17,6 +17,7 @@ import { WhatsAppGatewayService, WhatsAppGatewayConfig, GatewayStatusResponse } 
 import { EmailNotificationService } from '../../services/emailNotificationService';
 import { WhatsAppNotificationService } from '../../services/whatsappNotificationService';
 import { toast } from '../ui/ToastProvider';
+import { WjgSelect } from '../ui/WjgSelect';
 
 interface WhatsAppConnectModalProps {
   isOpen: boolean;
@@ -35,6 +36,8 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
   const [isRequestingPairing, setIsRequestingPairing] = useState(false);
   const [pairingCode, setPairingCode] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'qr' | 'settings' | 'test'>('qr');
+  const [waGroups, setWaGroups] = useState<{ id: string; subject: string; size: number }[]>([]);
+  const [loadingGroups, setLoadingGroups] = useState(false);
   
   // Test states
   const [testPhone, setTestPhone] = useState('3503443140');
@@ -1007,19 +1010,89 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
                 </label>
               </div>
 
+              {/* Grupo Interno de WhatsApp para Revisiones del Equipo */}
+              <div style={{
+                padding: '0.9rem',
+                borderRadius: '10px',
+                backgroundColor: 'rgba(15, 23, 42, 0.7)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '0.65rem'
+              }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.5rem', flexWrap: 'wrap' }}>
+                  <div>
+                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#38bdf8' }}>
+                      Grupo Interno de WhatsApp del Equipo
+                    </div>
+                    <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                      Opcional: para enviar desgloses e informes PDF del cotizador directo al grupo interno.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    disabled={loadingGroups}
+                    onClick={async () => {
+                      setLoadingGroups(true);
+                      const res = await WhatsAppGatewayService.listGroups();
+                      setLoadingGroups(false);
+                      if (res.success) {
+                        setWaGroups(res.groups);
+                        toast.success(`${res.groups.length} grupo(s) cargados desde WhatsApp.`);
+                      } else {
+                        toast.warning(res.error || 'Conecta WhatsApp primero para listar los grupos.');
+                      }
+                    }}
+                  >
+                    <RefreshCw size={13} className={loadingGroups ? 'animate-spin' : ''} />
+                    <span>{loadingGroups ? 'Cargando...' : 'Cargar Grupos'}</span>
+                  </button>
+                </div>
+
+                {waGroups.length > 0 && (
+                  <WjgSelect
+                    compact
+                    value={config.internalGroupJid || ''}
+                    onChange={(val) => {
+                      const found = waGroups.find(g => g.id === val);
+                      setConfig({
+                        ...config,
+                        internalGroupJid: val,
+                        internalGroupName: found?.subject || ''
+                      });
+                    }}
+                    placeholder="Seleccionar grupo interno de WhatsApp..."
+                    options={[
+                      { value: '', label: 'Sin grupo seleccionado' },
+                      ...waGroups.map(g => ({
+                        value: g.id,
+                        label: g.subject,
+                        subtitle: `${g.size} integrantes • ${g.id}`
+                      }))
+                    ]}
+                  />
+                )}
+
+                <input
+                  type="text"
+                  value={config.internalGroupJid || ''}
+                  onChange={(e) => setConfig({ ...config, internalGroupJid: e.target.value })}
+                  placeholder="ID del grupo (ej: 120363012345678901@g.us)"
+                  className="form-input"
+                  style={{ fontSize: '0.82rem' }}
+                />
+                {config.internalGroupName && (
+                  <div style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
+                    ✓ Grupo vinculado: {config.internalGroupName}
+                  </div>
+                )}
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: '1rem' }}>
                 <button
                   type="submit"
-                  style={{
-                    padding: '0.6rem 1.25rem',
-                    backgroundColor: '#3b82f6',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    fontSize: '0.85rem',
-                    borderRadius: '8px',
-                    border: 'none',
-                    cursor: 'pointer'
-                  }}
+                  className="btn wjg-btn-save"
                 >
                   Guardar Cambios
                 </button>

@@ -42,3 +42,9 @@ Al culminar cualquier implementación, la respuesta debe contener obligatoriamen
   3. Eliminación en la caché local (`StorageService`).
   4. Eliminación en Supabase (`CloudSyncService.delete...`).
 
+---
+
+## 3. REGLA DE MIGRACIONES CONTROLADAS Y USO OBLIGATORIO DEL DESIGN SYSTEM
+* **Migraciones controladas por olas:** Todo cambio visual o refactorización transversal se ejecuta en **olas controladas por grupos de pestañas**, verificando pruebas (`npm run test`) y compilación (`npm run build`) tras cada ola. Nunca reescribir las 17 pestañas de un solo golpe para mitigar fallos y regresiones.
+* **Fuente Única de Componentes UI (`src/components/ui`):** Todo botón, desplegable, buscador, campo numérico, modal o confirmación debe importarse desde la librería centralizada (`WjgButton`, `WjgSelect`, `WjgSearchInput`, `WjgNumberInput`, `WjgTextInput`, `WjgModal`, `WjgConfirmModal`, `WjgBadge`, `WjgCard`, `WjgSectionHeader`, `WjgTabs`, `WjgEmptyState`, `WjgSwitch`, `WjgStatCard`) para que un ajuste en `src/components/ui` o `src/index.css` propague de forma uniforme a toda la plataforma sin perder la identidad semántica de cada acción.
+

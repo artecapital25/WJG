@@ -68,7 +68,13 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - **Búsqueda Automática:** Activa barra de búsqueda interna (`font-size: 16px` en móvil para evitar auto-zoom) cuando la lista supera `6` opciones (`options.length > 6`), y abre directo sin buscador en listas cortas (`<= 6`).
 
 ### Ergonomía de Botones y Modales
+- **Librería Única Centralizada (`src/components/ui/index.ts`):** Todos los componentes base comparten una sola definición visual conectada a los tokens CSS (`WjgButton`, `WjgSelect`, `WjgSearchInput`, `WjgNumberInput`, `WjgTextInput`, `WjgTextArea`, `WjgModal`, `WjgConfirmModal`, `WjgBadge`, `WjgCard`, `WjgSectionHeader`, `WjgTabs`, `WjgEmptyState`, `WjgSwitch`, `WjgStatCard`).
+- **Identidad Semántica en `WjgButton`:**
+  - `quote`: Acción hero de negocio (**Generar Cotización** / **Agregar Pieza**).
+  - `save`: Acción de confirmación de cambios (**Guardar Cambios**, diferenciada visualmente con tono esmeralda/ámbar según contexto).
+  - `primary`, `secondary`, `cyan`, `whatsapp`, `danger`, `warning`, `ghost`: Resto de acciones con `minHeight` táctil `40px–48px`.
 - **Targets Táctiles:** Controles primarios y segmentadores con altura mínima `42px–44px` en móvil (`.btn-sm` mínimo `40px` en escritorio y `42px` en móvil).
+- **Envío Preliminar de Revisión Interna al Equipo (WA):** Desde `CotizadorCostSummary` (antes de agregar la pieza), el botón `Enviar Informe + PDF al Equipo (WA)` despacha por WhatsApp Gateway (a Germán, Juan, Wendy o Grupo Interno) el informe de texto paso a paso + enlace de edición directa (`?tab=cotizador&draft_review=...`) + PDF Preliminar Cliente y/o PDF Interno sellado `NO_ENVIAR_CLIENTE`.
 - **Acciones siempre alcanzables:**
   - En **Cotizaciones**, el botón `Modificar` permanece habilitado en todos los estados (`Borrador`, `Enviada`, `Parcial`, `Aceptada`, `Facturada`).
   - En **POS Express**, toda venta muestra el botón `Abonar` (si tiene saldo) o `Cambiar Pago` (si ya está pagada) para corregir pagos o revertir estados de inmediato.

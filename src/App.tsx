@@ -79,6 +79,7 @@ import {
 } from './services/inventoryReplenishmentService';
 import { calcularDescuentoVolumenSugerido, calcularTotalesCotizacion } from './features/cotizador/utils/pricingCalculator';
 import { calcularCotizacionIntegral, recalcularPiezaPorModoMargen, ParametrosPiezaInput } from './services/calculationEngine';
+import { decodeDraftReviewPayload } from './services/cotizadorInternalShareService';
 import {
   buscarCoincidenciasCliente,
   enriquecerClienteExistente,
@@ -342,6 +343,26 @@ export const App: React.FC = () => {
     return StorageService.getDraftPieces();
   });
   const [pieceToEditInCalculator, setPieceToEditInCalculator] = useState<PiezaCotizada | null>(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !isStaffAuthenticated) return;
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('draft_review');
+    if (!token) return;
+    const decodedPiece = decodeDraftReviewPayload(token);
+    if (decodedPiece) {
+      setPieceToEditInCalculator(decodedPiece);
+      setActiveHub('ventas');
+      setActiveTab('cotizador');
+      toast.success(`Pieza "${decodedPiece.nombre_item}" cargada para revisión y ajustes.`);
+    } else {
+      toast.error('El enlace de revisión de pieza no es válido o está incompleto.');
+    }
+    params.delete('draft_review');
+    const nextQuery = params.toString();
+    const cleanUrl = `${window.location.pathname}${nextQuery ? `?${nextQuery}` : ''}${window.location.hash || ''}`;
+    window.history.replaceState({}, '', cleanUrl);
+  }, [isStaffAuthenticated]);
 
   // Sincronizar cotización en edición en caché local para sobrevivir cambios de pestaña / cámara móvil
   useEffect(() => {

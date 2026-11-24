@@ -69,7 +69,11 @@ let sessionState = {
 };
 
 function formatToJid(numberStr) {
-  let clean = String(numberStr).replace(/[^0-9]/g, '');
+  const raw = String(numberStr || '').trim();
+  if (raw.includes('@g.us') || raw.includes('@s.whatsapp.net')) {
+    return raw;
+  }
+  let clean = raw.replace(/[^0-9]/g, '');
   if (clean.length === 10 && clean.startsWith('3')) {
     clean = '57' + clean;
   }
@@ -460,6 +464,110 @@ const server = http.createServer(async (req, res) => {
           message: `Ingresa este código en WhatsApp > Dispositivos vinculados > Vincular con número de teléfono: ${code}`
         }));
       } catch (err) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: err.message }));
+      }
+    });
+    return;
+  }
+
+  if (req.method === 'GET' && url.pathname === '/groups') {
+    if (!sessionState.connected || !sock) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        success: false,
+        groups: [],
+        error: 'WhatsApp Gateway no está conectado.'
+      }));
+      return;
+    }
+    try {
+      const participating = await sock.groupFetchAllParticipating();
+      const groups = Object.values(participating || {})
+        .map(g => ({
+          id: g.id,
+          subject: g.subject || 'Grupo sin nombre',
+          size: Array.isArray(g.participants) ? g.participants.length : 0
+        }))
+        .sort((a, b) => a.subject.localeCompare(b.subject));
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, groups }));
+    } catch (err) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: false, groups: [], error: err.message }));
+    }
+    return;
+  }
+
+  if (req.method === 'POST' && url.pathname === '/send-document') {
+    let body = '';
+    let sizeBytes = 0;
+    let aborted = false;
+    req.on('data', chunk => {
+      sizeBytes += chunk.length;
+      if (sizeBytes > 15 * 1024 * 1024) {
+        aborted = true;
+        res.writeHead(413, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: false, error: 'Documento supera límite de 15MB' }));
+        req.destroy();
+        return;
+      }
+      body += chunk;
+    });
+    req.on('end', async () => {
+      if (aborted) return;
+      try {
+        const payload = JSON.parse(body || '{}');
+        const target = payload.to || payload.number || payload.phone;
+        const rawBase64 = payload.base64 || payload.documentBase64;
+        const fileName = payload.fileName || 'documento.pdf';
+        const mimetype = payload.mimetype || 'application/pdf';
+        const caption = payload.caption || '';
+
+        if (!target || !rawBase64) {
+          res.writeHead(400, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: false, error: 'Faltan parámetros: to/number y base64 requeridos' }));
+          return;
+        }
+
+        if (!sessionState.connected || !sock) {
+          res.writeHead(503, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({
+            success: false,
+            error: 'WhatsApp Gateway no está vinculado. Escanea el código QR en la aplicación.'
+          }));
+          return;
+        }
+
+        const cleanBase64 = String(rawBase64).replace(/^data:[^;]+;base64,/, '');
+        const buffer = Buffer.from(cleanBase64, 'base64');
+        const targetJid = formatToJid(target);
+
+        const result = await sock.sendMessage(targetJid, {
+          document: buffer,
+          fileName,
+          mimetype,
+          caption
+        });
+        const messageId = result?.key?.id || `wjg-doc-${Date.now()}`;
+
+        sessionState.totalSent++;
+        sessionState.history.unshift({
+          id: messageId,
+          target,
+          text: `[PDF: ${fileName}] ${caption.substring(0, 80)}`,
+          timestamp: new Date().toISOString()
+        });
+        if (sessionState.history.length > 50) sessionState.history.pop();
+
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({
+          success: true,
+          id: messageId,
+          message: `Documento "${fileName}" enviado por ${sessionState.phone}`
+        }));
+      } catch (err) {
+        console.error('[WA-REAL SEND-DOC ERROR]', err);
         res.writeHead(500, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ success: false, error: err.message }));
       }

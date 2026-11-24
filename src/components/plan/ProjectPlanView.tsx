@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgConfirmModal, WjgSelect, toast } from '../ui';
 import { 
   CheckCircle2, 
   Clock, 
@@ -27,7 +27,6 @@ import {
 import { ItemBacklogEmpresa, EstadoBacklogEmpresa, PrioridadBacklogEmpresa } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService } from '../../services/cloudSyncService';
-import { toast } from '../ui/ToastProvider';
 
 interface FasePlan {
   id: number;
@@ -42,7 +41,8 @@ interface FasePlan {
 
 export const ProjectPlanView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'roadmap' | 'diagnostico' | 'optimizaciones' | 'proximos' | 'backlog'>('roadmap');
-  const [faseExpandida, setFaseExpandida] = useState<number | null>(7); // Fase 7 u 8 para ver lo más reciente
+  const [faseExpandida, setFaseExpandida] = useState<number | null>(10);
+  const [confirmDeleteBacklog, setConfirmDeleteBacklog] = useState<ItemBacklogEmpresa | null>(null);
 
   // Estado de Bitácora & Futuras Validaciones (Sincronizado con Supabase + StorageService)
   const [backlogItems, setBacklogItems] = useState<ItemBacklogEmpresa[]>(() => StorageService.getBacklogEmpresa());
@@ -142,15 +142,20 @@ export const ProjectPlanView: React.FC = () => {
     toast.info(`Estado cambiado a "${estado === 'en_validacion' ? 'En Validación' : estado === 'implementado' ? 'Implementado' : 'Pendiente'}"`);
   };
 
-  const handleEliminarBacklogItem = async (id: string) => {
+  const handleEliminarBacklogItem = (id: string) => {
     const target = backlogItems.find(i => i.id === id);
     if (!target) return;
-    if (!confirm(`¿Eliminar de la bitácora "${target.titulo}"?`)) return;
-    const updated = backlogItems.filter(i => i.id !== id);
+    setConfirmDeleteBacklog(target);
+  };
+
+  const confirmEliminarBacklogItem = async () => {
+    if (!confirmDeleteBacklog) return;
+    const updated = backlogItems.filter(i => i.id !== confirmDeleteBacklog.id);
     setBacklogItems(updated);
     StorageService.saveBacklogEmpresa(updated);
-    await CloudSyncService.deleteBacklogMejora(id);
+    await CloudSyncService.deleteBacklogMejora(confirmDeleteBacklog.id);
     toast.success('Elemento eliminado de la bitácora.');
+    setConfirmDeleteBacklog(null);
   };
 
   const pendientesBacklogCount = backlogItems.filter(i => i.estado !== 'implementado').length;
@@ -310,20 +315,56 @@ export const ProjectPlanView: React.FC = () => {
     },
     {
       id: 9,
-      nombre: "Fase 9: Escalamiento Industrial, Pagos Online & Envíos",
-      tagline: "Pasarelas automáticas (Wompi/PSE), guías de mensajería y trazabilidad de lotes",
-      estado: "proxima",
-      progreso: 25,
-      descripcion: "Próximos pasos recomendados para consolidar a WJGEEKS como referente nacional: automatización de cobros sin validar comprobantes, cálculo de envíos y control de vida útil de máquinas.",
+      nombre: "Fase 9: Motor Financiero Dual, Tiempo Real, Personal & Herramientas",
+      tagline: "Margen Bruto vs Markup, Supabase Realtime, Gateway WA Render, Personal e Insumos SOS",
+      estado: "completada",
+      progreso: 100,
+      descripcion: "Consolidación del motor Cotizador 2.0 (Margen Bruto vs Markup, prorrateo de lote, consumos reales de taller/pintura), sincronización bidireccional Realtime multi-dispositivo, Hub primario de Herramientas, integración de tarifas por empleado y reabastecimiento automático de bodega.",
       entregables: [
-        { titulo: "Integración de Pasarela de Pagos (Wompi / Bold)", completado: false, detalle: "Generación de links de pago PSE / Tarjeta en WhatsApp y portal de cliente con conciliación automática." },
-        { titulo: "Módulo de Envíos y Despachos Nacionales", completado: false, detalle: "Generación de rótulos de empaque y seguimiento de guías de Interrapidísimo, Envía o Servientrega." },
-        { titulo: "Trazabilidad de Lotes de Resina & Vida Útil FEP/LCD", completado: false, detalle: "Contador de horas de exposición UV y capas impresas por máquina para alertas de cambio preventivo de pantallas y láminas FEP." },
-        { titulo: "Facturación Electrónica DIAN", completado: false, detalle: "Módulo de emisión de facturación electrónica para clientes corporativos y agencias." }
+        { titulo: "Switch Dual Margen Bruto vs Markup + Prorrateo Lote", completado: true, detalle: "Cálculo comparativo en vivo con costos prorrateados de diseño/archivo y consumos promedio reales." },
+        { titulo: "Sincronización Realtime Supabase + Gateway WA Render", completado: true, detalle: "Publicación Realtime en tablas críticas, seguridad RLS corregida y gateway Baileys con reconexión persistente." },
+        { titulo: "Hub Primario Herramientas & Tarifario por Personal", completado: true, detalle: "5ta pestaña maestra para calculadoras/STL y vinculación de costo hora/minuto desde Personal a Cotizaciones." },
+        { titulo: "Trazabilidad de Solicitudes e Insumos SOS", completado: true, detalle: "Estados de seguimiento, enlaces de rastreo y descuento/reabastecimiento automático al recibir compras." }
       ],
       puntosClave: [
-        "Cero tiempo perdido validando transferencias bancarias de forma manual.",
-        "Máxima protección de maquinaria de resina previniendo fugas o roturas de pantalla."
+        "Visibilidad financiera exacta entre lo cotizado y lo consumido realmente en resina, pintura y PPE.",
+        "Sincronización inmediata entre celular y PC en todo el taller."
+      ]
+    },
+    {
+      id: 10,
+      nombre: "Fase 10: Design System Centralizado & Pre-Revisión Interna WA/PDF",
+      tagline: "Primitivas ui/, migración controlada Ola 1 y envío previo de informe + PDFs al equipo",
+      estado: "en_curso",
+      progreso: 55,
+      descripcion: "Estandarización visual total mediante componentes centralizados en src/components/ui, botones semánticos diferenciados (Cotizar vs Guardar), eliminación de pasos numéricos rígidos y flujo de revisión interna en WhatsApp + PDFs antes de agregar piezas a una cotización.",
+      entregables: [
+        { titulo: "Biblioteca Centralizada WJG Design System (src/components/ui)", completado: true, detalle: "14 primitivas unificadas: WjgButton, WjgSearchInput, WjgNumberInput, WjgModal, WjgConfirmModal, WjgSelect, WjgTabs, etc." },
+        { titulo: "Pre-Revisión WhatsApp + PDF (Interno NO_ENVIAR_CLIENTE & Cliente)", completado: true, detalle: "Envío automático a Germán/Juan/Wendy o Grupo Interno con enlace directo de edición ?draft_review=." },
+        { titulo: "Ola 1: Migración de Vistas Críticas y Modales", completado: true, detalle: "ProductosStockView, MarketingHubView, PersonalView, ProjectPlanView e inputs del Cotizador actualizados." },
+        { titulo: "Ola 2: Migración de Vistas Operativas Secundarias", completado: false, detalle: "WorkOrdersPipeline, CotizacionesList, CuentasCobroList, POSExpressView, TeamTasksView y CalendarOperationalView." }
+      ],
+      puntosClave: [
+        "Cero cambios en base de datos durante esta migración netamente visual y operativa.",
+        "Revisión en equipo en 1 clic sin ensuciar el historial ni filtrar costos al cliente."
+      ]
+    },
+    {
+      id: 11,
+      nombre: "Fase 11: Metas de Industria & Escalamiento (Benchmark Global 3D)",
+      tagline: "Pasarelas online, lectura G-code/STL con desglose en nube, guías y analítica avanzada",
+      estado: "proxima",
+      progreso: 10,
+      descripcion: "Metas estratégicas inspiradas en plataformas líderes de impresión 3D (3DPrintMetric, 3DPCC, 3DKoneko, Calculadora 3D) para escalar la operación industrial y automatizar el ciclo de ventas y logística.",
+      entregables: [
+        { titulo: "Pasarela de Pagos Automática (Wompi / Bold PSE)", completado: false, detalle: "Links de cobro directos en WhatsApp y portal de cliente con conciliación automática." },
+        { titulo: "Simulador Rápido + Presets de Filamento/Resina por Slicer", completado: false, detalle: "Lectura directa de .gcode / .ctb / .3mf con tiempo exacto, peso y desgaste FEP/boquilla por rollo o botella." },
+        { titulo: "Despachos Nacionales & Generación de Rótulos", completado: false, detalle: "Cotización y rastreo de guías de Interrapidísimo, Servientrega y Envía integradas en OTs." },
+        { titulo: "Trazabilidad FEP/LCD, Consumo Energético por Lote & DIAN", completado: false, detalle: "Alertas de mantenimiento preventivo por horas UV y facturación electrónica para clientes B2B." }
+      ],
+      puntosClave: [
+        "Automatización de cobros y logística sin fricción manual.",
+        "Control preventivo de maquinaria y precisión tipo slicer profesional."
       ]
     }
   ];
@@ -445,7 +486,7 @@ export const ProjectPlanView: React.FC = () => {
                     📍 CHECKPOINT ACTUAL
                   </span>
                   <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#fff', margin: 0 }}>
-                    Estado de Desarrollo: 8 Fases Implementadas con Éxito
+                    Estado de Desarrollo: 10 Fases Activas (9 Completadas + 1 En Curso)
                   </h3>
                 </div>
                 <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', maxWidth: '850px', lineHeight: 1.5, margin: 0 }}>
@@ -1187,24 +1228,22 @@ export const ProjectPlanView: React.FC = () => {
                               ]}
                             />
                           </div>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
+                          <WjgButton
+                            variant="secondary"
+                            size="sm"
                             style={{ padding: '4px 7px', minHeight: 'auto' }}
                             onClick={() => handleEditarBacklogItem(item)}
                             title="Editar nota"
-                          >
-                            <Edit3 size={13} />
-                          </button>
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-sm"
+                            leftIcon={<Edit3 size={13} />}
+                          />
+                          <WjgButton
+                            variant="danger"
+                            size="sm"
                             style={{ padding: '4px 7px', minHeight: 'auto' }}
                             onClick={() => handleEliminarBacklogItem(item.id)}
                             title="Eliminar nota"
-                          >
-                            <Trash2 size={13} />
-                          </button>
+                            leftIcon={<Trash2 size={13} />}
+                          />
                         </div>
                       </div>
                     </div>
@@ -1214,6 +1253,20 @@ export const ProjectPlanView: React.FC = () => {
           </div>
         </div>
       )}
+
+      <WjgConfirmModal
+        isOpen={Boolean(confirmDeleteBacklog)}
+        onClose={() => setConfirmDeleteBacklog(null)}
+        onConfirm={confirmEliminarBacklogItem}
+        title="Eliminar Nota de Bitácora"
+        message={
+          confirmDeleteBacklog
+            ? `¿Eliminar de la bitácora "${confirmDeleteBacklog.titulo}"? Esta acción actualizará Supabase y la caché local.`
+            : ''
+        }
+        confirmText="Eliminar"
+        variant="danger"
+      />
     </div>
   );
 };

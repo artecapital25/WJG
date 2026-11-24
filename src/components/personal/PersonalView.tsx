@@ -11,9 +11,15 @@ import { useUsuariosTaller } from '../../hooks/useUsuariosTaller';
 import { UsuarioTaller, HubAreaPermission, HUB_PERMISSIONS_CONFIG, parseDispositivoInfo } from '../../types/usuarios.types';
 import { CambiarPinModal } from '../auth/CambiarPinModal';
 import { ModalDispositivosUsuario } from './ModalDispositivosUsuario';
-import { toast } from '../ui/ToastProvider';
 import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappService';
-import { WjgSelect } from '../ui/WjgSelect';
+import {
+  WjgButton,
+  WjgConfirmModal,
+  WjgModal,
+  WjgNumberInput,
+  WjgSelect,
+  toast,
+} from '../ui';
 
 const ROLES_PREDEFINIDOS = [
   { id: 'ADMIN_COBRANZAS', label: 'Administrador • Acceso Total', badgeColor: '#0ea5e9' },
@@ -56,6 +62,7 @@ export const PersonalView: React.FC = () => {
 
   const [showDispositivosModal, setShowDispositivosModal] = useState(false);
   const [dispositivosTargetUser, setDispositivosTargetUser] = useState<UsuarioTaller | null>(null);
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<UsuarioTaller | null>(null);
 
   // Formulario
   const [nombre, setNombre] = useState('');
@@ -167,16 +174,19 @@ export const PersonalView: React.FC = () => {
     setShowModalForm(true);
   };
 
-  const handleDeleteColaborador = async (user: UsuarioTaller) => {
-    if (!confirm(`¿Eliminar definitivamente a "${user.nombre}" del equipo de Personal y del tarifario?\n\nEsta acción borrará su registro de Supabase y de la caché local.`)) {
-      return;
-    }
-    const res = await deleteUsuario(user.id);
+  const handleDeleteColaborador = (user: UsuarioTaller) => {
+    setDeleteConfirmUser(user);
+  };
+
+  const confirmDeleteColaborador = async () => {
+    if (!deleteConfirmUser) return;
+    const res = await deleteUsuario(deleteConfirmUser.id);
     if (res.success) {
       toast.success(res.message);
     } else {
       toast.error(res.message);
     }
+    setDeleteConfirmUser(null);
   };
 
   const handleTogglePermisoArea = (area: HubAreaPermission) => {
@@ -1053,29 +1063,20 @@ export const PersonalView: React.FC = () => {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end' }}>
                   <div>
-                    <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: '#a7f3d0', marginBottom: '5px' }}>
-                      <span>TARIFA HORA EN COTIZADOR (COP/h):</span>
-                      <span style={{ color: '#38bdf8' }}>${((Number(costoHora) || 0) / 60).toFixed(2)}/min</span>
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
+                    <WjgNumberInput
+                      label={
+                        <span style={{ display: 'flex', justifyContent: 'space-between', width: '100%', fontSize: '0.74rem', fontWeight: 700, color: '#a7f3d0' }}>
+                          <span>TARIFA HORA EN COTIZADOR (COP/h):</span>
+                          <span style={{ color: '#38bdf8', marginLeft: '8px' }}>${((Number(costoHora) || 0) / 60).toFixed(2)}/min</span>
+                        </span>
+                      }
+                      unit="COP/h"
+                      min={0}
                       step="any"
-                      value={costoHora === 0 ? '' : costoHora}
-                      onChange={e => setCostoHora(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                       placeholder="10000"
-                      style={{
-                        width: '100%',
-                        padding: '10px 12px',
-                        borderRadius: '10px',
-                        backgroundColor: 'rgba(15, 23, 42, 0.75)',
-                        border: '1px solid rgba(16, 185, 129, 0.35)',
-                        color: '#34d399',
-                        fontWeight: 800,
-                        fontSize: '0.92rem',
-                        outline: 'none',
-                        boxSizing: 'border-box'
-                      }}
+                      value={costoHora}
+                      onChange={setCostoHora}
+                      inputStyle={{ color: '#34d399', fontWeight: 800 }}
                     />
                   </div>
 
@@ -1207,51 +1208,43 @@ export const PersonalView: React.FC = () => {
 
               {/* Botones de Envío */}
               <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button
+                <WjgButton
                   type="button"
+                  variant="secondary"
                   onClick={() => setShowModalForm(false)}
-                  style={{
-                    flex: 1,
-                    padding: '11px',
-                    borderRadius: '12px',
-                    border: '1px solid rgba(255, 255, 255, 0.1)',
-                    background: 'rgba(255, 255, 255, 0.05)',
-                    color: '#cbd5e1',
-                    fontWeight: 600,
-                    fontSize: '0.85rem',
-                    cursor: 'pointer'
-                  }}
+                  style={{ flex: 1 }}
                 >
                   Cancelar
-                </button>
-                <button
+                </WjgButton>
+                <WjgButton
                   type="submit"
+                  variant="save"
                   disabled={submitting || Boolean(duplicadoWarn)}
-                  style={{
-                    flex: 2,
-                    padding: '11px',
-                    borderRadius: '12px',
-                    border: 'none',
-                    background: duplicadoWarn ? '#475569' : 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)',
-                    color: '#ffffff',
-                    fontWeight: 700,
-                    fontSize: '0.85rem',
-                    cursor: submitting || duplicadoWarn ? 'not-allowed' : 'pointer',
-                    opacity: submitting ? 0.7 : 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '6px'
-                  }}
+                  loading={submitting}
+                  leftIcon={<ShieldCheck size={16} />}
+                  style={{ flex: 2 }}
                 >
-                  <ShieldCheck size={16} />
-                  <span>{submitting ? 'Guardando...' : editingUser ? 'Actualizar Colaborador' : 'Crear Colaborador'}</span>
-                </button>
+                  {submitting ? 'Guardando...' : editingUser ? 'Actualizar Colaborador' : 'Crear Colaborador'}
+                </WjgButton>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <WjgConfirmModal
+        isOpen={Boolean(deleteConfirmUser)}
+        onClose={() => setDeleteConfirmUser(null)}
+        onConfirm={confirmDeleteColaborador}
+        title="Eliminar Colaborador"
+        message={
+          deleteConfirmUser
+            ? `¿Eliminar definitivamente a "${deleteConfirmUser.nombre}" del equipo de Personal y del tarifario?\n\nEsta acción borrará su registro de Supabase y de la caché local.`
+            : ''
+        }
+        confirmText="Eliminar Definitivamente"
+        variant="danger"
+      />
 
       {/* Modal de Cambio de PIN */}
       {pinTargetUser && (

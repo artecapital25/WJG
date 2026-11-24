@@ -21,8 +21,15 @@ import {
 } from 'lucide-react';
 import { ProductoStock, PiezaCotizada } from '../../types';
 import { ImageUploadField } from '../common/ImageUploadField';
-import { toast } from '../ui/ToastProvider';
-import { WjgSelect } from '../ui/WjgSelect';
+import {
+  WjgButton,
+  WjgConfirmModal,
+  WjgModal,
+  WjgNumberInput,
+  WjgSearchInput,
+  WjgSelect,
+  toast,
+} from '../ui';
 
 interface ProductosStockViewProps {
   productos: ProductoStock[];
@@ -59,6 +66,7 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
   const [showEditModal, setShowEditModal] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<any | null>(null);
   const [previewImage, setPreviewImage] = useState<{ url: string; title: string } | null>(null);
+  const [deleteConfirmTarget, setDeleteConfirmTarget] = useState<{ id: string; nombre: string } | null>(null);
 
   // Estados de retroalimentación
   const [copiedCatalog, setCopiedCatalog] = useState<boolean>(false);
@@ -218,12 +226,17 @@ export const ProductosStockView: React.FC<ProductosStockViewProps> = ({
     setEditingItem(null);
   };
 
-  // Eliminar Producto
+  // Eliminar Producto (con modal de confirmación del Design System)
   const handleDeleteProduct = (id: string, nombre: string) => {
-    if (confirm(`¿Estás seguro de eliminar el producto "${nombre}" del stock?`)) {
-      const updated = productos.filter(p => p.id !== id);
-      onUpdateProductos(updated);
-    }
+    setDeleteConfirmTarget({ id, nombre });
+  };
+
+  const confirmDeleteProduct = () => {
+    if (!deleteConfirmTarget) return;
+    const updated = productos.filter(p => p.id !== deleteConfirmTarget.id);
+    onUpdateProductos(updated);
+    toast.success(`Producto "${deleteConfirmTarget.nombre}" eliminado del stock.`);
+    setDeleteConfirmTarget(null);
   };
 
   // Enviar Producto Directamente a la Cotización en Borrador
@@ -465,15 +478,11 @@ ${itemsText}
       <div className="glass-card" style={{ padding: '14px', marginBottom: '18px' }}>
         <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between' }}>
           {/* Input de búsqueda */}
-          <div style={{ flex: '1 1 260px', position: 'relative' }}>
-            <Search size={15} color="var(--text-muted)" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} />
-            <input
-              type="text"
-              className="form-input"
+          <div style={{ flex: '1 1 260px' }}>
+            <WjgSearchInput
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
+              onChange={setSearchTerm}
               placeholder="Buscar figura por nombre, medida o detalle..."
-              style={{ paddingLeft: '36px' }}
             />
           </div>
 
@@ -800,144 +809,127 @@ ${itemsText}
       )}
 
       {/* MODAL CREAR / EDITAR PRODUCTO */}
-      {showEditModal && editingItem && (
-        <div className="modal-overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ maxWidth: '580px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', borderBottom: '1px solid var(--border-subtle)', paddingBottom: '10px' }}>
-              <div style={{ fontWeight: 800, fontSize: '1.05rem', color: '#fff', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <Package size={18} color="var(--brand-cyan)" />
-                <span>{editingItem.isEdit ? 'Editar Producto en Stock' : 'Nuevo Producto en Stock'}</span>
-              </div>
-              <button
-                type="button"
-                className="btn btn-secondary btn-sm"
-                onClick={() => setShowEditModal(false)}
-                style={{ padding: '5px', borderRadius: '50%' }}
-              >
-                <X size={15} />
-              </button>
-            </div>
+      {editingItem && (
+        <WjgModal
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          title={editingItem.isEdit ? 'Editar Producto en Stock' : 'Nuevo Producto en Stock'}
+          icon={<Package size={18} />}
+          maxWidth="580px"
+        >
+          <form onSubmit={handleSaveProduct}>
+            {/* SUBIDA DE FOTO */}
+            <ImageUploadField
+              label="Foto de la Figura o Producto"
+              helperText="Toma foto en el taller con la cámara del celular, sube un archivo o pega un enlace."
+              value={editingItem.imagen_url || ''}
+              onChange={(url) => setEditingItem({ ...editingItem, imagen_url: url })}
+            />
 
-            <form onSubmit={handleSaveProduct}>
-              {/* SUBIDA DE FOTO */}
-              <ImageUploadField
-                label="Foto de la Figura o Producto"
-                helperText="Toma foto en el taller con la cámara del celular, sube un archivo o pega un enlace."
-                value={editingItem.imagen_url || ''}
-                onChange={(url) => setEditingItem({ ...editingItem, imagen_url: url })}
-              />
-
-              {/* Nombre y Categoría */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '10px' }}>
-                <div className="form-group">
-                  <label className="form-label">Nombre del Producto *</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={editingItem.nombre}
-                    onChange={e => setEditingItem({ ...editingItem, nombre: e.target.value })}
-                    placeholder="Ej: Figura Tanjiro Chibi 7cm"
-                    required
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Categoría *</label>
-                  <WjgSelect
-                    value={editingItem.categoria}
-                    onChange={(val) => setEditingItem({ ...editingItem, categoria: val })}
-                    options={CATEGORIAS_PREDEFINIDAS.map(c => ({ value: c, label: c }))}
-                  />
-                </div>
-              </div>
-
-              {/* Precio y Stock */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="form-group">
-                  <label className="form-label">Precio de Venta ($ COP) *</label>
-                  <div className="input-with-unit">
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={editingItem.precio_unitario}
-                      onChange={e => setEditingItem({ ...editingItem, precio_unitario: parseFloat(e.target.value) || 0 })}
-                      min="0"
-                      step="500"
-                      required
-                    />
-                    <span className="input-unit-badge">COP</span>
-                  </div>
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Unidades en Stock *</label>
-                  <div className="input-with-unit">
-                    <input
-                      type="number"
-                      className="form-input"
-                      value={editingItem.stock_actual}
-                      onChange={e => setEditingItem({ ...editingItem, stock_actual: parseInt(e.target.value) || 0 })}
-                      min="0"
-                      required
-                    />
-                    <span className="input-unit-badge">unidades</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Dimensiones y Material */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
-                <div className="form-group">
-                  <label className="form-label">Dimensiones / Medidas</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={editingItem.dimensiones}
-                    onChange={e => setEditingItem({ ...editingItem, dimensiones: e.target.value })}
-                    placeholder="Ej: 7 cm de alto / 15x8 cm"
-                  />
-                </div>
-
-                <div className="form-group">
-                  <label className="form-label">Material / Acabado</label>
-                  <input
-                    type="text"
-                    className="form-input"
-                    value={editingItem.material}
-                    onChange={e => setEditingItem({ ...editingItem, material: e.target.value })}
-                    placeholder="Ej: Resina UV Alta Definición"
-                  />
-                </div>
-              </div>
-
-              {/* Descripción */}
+            {/* Nombre y Categoría */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '10px' }}>
               <div className="form-group">
-                <label className="form-label">Descripción o Notas</label>
-                <textarea
+                <label className="form-label">Nombre del Producto *</label>
+                <input
+                  type="text"
                   className="form-input"
-                  rows={2}
-                  value={editingItem.descripcion}
-                  onChange={e => setEditingItem({ ...editingItem, descripcion: e.target.value })}
-                  placeholder="Detalles sobre pintura, base, piezas desmontables, etc."
+                  value={editingItem.nombre}
+                  onChange={e => setEditingItem({ ...editingItem, nombre: e.target.value })}
+                  placeholder="Ej: Figura Tanjiro Chibi 7cm"
+                  required
                 />
               </div>
 
-              {/* Botones de Guardar */}
-              <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
-                <button type="submit" className="btn btn-primary" style={{ flex: 1 }}>
-                  Guardar Producto
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-secondary"
-                  onClick={() => setShowEditModal(false)}
-                >
-                  Cancelar
-                </button>
+              <div className="form-group">
+                <label className="form-label">Categoría *</label>
+                <WjgSelect
+                  value={editingItem.categoria}
+                  onChange={(val) => setEditingItem({ ...editingItem, categoria: val })}
+                  options={CATEGORIAS_PREDEFINIDAS.map(c => ({ value: c, label: c }))}
+                />
               </div>
-            </form>
-          </div>
-        </div>
+            </div>
+
+            {/* Precio y Stock */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <WjgNumberInput
+                  label="Precio de Venta ($ COP) *"
+                  unit="COP"
+                  min={0}
+                  step="any"
+                  required
+                  value={editingItem.precio_unitario}
+                  onChange={val => setEditingItem({ ...editingItem, precio_unitario: val })}
+                />
+              </div>
+
+              <div className="form-group">
+                <WjgNumberInput
+                  label="Unidades en Stock *"
+                  unit="und"
+                  min={0}
+                  step="any"
+                  required
+                  allowZeroDisplay
+                  value={editingItem.stock_actual}
+                  onChange={val => setEditingItem({ ...editingItem, stock_actual: Math.round(val) })}
+                />
+              </div>
+            </div>
+
+            {/* Dimensiones y Material */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div className="form-group">
+                <label className="form-label">Dimensiones / Medidas</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editingItem.dimensiones}
+                  onChange={e => setEditingItem({ ...editingItem, dimensiones: e.target.value })}
+                  placeholder="Ej: 7 cm de alto / 15x8 cm"
+                />
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">Material / Acabado</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  value={editingItem.material}
+                  onChange={e => setEditingItem({ ...editingItem, material: e.target.value })}
+                  placeholder="Ej: Resina UV Alta Definición"
+                />
+              </div>
+            </div>
+
+            {/* Descripción */}
+            <div className="form-group">
+              <label className="form-label">Descripción o Notas</label>
+              <textarea
+                className="form-input"
+                rows={2}
+                value={editingItem.descripcion}
+                onChange={e => setEditingItem({ ...editingItem, descripcion: e.target.value })}
+                placeholder="Detalles sobre pintura, base, piezas desmontables, etc."
+              />
+            </div>
+
+            {/* Botones de Guardar */}
+            <div style={{ display: 'flex', gap: '10px', marginTop: '16px' }}>
+              <WjgButton type="submit" variant="save" style={{ flex: 1 }}>
+                Guardar Producto
+              </WjgButton>
+              <WjgButton
+                type="button"
+                variant="secondary"
+                onClick={() => setShowEditModal(false)}
+              >
+                Cancelar
+              </WjgButton>
+            </div>
+          </form>
+        </WjgModal>
       )}
 
       {/* MODAL LIGHTBOX PARA VER FOTO EN TAMAÑO COMPLETO */}
@@ -995,6 +987,20 @@ ${itemsText}
           </div>
         </div>
       )}
+
+      <WjgConfirmModal
+        isOpen={Boolean(deleteConfirmTarget)}
+        onClose={() => setDeleteConfirmTarget(null)}
+        onConfirm={confirmDeleteProduct}
+        title="Eliminar Producto de Stock"
+        message={
+          deleteConfirmTarget
+            ? `¿Estás seguro de eliminar el producto "${deleteConfirmTarget.nombre}" del stock? Esta acción actualizará la caché y Supabase.`
+            : ''
+        }
+        confirmText="Eliminar"
+        variant="danger"
+      />
     </div>
   );
 };

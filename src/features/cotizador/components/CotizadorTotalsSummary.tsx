@@ -137,7 +137,7 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
                 className="form-input" 
                 min="0" 
                 max="100" 
-                step="1"
+                step="any"
                 placeholder="Otro %"
                 value={descuentoPorcentaje === 0 ? '' : descuentoPorcentaje}
                 onChange={e => setDescuentoPorcentaje(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}
@@ -187,7 +187,7 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
                 className="form-input" 
                 min="0" 
                 max="100" 
-                step="1"
+                step="any"
                 placeholder="Otro % IVA"
                 value={ivaPorcentaje === 0 ? '' : ivaPorcentaje}
                 onChange={e => setIvaPorcentaje(Math.max(0, Math.min(100, parseFloat(e.target.value) || 0)))}

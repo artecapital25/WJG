@@ -159,7 +159,7 @@ export const CotizadorFormHeader: React.FC<CotizadorFormHeaderProps> = ({
               type="number"
               className="form-input"
               min="1"
-              step="1"
+              step="any"
               value={cantidad === 0 ? '' : cantidad}
               onChange={e => setCantidad(Math.max(1, parseInt(e.target.value, 10) || 1))}
               required

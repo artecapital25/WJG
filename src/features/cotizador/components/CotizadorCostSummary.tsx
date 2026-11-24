@@ -4,12 +4,25 @@ import {
   Check,
   Copy,
   DollarSign,
+  Download,
   Lock,
   PlusCircle,
+  Send,
   Sparkles,
   TrendingUp
 } from 'lucide-react';
-import { ModoMargen, PiezaCotizada, TipoObjetivoPrecio } from '../../../types';
+import { ConfiguracionTaller, ModoMargen, Personal, PiezaCotizada, TipoObjetivoPrecio } from '../../../types';
+import { WjgButton, WjgModal, WjgSelect, toast } from '../../../components/ui';
+import { WhatsAppGatewayService } from '../../../services/whatsappGatewayService';
+import { LISTA_MIEMBROS_WJG } from '../../../services/whatsappService';
+import {
+  buildDraftReviewEditUrl,
+  generarInformeInternoWhatsApp
+} from '../../../services/cotizadorInternalShareService';
+import {
+  generarPDFClientePreliminarBase64,
+  generarPDFDesgloseInternoBase64
+} from '../../../services/pdfService';
 
 interface CotizadorCostSummaryProps {
   margenGanancia: number;
@@ -32,6 +45,8 @@ interface CotizadorCostSummaryProps {
   setDescuentoVolumenManual?: (val: number | undefined) => void;
   precioMinimoTrabajo?: number;
   mermaPct?: number;
+  config?: ConfiguracionTaller;
+  personal?: Personal[];
 }
 
 const TIERS_MARGEN = [
@@ -62,9 +77,166 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
   aplicaDescuentoVolumen = true,
   setAplicaDescuentoVolumen,
   precioMinimoTrabajo = 15000,
-  mermaPct = 0.20
+  mermaPct = 0.20,
+  config,
+  personal = []
 }) => {
   const [copiadoWa, setCopiadoWa] = useState(false);
+  const [showShareTeamModal, setShowShareTeamModal] = useState(false);
+  const [shareTarget, setShareTarget] = useState<'todos' | 'grupo' | 'german' | 'juan' | 'wendy'>('todos');
+  const [pdfMode, setPdfMode] = useState<'ambos' | 'interno' | 'cliente'>('ambos');
+  const [incluirEnlaceEdicion, setIncluirEnlaceEdicion] = useState(true);
+  const [sendingShare, setSendingShare] = useState(false);
+
+  const gwConfig = WhatsAppGatewayService.getConfig();
+  const safeConfig: ConfiguracionTaller = config || {
+    tarifa_kwh: 900,
+    margen_merma_resina: 0.20,
+    margen_merma_fdm: 0.15,
+    telefono_contacto: '3217273025',
+    telefono_contacto2: '3024242855',
+    instagram: '@wjgeeks3d',
+    nequi: '3217273025',
+    titular_cuenta: 'WJGEEKS 3D PRO'
+  };
+
+  const triggerDownloadBase64Pdf = (base64: string, fileName: string) => {
+    const byteChars = atob(base64);
+    const bytes = new Uint8Array(byteChars.length);
+    for (let i = 0; i < byteChars.length; i++) {
+      bytes[i] = byteChars.charCodeAt(i);
+    }
+    const blob = new Blob([bytes], { type: 'application/pdf' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  };
+
+  const handleCopyEditLink = async () => {
+    if (!calculoEnVivo) return;
+    const url = buildDraftReviewEditUrl(calculoEnVivo);
+    await navigator.clipboard?.writeText(url);
+    toast.success('Enlace directo de edición copiado al portapapeles.');
+  };
+
+  const handleDownloadSharePdfs = async (mode: 'ambos' | 'interno' | 'cliente' = pdfMode) => {
+    if (!calculoEnVivo) return;
+    try {
+      if (mode === 'ambos' || mode === 'interno') {
+        const resInt = await generarPDFDesgloseInternoBase64(calculoEnVivo, safeConfig, personal);
+        triggerDownloadBase64Pdf(resInt.base64, resInt.fileName);
+      }
+      if (mode === 'ambos' || mode === 'cliente') {
+        const resCli = await generarPDFClientePreliminarBase64(calculoEnVivo, safeConfig);
+        triggerDownloadBase64Pdf(resCli.base64, resCli.fileName);
+      }
+      toast.success('PDF(s) descargados correctamente.');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Error generando los PDFs.');
+    }
+  };
+
+  const handleSendToTeamWhatsApp = async () => {
+    if (!calculoEnVivo || sendingShare) return;
+    setSendingShare(true);
+    try {
+      const editUrl = incluirEnlaceEdicion ? buildDraftReviewEditUrl(calculoEnVivo) : undefined;
+      const informeTexto = generarInformeInternoWhatsApp(calculoEnVivo, {
+        cantidad,
+        personal,
+        editUrl
+      });
+
+      const docsToSend: { base64: string; fileName: string; caption: string }[] = [];
+      if (pdfMode === 'ambos' || pdfMode === 'interno') {
+        const resInt = await generarPDFDesgloseInternoBase64(calculoEnVivo, safeConfig, personal);
+        docsToSend.push({
+          ...resInt,
+          caption: `🔒 NO ENVIAR AL CLIENTE — Desglose interno: ${calculoEnVivo.nombre_item}`
+        });
+      }
+      if (pdfMode === 'ambos' || pdfMode === 'cliente') {
+        const resCli = await generarPDFClientePreliminarBase64(calculoEnVivo, safeConfig);
+        docsToSend.push({
+          ...resCli,
+          caption: `📄 Vista Cliente (Preliminar): ${calculoEnVivo.nombre_item}`
+        });
+      }
+
+      const targets: { label: string; dest: string }[] = [];
+      if (shareTarget === 'grupo') {
+        if (!gwConfig.internalGroupJid) {
+          toast.warning('Configura primero el Grupo Interno de WhatsApp en el modal de Vinculación WhatsApp.');
+          setSendingShare(false);
+          return;
+        }
+        targets.push({ label: gwConfig.internalGroupName || 'Grupo WJGEEKS', dest: gwConfig.internalGroupJid });
+      } else if (shareTarget === 'todos') {
+        LISTA_MIEMBROS_WJG.forEach(m => {
+          targets.push({ label: m.nombre, dest: m.telefonoLimpio });
+        });
+      } else {
+        const miembro = LISTA_MIEMBROS_WJG.find(m => m.id === shareTarget);
+        if (miembro) targets.push({ label: miembro.nombre, dest: miembro.telefonoLimpio });
+      }
+
+      if (gwConfig.autoSendEnabled && gwConfig.gatewayUrl) {
+        let enviados = 0;
+        const errores: string[] = [];
+        for (const t of targets) {
+          const textRes = await WhatsAppGatewayService.sendTextMessage(t.dest, informeTexto);
+          if (!textRes.success) {
+            errores.push(`${t.label}: ${textRes.error || 'error texto'}`);
+            continue;
+          }
+          for (const docItem of docsToSend) {
+            const docRes = await WhatsAppGatewayService.sendDocument(t.dest, {
+              base64: docItem.base64,
+              fileName: docItem.fileName,
+              caption: docItem.caption
+            });
+            if (!docRes.success) {
+              errores.push(`${t.label} (PDF ${docItem.fileName}): ${docRes.error || 'error adjunto'}`);
+            }
+          }
+          enviados++;
+        }
+
+        if (enviados > 0 && errores.length === 0) {
+          toast.success(`Informe + PDF(s) enviados por WhatsApp a: ${targets.map(t => t.label).join(', ')}`);
+          setShowShareTeamModal(false);
+          return;
+        }
+        if (enviados > 0) {
+          toast.warning(`Enviado parcialmente (${enviados}/${targets.length}). Detalles: ${errores[0]}`);
+          return;
+        }
+        toast.warning(`Gateway desconectado (${errores[0] || 'sin sesión'}). Se descargan PDFs y se abre WhatsApp Web.`);
+      }
+
+      // Fallback offline/sin gateway: descargar PDF(s) localmente + abrir wa.me para el primer contacto
+      for (const docItem of docsToSend) {
+        triggerDownloadBase64Pdf(docItem.base64, docItem.fileName);
+      }
+      const fallbackPhone =
+        shareTarget === 'german' || shareTarget === 'juan' || shareTarget === 'wendy'
+          ? LISTA_MIEMBROS_WJG.find(m => m.id === shareTarget)?.telefonoLimpio
+          : LISTA_MIEMBROS_WJG[0].telefonoLimpio;
+      const waUrl = `https://wa.me/${fallbackPhone || '573217273025'}?text=${encodeURIComponent(informeTexto)}`;
+      window.open(waUrl, '_blank', 'noopener,noreferrer');
+      toast.info('PDF(s) descargados para adjuntar manualmente en WhatsApp.');
+      setShowShareTeamModal(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo enviar el informe al equipo.');
+    } finally {
+      setSendingShare(false);
+    }
+  };
 
   const tech = calculoEnVivo?.tecnologia || 'SLA_RESINA';
   const maxSlider = modoMargen === 'margen_bruto' ? 0.90 : 1.50;
@@ -625,42 +797,188 @@ export const CotizadorCostSummary: React.FC<CotizadorCostSummaryProps> = ({
           </>
         )}
 
-        {/* Acciones: Agregar Pieza + Copiar Precio Rápido */}
+        {/* Acciones: Agregar Pieza + Enviar al Equipo (WA) + Copiar Precio Rápido */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <button
+          <WjgButton
             type="submit"
-            className="btn btn-primary"
-            style={{
-              width: '100%',
-              minHeight: '46px',
-              ...(piezaEnEdicion
-                ? {
-                    background: 'linear-gradient(135deg, #f59e0b 0%, #d97706 100%)',
-                    borderColor: '#f59e0b',
-                    color: '#000',
-                    fontWeight: 800
-                  }
-                : {})
-            }}
+            variant={piezaEnEdicion ? 'warning' : 'quote'}
+            fullWidth
+            leftIcon={piezaEnEdicion ? <Sparkles size={17} /> : <PlusCircle size={18} />}
+            style={{ minHeight: '46px' }}
           >
-            {piezaEnEdicion ? <Sparkles size={17} /> : <PlusCircle size={18} />}
-            <span>{piezaEnEdicion ? 'Guardar Cambios en este Ítem' : 'Agregar Pieza a la Cotización'}</span>
-          </button>
+            {piezaEnEdicion ? 'Guardar Cambios en este Ítem' : 'Agregar Pieza a la Cotización'}
+          </WjgButton>
 
           {calculoEnVivo && (
-            <button
-              type="button"
-              className="btn btn-secondary btn-sm"
-              onClick={handleCopyClienteQuick}
-              style={{ width: '100%', justifyContent: 'center', minHeight: '38px' }}
-              title="Copia únicamente nombre, cantidad, precio y entrega (sin costos ni márgenes)"
-            >
-              {copiadoWa ? <Check size={14} color="#34d399" /> : <Copy size={14} />}
-              <span>{copiadoWa ? '¡Texto cliente copiado!' : 'Copiar Precio Rápido (Cliente)'}</span>
-            </button>
+            <>
+              <WjgButton
+                type="button"
+                variant="whatsapp"
+                size="sm"
+                fullWidth
+                leftIcon={<Send size={14} />}
+                onClick={() => setShowShareTeamModal(true)}
+                style={{ minHeight: '40px' }}
+                title="Envía el desglose técnico interno y los PDFs (Preliminar Cliente y/o Interno NO_ENVIAR_CLIENTE) al equipo por WhatsApp antes de agregar la pieza"
+              >
+                Enviar Informe + PDF al Equipo (WA)
+              </WjgButton>
+
+              <WjgButton
+                type="button"
+                variant="secondary"
+                size="sm"
+                fullWidth
+                leftIcon={copiadoWa ? <Check size={14} color="#34d399" /> : <Copy size={14} />}
+                onClick={handleCopyClienteQuick}
+                style={{ minHeight: '38px' }}
+                title="Copia únicamente nombre, cantidad, precio y entrega (sin costos ni márgenes)"
+              >
+                {copiadoWa ? '¡Texto cliente copiado!' : 'Copiar Precio Rápido (Cliente)'}
+              </WjgButton>
+            </>
           )}
         </div>
       </div>
+
+      {/* Modal de Revisión Interna del Equipo por WhatsApp + PDFs */}
+      {calculoEnVivo && (
+        <WjgModal
+          isOpen={showShareTeamModal}
+          onClose={() => !sendingShare && setShowShareTeamModal(false)}
+          title="Enviar Revisión Previa al Equipo (WA + PDF)"
+          subtitle={`${calculoEnVivo.nombre_item} • ${cantidad} und. • ${formatCop(calculoEnVivo.precio_unitario)} c/u`}
+          icon={<Send size={18} />}
+          maxWidth="540px"
+          borderColor="rgba(16, 185, 129, 0.4)"
+          footer={
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', width: '100%', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                <WjgButton
+                  variant="secondary"
+                  size="sm"
+                  leftIcon={<Download size={14} />}
+                  onClick={() => handleDownloadSharePdfs('ambos')}
+                  disabled={sendingShare}
+                >
+                  Descargar Ambos PDFs
+                </WjgButton>
+                <WjgButton
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<Copy size={14} />}
+                  onClick={handleCopyEditLink}
+                  disabled={sendingShare}
+                >
+                  Copiar Enlace Edición
+                </WjgButton>
+              </div>
+              <WjgButton
+                variant="whatsapp"
+                size="sm"
+                loading={sendingShare}
+                leftIcon={<Send size={14} />}
+                onClick={handleSendToTeamWhatsApp}
+              >
+                Enviar Informe + PDF(s) Ahora
+              </WjgButton>
+            </div>
+          }
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: '10px',
+                background: 'rgba(245, 158, 11, 0.1)',
+                border: '1px solid rgba(245, 158, 11, 0.3)',
+                fontSize: '0.76rem',
+                color: '#fde68a',
+                lineHeight: 1.45
+              }}
+            >
+              <strong>Pre-revisión antes de agregar pieza:</strong> Se enviará un informe paso a paso en texto legible para el equipo + el PDF seleccionado y un enlace directo para abrir y ajustar esta pieza en la calculadora.
+            </div>
+
+            <div>
+              <label className="form-label">Destinatario en WhatsApp</label>
+              <WjgSelect
+                value={shareTarget}
+                onChange={val => setShareTarget(val as typeof shareTarget)}
+                options={[
+                  {
+                    value: 'todos',
+                    label: '👥 Los 3 Integrantes por Separado (Germán, Juan y Wendy)',
+                    subtitle: 'Envía texto + PDF(s) al chat privado de cada uno'
+                  },
+                  {
+                    value: 'grupo',
+                    label: gwConfig.internalGroupJid
+                      ? `💬 Grupo Interno: ${gwConfig.internalGroupName || gwConfig.internalGroupJid}`
+                      : '💬 Grupo Interno del Equipo (Configurar en Vinculación WA)',
+                    subtitle: gwConfig.internalGroupJid
+                      ? 'Un solo envío al grupo configurado'
+                      : 'Selecciona el grupo en el modal de Vinculación WhatsApp primero'
+                  },
+                  ...LISTA_MIEMBROS_WJG.map(m => ({
+                    value: m.id,
+                    label: `👤 Solo ${m.nombre}`,
+                    subtitle: m.rol
+                  }))
+                ]}
+              />
+            </div>
+
+            <div>
+              <label className="form-label">Opciones de PDF Adjunto</label>
+              <WjgSelect
+                value={pdfMode}
+                onChange={val => setPdfMode(val as typeof pdfMode)}
+                options={[
+                  {
+                    value: 'ambos',
+                    label: '📑 Ambos PDFs (Interno NO_ENVIAR_CLIENTE + Vista Cliente)',
+                    subtitle: 'Adjunta el desglose completo confidencial y el preliminar comercial'
+                  },
+                  {
+                    value: 'interno',
+                    label: '🔒 Solo Desglose Interno (NO_ENVIAR_CLIENTE)',
+                    subtitle: 'Costos por apartado, mano de obra y comparativa Bruto vs Markup'
+                  },
+                  {
+                    value: 'cliente',
+                    label: '📄 Solo Vista Preliminar Cliente (Sin costos internos)',
+                    subtitle: 'Formato comercial idéntico al que recibiría el cliente'
+                  }
+                ]}
+              />
+            </div>
+
+            <label
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                cursor: 'pointer',
+                fontSize: '0.8rem',
+                color: '#cbd5e1',
+                padding: '8px 10px',
+                borderRadius: '8px',
+                background: 'rgba(15, 23, 42, 0.5)',
+                border: '1px solid var(--border-subtle)'
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={incluirEnlaceEdicion}
+                onChange={e => setIncluirEnlaceEdicion(e.target.checked)}
+                style={{ accentColor: 'var(--brand-cyan)', width: '16px', height: '16px' }}
+              />
+              <span>Incluir enlace directo de edición para ajustar medidas/tiempos en el Cotizador</span>
+            </label>
+          </div>
+        </WjgModal>
+      )}
     </div>
   );
 };

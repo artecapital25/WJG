@@ -214,6 +214,7 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                   <div className="input-with-unit">
                     <input 
                       type="number" 
+                      step="any"
                       className="form-input" 
                       value={tiempoCuradoMin}
                       onChange={e => setTiempoCuradoMin(Math.max(1, parseInt(e.target.value) || 0))}
@@ -292,6 +293,7 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                   <div className="input-with-unit">
                     <input 
                       type="number" 
+                      step="any"
                       className="form-input" 
                       value={tiempoCompresorMin}
                       onChange={e => setTiempoCompresorMin(Math.max(0, parseInt(e.target.value) || 0))}
@@ -377,6 +379,7 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                       <div className="input-with-unit">
                         <input 
                           type="number"
+                          step="any"
                           className="form-input"
                           style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                           value={extra.tiempoMin}

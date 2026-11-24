@@ -19,7 +19,7 @@ import {
 import confetti from 'canvas-confetti';
 import { ProductoStock, TarifaTamano, ConfiguracionTaller } from '../../types';
 import { NanoBananaStudio } from './NanoBananaStudio';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgNumberInput, WjgSelect, WjgTextInput } from '../ui';
 
 interface MarketingHubViewProps {
   productosStock: ProductoStock[];
@@ -675,46 +675,20 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
 
             {itemType === 'personalizado' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
-                    Nombre del Personaje / Modelo:
-                  </label>
-                  <input
-                    type="text"
-                    value={customNombre}
-                    onChange={e => setCustomNombre(e.target.value)}
-                    placeholder="Ej. Batman Que Ríe 12cm"
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: '#0a0f18',
-                      border: '1px solid var(--border-subtle)',
-                      color: '#f8fafc',
-                      fontSize: '0.85rem'
-                    }}
-                  />
-                </div>
-                <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#94a3b8', marginBottom: '4px' }}>
-                    Precio estimado en COP:
-                  </label>
-                  <input
-                    type="number"
-                    value={customPrecio}
-                    onChange={e => setCustomPrecio(Number(e.target.value))}
-                    step="5000"
-                    style={{
-                      width: '100%',
-                      padding: '9px 12px',
-                      borderRadius: '8px',
-                      background: '#0a0f18',
-                      border: '1px solid var(--border-subtle)',
-                      color: '#f8fafc',
-                      fontSize: '0.85rem'
-                    }}
-                  />
-                </div>
+                <WjgTextInput
+                  label="Nombre del Personaje / Modelo:"
+                  value={customNombre}
+                  onChange={setCustomNombre}
+                  placeholder="Ej. Batman Que Ríe 12cm"
+                />
+                <WjgNumberInput
+                  label="Precio estimado en COP:"
+                  unit="COP"
+                  min={0}
+                  step="any"
+                  value={customPrecio}
+                  onChange={setCustomPrecio}
+                />
               </div>
             )}
           </div>
@@ -758,65 +732,37 @@ export const MarketingHubView: React.FC<MarketingHubViewProps> = ({
             />
 
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }}>
-              <button
-                type="button"
+              <WjgButton
+                variant={copiedSuccess ? 'save' : 'primary'}
                 onClick={() => handleCopyClipboard(copyGenerado)}
-                className="btn btn-primary"
-                style={{
-                  flex: 1,
-                  minWidth: '160px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: '8px',
-                  fontWeight: 700,
-                  background: copiedSuccess ? 'linear-gradient(135deg, #10b981, #059669)' : undefined
-                }}
+                leftIcon={copiedSuccess ? <Check size={16} /> : <Copy size={16} />}
+                style={{ flex: 1, minWidth: '160px' }}
               >
-                {copiedSuccess ? <Check size={16} /> : <Copy size={16} />}
-                <span>{copiedSuccess ? '¡Copiado al Portapapeles!' : 'Copiar Texto Completo'}</span>
-              </button>
+                {copiedSuccess ? '¡Copiado al Portapapeles!' : 'Copiar Texto Completo'}
+              </WjgButton>
 
-              <button
-                type="button"
+              <WjgButton
+                variant="whatsapp"
                 onClick={() => {
                   const url = `https://wa.me/${telefonoOficial}?text=${encodeURIComponent(copyGenerado)}`;
                   window.open(url, '_blank');
                 }}
-                className="btn btn-secondary"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  borderColor: 'rgba(16, 185, 129, 0.3)',
-                  color: '#34d399'
-                }}
+                leftIcon={<Send size={15} />}
                 title="Abrir WhatsApp para compartir o auto-enviarse el copy"
               >
-                <Send size={15} />
-                <span>Enviar a WhatsApp</span>
-              </button>
+                Enviar a WhatsApp
+              </WjgButton>
             </div>
 
-            <button
-              type="button"
+            <WjgButton
+              variant="cyan"
+              fullWidth
               onClick={() => setActiveSubTab('nano-banana')}
-              className="btn btn-cyan"
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                fontWeight: 800,
-                padding: '12px',
-                background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.25), rgba(14, 165, 233, 0.35))',
-                border: '1px solid #38bdf8'
-              }}
+              leftIcon={<Wand2 size={16} />}
+              style={{ fontWeight: 800, padding: '12px' }}
             >
-              <Wand2 size={16} />
-              <span>🎨 Crear Imagen para este Post con Nano Banana</span>
-            </button>
+              🎨 Crear Imagen para este Post con Nano Banana
+            </WjgButton>
 
             <div style={{
               background: 'rgba(56, 189, 248, 0.06)',

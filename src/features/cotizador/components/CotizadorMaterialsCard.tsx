@@ -805,7 +805,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                   value={espesorLaminaMm}
                   onChange={e => setEspesorLaminaMm && setEspesorLaminaMm(Math.max(1, parseFloat(e.target.value) || 1))}
                   placeholder="Espesor mm"
-                  step="0.5"
+                  step="any"
                 />
                 <span className="input-unit-badge">mm</span>
               </div>
@@ -830,6 +830,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               <div className="input-with-unit">
                 <input
                   type="number"
+                  step="any"
                   className="form-input"
                   value={tiempoLaserMin}
                   onChange={e => setTiempoLaserMin && setTiempoLaserMin(Math.max(1, parseInt(e.target.value) || 1))}
@@ -886,6 +887,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               <div className="input-with-unit">
                 <input
                   type="number"
+                  step="any"
                   className="form-input"
                   value={tiempoMecanizadoMin}
                   onChange={e => setTiempoMecanizadoMin && setTiempoMecanizadoMin(Math.max(1, parseInt(e.target.value) || 1))}

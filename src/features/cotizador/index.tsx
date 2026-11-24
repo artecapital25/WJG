@@ -270,6 +270,8 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
               setAplicaDescuentoVolumen={form.setAplicaDescuentoVolumen}
               precioMinimoTrabajo={props.config.precio_minimo_trabajo ?? 15000}
               mermaPct={form.tecnologia === 'FDM_FILAMENTO' ? form.mermaPorcentajeFdm : form.mermaPorcentajeResina}
+              config={props.config}
+              personal={props.personal}
             />
           </div>
         </div>

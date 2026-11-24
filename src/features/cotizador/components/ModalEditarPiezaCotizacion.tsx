@@ -178,10 +178,11 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '12px' }}>
             <div className="form-group">
               <label className="form-label" style={{ fontWeight: 600 }}>Cantidad</label>
-              <input 
-                type="number" 
+              <input
+                type="number"
                 min="1"
-                className="form-input" 
+                step="any"
+                className="form-input"
                 value={editCantidad}
                 onChange={e => setEditCantidad(Math.max(1, parseInt(e.target.value, 10) || 1))}
                 required
@@ -270,6 +271,7 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
                 <input 
                   type="number"
                   min="0"
+                  step="any"
                   className="form-input" 
                   style={{ padding: '6px 8px', fontSize: '0.82rem' }}
                   value={editAltoMm}
@@ -285,6 +287,7 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
                 <input 
                   type="number"
                   min="0"
+                  step="any"
                   className="form-input" 
                   style={{ padding: '6px 8px', fontSize: '0.82rem' }}
                   value={editAnchoMm}
@@ -300,6 +303,7 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
                 <input 
                   type="number"
                   min="0"
+                  step="any"
                   className="form-input" 
                   style={{ padding: '6px 8px', fontSize: '0.82rem' }}
                   value={editProfundidadMm}
@@ -505,6 +509,7 @@ export const ModalEditarPiezaCotizacion: React.FC<ModalEditarPiezaCotizacionProp
                       <input 
                         type="number"
                         min="0"
+                        step="any"
                         className="form-input"
                         style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                         value={mExtra.tiempo_min}

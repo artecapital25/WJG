@@ -158,6 +158,7 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
           <div className="input-with-unit">
             <input 
               type="number" 
+              step="any"
               className="form-input" 
               value={unidadMedida === 'cm' ? Number((altoMm / 10).toFixed(2)) : altoMm} 
               onChange={e => {
@@ -182,6 +183,7 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
           <div className="input-with-unit">
             <input 
               type="number" 
+              step="any"
               className="form-input" 
               value={unidadMedida === 'cm' ? Number((anchoMm / 10).toFixed(2)) : anchoMm} 
               onChange={e => {
@@ -206,6 +208,7 @@ export const CotizadorDimensionsCard: React.FC<CotizadorDimensionsCardProps> = (
           <div className="input-with-unit">
             <input 
               type="number" 
+              step="any"
               className="form-input" 
               value={unidadMedida === 'cm' ? Number((profundidadMm / 10).toFixed(2)) : profundidadMm} 
               onChange={e => {

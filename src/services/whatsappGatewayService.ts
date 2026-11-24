@@ -22,6 +22,8 @@ export interface WhatsAppGatewayConfig {
   officialPhone: string;
   metaCloudToken?: string;
   metaPhoneNumberId?: string;
+  internalGroupJid?: string;
+  internalGroupName?: string;
 }
 
 const STORAGE_KEY_WA_GATEWAY = 'wjg_whatsapp_gateway_config';
@@ -362,8 +364,11 @@ export const WhatsAppGatewayService = {
     mensaje: string
   ): Promise<{ success: boolean; id?: string; error?: string; fallbackUrl?: string }> {
     const config = this.getConfig();
-    const cleanPhone = formatWhatsAppPhone(destinatarioTelefono);
-    const fallbackUrl = `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`;
+    const esGrupo = String(destinatarioTelefono || '').includes('@g.us');
+    const cleanPhone = esGrupo ? String(destinatarioTelefono).trim() : formatWhatsAppPhone(destinatarioTelefono);
+    const fallbackUrl = esGrupo
+      ? `https://wa.me/?text=${encodeURIComponent(mensaje)}`
+      : `https://wa.me/${cleanPhone}?text=${encodeURIComponent(mensaje)}`;
 
     if (!config.autoSendEnabled) {
       return { success: false, fallbackUrl, error: 'Envío automático deshabilitado en ajustes.' };
@@ -373,6 +378,9 @@ export const WhatsAppGatewayService = {
     if (config.provider === 'meta_cloud_api') {
       if (!config.metaCloudToken || !config.metaPhoneNumberId) {
         return { success: false, fallbackUrl, error: 'Falta configurar Meta Cloud Token y Phone ID.' };
+      }
+      if (esGrupo) {
+        return { success: false, fallbackUrl, error: 'Meta Cloud API no soporta grupos @g.us directamente.' };
       }
 
       try {
@@ -446,6 +454,60 @@ export const WhatsAppGatewayService = {
         error: err.message || 'Fallo de red al contactar Gateway',
         fallbackUrl
       };
+    }
+  },
+
+  /**
+   * Lista los grupos de WhatsApp disponibles en la sesión conectada del Gateway
+   */
+  async listGroups(): Promise<{ success: boolean; groups: { id: string; subject: string; size: number }[]; error?: string }> {
+    try {
+      const res = await this.requestGateway('/groups', { method: 'GET' }, 8000);
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success) {
+        return { success: true, groups: Array.isArray(data.groups) ? data.groups : [] };
+      }
+      return { success: false, groups: [], error: data?.error || `HTTP ${res.status}` };
+    } catch (err: any) {
+      return { success: false, groups: [], error: err?.message || 'Error consultando grupos' };
+    }
+  },
+
+  /**
+   * Envía un documento (ej. PDF base64) por el Gateway a un número o grupo (@g.us)
+   */
+  async sendDocument(
+    destinatario: string,
+    params: { base64: string; fileName: string; caption?: string; mimetype?: string }
+  ): Promise<{ success: boolean; id?: string; error?: string }> {
+    const esGrupo = String(destinatario || '').includes('@g.us');
+    const cleanDest = esGrupo ? String(destinatario).trim() : formatWhatsAppPhone(destinatario);
+
+    try {
+      const res = await this.requestGateway(
+        '/send-document',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            to: cleanDest,
+            number: cleanDest,
+            base64: params.base64,
+            fileName: params.fileName,
+            mimetype: params.mimetype || 'application/pdf',
+            caption: params.caption || ''
+          })
+        },
+        15000
+      );
+
+      const json = await res.json().catch(() => null);
+      if (res.ok && json?.success) {
+        return { success: true, id: json.id || `doc-${Date.now()}` };
+      }
+      return { success: false, error: json?.error || `Error HTTP ${res.status}` };
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Fallo enviando documento' };
     }
   }
 };

@@ -1,9 +1,10 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { Cotizacion, CuentaCobro, ConfiguracionTaller } from '../types';
+import { Cotizacion, CuentaCobro, ConfiguracionTaller, PiezaCotizada, Personal } from '../types';
 import { VentaExpress } from '../types/pos';
 import { LEYENDA_IVA_CERO } from '../features/cotizador/utils/pricingCalculator';
 import { generateCotizacionWhatsAppUrl, generateCuentaCobroWhatsAppUrl } from './whatsappService';
+import { resolveOperatorDisplayName } from './cotizadorInternalShareService';
 
 let cachedLogoDataUrl: string | null = null;
 
@@ -430,6 +431,246 @@ export async function compartirPDFWhatsApp(cotizacion: Cotizacion, config: Confi
   doc.save(filename);
   const url = generateCotizacionWhatsAppUrl(cotizacion, config);
   window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+function sanitizePdfSlug(raw: string): string {
+  return (raw || 'Pieza')
+    .replace(/[^a-zA-Z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 48) || 'Pieza';
+}
+
+function extractPdfBase64(doc: jsPDF): string {
+  const dataUri = doc.output('datauristring');
+  const idx = dataUri.indexOf(',');
+  return idx >= 0 ? dataUri.slice(idx + 1) : dataUri;
+}
+
+/**
+ * PDF DE USO INTERNO EXCLUSIVO DEL TALLER (Sellado "NO ENVIAR AL CLIENTE").
+ * Incluye costos unitarios/lote, desglose por apartado, responsables MO y comparativa Bruto vs Markup.
+ */
+export function crearDocPDFDesgloseInterno(
+  pieza: PiezaCotizada,
+  config: ConfiguracionTaller,
+  personal: Personal[] = [],
+  logoDataUrl?: string
+): jsPDF {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter'
+  });
+
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const cantidad = Math.max(1, pieza.cantidad || 1);
+
+  // Banda superior de advertencia confidencial
+  doc.setFillColor(185, 28, 28); // Red #b91c1c
+  doc.rect(0, 0, pageWidth, 26, 'F');
+
+  doc.setTextColor(255, 255, 255);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(13);
+  doc.text('USO INTERNO TALLER — NO ENVIAR AL CLIENTE', 15, 11);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.text(`Pre-revisión técnica y financiera | WJGEEKS 3D PRO | ${new Date().toLocaleDateString('es-CO')}`, 15, 18);
+
+  if (logoDataUrl) {
+    try {
+      doc.addImage(logoDataUrl, 'PNG', pageWidth - 33, 4, 18, 18);
+    } catch {
+      // Ignorar si el logo falla en entornos headless
+    }
+  }
+
+  // Ficha técnica de la pieza
+  doc.setFillColor(241, 245, 249);
+  doc.roundedRect(15, 32, pageWidth - 30, 32, 2, 2, 'F');
+
+  doc.setTextColor(15, 23, 42);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.text(`Pieza: ${pieza.nombre_item}`, 19, 39);
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.setTextColor(51, 65, 85);
+  const horas = Math.floor((pieza.tiempo_impresion_min || 0) / 60);
+  const mins = (pieza.tiempo_impresion_min || 0) % 60;
+  doc.text(
+    `Tecnología: ${pieza.tecnologia || 'SLA_RESINA'}  |  Cantidad: ${cantidad} und.  |  Medidas: ${pieza.alto_mm}×${pieza.ancho_mm}×${pieza.profundidad_mm} mm`,
+    19,
+    46
+  );
+  doc.text(
+    `Material: ${pieza.resina_nombre} (${pieza.peso_estimado_g || 0} g)  |  Máquina: ${pieza.maquina_nombre} (${horas}h ${mins}m)`,
+    19,
+    52
+  );
+
+  const opDiseno = resolveOperatorDisplayName(pieza.operador_diseno_id, personal);
+  const opArmado = resolveOperatorDisplayName(pieza.operador_armado_id, personal);
+  const opPintura = resolveOperatorDisplayName(pieza.operador_pintura_id, personal);
+  const opsLine = [
+    opDiseno ? `Diseño: ${opDiseno}` : null,
+    opArmado ? `Taller/Armado: ${opArmado}` : null,
+    pieza.va_pintado && opPintura ? `Pintura: ${opPintura}` : null
+  ]
+    .filter(Boolean)
+    .join('  •  ');
+  doc.text(
+    opsLine ? `Responsables MO: ${opsLine}` : `Contacto taller: ${config.telefono_contacto || 'WJGEEKS'}`,
+    19,
+    58
+  );
+
+  // Tabla desglose por apartados
+  const apartados = pieza.desglose_apartados || [];
+  const tableRows =
+    apartados.length > 0
+      ? apartados.map(ap => [
+          ap.etiqueta,
+          ap.esProrrateado ? `÷${cantidad} lote` : 'Por pieza',
+          `$${Math.round(ap.costoUnitario || 0).toLocaleString('es-CO')}`,
+          `$${Math.round(ap.cobroUnitario || 0).toLocaleString('es-CO')}`,
+          `$${Math.round((ap.cobroUnitario || 0) * cantidad).toLocaleString('es-CO')}`
+        ])
+      : [
+          [
+            'Costo Base de Producción',
+            'Por pieza',
+            `$${Math.round(pieza.costo_base_produccion || 0).toLocaleString('es-CO')}`,
+            `$${Math.round(pieza.precio_unitario || 0).toLocaleString('es-CO')}`,
+            `$${Math.round(pieza.precio_total || 0).toLocaleString('es-CO')}`
+          ]
+        ];
+
+  autoTable(doc, {
+    startY: 70,
+    head: [['Apartado / Rubro', 'Aplicación', 'Costo Unit.', 'Cobro Unit.', `Cobro Lote (×${cantidad})`]],
+    body: tableRows,
+    theme: 'grid',
+    headStyles: {
+      fillColor: [30, 41, 59],
+      textColor: [255, 255, 255],
+      fontSize: 8.5,
+      fontStyle: 'bold'
+    },
+    styles: {
+      fontSize: 8.2,
+      cellPadding: 2.6
+    },
+    columnStyles: {
+      0: { cellWidth: 'auto' },
+      1: { halign: 'center', cellWidth: 24 },
+      2: { halign: 'right', cellWidth: 28 },
+      3: { halign: 'right', cellWidth: 28 },
+      4: { halign: 'right', cellWidth: 32 }
+    },
+    margin: { left: 15, right: 15 }
+  });
+
+  const summaryY = ((doc as any).lastAutoTable?.finalY || 120) + 8;
+
+  // Bloque resumen financiero interno
+  doc.setFillColor(15, 23, 42);
+  doc.roundedRect(15, summaryY, pageWidth - 30, 38, 2, 2, 'F');
+
+  const modoLabel = pieza.modo_margen === 'markup' ? 'Markup sobre Costo' : 'Margen Bruto sobre Venta';
+  const pctMargen = Math.round((pieza.margen_ganancia || 0) * 100);
+
+  doc.setTextColor(56, 189, 248);
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(9.5);
+  doc.text(`RESUMEN FINANCIERO INTERNO (${modoLabel} ${pctMargen}%)`, 19, summaryY + 7);
+
+  doc.setTextColor(226, 232, 240);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8.5);
+  doc.text(
+    `Costo Real Taller: $${Math.round(pieza.costo_base_produccion || 0).toLocaleString('es-CO')} c/u  |  Lote: $${Math.round((pieza.costo_base_produccion || 0) * cantidad).toLocaleString('es-CO')} COP`,
+    19,
+    summaryY + 14
+  );
+
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text(
+    `Precio Sugerido: $${Math.round(pieza.precio_unitario || 0).toLocaleString('es-CO')} c/u  |  Total Lote: $${Math.round(pieza.precio_total || 0).toLocaleString('es-CO')} COP`,
+    19,
+    summaryY + 21
+  );
+
+  doc.setTextColor(52, 211, 153);
+  doc.text(
+    `Utilidad Neta: +$${Math.round(pieza.utilidad_neta_unitaria || 0).toLocaleString('es-CO')} c/u  |  Lote: +$${Math.round(pieza.utilidad_neta_total || 0).toLocaleString('es-CO')} COP`,
+    19,
+    summaryY + 28
+  );
+
+  if (pieza.precio_con_margen_bruto && pieza.precio_con_markup) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(251, 191, 36);
+    doc.text(
+      `Comparativa modos: Margen Bruto $${Math.round(pieza.precio_con_margen_bruto).toLocaleString('es-CO')} vs Markup $${Math.round(pieza.precio_con_markup).toLocaleString('es-CO')}`,
+      19,
+      summaryY + 34
+    );
+  }
+
+  return doc;
+}
+
+export async function generarPDFClientePreliminarBase64(
+  pieza: PiezaCotizada,
+  config: ConfiguracionTaller
+): Promise<{ base64: string; fileName: string }> {
+  const logoDataUrl = (await getLogoDataUrl().catch(() => null)) || undefined;
+  const cotPreliminar: Cotizacion = {
+    id: `prelim-${Date.now()}`,
+    numero_cot: 'PRELIMINAR',
+    cliente: {
+      id: 'preliminar',
+      codigo: 0,
+      nombre: 'Cliente (Vista Preliminar)',
+      nit_cc: '—',
+      telefono: config.telefono_contacto || '—',
+      correo: config.correo || ''
+    },
+    vendedor: 'WJGEEKS 3D PRO',
+    fecha: new Date().toISOString().slice(0, 10),
+    estado: 'Borrador',
+    items: [pieza],
+    subtotal: pieza.precio_total,
+    iva_porcentaje: 0,
+    descuento_porcentaje: 0,
+    total: pieza.precio_total,
+    tiempo_entrega_estimado: pieza.tiempo_entrega || 'Por confirmar',
+    notas: 'Documento preliminar generado antes de aprobar la pieza en cotización final.'
+  };
+
+  const doc = crearDocPDFCotizacion(cotPreliminar, config, logoDataUrl);
+  return {
+    base64: extractPdfBase64(doc),
+    fileName: `Cotizacion_PRELIMINAR_Cliente_${sanitizePdfSlug(pieza.nombre_item)}.pdf`
+  };
+}
+
+export async function generarPDFDesgloseInternoBase64(
+  pieza: PiezaCotizada,
+  config: ConfiguracionTaller,
+  personal: Personal[] = []
+): Promise<{ base64: string; fileName: string }> {
+  const logoDataUrl = (await getLogoDataUrl().catch(() => null)) || undefined;
+  const doc = crearDocPDFDesgloseInterno(pieza, config, personal, logoDataUrl);
+  return {
+    base64: extractPdfBase64(doc),
+    fileName: `NO_ENVIAR_CLIENTE_Desglose_Interno_${sanitizePdfSlug(pieza.nombre_item)}.pdf`
+  };
 }
 
 export function crearDocPDFCuentaCobro(
