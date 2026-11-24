@@ -3,7 +3,7 @@ import { HubType } from '../components/ui/BottomNavBar';
 import { TabType } from '../types';
 import { HubAreaPermission, UsuarioTaller } from '../types/usuarios.types';
 
-const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion'];
+const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion', 'herramientas'];
 
 export function useAuthorization(activeOperatorName: string = 'Juan', usuarios: UsuarioTaller[] = []) {
   // Encontrar el usuario activo en la lista o aplicar fallback seguro por nombre oficial

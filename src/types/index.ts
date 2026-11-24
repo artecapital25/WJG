@@ -204,7 +204,10 @@ export interface Maquina {
 
 export interface Personal {
   id: string;
+  nombre?: string;
   rol: string;
+  area_responsabilidad?: string;
+  aplica_mano_obra?: boolean;
   costo_hora: number;
   costo_minuto: number;
 }
@@ -398,6 +401,9 @@ export interface PiezaCotizada {
   costo_diseno_unitario?: number;
   costo_armado_unitario?: number;
   costo_pintura_mo_unitario?: number;
+  operador_pintura_id?: string;
+  operador_armado_id?: string;
+  operador_diseno_id?: string;
   costo_herrajes_total?: number;
   costo_pinturas_total?: number;
 }

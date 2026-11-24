@@ -1,22 +1,36 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase, isSupabaseConfigured } from '../services/supabaseClient';
+import { CloudSyncService } from '../services/cloudSyncService';
 import { HubAreaPermission, UsuarioTaller, UsuarioTallerInput, parseDispositivoInfo } from '../types/usuarios.types';
 import { toast } from '../components/ui/ToastProvider';
 import { AuthSecurityService } from '../services/authSecurityService';
 
 const LOCAL_STORAGE_USERS_KEY = 'wjg_usuarios_taller_cache';
-const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion'];
+const ALL_AREAS: HubAreaPermission[] = ['ventas', 'taller', 'finanzas', 'gestion', 'herramientas'];
+
+export function inferAreaResponsabilidad(nombre?: string, current?: string | null): string {
+  if (current && current.trim()) return current.trim();
+  const n = (nombre || '').toLowerCase();
+  if (n.includes('germ')) return 'Aplicación, Backoffice, Ventas y Redes';
+  if (n.includes('juan')) return 'Encargado del Taller (Impresión 3D y Mantenimiento)';
+  if (n.includes('wendy')) return 'Pintura, Acabados y Redes';
+  return 'Operador Multifunción';
+}
 
 const DEFAULT_USERS_SEED: UsuarioTaller[] = [
   {
     id: '08c6c49a-0422-414b-813e-8f58fa651bd5',
     nombre: 'Germán',
     rol: 'ADMIN_COBRANZAS',
+    area_responsabilidad: 'Aplicación, Backoffice, Ventas y Redes',
+    costo_hora: 10000,
+    costo_minuto: 166.67,
+    aplica_mano_obra: true,
     telefono: '3503443140',
     telefono_notificaciones: '573503443140',
     email: 'german@wjgeeks.com',
     cedula: '1098765432',
-    permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'],
+    permisos_areas: ALL_AREAS,
     pin_acceso: '1234',
     activo: true,
     must_change_password: false
@@ -25,11 +39,15 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
     id: '4485aa21-3896-4510-b693-fc68e947372d',
     nombre: 'Wendy',
     rol: 'ADMIN_COBRANZAS',
+    area_responsabilidad: 'Pintura, Acabados y Redes',
+    costo_hora: 10000,
+    costo_minuto: 166.67,
+    aplica_mano_obra: true,
     telefono: '3204814702',
     telefono_notificaciones: '573204814702',
     email: 'wendy@wjgeeks.com',
     cedula: '1098765433',
-    permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'],
+    permisos_areas: ALL_AREAS,
     pin_acceso: '1234',
     activo: true,
     must_change_password: false
@@ -38,11 +56,15 @@ const DEFAULT_USERS_SEED: UsuarioTaller[] = [
     id: 'a48df7ca-8b06-4bab-bfa4-3b058912b06f',
     nombre: 'Juan',
     rol: 'ADMIN_COBRANZAS',
+    area_responsabilidad: 'Encargado del Taller (Impresión 3D y Mantenimiento)',
+    costo_hora: 10000,
+    costo_minuto: 166.67,
+    aplica_mano_obra: true,
     telefono: '3217273025',
     telefono_notificaciones: '573217273025',
     email: 'juan@wjgeeks.com',
     cedula: '1098765434',
-    permisos_areas: ['ventas', 'taller', 'finanzas', 'gestion'],
+    permisos_areas: ALL_AREAS,
     pin_acceso: '1234',
     activo: true,
     must_change_password: false
@@ -97,30 +119,55 @@ export function useUsuariosTaller() {
     }
 
     try {
-      const { data, error } = await supabase
+      const selectWithExtended = 'id, nombre, rol, area_responsabilidad, costo_hora, costo_minuto, aplica_mano_obra, telefono, telefono_notificaciones, email, cedula, permisos_areas, activo, pin_acceso, password_hash, must_change_password, ultimo_acceso, dispositivo_info, created_at';
+      const selectBase = 'id, nombre, rol, costo_hora, costo_minuto, telefono, telefono_notificaciones, email, cedula, permisos_areas, activo, pin_acceso, password_hash, must_change_password, ultimo_acceso, dispositivo_info, created_at';
+
+      let { data, error } = await supabase
         .from('usuarios_taller')
-        .select('id, nombre, rol, telefono, telefono_notificaciones, email, cedula, permisos_areas, activo, pin_acceso, password_hash, must_change_password, ultimo_acceso, dispositivo_info, created_at')
+        .select(selectWithExtended)
         .order('nombre', { ascending: true });
+
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || /column/i.test(error.message || ''))) {
+        const fallbackRes = await supabase
+          .from('usuarios_taller')
+          .select(selectBase)
+          .order('nombre', { ascending: true });
+        data = fallbackRes.data as any;
+        error = fallbackRes.error;
+      }
 
       if (error) {
         console.warn('Error consultando usuarios_taller en Supabase:', error.message);
         setIsError(true);
         setErrorMessage(error.message);
-        // Si la tabla no está poblada, mantener cache local
         return;
       }
 
       if (data && data.length > 0) {
-        // Normalizar permisos_areas para garantizar acceso universal a los 4 Hubs en todo dispositivo
+        let existingLocal: UsuarioTaller[] = [];
+        try {
+          const cachedStr = localStorage.getItem(LOCAL_STORAGE_USERS_KEY);
+          if (cachedStr) existingLocal = JSON.parse(cachedStr);
+        } catch {}
+
         const idsToUpgrade: string[] = [];
-        const normalized: UsuarioTaller[] = data.map(item => {
+        const normalized: UsuarioTaller[] = data.map((item: any) => {
           const prevPermisos = Array.isArray(item.permisos_areas) ? item.permisos_areas : [];
           if (item.activo !== false && prevPermisos.length < ALL_AREAS.length && item.id) {
             idsToUpgrade.push(item.id);
           }
+          const localMatch = existingLocal.find(l => l.id === item.id);
+          const costoHora = Number(item.costo_hora) > 0 ? Number(item.costo_hora) : (Number(localMatch?.costo_hora) || 10000);
+          const costoMinuto = Number(item.costo_minuto) > 0
+            ? Number(item.costo_minuto)
+            : Number((costoHora / 60).toFixed(2));
           return {
             ...item,
             rol: item.rol || 'ADMIN_COBRANZAS',
+            area_responsabilidad: inferAreaResponsabilidad(item.nombre, item.area_responsabilidad ?? localMatch?.area_responsabilidad),
+            costo_hora: costoHora,
+            costo_minuto: costoMinuto,
+            aplica_mano_obra: item.aplica_mano_obra !== undefined ? Boolean(item.aplica_mano_obra) : (localMatch?.aplica_mano_obra ?? true),
             permisos_areas: ALL_AREAS,
             dispositivo_info: parseDispositivoInfo(item.dispositivo_info)
           };
@@ -137,7 +184,6 @@ export function useUsuariosTaller() {
             });
         }
       } else {
-        // Si data es [] vacía, intentar sembrar Juan, Wendy y Germán automáticamente
         await autoSeedMiembrosOficiales();
       }
     } catch (err: any) {
@@ -256,14 +302,12 @@ export function useUsuariosTaller() {
 
   // 3. Crear Usuario con Control de Duplicidad y Hash
   const createUsuario = async (input: UsuarioTallerInput): Promise<{ success: boolean; message: string; usuario?: UsuarioTaller }> => {
-    // Normalizar teléfonos
     let cleanPhone = input.telefono.replace(/\D/g, '');
     let cleanNotif = (input.telefono_notificaciones || input.telefono).replace(/\D/g, '');
     if (cleanNotif.length === 10 && cleanNotif.startsWith('3')) {
       cleanNotif = `57${cleanNotif}`;
     }
 
-    // Hash SHA-256 inicial para el PIN o Clave Alfanumérica
     const pin = (input.pin_acceso || '1234').trim();
     let pinHash = '';
     try {
@@ -272,9 +316,18 @@ export function useUsuariosTaller() {
       pinHash = '';
     }
 
-    const payload: any = {
+    const costoHora = Number(input.costo_hora) > 0 ? Number(input.costo_hora) : 10000;
+    const costoMinuto = Number(input.costo_minuto) > 0
+      ? Number(input.costo_minuto)
+      : Number((costoHora / 60).toFixed(2));
+    const areaResp = inferAreaResponsabilidad(input.nombre, input.area_responsabilidad);
+    const aplicaMO = input.aplica_mano_obra !== undefined ? Boolean(input.aplica_mano_obra) : true;
+
+    const basePayload: any = {
       nombre: input.nombre.trim(),
       rol: input.rol,
+      costo_hora: costoHora,
+      costo_minuto: costoMinuto,
       telefono: cleanPhone,
       telefono_notificaciones: cleanNotif,
       email: input.email?.trim().toLowerCase() || null,
@@ -287,36 +340,66 @@ export function useUsuariosTaller() {
       must_change_password: false
     };
 
+    const extendedPayload: any = {
+      ...basePayload,
+      area_responsabilidad: areaResp,
+      aplica_mano_obra: aplicaMO
+    };
+
+    const notifyPersonalChange = () => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:personal-updated'));
+      }
+      CloudSyncService.broadcastChange('personal', 'upsert');
+    };
+
     if (isSupabaseConfigured && supabase) {
       try {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from('usuarios_taller')
-          .insert([payload])
+          .insert([extendedPayload])
           .select()
           .single();
+
+        if (error && (error.code === '42703' || error.code === 'PGRST204' || /column/i.test(error.message || ''))) {
+          const retry = await supabase
+            .from('usuarios_taller')
+            .insert([basePayload])
+            .select()
+            .single();
+          data = retry.data;
+          error = retry.error;
+        }
 
         if (error) {
           const friendlyMsg = handlePostgresError(error);
           return { success: false, message: friendlyMsg };
         }
 
-        const newUser = data as UsuarioTaller;
+        const newUser: UsuarioTaller = {
+          ...(data as UsuarioTaller),
+          area_responsabilidad: (data as any)?.area_responsabilidad || areaResp,
+          costo_hora: Number((data as any)?.costo_hora) || costoHora,
+          costo_minuto: Number((data as any)?.costo_minuto) || costoMinuto,
+          aplica_mano_obra: (data as any)?.aplica_mano_obra !== undefined ? Boolean((data as any).aplica_mano_obra) : aplicaMO
+        };
         const updated = [...usuarios, newUser];
         persistCache(updated);
+        notifyPersonalChange();
         return { success: true, message: `Colaborador ${newUser.nombre} creado con éxito.`, usuario: newUser };
       } catch (err: any) {
         return { success: false, message: handlePostgresError(err) };
       }
     } else {
-      // Modo Local Offline
       const mockId = `usr-${Date.now()}`;
       const newUser: UsuarioTaller = {
-        ...(payload as any),
+        ...(extendedPayload as any),
         id: mockId,
         created_at: new Date().toISOString()
       };
       const updated = [...usuarios, newUser];
       persistCache(updated);
+      notifyPersonalChange();
       return { success: true, message: `Colaborador guardado localmente (${newUser.nombre}).`, usuario: newUser };
     }
   };
@@ -332,10 +415,14 @@ export function useUsuariosTaller() {
       if (notif.length === 10 && notif.startsWith('3')) notif = `57${notif}`;
       payload.telefono_notificaciones = notif;
     }
+    if (updates.costo_hora !== undefined) {
+      const ch = Math.max(0, Number(updates.costo_hora) || 0);
+      payload.costo_hora = ch;
+      payload.costo_minuto = Number((ch / 60).toFixed(2));
+    }
 
     const isUUID = (str: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str || '');
 
-    // Si se especificó una nueva clave o PIN en la edición
     if (updates.pin_acceso && updates.pin_acceso.trim()) {
       const cleanKey = updates.pin_acceso.trim();
       payload.pin_acceso = cleanKey;
@@ -347,21 +434,30 @@ export function useUsuariosTaller() {
       }
     }
 
+    const notifyPersonalChange = () => {
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:personal-updated'));
+      }
+      CloudSyncService.broadcastChange('personal', 'upsert');
+    };
+
     if (isSupabaseConfigured && supabase) {
       try {
         const target = usuarios.find(u => u.id === id);
-        let query = supabase.from('usuarios_taller').update(payload);
-        if (isUUID(id)) {
-          query = query.eq('id', id);
-        } else if (target && isUUID(target.id)) {
-          query = query.eq('id', target.id);
-        } else if (target) {
-          query = query.ilike('nombre', `%${target.nombre}%`);
-        } else {
-          query = query.eq('id', id);
-        }
+        const applyFilter = (q: any) => {
+          if (isUUID(id)) return q.eq('id', id);
+          if (target && isUUID(target.id)) return q.eq('id', target.id);
+          if (target) return q.ilike('nombre', `%${target.nombre}%`);
+          return q.eq('id', id);
+        };
 
-        const { error } = await query;
+        let { error } = await applyFilter(supabase.from('usuarios_taller').update(payload));
+
+        if (error && (error.code === '42703' || error.code === 'PGRST204' || /column/i.test(error.message || ''))) {
+          const { area_responsabilidad: _ar, aplica_mano_obra: _amo, ...baseUpdates } = payload;
+          const retry = await applyFilter(supabase.from('usuarios_taller').update(baseUpdates));
+          error = retry.error;
+        }
 
         if (error) {
           return { success: false, message: handlePostgresError(error) };
@@ -369,15 +465,48 @@ export function useUsuariosTaller() {
 
         const updated = usuarios.map(u => (u.id === id || (u.nombre && target && u.nombre === target.nombre)) ? { ...u, ...payload } : u);
         persistCache(updated);
-        return { success: true, message: 'Datos del colaborador actualizados exitosamente.' };
+        notifyPersonalChange();
+        return { success: true, message: 'Datos y tarifa del colaborador actualizados exitosamente.' };
       } catch (err: any) {
         return { success: false, message: handlePostgresError(err) };
       }
     } else {
       const updated = usuarios.map(u => u.id === id ? { ...u, ...payload } : u);
       persistCache(updated);
+      notifyPersonalChange();
       return { success: true, message: 'Colaborador actualizado localmente.' };
     }
+  };
+
+  // 4.1 Eliminar Colaborador (Estado React + Cache local + Supabase)
+  const deleteUsuario = async (id: string): Promise<{ success: boolean; message: string }> => {
+    const target = usuarios.find(u => u.id === id);
+    if (!target) return { success: false, message: 'Colaborador no encontrado.' };
+    if (usuarios.filter(u => u.activo).length <= 1 && target.activo) {
+      return { success: false, message: 'Debe permanecer al menos un colaborador activo en el sistema.' };
+    }
+
+    if (isSupabaseConfigured && supabase) {
+      try {
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+        let q = supabase.from('usuarios_taller').delete();
+        q = isUUID ? q.eq('id', id) : q.ilike('nombre', `%${target.nombre}%`);
+        const { error } = await q;
+        if (error) {
+          return { success: false, message: error.message };
+        }
+      } catch (err: any) {
+        return { success: false, message: err?.message || 'Error eliminando en Supabase.' };
+      }
+    }
+
+    const updated = usuarios.filter(u => u.id !== id);
+    persistCache(updated);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('wjg:personal-updated'));
+    }
+    CloudSyncService.broadcastChange('personal', 'delete');
+    return { success: true, message: `Colaborador "${target.nombre}" eliminado definitivamente.` };
   };
 
   // 5. Toggle Kill Switch (Activo / Inactivo)
@@ -599,6 +728,7 @@ export function useUsuariosTaller() {
     verificarDuplicado,
     createUsuario,
     updateUsuario,
+    deleteUsuario,
     toggleActivo,
     cambiarPin,
     recuperarPin,

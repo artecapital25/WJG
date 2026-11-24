@@ -370,6 +370,9 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       setTiempoDesarrolloMin(piezaEnEdicion.tiempo_desarrollo_min ?? 30);
       setTiempoArmadoMin(piezaEnEdicion.tiempo_armado_min ?? 15);
       setTiempoPinturaMin(piezaEnEdicion.tiempo_pintura_min ?? 0);
+      if (piezaEnEdicion.operador_pintura_id) setOperadorPinturaId(piezaEnEdicion.operador_pintura_id);
+      if (piezaEnEdicion.operador_armado_id) setOperadorArmadoId(piezaEnEdicion.operador_armado_id);
+      if (piezaEnEdicion.operador_diseno_id) setOperadorDisenoId(piezaEnEdicion.operador_diseno_id);
 
       // Restaurar Curado y Compresor
       const curadoProc = piezaEnEdicion.maquinas_involucradas?.find(m => m.proceso === 'Lavado y Curado UV');
@@ -588,6 +591,41 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [tiempoDesarrolloMin, setTiempoDesarrolloMin] = useState(30);
   const [tiempoArmadoMin, setTiempoArmadoMin] = useState(15);
   const [tiempoPinturaMin, setTiempoPinturaMin] = useState(60);
+
+  // Operadores asignados por fase (para aplicar la tarifa/hora individual de Germán, Juan, Wendy, etc.)
+  const resolveDefaultOperador = (keywords: string[]): string => {
+    const activos = personal.filter(p => p.aplica_mano_obra !== false);
+    const pool = activos.length > 0 ? activos : personal;
+    const found = pool.find(p => {
+      const txt = `${p.nombre || ''} ${p.rol || ''} ${p.area_responsabilidad || ''}`.toLowerCase();
+      return keywords.some(k => txt.includes(k));
+    });
+    return found?.id || pool[0]?.id || '';
+  };
+
+  const [operadorPinturaId, setOperadorPinturaId] = useState<string>(
+    () => piezaEnEdicion?.operador_pintura_id || resolveDefaultOperador(['pint', 'acabad', 'wendy'])
+  );
+  const [operadorArmadoId, setOperadorArmadoId] = useState<string>(
+    () => piezaEnEdicion?.operador_armado_id || resolveDefaultOperador(['taller', 'impresi', 'armad', 'juan'])
+  );
+  const [operadorDisenoId, setOperadorDisenoId] = useState<string>(
+    () => piezaEnEdicion?.operador_diseno_id || resolveDefaultOperador(['aplicaci', 'backoffice', 'desarroll', 'diseñ', 'germ'])
+  );
+
+  // Si personal llega asíncronamente desde Supabase, auto-poblar si aún están vacíos o sin match
+  useEffect(() => {
+    if (personal.length === 0) return;
+    if (!operadorPinturaId || !personal.some(p => p.id === operadorPinturaId)) {
+      setOperadorPinturaId(resolveDefaultOperador(['pint', 'acabad', 'wendy']));
+    }
+    if (!operadorArmadoId || !personal.some(p => p.id === operadorArmadoId)) {
+      setOperadorArmadoId(resolveDefaultOperador(['taller', 'impresi', 'armad', 'juan']));
+    }
+    if (!operadorDisenoId || !personal.some(p => p.id === operadorDisenoId)) {
+      setOperadorDisenoId(resolveDefaultOperador(['aplicaci', 'backoffice', 'desarroll', 'diseñ', 'germ']));
+    }
+  }, [personal]);
 
   // Lista dinámica de Pinturas
   const [pinturasSeleccionadas, setPinturasSeleccionadas] = useState<ItemPinturaForm[]>([
@@ -1009,6 +1047,9 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       tiempoDesarrolloMin: Number(tiempoDesarrolloMin) || 0,
       tiempoArmadoMin: Number(tiempoArmadoMin) || 0,
       tiempoPinturaMin: vaPintado ? Number(tiempoPinturaMin) || 0 : 0,
+      operadorPinturaId: operadorPinturaId || undefined,
+      operadorArmadoId: operadorArmadoId || undefined,
+      operadorDisenoId: operadorDisenoId || undefined,
       pinturas: vaPintado ? pinturasValidas : [],
       accesorios: accesoriosValidos,
       empaques: empaquesValidos,
@@ -1078,6 +1119,9 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     tiempoDesarrolloMin,
     tiempoArmadoMin,
     tiempoPinturaMin,
+    operadorPinturaId,
+    operadorArmadoId,
+    operadorDisenoId,
     vaPintado,
     pinturasSeleccionadas,
     herrajesSeleccionados,
@@ -1221,6 +1265,12 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setTiempoDesarrolloMin,
     tiempoArmadoMin,
     setTiempoArmadoMin,
+    operadorPinturaId,
+    setOperadorPinturaId,
+    operadorArmadoId,
+    setOperadorArmadoId,
+    operadorDisenoId,
+    setOperadorDisenoId,
 
     // Costos y márgenes
     costoModeloComprado,

@@ -186,6 +186,12 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
               setTiempoDesarrolloMin={form.setTiempoDesarrolloMin}
               tiempoArmadoMin={form.tiempoArmadoMin}
               setTiempoArmadoMin={form.setTiempoArmadoMin}
+              operadorPinturaId={form.operadorPinturaId}
+              setOperadorPinturaId={form.setOperadorPinturaId}
+              operadorArmadoId={form.operadorArmadoId}
+              setOperadorArmadoId={form.setOperadorArmadoId}
+              operadorDisenoId={form.operadorDisenoId}
+              setOperadorDisenoId={form.setOperadorDisenoId}
               personal={props.personal}
               cantidad={form.cantidad}
               prorratearDiseno3D={form.prorratearDiseno3D}

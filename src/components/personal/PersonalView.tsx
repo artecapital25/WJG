@@ -4,7 +4,8 @@ import {
   KeyRound, RefreshCw, Power, MessageSquare, Edit3, 
   AlertCircle,
   Mail, Phone,
-  Eye, EyeOff, Laptop, Tablet, Clock, AlertTriangle
+  Eye, EyeOff, Laptop, Tablet, Clock, AlertTriangle,
+  Trash2, Briefcase, DollarSign
 } from 'lucide-react';
 import { useUsuariosTaller } from '../../hooks/useUsuariosTaller';
 import { UsuarioTaller, HubAreaPermission, HUB_PERMISSIONS_CONFIG, parseDispositivoInfo } from '../../types/usuarios.types';
@@ -15,10 +16,17 @@ import { formatWhatsAppPhone, openWhatsApp } from '../../services/whatsappServic
 import { WjgSelect } from '../ui/WjgSelect';
 
 const ROLES_PREDEFINIDOS = [
-  { id: 'ADMIN_COBRANZAS', label: 'Admin & Cobranzas (Acceso Total)', badgeColor: '#0ea5e9' },
-  { id: 'PINTURA_ACABADOS', label: 'Pintura & Acabados (Wendy)', badgeColor: '#c084fc' },
-  { id: 'IMPRESION_MANTENIMIENTO', label: 'Impresión & Slicer (Juan)', badgeColor: '#34d399' },
+  { id: 'ADMIN_COBRANZAS', label: 'Administrador • Acceso Total', badgeColor: '#0ea5e9' },
+  { id: 'PINTURA_ACABADOS', label: 'Pintura & Acabados', badgeColor: '#c084fc' },
+  { id: 'IMPRESION_MANTENIMIENTO', label: 'Impresión & Mantenimiento', badgeColor: '#34d399' },
   { id: 'VENTAS_POS', label: 'Ventas & Caja POS', badgeColor: '#f59e0b' }
+];
+
+const AREAS_SUGERIDAS = [
+  'Encargado del Taller (Impresión 3D y Mantenimiento)',
+  'Pintura, Acabados y Redes',
+  'Aplicación, Backoffice, Ventas y Redes',
+  'Diseño 3D & Post-procesado'
 ];
 
 export const PersonalView: React.FC = () => {
@@ -31,6 +39,7 @@ export const PersonalView: React.FC = () => {
     verificarDuplicado,
     createUsuario,
     updateUsuario,
+    deleteUsuario,
     toggleActivo,
     cambiarPin,
     recuperarPin,
@@ -51,11 +60,14 @@ export const PersonalView: React.FC = () => {
   // Formulario
   const [nombre, setNombre] = useState('');
   const [rol, setRol] = useState<string>('ADMIN_COBRANZAS');
+  const [areaResponsabilidad, setAreaResponsabilidad] = useState('');
+  const [costoHora, setCostoHora] = useState<number>(10000);
+  const [aplicaManoObra, setAplicaManoObra] = useState<boolean>(true);
   const [telefono, setTelefono] = useState('');
   const [telefonoNotif, setTelefonoNotif] = useState('');
   const [email, setEmail] = useState('');
   const [cedula, setCedula] = useState('');
-  const [permisos, setPermisos] = useState<HubAreaPermission[]>(['ventas', 'taller', 'finanzas', 'gestion']);
+  const [permisos, setPermisos] = useState<HubAreaPermission[]>(['ventas', 'taller', 'finanzas', 'gestion', 'herramientas']);
   const [pinInicial, setPinInicial] = useState('1234');
   const [showPinForm, setShowPinForm] = useState(false);
 
@@ -125,11 +137,14 @@ export const PersonalView: React.FC = () => {
     setEditingUser(null);
     setNombre('');
     setRol('ADMIN_COBRANZAS');
+    setAreaResponsabilidad('');
+    setCostoHora(10000);
+    setAplicaManoObra(true);
     setTelefono('');
     setTelefonoNotif('');
     setEmail('');
     setCedula('');
-    setPermisos(['ventas', 'taller', 'finanzas', 'gestion']);
+    setPermisos(['ventas', 'taller', 'finanzas', 'gestion', 'herramientas']);
     setPinInicial('1234');
     setDuplicadoWarn(null);
     setShowModalForm(true);
@@ -139,14 +154,29 @@ export const PersonalView: React.FC = () => {
     setEditingUser(user);
     setNombre(user.nombre);
     setRol(user.rol || 'ADMIN_COBRANZAS');
+    setAreaResponsabilidad(user.area_responsabilidad || '');
+    setCostoHora(Number(user.costo_hora) > 0 ? Number(user.costo_hora) : 10000);
+    setAplicaManoObra(user.aplica_mano_obra !== undefined ? Boolean(user.aplica_mano_obra) : true);
     setTelefono(user.telefono);
     setTelefonoNotif(user.telefono_notificaciones);
     setEmail(user.email || '');
     setCedula(user.cedula || '');
-    setPermisos(user.permisos_areas && user.permisos_areas.length >= 4 ? user.permisos_areas : ['ventas', 'taller', 'finanzas', 'gestion']);
+    setPermisos(user.permisos_areas && user.permisos_areas.length >= 5 ? user.permisos_areas : ['ventas', 'taller', 'finanzas', 'gestion', 'herramientas']);
     setPinInicial('');
     setDuplicadoWarn(null);
     setShowModalForm(true);
+  };
+
+  const handleDeleteColaborador = async (user: UsuarioTaller) => {
+    if (!confirm(`¿Eliminar definitivamente a "${user.nombre}" del equipo de Personal y del tarifario?\n\nEsta acción borrará su registro de Supabase y de la caché local.`)) {
+      return;
+    }
+    const res = await deleteUsuario(user.id);
+    if (res.success) {
+      toast.success(res.message);
+    } else {
+      toast.error(res.message);
+    }
   };
 
   const handleTogglePermisoArea = (area: HubAreaPermission) => {
@@ -177,12 +207,17 @@ export const PersonalView: React.FC = () => {
     }
 
     setSubmitting(true);
+    const costoHoraFinal = Math.max(0, Number(costoHora) || 0);
+    const costoMinutoFinal = Number((costoHoraFinal / 60).toFixed(2));
 
     if (editingUser) {
-      // Actualización
       const updateData: any = {
         nombre: nombre.trim(),
         rol,
+        area_responsabilidad: areaResponsabilidad.trim() || undefined,
+        costo_hora: costoHoraFinal,
+        costo_minuto: costoMinutoFinal,
+        aplica_mano_obra: aplicaManoObra,
         telefono: telefono.trim(),
         telefono_notificaciones: telefonoNotif.trim() || telefono.trim(),
         email: email.trim() || undefined,
@@ -203,10 +238,13 @@ export const PersonalView: React.FC = () => {
         toast.error(res.message);
       }
     } else {
-      // Creación
       const res = await createUsuario({
         nombre: nombre.trim(),
         rol,
+        area_responsabilidad: areaResponsabilidad.trim() || undefined,
+        costo_hora: costoHoraFinal > 0 ? costoHoraFinal : 10000,
+        costo_minuto: costoHoraFinal > 0 ? costoMinutoFinal : 166.67,
+        aplica_mano_obra: aplicaManoObra,
         telefono: telefono.trim(),
         telefono_notificaciones: telefonoNotif.trim() || telefono.trim(),
         email: email.trim() || undefined,
@@ -477,8 +515,8 @@ export const PersonalView: React.FC = () => {
                     </button>
                   </div>
 
-                  {/* Badge de Rol */}
-                  <div style={{ marginBottom: '12px' }}>
+                  {/* Badge de Rol + Área de Responsabilidad */}
+                  <div style={{ marginBottom: '12px', display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                     <span style={{
                       display: 'inline-flex',
                       alignItems: 'center',
@@ -493,6 +531,47 @@ export const PersonalView: React.FC = () => {
                     }}>
                       <Shield size={11} />
                       <span>{roleObj.label}</span>
+                    </span>
+
+                    {u.area_responsabilidad && (
+                      <span style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '5px',
+                        padding: '3px 8px',
+                        borderRadius: '6px',
+                        backgroundColor: 'rgba(16, 185, 129, 0.14)',
+                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        color: '#34d399',
+                        fontSize: '0.71rem',
+                        fontWeight: 700
+                      }}>
+                        <Briefcase size={11} />
+                        <span>{u.area_responsabilidad}</span>
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Tarifa Mano de Obra Integrada para Cotizador */}
+                  <div style={{
+                    background: 'rgba(16, 185, 129, 0.08)',
+                    border: '1px solid rgba(16, 185, 129, 0.25)',
+                    borderRadius: '10px',
+                    padding: '9px 12px',
+                    marginBottom: '12px',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    gap: '8px',
+                    flexWrap: 'wrap'
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.76rem', color: '#a7f3d0', fontWeight: 700 }}>
+                      <DollarSign size={14} color="#34d399" />
+                      <span>Tarifa Hora: ${(Number(u.costo_hora) > 0 ? Number(u.costo_hora) : 10000).toLocaleString('es-CO')} COP</span>
+                    </div>
+                    <span style={{ fontSize: '0.72rem', fontWeight: 800, color: '#38bdf8' }}>
+                      ${(Number(u.costo_minuto) > 0 ? Number(u.costo_minuto) : Number(((Number(u.costo_hora) || 10000) / 60).toFixed(2))).toFixed(2)}/min
+                      {u.aplica_mano_obra === false ? ' (Solo Admin)' : ' • Cotizador'}
                     </span>
                   </div>
 
@@ -649,7 +728,7 @@ export const PersonalView: React.FC = () => {
                       Módulos / Hubs Autorizados:
                     </div>
                     <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-                      {(['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[]).map(area => {
+                      {(['ventas', 'taller', 'finanzas', 'gestion', 'herramientas'] as HubAreaPermission[]).map(area => {
                         const hasArea = userAreas.includes(area);
                         const conf = HUB_PERMISSIONS_CONFIG[area];
 
@@ -692,7 +771,7 @@ export const PersonalView: React.FC = () => {
                     onClick={() => handleOpenEditar(u)}
                     className="btn btn-secondary btn-sm"
                     style={{ flex: 1, fontSize: '0.75rem', padding: '6px 10px' }}
-                    title="Editar datos, rol y permisos del colaborador"
+                    title="Editar datos, tarifa horaria, rol y permisos del colaborador"
                   >
                     <Edit3 size={13} />
                     <span>Editar</span>
@@ -720,6 +799,16 @@ export const PersonalView: React.FC = () => {
                     title="Enviar credenciales o aviso por WhatsApp"
                   >
                     <MessageSquare size={13} />
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteColaborador(u)}
+                    className="btn btn-danger btn-sm"
+                    style={{ padding: '6px 10px' }}
+                    title="Eliminar colaborador del equipo"
+                  >
+                    <Trash2 size={13} />
                   </button>
                 </div>
               </div>
@@ -909,6 +998,110 @@ export const PersonalView: React.FC = () => {
                 />
               </div>
 
+              {/* Área de Responsabilidad & Tarifa de Mano de Obra (Cotizador) */}
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: '12px',
+                background: 'rgba(16, 185, 129, 0.06)',
+                border: '1px solid rgba(16, 185, 129, 0.25)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '10px'
+              }}>
+                <div>
+                  <label style={{ display: 'block', fontSize: '0.74rem', fontWeight: 700, color: '#a7f3d0', marginBottom: '5px' }}>
+                    ÁREA DE RESPONSABILIDAD EN LA EMPRESA:
+                  </label>
+                  <input
+                    type="text"
+                    value={areaResponsabilidad}
+                    onChange={e => setAreaResponsabilidad(e.target.value)}
+                    placeholder="Ej: Encargado del Taller / Pintura y Redes / Backoffice"
+                    style={{
+                      width: '100%',
+                      padding: '10px 12px',
+                      borderRadius: '10px',
+                      backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)',
+                      color: '#f8fafc',
+                      fontSize: '0.84rem',
+                      outline: 'none',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                  <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginTop: '6px' }}>
+                    {AREAS_SUGERIDAS.map(sug => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => setAreaResponsabilidad(sug)}
+                        style={{
+                          background: 'rgba(255, 255, 255, 0.05)',
+                          border: '1px solid rgba(255, 255, 255, 0.12)',
+                          borderRadius: '6px',
+                          padding: '2px 7px',
+                          fontSize: '0.67rem',
+                          color: '#cbd5e1',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        + {sug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '10px', alignItems: 'end' }}>
+                  <div>
+                    <label style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', fontWeight: 700, color: '#a7f3d0', marginBottom: '5px' }}>
+                      <span>TARIFA HORA EN COTIZADOR (COP/h):</span>
+                      <span style={{ color: '#38bdf8' }}>${((Number(costoHora) || 0) / 60).toFixed(2)}/min</span>
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      value={costoHora === 0 ? '' : costoHora}
+                      onChange={e => setCostoHora(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                      placeholder="10000"
+                      style={{
+                        width: '100%',
+                        padding: '10px 12px',
+                        borderRadius: '10px',
+                        backgroundColor: 'rgba(15, 23, 42, 0.75)',
+                        border: '1px solid rgba(16, 185, 129, 0.35)',
+                        color: '#34d399',
+                        fontWeight: 800,
+                        fontSize: '0.92rem',
+                        outline: 'none',
+                        boxSizing: 'border-box'
+                      }}
+                    />
+                  </div>
+
+                  <label style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '7px',
+                    fontSize: '0.76rem',
+                    color: '#cbd5e1',
+                    cursor: 'pointer',
+                    padding: '10px',
+                    borderRadius: '10px',
+                    background: 'rgba(15, 23, 42, 0.65)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={aplicaManoObra}
+                      onChange={e => setAplicaManoObra(e.target.checked)}
+                      style={{ accentColor: '#10b981', width: '16px', height: '16px' }}
+                    />
+                    <span>Aplica en Cotizador</span>
+                  </label>
+                </div>
+              </div>
+
               {/* Matriz Granular de Permisos por Áreas */}
               <div style={{
                 padding: '12px 14px',
@@ -920,7 +1113,7 @@ export const PersonalView: React.FC = () => {
                   MATRIZ DE ACCESO A HUBS (RBAC):
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
-                  {(['ventas', 'taller', 'finanzas', 'gestion'] as HubAreaPermission[]).map(area => {
+                  {(['ventas', 'taller', 'finanzas', 'gestion', 'herramientas'] as HubAreaPermission[]).map(area => {
                     const conf = HUB_PERMISSIONS_CONFIG[area];
                     const isChecked = permisos.includes(area);
 

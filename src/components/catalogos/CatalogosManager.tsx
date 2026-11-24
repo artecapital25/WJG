@@ -82,6 +82,7 @@ interface CatalogosManagerProps {
   onUpdateTarifasTamanos?: (t: TarifaTamano[]) => void;
   onOpenBackup?: () => void;
   onRefreshCatalogos?: () => Promise<void>;
+  onNavigateToPersonal?: () => void;
 }
 
 export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
@@ -110,7 +111,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   onUpdateConfig,
   onUpdateTarifasTamanos,
   onOpenBackup,
-  onRefreshCatalogos
+  onRefreshCatalogos,
+  onNavigateToPersonal
 }) => {
   const determineDefaultSubTab = (cat?: CatalogCategory, explicitSub?: SubTab): SubTab => {
     if (explicitSub) return explicitSub;
@@ -703,7 +705,10 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
     const personalGuardado: Personal = {
       id: itemEnEdicion.id,
-      rol: itemEnEdicion.rol,
+      nombre: itemEnEdicion.nombre || itemEnEdicion.rol,
+      rol: itemEnEdicion.rol || 'ADMIN_COBRANZAS',
+      area_responsabilidad: itemEnEdicion.area_responsabilidad,
+      aplica_mano_obra: itemEnEdicion.aplica_mano_obra ?? true,
       costo_hora: Number(itemEnEdicion.costo_hora),
       costo_minuto: Number(costo_minuto.toFixed(2))
     };
@@ -1902,47 +1907,74 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
         </div>
       )}
 
-      {/* VISTA 4: TARIFAS DE PERSONAL */}
+      {/* VISTA 4: TARIFAS DE PERSONAL (UNIFICADAS CON MÓDULO PERSONAL) */}
       {subTab === 'personal' && (
         <div className="glass-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
-            <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Tarifas de Mano de Obra</h3>
-            <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalPersonal()}>
-              <Plus size={14} />
-              <span>Agregar Rol</span>
-            </button>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Tarifas de Mano de Obra por Integrante</h3>
+              <p style={{ margin: '4px 0 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                Conectadas directamente con el módulo <strong>Personal</strong> de Gestión (cada colaborador activo actualiza automáticamente el Cotizador).
+              </p>
+            </div>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+              {onNavigateToPersonal && (
+                <button
+                  type="button"
+                  className="btn btn-primary btn-sm"
+                  onClick={onNavigateToPersonal}
+                >
+                  <Users size={14} />
+                  <span>Gestionar Personal y Tarifas</span>
+                </button>
+              )}
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleOpenModalPersonal()}
+                title="Ajuste rápido de tarifa de un integrante existente"
+              >
+                <Edit3 size={14} />
+                <span>Ajuste Rápido</span>
+              </button>
+            </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '12px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))', gap: '12px' }}>
             {sortedPersonal.map(p => (
-              <div key={p.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#fff' }}>
-                    Rol: {p.rol}
+              <div key={p.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '12px', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: '0.98rem', color: '#fff' }}>
+                      {p.nombre || p.rol}
+                    </div>
+                    <div style={{ fontSize: '0.73rem', color: '#38bdf8', fontWeight: 700, marginTop: '2px' }}>
+                      {p.rol === 'ADMIN_COBRANZAS' ? '🛡️ Administrador' : p.rol}
+                    </div>
+                    {p.area_responsabilidad && (
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                        📌 {p.area_responsabilidad}
+                      </div>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '4px' }}>
-                    <button 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '4px 8px', minHeight: 'auto' }}
                       onClick={() => handleOpenModalPersonal(p)}
+                      title="Editar tarifa horaria"
                     >
                       <Edit3 size={13} />
-                    </button>
-                    <button 
-                      className="btn btn-danger btn-sm" 
-                      style={{ padding: '4px 8px', minHeight: 'auto' }} 
-                      onClick={() => handleDeletePersonal(p.id)}
-                    >
-                      <Trash2 size={13} />
                     </button>
                   </div>
                 </div>
 
-                <div style={{ marginTop: '8px', fontSize: '0.85rem' }}>
-                  <div>Hora: ${p.costo_hora.toLocaleString('es-CO')} COP</div>
-                  <div style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
-                    Minuto: ${p.costo_minuto.toFixed(2)} COP
-                  </div>
+                <div style={{ marginTop: '10px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.06)', fontSize: '0.84rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span>Hora: <strong>${p.costo_hora.toLocaleString('es-CO')} COP</strong></span>
+                  <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }}>
+                    ${p.costo_minuto.toFixed(2)}/min
+                  </span>
                 </div>
               </div>
             ))}
@@ -3280,17 +3312,17 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               </form>
             )}
 
-            {/* FORMULARIO PERSONAL */}
+            {/* FORMULARIO PERSONAL (TARIFA HORARIA) */}
             {modalType === 'personal' && (
               <form onSubmit={handleSavePersonal}>
                 <div className="form-group">
-                  <label className="form-label">Rol / Cargo</label>
+                  <label className="form-label">Integrante / Rol</label>
                   <input 
                     type="text" 
                     className="form-input" 
-                    value={itemEnEdicion.rol}
-                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, rol: e.target.value })}
-                    placeholder="Ej: Modelador 3D / Diseñador"
+                    value={itemEnEdicion.nombre || itemEnEdicion.rol}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, nombre: e.target.value, rol: itemEnEdicion.rol || e.target.value })}
+                    placeholder="Ej: Wendy / Pintura"
                     required
                   />
                 </div>
@@ -3298,9 +3330,11 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                   <label className="form-label">Costo por Hora (COP)</label>
                   <input 
                     type="number" 
+                    min="0"
+                    step="any"
                     className="form-input" 
-                    value={itemEnEdicion.costo_hora}
-                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, costo_hora: parseFloat(e.target.value) || 0 })}
+                    value={itemEnEdicion.costo_hora === 0 ? '' : itemEnEdicion.costo_hora}
+                    onChange={e => setItemEnEdicion({ ...itemEnEdicion, costo_hora: e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0) })}
                     required
                   />
                 </div>

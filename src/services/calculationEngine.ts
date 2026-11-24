@@ -81,6 +81,9 @@ export interface ParametrosPiezaInput {
   tiempoDesarrolloMin: number;
   tiempoArmadoMin: number;
   tiempoPinturaMin: number;
+  operadorPinturaId?: string;
+  operadorArmadoId?: string;
+  operadorDisenoId?: string;
   accesorios: { insumo: Insumo; cantidad: number; modo_consumo?: 'unidad' | 'porcentaje'; valor_entrada?: number }[];
   pinturas: { insumo: Insumo; cantidad_ml: number }[];
   empaques?: { insumo: Insumo; cantidad: number }[];
@@ -351,20 +354,53 @@ function construirDesgloseApartados(
   return resultado;
 }
 
-function resolverTarifasPersonal(personal: Personal[]) {
-  const tarifaDev = personal.find(p => {
-    const r = (p.rol || (p as any).cargo || '').toLowerCase();
-    return r.includes('desarroll') || r.includes('diseñ') || r.includes('model');
-  })?.costo_minuto || 166.67;
+function resolverTarifasPersonal(
+  personal: Personal[],
+  seleccion?: {
+    pinturaId?: string;
+    armadoId?: string;
+    disenoId?: string;
+  }
+) {
+  const disponibles = personal.filter(p => p.aplica_mano_obra !== false);
+  const pool = disponibles.length > 0 ? disponibles : personal;
 
-  const tarifaPintor = personal.find(p => {
-    const r = (p.rol || (p as any).cargo || '').toLowerCase();
-    return r.includes('pint') || r.includes('acabad') || r.includes('armad');
-  })?.costo_minuto || 166.67;
+  const textoPersona = (p: Personal) =>
+    `${p.nombre || ''} ${p.rol || ''} ${p.area_responsabilidad || ''} ${(p as any).cargo || ''}`.toLowerCase();
 
-  const tarifaOperario = personal[0]?.costo_minuto || tarifaPintor || 166.67;
+  const devMatch =
+    (seleccion?.disenoId ? pool.find(p => p.id === seleccion.disenoId) : undefined) ||
+    pool.find(p => {
+      const t = textoPersona(p);
+      return t.includes('desarroll') || t.includes('diseñ') || t.includes('model') || t.includes('aplicaci') || t.includes('backoffice') || t.includes('germ');
+    });
 
-  return { tarifaDev, tarifaPintor, tarifaOperario };
+  const pintorMatch =
+    (seleccion?.pinturaId ? pool.find(p => p.id === seleccion.pinturaId) : undefined) ||
+    pool.find(p => {
+      const t = textoPersona(p);
+      return t.includes('pint') || t.includes('acabad') || t.includes('wendy');
+    });
+
+  const operarioMatch =
+    (seleccion?.armadoId ? pool.find(p => p.id === seleccion.armadoId) : undefined) ||
+    pool.find(p => {
+      const t = textoPersona(p);
+      return t.includes('taller') || t.includes('impresi') || t.includes('armad') || t.includes('juan');
+    });
+
+  const tarifaDev = devMatch?.costo_minuto || pool[0]?.costo_minuto || 166.67;
+  const tarifaPintor = pintorMatch?.costo_minuto || pool[0]?.costo_minuto || 166.67;
+  const tarifaOperario = operarioMatch?.costo_minuto || pintorMatch?.costo_minuto || pool[0]?.costo_minuto || 166.67;
+
+  return {
+    tarifaDev,
+    tarifaPintor,
+    tarifaOperario,
+    operadorDisenoId: devMatch?.id || seleccion?.disenoId,
+    operadorPinturaId: pintorMatch?.id || seleccion?.pinturaId,
+    operadorArmadoId: operarioMatch?.id || pintorMatch?.id || seleccion?.armadoId
+  };
 }
 
 function calcularDescuentoVolumen(
@@ -639,11 +675,15 @@ export function calcularPieza3D(
   const costo_insumos = costoAccesorios + costoPinturas + costoEmpaques;
 
   // 8. Mano de Obra (Diseño 3D prorrateable en lote; Armado y Pintura 100% por figura)
-  const { tarifaDev, tarifaPintor } = resolverTarifasPersonal(personal);
+  const { tarifaDev, tarifaPintor, tarifaOperario, operadorDisenoId, operadorPinturaId, operadorArmadoId } = resolverTarifasPersonal(personal, {
+    pinturaId: input.operadorPinturaId,
+    armadoId: input.operadorArmadoId,
+    disenoId: input.operadorDisenoId
+  });
   const prorratearDiseno = input.prorratearDiseno3D !== false;
   const valorDesarrolloTotal = (input.tiempoDesarrolloMin || 0) * tarifaDev * multComplejidad;
   const costo_diseno_unitario = Math.round(prorratearDiseno ? (valorDesarrolloTotal / cantidad) : valorDesarrolloTotal);
-  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaPintor * multComplejidad);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaOperario * multComplejidad);
   const costo_pintura_mo_unitario = Math.round(va_pintado ? (input.tiempoPinturaMin || 0) * tarifaPintor : 0);
   const costo_mano_obra = costo_diseno_unitario + costo_armado_unitario + costo_pintura_mo_unitario;
 
@@ -865,6 +905,9 @@ export function calcularPieza3D(
     costo_diseno_unitario,
     costo_armado_unitario,
     costo_pintura_mo_unitario,
+    operador_pintura_id: operadorPinturaId,
+    operador_armado_id: operadorArmadoId,
+    operador_diseno_id: operadorDisenoId,
     costo_herrajes_total: costoAccesorios,
     costo_pinturas_total: costoPinturas
   };
@@ -1012,11 +1055,15 @@ export function calcularPiezaFDM(
     ? input.vaPintadoManual
     : (input.tiempoPinturaMin > 0 || (input.pinturas && input.pinturas.length > 0) || Boolean(input.requiereCompresorPintura));
 
-  const { tarifaDev, tarifaPintor } = resolverTarifasPersonal(personal);
+  const { tarifaDev, tarifaPintor, tarifaOperario, operadorDisenoId, operadorPinturaId, operadorArmadoId } = resolverTarifasPersonal(personal, {
+    pinturaId: input.operadorPinturaId,
+    armadoId: input.operadorArmadoId,
+    disenoId: input.operadorDisenoId
+  });
   const prorratearDiseno = input.prorratearDiseno3D !== false;
   const valorDesarrolloTotal = (input.tiempoDesarrolloMin || 0) * tarifaDev * multComplejidad;
   const costo_diseno_unitario = Math.round(prorratearDiseno ? (valorDesarrolloTotal / cantidad) : valorDesarrolloTotal);
-  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaPintor * multComplejidad);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaOperario * multComplejidad);
   const costo_pintura_mo_unitario = Math.round(va_pintado ? (input.tiempoPinturaMin || 0) * tarifaPintor : 0);
   const costoManoObra = costo_diseno_unitario + costo_armado_unitario + costo_pintura_mo_unitario;
 
@@ -1229,6 +1276,9 @@ export function calcularPiezaFDM(
     costo_diseno_unitario,
     costo_armado_unitario,
     costo_pintura_mo_unitario,
+    operador_pintura_id: operadorPinturaId,
+    operador_armado_id: operadorArmadoId,
+    operador_diseno_id: operadorDisenoId,
     costo_herrajes_total: costoAccesorios,
     costo_pinturas_total: costoPinturas
   };
@@ -1260,7 +1310,10 @@ export function calcularPiezaLaser(
   const costoEnergia = Math.round((potenciaKw * (tiempoLaserMin / 60)) * tarifaKwh);
   const costoDesgasteTubo = Math.round(tiempoLaserMin * 12);
 
-  const { tarifaDev, tarifaOperario } = resolverTarifasPersonal(personal);
+  const { tarifaDev, tarifaOperario, operadorDisenoId, operadorArmadoId } = resolverTarifasPersonal(personal, {
+    armadoId: input.operadorArmadoId,
+    disenoId: input.operadorDisenoId
+  });
   const prorratearDiseno = input.prorratearDiseno3D !== false;
   const devTotal = (input.tiempoDesarrolloMin || 10) * tarifaDev;
   const costo_diseno_unitario = Math.round(prorratearDiseno ? devTotal / cantidad : devTotal);
@@ -1394,6 +1447,8 @@ export function calcularPiezaLaser(
     costo_diseno_unitario,
     costo_armado_unitario,
     costo_pintura_mo_unitario: 0,
+    operador_armado_id: operadorArmadoId,
+    operador_diseno_id: operadorDisenoId,
     costo_herrajes_total: costoAccesorios,
     costo_pinturas_total: 0
   };
@@ -1420,7 +1475,10 @@ export function calcularPiezaCNC(
   const costoEnergia = Math.round((potenciaKw * (tiempoMecanizadoMin / 60)) * tarifaKwh);
   const costoDesgasteFresa = Math.round(Number(input.desgasteFresaCosto) || (tiempoMecanizadoMin * 15));
 
-  const { tarifaDev, tarifaOperario } = resolverTarifasPersonal(personal);
+  const { tarifaDev, tarifaOperario, operadorDisenoId, operadorArmadoId } = resolverTarifasPersonal(personal, {
+    armadoId: input.operadorArmadoId,
+    disenoId: input.operadorDisenoId
+  });
   const prorratearDiseno = input.prorratearDiseno3D !== false;
   const devTotal = (input.tiempoDesarrolloMin || 15) * tarifaDev;
   const costo_diseno_unitario = Math.round(prorratearDiseno ? devTotal / cantidad : devTotal);
@@ -1537,6 +1595,8 @@ export function calcularPiezaCNC(
     costo_diseno_unitario,
     costo_armado_unitario,
     costo_pintura_mo_unitario: 0,
+    operador_armado_id: operadorArmadoId,
+    operador_diseno_id: operadorDisenoId,
     costo_herrajes_total: 0,
     costo_pinturas_total: 0
   };

@@ -256,4 +256,84 @@ describe('calculationEngine - Motor Cotizador 2.0', () => {
     expect(switchMarkup.precio_unitario).toBe(pieza.precio_con_markup);
     expect(switchMarkup.precio_unitario).toBeLessThan(pieza.precio_con_margen_bruto || 0);
   });
+
+  it('aplica tarifas individuales de Germán, Juan y Wendy según área o operador seleccionado en cotizador', () => {
+    const equipoReal: Personal[] = [
+      {
+        id: 'u-german',
+        nombre: 'Germán',
+        rol: 'ADMIN_COBRANZAS',
+        area_responsabilidad: 'Aplicación, Backoffice, Ventas y Redes',
+        aplica_mano_obra: true,
+        costo_hora: 12000,
+        costo_minuto: 200
+      },
+      {
+        id: 'u-juan',
+        nombre: 'Juan',
+        rol: 'ADMIN_COBRANZAS',
+        area_responsabilidad: 'Encargado del Taller (Impresión 3D y Mantenimiento)',
+        aplica_mano_obra: true,
+        costo_hora: 15000,
+        costo_minuto: 250
+      },
+      {
+        id: 'u-wendy',
+        nombre: 'Wendy',
+        rol: 'ADMIN_COBRANZAS',
+        area_responsabilidad: 'Pintura, Acabados y Redes',
+        aplica_mano_obra: true,
+        costo_hora: 18000,
+        costo_minuto: 300
+      }
+    ];
+
+    const inputDefault: ParametrosPiezaInput = {
+      nombre_item: 'Figura Con Personal Real',
+      cantidad: 1,
+      alto_mm: 100,
+      ancho_mm: 60,
+      profundidad_mm: 60,
+      tecnologia: 'SLA_RESINA',
+      resina: mockResina,
+      impresora: mockMaquinaSLA,
+      modoCalculoResina: 'manual',
+      pesoResinaManualG: 50,
+      tiempoImpresionModo: 'manual',
+      tiempoImpresionManualMin: 120,
+      tiempoDesarrolloMin: 10, // 10 * 200 (Germán) = 2000
+      tiempoArmadoMin: 10,     // 10 * 250 (Juan) = 2500
+      tiempoPinturaMin: 10,    // 10 * 300 (Wendy) = 3000
+      vaPintadoManual: true,
+      accesorios: [],
+      pinturas: [],
+      empaques: [],
+      costoModeloComprado: 0,
+      margenGanancia: 0.40,
+      aplicaDescuentoVolumen: false
+    };
+
+    const resAuto = calcularCotizacionIntegral(inputDefault, equipoReal, mockConfig);
+    expect(resAuto.costo_diseno_unitario).toBe(2000);
+    expect(resAuto.costo_armado_unitario).toBe(2500);
+    expect(resAuto.costo_pintura_mo_unitario).toBe(3000);
+    expect(resAuto.operador_diseno_id).toBe('u-german');
+    expect(resAuto.operador_armado_id).toBe('u-juan');
+    expect(resAuto.operador_pintura_id).toBe('u-wendy');
+
+    // Selección explícita: Juan hace diseño, Germán armado
+    const resCustom = calcularCotizacionIntegral(
+      {
+        ...inputDefault,
+        operadorDisenoId: 'u-juan',
+        operadorArmadoId: 'u-german'
+      },
+      equipoReal,
+      mockConfig
+    );
+    expect(resCustom.costo_diseno_unitario).toBe(2500);
+    expect(resCustom.costo_armado_unitario).toBe(2000);
+    expect(resCustom.operador_diseno_id).toBe('u-juan');
+    expect(resCustom.operador_armado_id).toBe('u-german');
+  });
 });

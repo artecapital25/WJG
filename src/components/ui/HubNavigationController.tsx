@@ -34,6 +34,10 @@ const HUB_SUBTABS: Record<HubType, SubTabConfig[]> = {
     { id: 'marketing', label: 'Marketing IA' },
     { id: 'catalogos', label: '⚙️ Ajustes Taller' },
   ],
+  herramientas: [
+    { id: 'herramientas', label: '🧮 Suite 3D & Apps' },
+    { id: 'stl', label: '📦 Visor STL' },
+  ],
 };
 
 interface HubNavigationControllerProps {

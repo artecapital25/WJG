@@ -73,6 +73,10 @@ import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
 import { WhatsAppGatewayService } from './services/whatsappGatewayService';
 import { mergeRemoteWithLocalEntities } from './utils/realtimeMerge';
+import {
+  detectarYCrearSolicitudesStockBajo,
+  calcularReabastecimientoAlRecibir
+} from './services/inventoryReplenishmentService';
 import { calcularDescuentoVolumenSugerido, calcularTotalesCotizacion } from './features/cotizador/utils/pricingCalculator';
 import { calcularCotizacionIntegral, recalcularPiezaPorModoMargen, ParametrosPiezaInput } from './services/calculationEngine';
 import {
@@ -107,8 +111,9 @@ export const App: React.FC = () => {
 
   const [activeHub, setActiveHub] = useState<HubType>(() => {
     if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) return 'ventas';
-    if (['workflow', 'stl', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) return 'taller';
+    if (['workflow', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) return 'taller';
     if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) return 'finanzas';
+    if (['herramientas', 'stl'].includes(activeTab)) return 'herramientas';
     return 'gestion';
   });
 
@@ -129,9 +134,12 @@ export const App: React.FC = () => {
 
   useEffect(() => {
     if (['cotizador', 'cotizaciones', 'pos'].includes(activeTab)) setActiveHub('ventas');
-    else if (['workflow', 'stl', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) setActiveHub('taller');
+    else if (['workflow', 'stock', 'materiales', 'calendario', 'seguimiento'].includes(activeTab)) setActiveHub('taller');
     else if (['cuentas', 'finanzas', 'plan'].includes(activeTab)) setActiveHub('finanzas');
-    else if (activeTab === 'tareas') {
+    else if (activeTab === 'herramientas') setActiveHub('herramientas');
+    else if (activeTab === 'stl') {
+      setActiveHub(prev => (prev === 'herramientas' ? 'herramientas' : 'taller'));
+    } else if (activeTab === 'tareas') {
       if (activeHub === 'taller' || !canAccessHub('gestion')) {
         setActiveHub('taller');
       } else {
@@ -154,6 +162,10 @@ export const App: React.FC = () => {
   const [whatsappHealthStatus, setWhatsappHealthStatus] = useState<'operativo' | 'alerta_critica' | 'desconocido'>('operativo');
   const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
   const syncCloudDataRef = React.useRef<(() => Promise<void>) | null>(null);
+  const rescuedLocalCotsRef = React.useRef<Set<string>>(new Set());
+
+  const isUuidStrict = (str?: string): boolean =>
+    Boolean(str && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(str));
 
   const handleManualSyncNow = async () => {
     if (!CloudSyncService.isAvailable()) {
@@ -386,6 +398,12 @@ export const App: React.FC = () => {
     // 2. Traer datos frescos de Supabase en segundo plano como Fuente Única de la Verdad (Single Source of Truth)
     const syncCloudData = async () => {
       try {
+        // Primero vaciar cualquier mutación pendiente en outbox local antes de descargar
+        const preFlush = await CloudSyncService.flushOutboxQueue();
+        if (preFlush.synced > 0) {
+          toast.success(`☁️ ${preFlush.synced} registro(s) pendiente(s) de este dispositivo sincronizados con la nube.`);
+        }
+
         const [
           cloudCots,
           cloudClis,
@@ -435,12 +453,40 @@ export const App: React.FC = () => {
         const pendingOTNums = new Set(outbox.filter(t => t.type === 'orden').map(t => t.payload?.numero_ot).filter(Boolean));
 
         if (cloudCots !== null) {
+          const cloudCotNumsSet = new Set(cloudCots.map(c => c.numero_cot));
+          const cotLocalesSinSubir = StorageService.getCotizaciones().filter(
+            c => !isUuidStrict(c.id) && !cloudCotNumsSet.has(c.numero_cot)
+          );
+
+          // Rescate automático silencioso de cotizaciones locales que fallaron al subir en versiones previas
+          const porRescatar = cotLocalesSinSubir.filter(
+            c => !rescuedLocalCotsRef.current.has(c.numero_cot) && !pendingCotNums.has(c.numero_cot)
+          );
+          if (porRescatar.length > 0) {
+            porRescatar.forEach(c => rescuedLocalCotsRef.current.add(c.numero_cot));
+            Promise.all(porRescatar.map(c => CloudSyncService.saveCotizacion(c, true)))
+              .then(async results => {
+                const subidas = results.filter(Boolean).length;
+                if (subidas > 0) {
+                  toast.success(`☁️ ${subidas} cotización(es) rescatada(s) desde este dispositivo y subida(s) a Supabase.`);
+                  const reloaded = await CloudSyncService.fetchCotizaciones();
+                  if (reloaded !== null) {
+                    setCotizaciones(reloaded);
+                    StorageService.saveCotizaciones(reloaded);
+                  }
+                }
+              })
+              .catch(() => {});
+          }
+
           setCotizaciones(prev => {
             const mergedList = mergeRemoteWithLocalEntities<Cotizacion>({
               fresh: cloudCots,
               prev,
               getKeys: c => [c.numero_cot, c.id],
-              isInOutbox: c => pendingCotNums.has(c.numero_cot),
+              isInOutbox: c =>
+                pendingCotNums.has(c.numero_cot) ||
+                (!isUuidStrict(c.id) && !cloudCotNumsSet.has(c.numero_cot)),
               getRecentLocal: c =>
                 StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
                 StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id),
@@ -932,6 +978,40 @@ export const App: React.FC = () => {
     };
     window.addEventListener('wjg:outbox-flushed', handleOutboxFlushed);
 
+    const handlePersonalUpdated = async () => {
+      try {
+        const freshPer = await CloudSyncService.fetchTarifasPersonal();
+        if (freshPer && freshPer.length > 0) {
+          setPersonal(freshPer);
+          StorageService.savePersonal(freshPer);
+          recalcularCotizacionesNoAceptadas(resinas, filamentos, insumos, maquinas, freshPer, config);
+          return;
+        }
+        // Fallback local offline
+        const cachedRaw = localStorage.getItem('wjg_usuarios_taller_cache');
+        if (cachedRaw) {
+          const parsed = JSON.parse(cachedRaw);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const localPer: Personal[] = parsed
+              .filter((u: any) => u.activo !== false)
+              .map((u: any) => ({
+                id: u.id,
+                nombre: u.nombre,
+                rol: u.rol || u.nombre || 'ADMIN_COBRANZAS',
+                area_responsabilidad: u.area_responsabilidad,
+                aplica_mano_obra: u.aplica_mano_obra !== undefined ? Boolean(u.aplica_mano_obra) : true,
+                costo_hora: Number(u.costo_hora) > 0 ? Number(u.costo_hora) : 10000,
+                costo_minuto: Number(u.costo_minuto) > 0 ? Number(u.costo_minuto) : 166.67
+              }));
+            setPersonal(localPer);
+            StorageService.savePersonal(localPer);
+            recalcularCotizacionesNoAceptadas(resinas, filamentos, insumos, maquinas, localPer, config);
+          }
+        }
+      } catch {}
+    };
+    window.addEventListener('wjg:personal-updated', handlePersonalUpdated);
+
     // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC (respetando 15s tras mutaciones locales)
     const handleVisibilityOrFocus = () => {
       if (Date.now() - lastLocalMutationRef.current < 15000) return;
@@ -956,6 +1036,7 @@ export const App: React.FC = () => {
       if (channel) channel.unsubscribe();
       unbindReconnection();
       window.removeEventListener('wjg:outbox-flushed', handleOutboxFlushed);
+      window.removeEventListener('wjg:personal-updated', handlePersonalUpdated);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
@@ -1081,6 +1162,9 @@ export const App: React.FC = () => {
           tiempoDesarrolloMin: it.tiempo_desarrollo_min || 0,
           tiempoArmadoMin: it.tiempo_armado_min || 0,
           tiempoPinturaMin: it.tiempo_pintura_min || 0,
+          operadorPinturaId: it.operador_pintura_id,
+          operadorArmadoId: it.operador_armado_id,
+          operadorDisenoId: it.operador_diseno_id,
           costoModeloComprado: it.costo_modelo_comprado || 0,
           margenGanancia: it.margen_ganancia || 0.40,
           precioUnitarioManual: it.precio_fijado_tarifa ? it.precio_unitario : undefined,
@@ -1902,6 +1986,29 @@ export const App: React.FC = () => {
     markLocalMutation();
   };
 
+  // Detección automática de Stock Bajo ➔ Creación de Solicitud de Insumo S.O.S (sin duplicados)
+  const dispararAlertasStockBajo = (afectados: {
+    resinasAfectadas?: Resina[];
+    filamentosAfectados?: Filamento[];
+    insumosAfectados?: Insumo[];
+    origenNota?: string;
+  }) => {
+    const actuales = StorageService.getSolicitudesInsumos();
+    const nuevas = detectarYCrearSolicitudesStockBajo({
+      ...afectados,
+      solicitudesExistentes: actuales
+    });
+    if (nuevas.length > 0) {
+      const merged = [...nuevas, ...actuales];
+      setSolicitudesInsumos(merged);
+      StorageService.saveSolicitudesInsumos(merged);
+      nuevas.forEach(s => CloudSyncService.saveSolicitudInsumo(s));
+      toast.warning(
+        `🚨 Stock bajo detectado: se generó ${nuevas.length} orden(es) S.O.S automática(s) (${nuevas.map(n => n.insumo_nombre).join(', ')})`
+      );
+    }
+  };
+
   // Actualizar Estado de OT con Descuento Automático de Inventario
   const handleUpdateEstadoOT = (otId: string, nuevoEstado: EstadoOT) => {
     markLocalMutation();
@@ -1909,6 +2016,9 @@ export const App: React.FC = () => {
     if (!targetOT) return;
 
     let discountApplied = false;
+    const resinasAfectadasList: Resina[] = [];
+    const filamentosAfectadosList: Filamento[] = [];
+    const insumosAfectadosList: Insumo[] = [];
     const etapasDescuento: EstadoOT[] = ['Curado', 'Pintura y Armado', 'Control de Calidad', 'Listo para Entrega', 'Entregado'];
 
     // Si avanza a una etapa de fabricación avanzada y aún no se ha descontado del inventario
@@ -1927,14 +2037,15 @@ export const App: React.FC = () => {
             `${f.marca} ${f.tipo} ${f.color}`.toLowerCase().includes((targetOT.filamento_nombre || targetOT.resina_nombre || '').toLowerCase());
           if (match) {
             const nuevoStock = Math.max(0, Math.round(((f.stock_actual_g || 1000) - gramosARestar) * 10) / 10);
-            return { ...f, stock_actual_g: nuevoStock };
+            const upd = { ...f, stock_actual_g: nuevoStock };
+            filamentosAfectadosList.push(upd);
+            return upd;
           }
           return f;
         });
         setFilamentos(updatedFilamentos);
         StorageService.saveFilamentos(updatedFilamentos);
-        const filAfectado = updatedFilamentos.find(f => f.id === targetOT.filamento_id);
-        if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+        filamentosAfectadosList.forEach(f => CloudSyncService.saveFilamento(f));
       } else {
         // 1. Descontar resina líquida del catálogo de resinas
         const updatedResinas = resinas.map(r => {
@@ -1943,14 +2054,15 @@ export const App: React.FC = () => {
             `${r.marca} ${r.tipo} ${r.color}`.toLowerCase().includes((targetOT.resina_nombre || '').toLowerCase());
           if (match) {
             const nuevoPeso = Math.max(0, Math.round((r.peso_g - gramosARestar) * 10) / 10);
-            return { ...r, peso_g: nuevoPeso };
+            const upd = { ...r, peso_g: nuevoPeso };
+            resinasAfectadasList.push(upd);
+            return upd;
           }
           return r;
         });
         setResinas(updatedResinas);
         StorageService.saveResinas(updatedResinas);
-        const resAfectada = updatedResinas.find(r => r.id === targetOT.resina_id);
-        if (resAfectada) CloudSyncService.saveResina(resAfectada);
+        resinasAfectadasList.forEach(r => CloudSyncService.saveResina(r));
       }
 
       // 2. Descontar insumos decimales/porcionados (cintas, herrajes, empaques y alcohol isopropílico para SLA)
@@ -1964,7 +2076,10 @@ export const App: React.FC = () => {
 
         // Descuento de alcohol para resina SLA
         if (!esFDM && (nom.includes('alcohol') || nom.includes('isoprop'))) {
-          nuevoIns.presentacion = Math.max(0, Math.round((nuevoIns.presentacion - mlAlcohol) * 100) / 100);
+          const stockBaseAlc = nuevoIns.stock_actual !== undefined ? nuevoIns.stock_actual : nuevoIns.presentacion;
+          const nuevoAlc = Math.max(0, Math.round((stockBaseAlc - mlAlcohol) * 100) / 100);
+          nuevoIns.presentacion = nuevoAlc;
+          nuevoIns.stock_actual = nuevoAlc;
           modificado = true;
         }
 
@@ -2009,6 +2124,7 @@ export const App: React.FC = () => {
 
         if (modificado) {
           insumosAfectadosIds.add(nuevoIns.id);
+          insumosAfectadosList.push(nuevoIns);
         }
         return nuevoIns;
       });
@@ -2016,12 +2132,16 @@ export const App: React.FC = () => {
       if (insumosAfectadosIds.size > 0) {
         setInsumos(updatedInsumos);
         StorageService.saveInsumos(updatedInsumos);
-        updatedInsumos
-          .filter(i => insumosAfectadosIds.has(i.id))
-          .forEach(i => CloudSyncService.saveInsumo(i));
+        insumosAfectadosList.forEach(i => CloudSyncService.saveInsumo(i));
       }
 
       discountApplied = true;
+      dispararAlertasStockBajo({
+        resinasAfectadas: resinasAfectadasList,
+        filamentosAfectados: filamentosAfectadosList,
+        insumosAfectados: insumosAfectadosList,
+        origenNota: targetOT.numero_ot
+      });
     }
 
     const updated = ordenes.map(o => {
@@ -2054,31 +2174,37 @@ export const App: React.FC = () => {
     let consumoFinal = { ...consumo };
 
     if (descontarInventario && !consumo.descontado_de_inventario) {
+      const resAfectadas: Resina[] = [];
+      const filAfectados: Filamento[] = [];
+      const insAfectados: Insumo[] = [];
+
       // 1. Ajustar material principal si se reportaron gramos reales
       if (consumo.material_real_g && consumo.material_real_g > 0 && consumo.material_id) {
         const esFDM = consumo.tecnologia === 'FDM_FILAMENTO';
         if (esFDM) {
           const updFil = filamentos.map(f => {
             if (f.id === consumo.material_id) {
-              return { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 1000) - consumo.material_real_g!) * 10) / 10) };
+              const upd = { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 1000) - consumo.material_real_g!) * 10) / 10) };
+              filAfectados.push(upd);
+              return upd;
             }
             return f;
           });
           setFilamentos(updFil);
           StorageService.saveFilamentos(updFil);
-          const filAfectado = updFil.find(f => f.id === consumo.material_id);
-          if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+          filAfectados.forEach(f => CloudSyncService.saveFilamento(f));
         } else {
           const updRes = resinas.map(r => {
             if (r.id === consumo.material_id) {
-              return { ...r, peso_g: Math.max(0, Math.round((r.peso_g - consumo.material_real_g!) * 10) / 10) };
+              const upd = { ...r, peso_g: Math.max(0, Math.round((r.peso_g - consumo.material_real_g!) * 10) / 10) };
+              resAfectadas.push(upd);
+              return upd;
             }
             return r;
           });
           setResinas(updRes);
           StorageService.saveResinas(updRes);
-          const resAfectada = updRes.find(r => r.id === consumo.material_id);
-          if (resAfectada) CloudSyncService.saveResina(resAfectada);
+          resAfectadas.forEach(r => CloudSyncService.saveResina(r));
         }
       }
 
@@ -2094,16 +2220,24 @@ export const App: React.FC = () => {
           const stockBase = ins.stock_actual !== undefined ? ins.stock_actual : ins.presentacion;
           const nuevoStock = Math.max(0, Math.round((stockBase - totalUsado) * 100) / 100);
           idsAfectados.add(ins.id);
-          return { ...ins, stock_actual: nuevoStock, presentacion: nuevoStock };
+          const upd = { ...ins, stock_actual: nuevoStock, presentacion: nuevoStock };
+          insAfectados.push(upd);
+          return upd;
         });
         if (idsAfectados.size > 0) {
           setInsumos(updIns);
           StorageService.saveInsumos(updIns);
-          updIns.filter(i => idsAfectados.has(i.id)).forEach(i => CloudSyncService.saveInsumo(i));
+          insAfectados.forEach(i => CloudSyncService.saveInsumo(i));
         }
       }
 
       consumoFinal.descontado_de_inventario = true;
+      dispararAlertasStockBajo({
+        resinasAfectadas: resAfectadas,
+        filamentosAfectados: filAfectados,
+        insumosAfectados: insAfectados,
+        origenNota: `Consumo Real ${consumo.numero_referencia}`
+      });
     }
 
     const updatedConsumos = [
@@ -2461,7 +2595,13 @@ export const App: React.FC = () => {
         setFilamentos(updatedFilamentos);
         StorageService.saveFilamentos(updatedFilamentos);
         const filAfectado = updatedFilamentos.find(f => f.id === nuevoRegistro.material_id);
-        if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+        if (filAfectado) {
+          CloudSyncService.saveFilamento(filAfectado);
+          dispararAlertasStockBajo({
+            filamentosAfectados: [filAfectado],
+            origenNota: `Prod. Interna: ${nuevoRegistro.nombre_pieza}`
+          });
+        }
       } else {
         const updatedResinas = resinas.map(r => {
           if (r.id === nuevoRegistro.material_id) {
@@ -2473,7 +2613,13 @@ export const App: React.FC = () => {
         setResinas(updatedResinas);
         StorageService.saveResinas(updatedResinas);
         const resAfectada = updatedResinas.find(r => r.id === nuevoRegistro.material_id);
-        if (resAfectada) CloudSyncService.saveResina(resAfectada);
+        if (resAfectada) {
+          CloudSyncService.saveResina(resAfectada);
+          dispararAlertasStockBajo({
+            resinasAfectadas: [resAfectada],
+            origenNota: `Prod. Interna: ${nuevoRegistro.nombre_pieza}`
+          });
+        }
       }
     }
     toast.success(`Pieza "${nuevoRegistro.nombre_pieza}" registrada en producción interna.`);
@@ -2898,7 +3044,7 @@ export const App: React.FC = () => {
     CloudSyncService.deleteTareaEquipo(id);
   };
 
-  // Handlers para Solicitudes S.O.S de Insumos
+  // Handlers para Solicitudes S.O.S de Insumos (con Reabastecimiento Automático de Bodega y Eliminación CRUD)
   const handleCrearSolicitudInsumo = (solicitud: SolicitudInsumo) => {
     const updated = [solicitud, ...solicitudesInsumos];
     setSolicitudesInsumos(updated);
@@ -2906,11 +3052,92 @@ export const App: React.FC = () => {
     CloudSyncService.saveSolicitudInsumo(solicitud);
   };
 
-  const handleActualizarSolicitudInsumo = (solicitud: SolicitudInsumo) => {
-    const updated = solicitudesInsumos.map(s => s.id === solicitud.id ? solicitud : s);
+  const handleActualizarSolicitudInsumo = (
+    solicitud: SolicitudInsumo,
+    opciones?: { sumarAlInventario?: boolean }
+  ) => {
+    let solicitudFinal: SolicitudInsumo = { ...solicitud };
+
+    if (
+      solicitudFinal.estado === 'recibido' &&
+      opciones?.sumarAlInventario &&
+      !solicitudFinal.stock_reabastecido
+    ) {
+      const reab = calcularReabastecimientoAlRecibir(solicitudFinal, {
+        resinas,
+        filamentos,
+        insumos
+      });
+
+      if (reab.aplicado) {
+        if (reab.resinaActualizada) {
+          const updRes = resinas.map(r => (r.id === reab.resinaActualizada!.id ? reab.resinaActualizada! : r));
+          setResinas(updRes);
+          StorageService.saveResinas(updRes);
+          CloudSyncService.saveResina(reab.resinaActualizada);
+        } else if (reab.filamentoActualizado) {
+          const updFil = filamentos.map(f => (f.id === reab.filamentoActualizado!.id ? reab.filamentoActualizado! : f));
+          setFilamentos(updFil);
+          StorageService.saveFilamentos(updFil);
+          CloudSyncService.saveFilamento(reab.filamentoActualizado);
+        } else if (reab.insumoActualizado) {
+          const updIns = insumos.map(i => (i.id === reab.insumoActualizado!.id ? reab.insumoActualizado! : i));
+          setInsumos(updIns);
+          StorageService.saveInsumos(updIns);
+          CloudSyncService.saveInsumo(reab.insumoActualizado);
+        }
+        solicitudFinal.stock_reabastecido = true;
+        toast.success(`📦 Bodega reabastecida: ${reab.mensaje}`);
+      } else {
+        toast.info(`Orden marcada como recibida (${reab.mensaje}).`);
+      }
+    }
+
+    const updated = solicitudesInsumos.map(s => (s.id === solicitudFinal.id ? solicitudFinal : s));
     setSolicitudesInsumos(updated);
     StorageService.saveSolicitudesInsumos(updated);
-    CloudSyncService.saveSolicitudInsumo(solicitud);
+    CloudSyncService.saveSolicitudInsumo(solicitudFinal);
+  };
+
+  const handleEliminarSolicitudInsumo = (id: string) => {
+    const updated = solicitudesInsumos.filter(s => s.id !== id);
+    setSolicitudesInsumos(updated);
+    StorageService.saveSolicitudesInsumos(updated);
+    CloudSyncService.deleteSolicitudInsumo(id);
+    toast.info('Orden de insumo eliminada.');
+  };
+
+  const pendingCotSyncCount = React.useMemo(() => {
+    const outboxNums = new Set(
+      CloudSyncService.getOutboxQueue()
+        .filter(t => t.type === 'cotizacion')
+        .map(t => t.payload?.numero_cot)
+        .filter(Boolean)
+    );
+    return cotizaciones.filter(c => !isUuidStrict(c.id) || outboxNums.has(c.numero_cot)).length;
+  }, [cotizaciones]);
+
+  const handleForceSyncLocalCotizaciones = async () => {
+    if (!CloudSyncService.isAvailable()) {
+      toast.warning('Sin conexión a Supabase.');
+      return;
+    }
+    const flushRes = await CloudSyncService.flushOutboxQueue();
+    const localesPendientes = cotizaciones.filter(c => !isUuidStrict(c.id));
+    let rescatadas = 0;
+    for (const cot of localesPendientes) {
+      const ok = await CloudSyncService.saveCotizacion(cot, true);
+      if (ok) rescatadas++;
+    }
+    if (syncCloudDataRef.current) {
+      await syncCloudDataRef.current();
+    }
+    const totalSubidas = flushRes.synced + rescatadas;
+    if (totalSubidas > 0) {
+      toast.success(`☁️ ${totalSubidas} cotización(es) sincronizada(s) con Supabase.`);
+    } else {
+      toast.info('Sincronización completada.');
+    }
   };
 
   // Handler para Crear Orden Rápida desde Tarifario Express (vinculación bidireccional inmediata sin contaminar cotizacion_id)
@@ -3439,6 +3666,8 @@ export const App: React.FC = () => {
                   config={config}
                   ordenes={ordenes}
                   ventas={ventasExpress}
+                  pendingSyncCount={pendingCotSyncCount}
+                  onForceSyncLocal={handleForceSyncLocalCotizaciones}
                   onUpdateEstado={(id, st) => {
                     markLocalMutation();
                     let cotActualizada: Cotizacion | undefined;
@@ -3542,6 +3771,7 @@ export const App: React.FC = () => {
                     setPersonal(p);
                     StorageService.savePersonal(p);
                     p.forEach(per => CloudSyncService.saveTarifaPersonal(per));
+                    recalcularCotizacionesNoAceptadas(resinas, filamentos, insumos, maquinas, p, config);
                   }}
                   onUpdateClientes={c => { setClientes(c); StorageService.saveClientes(c); }}
                   onUpdateProveedores={pr => {
@@ -3582,6 +3812,10 @@ export const App: React.FC = () => {
                     if (freshClis !== null) { setClientes(freshClis); StorageService.saveClientes(freshClis); }
                   }}
                   onOpenBackup={() => setShowBackupModal(true)}
+                  onNavigateToPersonal={() => {
+                    setActiveHub('gestion');
+                    setActiveTab('usuarios');
+                  }}
                 />
               )}
 
@@ -3647,12 +3881,15 @@ export const App: React.FC = () => {
                   tareas={tareas}
                   solicitudesInsumos={solicitudesInsumos}
                   insumosCatalogo={insumos}
+                  resinasCatalogo={resinas}
+                  filamentosCatalogo={filamentos}
                   config={config}
                   onGuardarTarea={handleGuardarTarea}
                   onActualizarTarea={handleActualizarTarea}
                   onEliminarTarea={handleEliminarTarea}
                   onCrearSolicitudInsumo={handleCrearSolicitudInsumo}
                   onActualizarSolicitudInsumo={handleActualizarSolicitudInsumo}
+                  onEliminarSolicitudInsumo={handleEliminarSolicitudInsumo}
                   activeOperator={activeOperator}
                   currentUser={currentUser}
                 />
@@ -3702,7 +3939,7 @@ export const App: React.FC = () => {
         )}
       </main>
 
-      {/* Barra de Navegación Inferior Fija de 4 Hubs con Filtrado RBAC */}
+      {/* Barra de Navegación Inferior Fija de 5 Hubs con Filtrado RBAC */}
       <BottomNavBar
         activeHub={activeHub}
         allowedHubs={permisos}
@@ -3717,6 +3954,7 @@ export const App: React.FC = () => {
             taller: 'workflow',
             finanzas: 'cuentas',
             gestion: 'tareas',
+            herramientas: 'herramientas',
           };
           setActiveTab(defaultTabs[hub]);
         }}

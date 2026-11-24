@@ -765,9 +765,14 @@ export const CloudSyncService = {
       const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedSnapshot}${snapshotSuffix}`;
 
       // 5.2 Upsert directo con columnas canónicas compatibles (y campos extendidos con fallback defensivo)
+      const clienteNombreSafe = (cot.cliente?.nombre || '').trim() || 'Cliente General';
+      const clienteTelSafe = (cot.cliente?.telefono || '').trim() || '0000000000';
+
       const canonicalPayload: any = {
         numero_cot: cot.numero_cot,
         cliente_id: clienteId,
+        cliente_nombre: clienteNombreSafe,
+        cliente_telefono: clienteTelSafe,
         fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
         estado: normalizarEstadoCotizacion(cot.estado),
         subtotal: Number(cot.subtotal) || 0,
@@ -779,6 +784,15 @@ export const CloudSyncService = {
 
       const extendedPayload = {
         ...canonicalPayload,
+        vendedor_nombre: cot.vendedor || 'Equipo WJGEEKS',
+        iva_porcentaje: Number(cot.iva_porcentaje) || 0,
+        iva_monto: Number(cot.iva_monto) || 0,
+        descuento_monto: Number(cot.descuento_monto) || 0,
+        abono: abonoCot,
+        saldo_pendiente: saldoCot,
+        estado_pago: payloadSnapshot.estado_pago,
+        metodo_pago: payloadSnapshot.metodo_pago,
+        comprobante_pago: cot.comprobante_pago || null,
         costo_total_taller: Number(cot.costo_total_taller) || 0,
         utilidad_neta_estimada: Number(cot.utilidad_neta_estimada) || 0,
         modo_margen: cot.modo_margen || 'margen_bruto'
@@ -1656,6 +1670,7 @@ export const CloudSyncService = {
         console.warn('Error saving tarea_equipo in Supabase:', error.message);
         return false;
       }
+      this.broadcastChange('tarea', 'upsert');
       return true;
     } catch (e) {
       console.warn('Exception in saveTareaEquipo:', e);
@@ -1676,6 +1691,7 @@ export const CloudSyncService = {
         console.warn('Error deleting tarea_equipo in Supabase:', error.message);
         return false;
       }
+      this.broadcastChange('tarea', 'delete');
       return true;
     } catch (e) {
       console.warn('Exception in deleteTareaEquipo:', e);
@@ -1701,16 +1717,31 @@ export const CloudSyncService = {
       return data.map((row: any): SolicitudInsumo => ({
         id: row.id,
         insumo_nombre: row.insumo_nombre,
+        categoria: row.categoria || undefined,
         cantidad: Number(row.cantidad) || 1,
         unidad: row.unidad || 'und',
         urgencia: (row.urgencia || 'normal') as any,
         solicitado_por: row.solicitado_por as any,
-        encargado_compra: 'Wendy',
+        encargado_compra: (row.encargado_compra || 'Wendy') as any,
         estado: (row.estado || 'pendiente') as any,
         enlace_compra: row.enlace_compra || undefined,
         proveedor_sugerido: row.proveedor_sugerido || undefined,
         notas: row.notas || undefined,
-        fecha_solicitud: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10)
+        fecha_solicitud: row.created_at ? row.created_at.slice(0, 10) : new Date().toISOString().slice(0, 10),
+        fecha_atendida: row.fecha_atendida || undefined,
+        tipo_compra: (row.tipo_compra || undefined) as any,
+        plataforma_tienda: row.plataforma_tienda || undefined,
+        numero_pedido: row.numero_pedido || undefined,
+        transportadora: row.transportadora || undefined,
+        numero_guia: row.numero_guia || undefined,
+        enlace_rastreo: row.enlace_rastreo || undefined,
+        fecha_estimada_llegada: row.fecha_estimada_llegada || undefined,
+        costo_estimado: row.costo_estimado !== undefined && row.costo_estimado !== null ? Number(row.costo_estimado) : undefined,
+        costo_real: row.costo_real !== undefined && row.costo_real !== null ? Number(row.costo_real) : undefined,
+        origen_tipo: (row.origen_tipo || 'manual') as any,
+        catalogo_tipo: (row.catalogo_tipo || undefined) as any,
+        catalogo_item_id: row.catalogo_item_id || undefined,
+        stock_reabastecido: Boolean(row.stock_reabastecido)
       }));
     } catch (e) {
       console.warn('Exception in fetchSolicitudesInsumos:', e);
@@ -1718,11 +1749,11 @@ export const CloudSyncService = {
     }
   },
 
-  // 17. Guardar o Actualizar Solicitud de Insumo en Supabase
+  // 17. Guardar o Actualizar Solicitud de Insumo en Supabase (con fallback defensivo ante columnas pendientes)
   async saveSolicitudInsumo(solicitud: SolicitudInsumo): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const payload = {
+      const basePayload = {
         id: solicitud.id,
         insumo_nombre: solicitud.insumo_nombre,
         cantidad: solicitud.cantidad,
@@ -1736,17 +1767,66 @@ export const CloudSyncService = {
         updated_at: new Date().toISOString()
       };
 
-      const { error } = await supabase!
+      const extendedPayload = {
+        ...basePayload,
+        encargado_compra: solicitud.encargado_compra || 'Wendy',
+        categoria: solicitud.categoria || null,
+        tipo_compra: solicitud.tipo_compra || 'internet',
+        plataforma_tienda: solicitud.plataforma_tienda || null,
+        numero_pedido: solicitud.numero_pedido || null,
+        transportadora: solicitud.transportadora || null,
+        numero_guia: solicitud.numero_guia || null,
+        enlace_rastreo: solicitud.enlace_rastreo || null,
+        fecha_estimada_llegada: solicitud.fecha_estimada_llegada || null,
+        costo_estimado: Number(solicitud.costo_estimado) || 0,
+        costo_real: Number(solicitud.costo_real) || 0,
+        fecha_atendida: solicitud.fecha_atendida || null,
+        origen_tipo: solicitud.origen_tipo || 'manual',
+        catalogo_tipo: solicitud.catalogo_tipo || null,
+        catalogo_item_id: solicitud.catalogo_item_id || null,
+        stock_reabastecido: Boolean(solicitud.stock_reabastecido)
+      };
+
+      let { error } = await supabase!
         .from('solicitudes_insumos')
-        .upsert(payload, { onConflict: 'id' });
+        .upsert(extendedPayload, { onConflict: 'id' });
+
+      if (error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message || ''))) {
+        const retry = await supabase!
+          .from('solicitudes_insumos')
+          .upsert(basePayload, { onConflict: 'id' });
+        error = retry.error;
+      }
 
       if (error) {
         console.warn('Error saving solicitud_insumo in Supabase:', error.message);
         return false;
       }
+      this.broadcastChange('solicitud', 'upsert');
       return true;
     } catch (e) {
       console.warn('Exception in saveSolicitudInsumo:', e);
+      return false;
+    }
+  },
+
+  // 17.1 Eliminar Solicitud de Insumo en Supabase
+  async deleteSolicitudInsumo(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('solicitudes_insumos')
+        .delete()
+        .eq('id', id);
+
+      if (error) {
+        console.warn('Error deleting solicitud_insumo in Supabase:', error.message);
+        return false;
+      }
+      this.broadcastChange('solicitud', 'delete');
+      return true;
+    } catch (e) {
+      console.warn('Exception in deleteSolicitudInsumo:', e);
       return false;
     }
   },
@@ -2398,10 +2478,19 @@ export const CloudSyncService = {
   async fetchTarifasPersonal(): Promise<Personal[] | null> {
     if (!this.isAvailable()) return null;
     try {
-      const { data, error } = await supabase!
+      let { data, error } = await supabase!
         .from('usuarios_taller')
-        .select('id, nombre, rol, costo_hora, costo_minuto')
+        .select('id, nombre, rol, area_responsabilidad, costo_hora, costo_minuto, aplica_mano_obra, activo')
         .order('nombre', { ascending: true });
+
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || /column/i.test(error.message || ''))) {
+        const retry = await supabase!
+          .from('usuarios_taller')
+          .select('id, nombre, rol, costo_hora, costo_minuto, activo')
+          .order('nombre', { ascending: true });
+        data = retry.data as any;
+        error = retry.error;
+      }
 
       if (error) {
         console.warn('Error fetching personal unificado desde usuarios_taller:', error.message);
@@ -2409,12 +2498,30 @@ export const CloudSyncService = {
       }
       if (!data || data.length === 0) return [];
 
-      return data.map((row: any): Personal => ({
-        id: row.id,
-        rol: row.rol || row.nombre || 'Operador',
-        costo_hora: Number(row.costo_hora) > 0 ? Number(row.costo_hora) : 10000,
-        costo_minuto: Number(row.costo_minuto) > 0 ? Number(row.costo_minuto) : 166.67
-      }));
+      const inferArea = (nom?: string, area?: string | null) => {
+        if (area && area.trim()) return area.trim();
+        const n = (nom || '').toLowerCase();
+        if (n.includes('germ')) return 'Aplicación, Backoffice, Ventas y Redes';
+        if (n.includes('juan')) return 'Encargado del Taller (Impresión 3D y Mantenimiento)';
+        if (n.includes('wendy')) return 'Pintura, Acabados y Redes';
+        return 'Operador Multifunción';
+      };
+
+      return (data as any[])
+        .filter(row => row.activo !== false)
+        .map((row: any): Personal => {
+          const costoHora = Number(row.costo_hora) > 0 ? Number(row.costo_hora) : 10000;
+          const costoMin = Number(row.costo_minuto) > 0 ? Number(row.costo_minuto) : Number((costoHora / 60).toFixed(2));
+          return {
+            id: row.id,
+            nombre: row.nombre || 'Operador',
+            rol: row.rol || row.nombre || 'ADMIN_COBRANZAS',
+            area_responsabilidad: inferArea(row.nombre, row.area_responsabilidad),
+            aplica_mano_obra: row.aplica_mano_obra !== undefined ? Boolean(row.aplica_mano_obra) : true,
+            costo_hora: costoHora,
+            costo_minuto: costoMin
+          };
+        });
     } catch (e) {
       return null;
     }
@@ -2425,18 +2532,23 @@ export const CloudSyncService = {
     if (!this.isAvailable()) return false;
     try {
       const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(p.id);
-      let query = supabase!.from('usuarios_taller').update({
+      const baseUpdate = {
         costo_hora: p.costo_hora,
         costo_minuto: p.costo_minuto
-      });
+      };
+      const extendedUpdate = {
+        ...baseUpdate,
+        ...(p.area_responsabilidad ? { area_responsabilidad: p.area_responsabilidad } : {}),
+        ...(p.aplica_mano_obra !== undefined ? { aplica_mano_obra: p.aplica_mano_obra } : {})
+      };
 
-      if (isUuid) {
-        query = query.eq('id', p.id);
-      } else {
-        query = query.ilike('rol', `%${p.rol}%`);
+      const applyFilter = (q: any) => (isUuid ? q.eq('id', p.id) : q.ilike('rol', `%${p.rol}%`));
+      let { error } = await applyFilter(supabase!.from('usuarios_taller').update(extendedUpdate));
+      if (error && (error.code === '42703' || error.code === 'PGRST204' || /column/i.test(error.message || ''))) {
+        const retry = await applyFilter(supabase!.from('usuarios_taller').update(baseUpdate));
+        error = retry.error;
       }
-
-      const { error } = await query;
+      if (!error) this.broadcastChange('personal', 'upsert');
       return !error;
     } catch (e) {
       return false;
@@ -3038,7 +3150,7 @@ export const CloudSyncService = {
         } else if (entity === 'consumo_real') triggerDebounced('consumo_real', onConsumosRealesChange);
         else if (entity === 'tarea') triggerDebounced('tarea', onTareaChange);
         else if (entity === 'solicitud') triggerDebounced('solicitud', onSolicitudChange);
-        else if (entity === 'catalogo' || entity === 'maquina' || entity === 'insumo' || entity === 'resina' || entity === 'filamento' || entity === 'configuracion') {
+        else if (entity === 'personal' || entity === 'catalogo' || entity === 'maquina' || entity === 'insumo' || entity === 'resina' || entity === 'filamento' || entity === 'configuracion') {
           if (entity === 'maquina') triggerDebounced('maquina', onMaquinaChange);
           triggerDebounced('catalogo', onCatalogChange);
         }

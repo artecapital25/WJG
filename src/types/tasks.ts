@@ -44,21 +44,46 @@ export interface TareaAvanceInput {
 
 export type UrgenciaInsumo = 'normal' | 'urgente' | 'taller_detenido';
 
-export type EstadoSolicitudInsumo = 'pendiente' | 'orden_enviada' | 'comprado' | 'en_camino' | 'recibido';
+export type EstadoSolicitudInsumo =
+  | 'pendiente'
+  | 'en_gestion'
+  | 'orden_enviada'
+  | 'comprado'
+  | 'en_camino'
+  | 'recibido'
+  | 'cancelado';
+
+export type TipoCompraInsumo = 'internet' | 'local';
+
+export type CatalogoTipoVinculo = 'insumo' | 'resina' | 'filamento';
 
 export interface SolicitudInsumo {
   id: string;
   insumo_nombre: string;
-  categoria?: string; // Resina, Pintura, Pincel, Alcohol, Ferretería, Empaque
+  categoria?: string; // Resina, Filamento, Pintura, Pincel, Alcohol, Ferretería, Empaque
   cantidad: number;
-  unidad: string; // botes, unidades, litros, ml, gramos
+  unidad: string; // botes, bobinas, unidades, litros, ml, gramos
   urgencia: UrgenciaInsumo;
-  solicitado_por: IntegranteEquipo | string; // Juan, Germán, Pintor
-  encargado_compra: IntegranteEquipo; // Wendy, Germán
+  solicitado_por: IntegranteEquipo | string; // Juan, Germán, Wendy, Sistema Bodega (Auto)
+  encargado_compra: IntegranteEquipo; // Wendy, Germán, Juan, Todos
   estado: EstadoSolicitudInsumo;
   enlace_compra?: string;
   proveedor_sugerido?: string;
   notas?: string;
   fecha_solicitud: string;
   fecha_atendida?: string;
+  // Gestión logística, compras por internet y trazabilidad de bodega
+  tipo_compra?: TipoCompraInsumo;
+  plataforma_tienda?: string;
+  numero_pedido?: string;
+  transportadora?: string;
+  numero_guia?: string;
+  enlace_rastreo?: string;
+  fecha_estimada_llegada?: string;
+  costo_estimado?: number;
+  costo_real?: number;
+  origen_tipo?: 'manual' | 'auto_stock_bajo';
+  catalogo_tipo?: CatalogoTipoVinculo;
+  catalogo_item_id?: string;
+  stock_reabastecido?: boolean;
 }

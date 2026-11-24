@@ -38,6 +38,12 @@ interface CotizadorProcessesCardProps {
   setTiempoDesarrolloMin: (val: number) => void;
   tiempoArmadoMin: number;
   setTiempoArmadoMin: (val: number) => void;
+  operadorPinturaId?: string;
+  setOperadorPinturaId?: (val: string) => void;
+  operadorArmadoId?: string;
+  setOperadorArmadoId?: (val: string) => void;
+  operadorDisenoId?: string;
+  setOperadorDisenoId?: (val: string) => void;
   personal?: Personal[];
   cantidad?: number;
   prorratearDiseno3D?: boolean;
@@ -79,6 +85,12 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
   setTiempoDesarrolloMin,
   tiempoArmadoMin,
   setTiempoArmadoMin,
+  operadorPinturaId = '',
+  setOperadorPinturaId,
+  operadorArmadoId = '',
+  setOperadorArmadoId,
+  operadorDisenoId = '',
+  setOperadorDisenoId,
   personal = [],
   cantidad = 1,
   prorratearDiseno3D = true,
@@ -89,12 +101,31 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
   const costoSeccion = (apartadoCurado?.costoUnitario || 0) + (apartadoMO?.costoUnitario || 0);
   const cobroSeccion = (apartadoCurado?.cobroUnitario || 0) + (apartadoMO?.cobroUnitario || 0);
 
-  const tarifaDev = personal.find(p => (p.rol || '').toLowerCase().includes('desarroll'))?.costo_minuto || 166.67;
-  const tarifaPintor = personal.find(p => (p.rol || '').toLowerCase().includes('pint'))?.costo_minuto || 166.67;
+  const personalActivos = personal.filter(p => p.aplica_mano_obra !== false);
+  const poolPersonal = personalActivos.length > 0 ? personalActivos : personal;
+
+  const findPersona = (idPreferido: string, keywords: string[]) =>
+    (idPreferido ? poolPersonal.find(p => p.id === idPreferido) : undefined) ||
+    poolPersonal.find(p => keywords.some(k => `${p.nombre || ''} ${p.rol || ''} ${p.area_responsabilidad || ''}`.toLowerCase().includes(k))) ||
+    poolPersonal[0];
+
+  const personaDev = findPersona(operadorDisenoId, ['aplicaci', 'backoffice', 'desarroll', 'diseñ', 'germ']);
+  const personaPintor = findPersona(operadorPinturaId, ['pint', 'acabad', 'wendy']);
+  const personaArmado = findPersona(operadorArmadoId, ['taller', 'impresi', 'armad', 'juan']);
+
+  const tarifaDev = personaDev?.costo_minuto || 166.67;
+  const tarifaPintor = personaPintor?.costo_minuto || 166.67;
+  const tarifaArmado = personaArmado?.costo_minuto || tarifaPintor || 166.67;
   const multComp = MULTIPLICADOR_COMPLEJIDAD[calculoEnVivo?.nivel_complejidad || 'simple'] || 1;
   const costoPinturaMO = calculoEnVivo?.costo_pintura_mo_unitario ?? (vaPintado ? Math.round(tiempoPinturaMin * tarifaPintor) : 0);
-  const costoArmadoMO = calculoEnVivo?.costo_armado_unitario ?? Math.round(tiempoArmadoMin * tarifaPintor * multComp);
+  const costoArmadoMO = calculoEnVivo?.costo_armado_unitario ?? Math.round(tiempoArmadoMin * tarifaArmado * multComp);
   const costoDisenoMO = calculoEnVivo?.costo_diseno_unitario ?? Math.round((tiempoDesarrolloMin * tarifaDev * multComp) / (prorratearDiseno3D ? Math.max(1, cantidad) : 1));
+
+  const opcionesPersonal = poolPersonal.map(p => ({
+    value: p.id,
+    label: p.nombre || p.rol,
+    subtitle: `$${(Number(p.costo_hora) || 10000).toLocaleString('es-CO')}/h • ${p.area_responsabilidad || p.rol}`
+  }));
 
   return (
     <div className="cotizador-section-card">
@@ -430,6 +461,17 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                 />
                 <span className="input-unit-badge">min</span>
               </div>
+              {setOperadorPinturaId && opcionesPersonal.length > 0 && vaPintado && (
+                <div style={{ marginTop: '6px' }}>
+                  <WjgSelect
+                    compact
+                    value={personaPintor?.id || operadorPinturaId}
+                    onChange={setOperadorPinturaId}
+                    placeholder="Responsable pintura..."
+                    options={opcionesPersonal}
+                  />
+                </div>
+              )}
             </div>
 
             <div>
@@ -449,6 +491,17 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                 />
                 <span className="input-unit-badge">min</span>
               </div>
+              {setOperadorArmadoId && opcionesPersonal.length > 0 && (
+                <div style={{ marginTop: '6px' }}>
+                  <WjgSelect
+                    compact
+                    value={personaArmado?.id || operadorArmadoId}
+                    onChange={setOperadorArmadoId}
+                    placeholder="Responsable taller..."
+                    options={opcionesPersonal}
+                  />
+                </div>
+              )}
             </div>
 
             <div>
@@ -468,6 +521,17 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                 />
                 <span className="input-unit-badge">min</span>
               </div>
+              {setOperadorDisenoId && opcionesPersonal.length > 0 && (
+                <div style={{ marginTop: '6px' }}>
+                  <WjgSelect
+                    compact
+                    value={personaDev?.id || operadorDisenoId}
+                    onChange={setOperadorDisenoId}
+                    placeholder="Responsable diseño..."
+                    options={opcionesPersonal}
+                  />
+                </div>
+              )}
               {setProrratearDiseno3D && (
                 <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px', fontSize: '0.68rem', color: '#94a3b8', cursor: 'pointer' }}>
                   <input

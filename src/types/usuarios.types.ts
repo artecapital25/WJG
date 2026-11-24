@@ -3,7 +3,7 @@
  * Sistema WJGEEKS 3D PRO
  */
 
-export type HubAreaPermission = 'ventas' | 'taller' | 'finanzas' | 'gestion';
+export type HubAreaPermission = 'ventas' | 'taller' | 'finanzas' | 'gestion' | 'herramientas';
 
 export type RolOperativoTaller = 
   | 'ADMIN_COBRANZAS' 
@@ -92,6 +92,10 @@ export interface UsuarioTaller {
   id: string;
   nombre: string;
   rol: RolOperativoTaller;
+  area_responsabilidad?: string;
+  costo_hora?: number;
+  costo_minuto?: number;
+  aplica_mano_obra?: boolean;
   telefono: string;
   telefono_notificaciones: string;
   email?: string | null;
@@ -110,6 +114,10 @@ export interface UsuarioTaller {
 export interface UsuarioTallerInput {
   nombre: string;
   rol: string;
+  area_responsabilidad?: string;
+  costo_hora?: number;
+  costo_minuto?: number;
+  aplica_mano_obra?: boolean;
   telefono: string;
   telefono_notificaciones: string;
   email?: string;
@@ -165,5 +173,14 @@ export const HUB_PERMISSIONS_CONFIG: Record<HubAreaPermission, HubPermissionDefi
     bgColor: 'rgba(245, 158, 11, 0.12)',
     borderColor: 'rgba(245, 158, 11, 0.35)',
     submodulos: ['Personal', 'Equipo & S.O.S', 'Marketing IA', 'Ajustes']
+  },
+  herramientas: {
+    id: 'herramientas',
+    label: 'Herramientas',
+    descripcion: 'Suite 3D PRO (Calculadoras), Apps Externas y Visor STL',
+    color: '#06b6d4',
+    bgColor: 'rgba(6, 182, 212, 0.12)',
+    borderColor: 'rgba(6, 182, 212, 0.35)',
+    submodulos: ['Suite 3D PRO', 'Apps & Enlaces', 'Visor STL']
   }
 };

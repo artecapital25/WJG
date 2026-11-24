@@ -37,6 +37,8 @@ interface CotizacionesListProps {
   config: ConfiguracionTaller;
   ordenes?: OrdenTrabajo[];
   ventas?: VentaExpress[];
+  pendingSyncCount?: number;
+  onForceSyncLocal?: () => Promise<void> | void;
   onUpdateEstado: (cotId: string, nuevoEstado: EstadoCotizacion) => void;
   onEditarCotizacion?: (cot: Cotizacion) => void;
   onAprobarCotizacion: (cot: Cotizacion, datosPago?: DatosPagoRegistro, redirigirTaller?: boolean) => void;
@@ -53,6 +55,8 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   config,
   ordenes = [],
   ventas = [],
+  pendingSyncCount = 0,
+  onForceSyncLocal,
   onEditarCotizacion,
   onAprobarCotizacion,
   onActualizarPagoCotizacion,
@@ -60,6 +64,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   onToggleModoMargenCotizacion,
   onNuevaCotizacion
 }) => {
+  const [syncingLocals, setSyncingLocals] = useState(false);
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
   const [filtroPago, setFiltroPago] = useState<'todos' | 'pendiente' | 'abono' | 'pagado'>('todos');
   const [filtroTipoCliente, setFiltroTipoCliente] = useState<FiltroTipoCliente>('todos');
@@ -245,6 +250,49 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
           <span>Nueva Cotización</span>
         </button>
       </div>
+
+      {pendingSyncCount > 0 && (
+        <div
+          className="glass-card"
+          style={{
+            padding: '12px 16px',
+            marginBottom: '14px',
+            border: '1px solid rgba(245, 158, 11, 0.45)',
+            background: 'rgba(245, 158, 11, 0.1)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '10px'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fcd34d', fontSize: '0.84rem', fontWeight: 700 }}>
+            <AlertCircle size={17} color="#f59e0b" />
+            <span>
+              Hay {pendingSyncCount} cotización(es) guardada(s) solo en este dispositivo sin subir a Supabase.
+            </span>
+          </div>
+          {onForceSyncLocal && (
+            <button
+              type="button"
+              className="btn btn-sm btn-primary"
+              disabled={syncingLocals}
+              onClick={async () => {
+                setSyncingLocals(true);
+                try {
+                  await onForceSyncLocal();
+                } finally {
+                  setSyncingLocals(false);
+                }
+              }}
+              style={{ fontWeight: 800, minHeight: '36px' }}
+            >
+              <RotateCw size={14} className={syncingLocals ? 'animate-spin' : ''} />
+              <span>{syncingLocals ? 'Subiendo...' : 'Subir ahora a la nube'}</span>
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Barra de Búsqueda, Filtro por Cliente y Ordenamiento */}
       <div className="glass-card" style={{ padding: '16px', marginBottom: '16px' }}>
