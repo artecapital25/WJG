@@ -13,7 +13,7 @@ const corsHeaders = {
 };
 
 const DEFAULT_APPS_SCRIPT_URL =
-  'https://script.google.com/macros/s/AKfycbzEUGjnaQoMVZ5OtdY-QJldULcF_NYqxsda9y5nR72kf7kaQNIsp6AQbb5Z_Fop2syAJQ/exec';
+  'https://script.google.com/macros/s/AKfycby3wMIXe7A3kAyst3cSxbIE9M5HUnmBgJGrGJ6Xi6nMfjN4ckFzZO6p53R1ET2bMuTbRg/exec';
 
 export type EmailTipo =
   | 'tarea_asignada'

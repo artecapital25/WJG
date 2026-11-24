@@ -3205,9 +3205,99 @@ export const CloudSyncService = {
     }
   },
 
+  async syncParentEntitiesFromAbonos(refs: {
+    orden_trabajo_id?: string | null;
+    pos_venta_id?: string | null;
+    cotizacion_id?: string | null;
+  }): Promise<void> {
+    if (!this.isAvailable()) return;
+
+    if (refs.orden_trabajo_id) {
+      try {
+        const [{ data: rows }, { data: otRow }] = await Promise.all([
+          supabase!.from('abonos_pagos').select('monto').eq('orden_trabajo_id', refs.orden_trabajo_id),
+          supabase!.from('ordenes_trabajo').select('total_ot').eq('id', refs.orden_trabajo_id).maybeSingle(),
+        ]);
+        const suma = Math.round((rows || []).reduce((acc: number, r: any) => acc + (Number(r.monto) || 0), 0));
+        const totalOt = Number(otRow?.total_ot || 0);
+        const estado_pago =
+          totalOt > 0 && suma >= totalOt ? 'Pagado Total' : suma > 0 ? 'Abono Parcial' : 'Pendiente';
+        await supabase!
+          .from('ordenes_trabajo')
+          .update({
+            abono: suma,
+            total_abonado: suma,
+            estado_pago,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', refs.orden_trabajo_id);
+      } catch (e) {
+        console.warn('No se pudo resincronizar ordenes_trabajo desde abonos_pagos:', e);
+      }
+    }
+
+    if (refs.pos_venta_id) {
+      try {
+        const [{ data: rows }, { data: posRow }] = await Promise.all([
+          supabase!.from('abonos_pagos').select('monto').eq('pos_venta_id', refs.pos_venta_id),
+          supabase!.from('ventas_express').select('total').eq('id', refs.pos_venta_id).maybeSingle(),
+        ]);
+        const suma = Math.round((rows || []).reduce((acc: number, r: any) => acc + (Number(r.monto) || 0), 0));
+        const totalPos = Number(posRow?.total || 0);
+        const saldo = Math.max(0, Math.round(totalPos - suma));
+        const estado_pago =
+          totalPos > 0 && saldo <= 0 ? 'Pagado Total' : suma > 0 ? 'Abono Parcial' : 'Pendiente';
+        await supabase!
+          .from('ventas_express')
+          .update({
+            abono: suma,
+            saldo_pendiente: saldo,
+            estado_pago,
+          })
+          .eq('id', refs.pos_venta_id);
+      } catch (e) {
+        console.warn('No se pudo resincronizar ventas_express desde abonos_pagos:', e);
+      }
+    }
+
+    if (refs.cotizacion_id) {
+      try {
+        const [{ data: rows }, { data: cotRow }] = await Promise.all([
+          supabase!.from('abonos_pagos').select('monto').eq('cotizacion_id', refs.cotizacion_id),
+          supabase!.from('cotizaciones').select('total').eq('id', refs.cotizacion_id).maybeSingle(),
+        ]);
+        const suma = Math.round((rows || []).reduce((acc: number, r: any) => acc + (Number(r.monto) || 0), 0));
+        const totalCot = Number(cotRow?.total || 0);
+        const saldo = Math.max(0, Math.round(totalCot - suma));
+        const estado_pago =
+          totalCot > 0 && saldo <= 0 ? 'Pagado Total' : suma > 0 ? 'Abono Parcial' : 'Pendiente';
+        await supabase!
+          .from('cotizaciones')
+          .update({
+            abono: suma,
+            saldo_pendiente: saldo,
+            estado_pago,
+          })
+          .eq('id', refs.cotizacion_id);
+      } catch (e) {
+        console.warn('No se pudo resincronizar cotizaciones desde abonos_pagos:', e);
+      }
+    }
+  },
+
   async updateAbono(id: string, patch: Partial<PaymentRecord>): Promise<boolean> {
     if (!this.isAvailable() || !id) return false;
     try {
+      let refsRow: any = null;
+      try {
+        const { data: existing } = await supabase!
+          .from('abonos_pagos')
+          .select('orden_trabajo_id, pos_venta_id, cotizacion_id')
+          .eq('id', id)
+          .maybeSingle();
+        refsRow = existing;
+      } catch (_) {}
+
       const updateBody: Record<string, any> = { updated_at: new Date().toISOString() };
       if (patch.monto !== undefined) updateBody.monto = Math.max(0.01, Number(patch.monto));
       if (patch.metodo_pago !== undefined) {
@@ -3239,7 +3329,12 @@ export const CloudSyncService = {
         console.warn('Error updating abono:', error.message);
         return false;
       }
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      if (refsRow) {
+        await this.syncParentEntitiesFromAbonos(refsRow);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:ledger-updated', { detail: { resyncEntities: true } }));
+      }
       return true;
     } catch {
       return false;
@@ -3249,12 +3344,27 @@ export const CloudSyncService = {
   async deleteAbono(id: string): Promise<boolean> {
     if (!this.isAvailable() || !id) return false;
     try {
+      let refsRow: any = null;
+      try {
+        const { data: existing } = await supabase!
+          .from('abonos_pagos')
+          .select('orden_trabajo_id, pos_venta_id, cotizacion_id')
+          .eq('id', id)
+          .maybeSingle();
+        refsRow = existing;
+      } catch (_) {}
+
       const { error } = await supabase!.from('abonos_pagos').delete().eq('id', id);
       if (error) {
         console.warn('Error deleting abono:', error.message);
         return false;
       }
-      if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('wjg:ledger-updated'));
+      if (refsRow) {
+        await this.syncParentEntitiesFromAbonos(refsRow);
+      }
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('wjg:ledger-updated', { detail: { resyncEntities: true } }));
+      }
       return true;
     } catch {
       return false;

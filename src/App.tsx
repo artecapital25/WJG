@@ -79,7 +79,10 @@ import {
   detectarYCrearSolicitudesStockBajo,
   calcularReabastecimientoAlRecibir
 } from './services/inventoryReplenishmentService';
-import { calcularGramosADescontarConsumoReal } from './services/inventoryDeductionHelper';
+import {
+  calcularAjusteStockEdicionPOS,
+  calcularGramosADescontarConsumoReal
+} from './services/inventoryDeductionHelper';
 import { calcularDescuentoVolumenSugerido, calcularTotalesCotizacion } from './features/cotizador/utils/pricingCalculator';
 import { calcularCotizacionIntegral, recalcularPiezaPorModoMargen, ParametrosPiezaInput } from './services/calculationEngine';
 import { decodeDraftReviewPayload } from './services/cotizadorInternalShareService';
@@ -1040,6 +1043,30 @@ export const App: React.FC = () => {
     };
     window.addEventListener('wjg:personal-updated', handlePersonalUpdated);
 
+    const handleLedgerResyncEntities = async (e: Event) => {
+      if (!(e as CustomEvent)?.detail?.resyncEntities) return;
+      try {
+        const [freshOTs, freshVentas, freshCots] = await Promise.all([
+          CloudSyncService.fetchOrdenes(),
+          CloudSyncService.fetchVentasExpress(),
+          CloudSyncService.fetchCotizaciones(),
+        ]);
+        if (freshOTs !== null) {
+          setOrdenes(freshOTs);
+          StorageService.saveOrdenes(freshOTs);
+        }
+        if (freshVentas !== null) {
+          setVentasExpress(freshVentas);
+          StorageService.saveVentasExpress(freshVentas);
+        }
+        if (freshCots !== null) {
+          setCotizaciones(freshCots);
+          StorageService.saveCotizaciones(freshCots);
+        }
+      } catch (_) {}
+    };
+    window.addEventListener('wjg:ledger-updated', handleLedgerResyncEntities);
+
     // Detección de visibilidad y foco: sincronizar datos al regresar a la app en celular o PC (respetando 15s tras mutaciones locales)
     const handleVisibilityOrFocus = () => {
       if (Date.now() - lastLocalMutationRef.current < 15000) return;
@@ -1065,6 +1092,7 @@ export const App: React.FC = () => {
       unbindReconnection();
       window.removeEventListener('wjg:outbox-flushed', handleOutboxFlushed);
       window.removeEventListener('wjg:personal-updated', handlePersonalUpdated);
+      window.removeEventListener('wjg:ledger-updated', handleLedgerResyncEntities);
       window.removeEventListener('visibilitychange', handleVisibilityOrFocus);
       window.removeEventListener('focus', handleVisibilityOrFocus);
     };
@@ -2885,6 +2913,30 @@ export const App: React.FC = () => {
     let ventaFinal: VentaExpress = { ...ventaActualizada };
     const prevVenta = ventasExpress.find(v => v.id === ventaFinal.id);
     let otModificadaParaGuardar: OrdenTrabajo | null = null;
+
+    // Conciliación estricta de productos_stock al editar cantidades, producto o switch descontar_stock
+    const ajustesStock = calcularAjusteStockEdicionPOS(prevVenta, ventaFinal);
+    if (ajustesStock.length > 0) {
+      const ajustesMap = new Map<string, number>();
+      ajustesStock.forEach(aj => {
+        ajustesMap.set(aj.productoId, (ajustesMap.get(aj.productoId) || 0) + aj.deltaStock);
+      });
+      const updatedStock = productosStock.map(p => {
+        const delta = ajustesMap.get(p.id);
+        if (!delta) return p;
+        return {
+          ...p,
+          stock_actual: Math.max(0, (p.stock_actual || 0) + delta),
+          fecha_actualizacion: new Date().toISOString(),
+        };
+      });
+      setProductosStock(updatedStock);
+      StorageService.saveProductosStock(updatedStock);
+      ajustesMap.forEach((_, prodId) => {
+        const prodAfectado = updatedStock.find(p => p.id === prodId);
+        if (prodAfectado) CloudSyncService.saveProductoStock(prodAfectado);
+      });
+    }
 
     // Si antes no tenía OT y ahora se activa "requiere_ot", generarla
     if (ventaFinal.requiere_ot && !ventaFinal.ot_id && !ventaFinal.ot_numero) {

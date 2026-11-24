@@ -1,4 +1,4 @@
-import type { EgresoTaller, PaymentRecord } from '../types';
+import type { EgresoTaller, PaymentRecord, VentaExpress } from '../types';
 
 export interface MetodoCajaResumen {
   metodo: 'BRE_B' | 'NEQUI' | 'EFECTIVO' | 'OTROS';
@@ -176,4 +176,38 @@ export function calcularFlujoCajaResumen(params: {
     flujoCajaNeto: Math.round(totalIngresos - totalEgresos),
     porMetodo,
   };
+}
+
+/**
+ * Calcula los ajustes de stock físico (`deltaStock`: positivo suma/repone, negativo descuenta)
+ * al editar una venta POS Express vinculada o desvinculada de `productos_stock`.
+ */
+export function calcularAjusteStockEdicionPOS(
+  prevVenta: Partial<VentaExpress> | undefined,
+  nuevaVenta: Partial<VentaExpress>
+): Array<{ productoId: string; deltaStock: number }> {
+  const prevActive = Boolean(prevVenta?.descontar_stock && prevVenta?.producto_stock_id);
+  const newActive = Boolean(nuevaVenta?.descontar_stock && nuevaVenta?.producto_stock_id);
+  const prevQty = Math.max(1, Number(prevVenta?.cantidad_vendida) || 1);
+  const newQty = Math.max(1, Number(nuevaVenta?.cantidad_vendida) || 1);
+  const prevId = prevVenta?.producto_stock_id || '';
+  const newId = nuevaVenta?.producto_stock_id || '';
+
+  if (prevActive && !newActive && prevId) {
+    return [{ productoId: prevId, deltaStock: prevQty }];
+  }
+  if (!prevActive && newActive && newId) {
+    return [{ productoId: newId, deltaStock: -newQty }];
+  }
+  if (prevActive && newActive && prevId && newId) {
+    if (prevId === newId) {
+      const delta = prevQty - newQty;
+      return delta !== 0 ? [{ productoId: newId, deltaStock: delta }] : [];
+    }
+    return [
+      { productoId: prevId, deltaStock: prevQty },
+      { productoId: newId, deltaStock: -newQty },
+    ];
+  }
+  return [];
 }

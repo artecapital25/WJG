@@ -11,7 +11,7 @@ export interface GoogleSheetsConfig {
 
 const STORAGE_KEY = 'wjg_google_sheets_config';
 
-export const OFFICIAL_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzEUGjnaQoMVZ5OtdY-QJldULcF_NYqxsda9y5nR72kf7kaQNIsp6AQbb5Z_Fop2syAJQ/exec';
+export const OFFICIAL_APPS_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycby3wMIXe7A3kAyst3cSxbIE9M5HUnmBgJGrGJ6Xi6nMfjN4ckFzZO6p53R1ET2bMuTbRg/exec';
 
 const DEFAULT_CONFIG: GoogleSheetsConfig = {
   webAppUrl: OFFICIAL_APPS_SCRIPT_URL,
@@ -32,7 +32,8 @@ export const GoogleSheetsSyncService = {
         if (
           !parsed.webAppUrl || 
           parsed.webAppUrl.trim() === '' || 
-          parsed.webAppUrl.includes('AKfycbwiYbRZGtNtptiO3B5ObJXI7NFGcbzZah6IMGM2wrQCG94FuexsToOce31WMCqSJuOI')
+          parsed.webAppUrl.includes('AKfycbwiYbRZGtNtptiO3B5ObJXI7NFGcbzZah6IMGM2wrQCG94FuexsToOce31WMCqSJuOI') ||
+          parsed.webAppUrl.includes('AKfycbzEUGjnaQoMVZ5OtdY-QJldULcF_NYqxsda9y5nR72kf7kaQNIsp6AQbb5Z_Fop2syAJQ')
         ) {
           parsed.webAppUrl = OFFICIAL_APPS_SCRIPT_URL;
         }
