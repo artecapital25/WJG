@@ -522,7 +522,7 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <Upload size={16} color="var(--brand-cyan)" />
                 <div>
                   <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e0f2fe' }}>
-                    Importar archivo .gcode (Bambu Studio / OrcaSlicer / Cura)
+                    Importar archivo Slicer (.3mf / .gcode / Bambu / Orca / Cura)
                   </div>
                   <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
                     {gcodeInfo ? `✓ Leído: ${gcodeInfo}` : 'Arrastra o toca aquí para cargar gramos, purga AMS y tiempo exacto automáticamente'}
@@ -530,12 +530,12 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 </div>
               </div>
               <span className="btn btn-secondary btn-sm" style={{ minHeight: '32px', padding: '4px 10px', fontSize: '0.74rem' }}>
-                Elegir .gcode
+                Elegir archivo
               </span>
               <input
                 ref={gcodeInputRef}
                 type="file"
-                accept=".gcode,.gco,.g"
+                accept=".gcode,.gco,.g,.bgcode,.3mf,.ctb,.goo,.pwmb,.pm5s,.pwmo,.photon"
                 style={{ display: 'none' }}
                 onChange={e => {
                   const file = e.target.files?.[0];

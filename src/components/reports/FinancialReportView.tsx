@@ -14,7 +14,7 @@ import {
 import { Cotizacion, OrdenTrabajo, CuentaCobro, Resina } from '../../types';
 import { VentaExpress } from '../../types/pos';
 import { CloudSyncService, BalanceTaller } from '../../services/cloudSyncService';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgSelect } from '../ui';
 
 interface FinancialReportViewProps {
   cotizaciones: Cotizacion[];
@@ -417,25 +417,25 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         </div>
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
+          <WjgButton
+            variant="secondary"
+            size="sm"
+            leftIcon={<RefreshCw size={14} className={cargandoBalance ? 'spin' : ''} />}
             onClick={fetchBalance}
             title="Refrescar balance desde PostgreSQL en Supabase"
           >
-            <RefreshCw size={14} className={cargandoBalance ? 'spin' : ''} />
-            <span>Refrescar</span>
-          </button>
+            Refrescar
+          </WjgButton>
 
-          <button 
-            className="btn btn-primary btn-sm"
+          <WjgButton
+            variant="save"
+            size="sm"
+            leftIcon={<FileSpreadsheet size={15} />}
             onClick={handleExportExcel}
             title="Descargar balance unificado en formato Excel (.xls)"
-            style={{ fontWeight: 700 }}
           >
-            <FileSpreadsheet size={15} />
-            <span>Exportar a Excel (.xls)</span>
-          </button>
+            Exportar a Excel (.xls)
+          </WjgButton>
         </div>
       </div>
 
@@ -492,39 +492,27 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
 
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
           {onOpenBackup && (
-            <button
-              className="btn btn-secondary btn-sm"
+            <WjgButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<Database size={15} color="#38bdf8" />}
               onClick={onOpenBackup}
-              style={{
-                borderColor: 'rgba(56, 189, 248, 0.4)',
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
+              style={{ borderColor: 'rgba(56, 189, 248, 0.4)' }}
               title="Copia de Seguridad y Google Drive (3:00 AM)"
             >
-              <Database size={15} color="#38bdf8" />
-              <span>Respaldos & Drive</span>
-            </button>
+              Respaldos & Drive
+            </WjgButton>
           )}
 
           {onOpenDailyBriefing && (
-            <button
-              className="btn btn-primary btn-sm"
+            <WjgButton
+              variant="cyan"
+              size="sm"
+              leftIcon={<Sun size={15} />}
               onClick={onOpenDailyBriefing}
-              style={{
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
-                color: '#fff',
-                fontWeight: 700,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '6px'
-              }}
             >
-              <Sun size={15} />
-              <span>Ver Daily Briefing</span>
-            </button>
+              Ver Daily Briefing
+            </WjgButton>
           )}
         </div>
       </div>

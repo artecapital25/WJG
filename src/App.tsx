@@ -314,6 +314,9 @@ export const App: React.FC = () => {
     imagenUrl?: string;
     tipoEstructura?: 'solido' | 'ahuecado';
     porcentajeRelleno?: number;
+    amsActivo?: boolean;
+    amsColores?: number;
+    amsPurgaGramos?: number;
     enlacesCompra?: { titulo: string; url: string; costo_estimado?: number }[];
   } | null>(null);
 
@@ -3934,6 +3937,10 @@ export const App: React.FC = () => {
                   filamentos={filamentos}
                   maquinas={maquinas}
                   config={config}
+                  onApplyToCotizador={(data) => {
+                    setStlAppliedData(data);
+                    setActiveTab('cotizador');
+                  }}
                 />
               )}
 

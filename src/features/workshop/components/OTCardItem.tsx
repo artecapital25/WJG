@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { 
   ChevronRight, 
   MessageCircle, 
@@ -24,6 +24,7 @@ import {
 } from '../../../types';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { getSiguienteEstado, getHandoffConfig, resolveLinksDeOT, normalizarEstadoOT } from '../utils/workshopUtils';
+import { WjgConfirmModal } from '../../../components/ui';
 
 interface OTCardItemProps {
   ot: OrdenTrabajo;
@@ -66,6 +67,13 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
   onSetOtParaPago,
   onSetOtParaEliminar
 }) => {
+  const [confirmEstadoAction, setConfirmEstadoAction] = useState<{
+    nuevoEstado: EstadoOT;
+    title: string;
+    message: string;
+    confirmText: string;
+    variant: 'primary' | 'warning';
+  } | null>(null);
   const estadoValido = normalizarEstadoOT(ot.estado || (ot as any).estado_actual);
   const sigEstado = getSiguienteEstado(estadoValido);
   const handoff = getHandoffConfig({ ...ot, estado: estadoValido }, config);
@@ -520,11 +528,15 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
               justifyContent: 'center',
               gap: '6px'
             }}
-            onClick={() => {
-              if (confirm(`¿Confirmas que el pedido "${ot.item_nombre}" de ${ot.cliente_nombre} fue entregado al cliente? Pasará al historial de entregadas.`)) {
-                onUpdateEstado(ot.id, 'Entregado');
-              }
-            }}
+            onClick={() =>
+              setConfirmEstadoAction({
+                nuevoEstado: 'Entregado',
+                title: 'Confirmar Entrega al Cliente',
+                message: `¿Confirmas que el pedido "${ot.item_nombre}" de ${ot.cliente_nombre} fue entregado al cliente? Pasará al historial de entregadas.`,
+                confirmText: 'Marcar Entregado',
+                variant: 'primary'
+              })
+            }
           >
             <Check size={14} />
             <span>Marcar como Entregado</span>
@@ -543,11 +555,15 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
             type="button"
             className="btn btn-secondary btn-sm"
             style={{ color: '#34d399', borderColor: 'rgba(16, 185, 129, 0.4)', background: 'rgba(16, 185, 129, 0.1)' }}
-            onClick={() => {
-              if (confirm('¿Deseas reactivar esta orden y devolverla a "Listo para Entrega"?')) {
-                onUpdateEstado(ot.id, 'Listo para Entrega');
-              }
-            }}
+            onClick={() =>
+              setConfirmEstadoAction({
+                nuevoEstado: 'Listo para Entrega',
+                title: 'Reactivar Orden de Trabajo',
+                message: '¿Deseas reactivar esta orden y devolverla a "Listo para Entrega"?',
+                confirmText: 'Reactivar Orden',
+                variant: 'warning'
+              })
+            }
             title="Clic para reactivar orden si fue marcada como entregada por error"
           >
             <Check size={14} />
@@ -650,6 +666,21 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
           </button>
         )}
       </div>
+
+      <WjgConfirmModal
+        isOpen={Boolean(confirmEstadoAction)}
+        onClose={() => setConfirmEstadoAction(null)}
+        onConfirm={() => {
+          if (confirmEstadoAction) {
+            onUpdateEstado(ot.id, confirmEstadoAction.nuevoEstado);
+            setConfirmEstadoAction(null);
+          }
+        }}
+        title={confirmEstadoAction?.title || 'Confirmar'}
+        message={confirmEstadoAction?.message || ''}
+        confirmText={confirmEstadoAction?.confirmText || 'Confirmar'}
+        variant={confirmEstadoAction?.variant || 'primary'}
+      />
     </div>
   );
 });

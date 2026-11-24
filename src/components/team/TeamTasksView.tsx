@@ -19,7 +19,7 @@ import {
   Store
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgConfirmModal, WjgSearchInput, WjgSelect } from '../ui';
 import {
   TareaEquipo,
   IntegranteEquipo,
@@ -192,6 +192,7 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
   const [tareaParaWhatsApp, setTareaParaWhatsApp] = useState<TareaEquipo | null>(null);
   const [notificarATodosAlCrear, setNotificarATodosAlCrear] = useState(false);
   const [notifBanner, setNotifBanner] = useState<string | null>(null);
+  const [deleteSolTarget, setDeleteSolTarget] = useState<SolicitudInsumo | null>(null);
 
   // Opciones combinadas del catálogo de bodega para vincular pedidos con auto-reabastecimiento
   const catalogoOpciones = useMemo(() => {
@@ -472,12 +473,13 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
 
   const handleConfirmEliminarOrden = (sol: SolicitudInsumo) => {
     if (!onEliminarSolicitudInsumo) return;
-    const avisoStock = sol.stock_reabastecido
-      ? '\n\n⚠️ Nota: Esta orden ya sumó inventario previamente en bodega. El stock físico actual NO se revertirá al borrar el historial.'
-      : '';
-    if (confirm(`¿Eliminar definitivamente la orden de "${sol.insumo_nombre}"?${avisoStock}`)) {
-      onEliminarSolicitudInsumo(sol.id);
-    }
+    setDeleteSolTarget(sol);
+  };
+
+  const executeEliminarOrden = () => {
+    if (!deleteSolTarget || !onEliminarSolicitudInsumo) return;
+    onEliminarSolicitudInsumo(deleteSolTarget.id);
+    setDeleteSolTarget(null);
   };
 
   return (
@@ -587,17 +589,13 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 📦 Gestión & Rastreo de Órdenes de Insumos ({solicitudesFiltradas.length})
               </h3>
 
-              <div style={{ position: 'relative', minWidth: '220px', flex: '1 1 240px', maxWidth: '340px' }}>
-                <input
-                  type="text"
-                  className="form-input"
-                  style={{ paddingLeft: '32px', minHeight: '38px', fontSize: '0.82rem' }}
-                  placeholder="Buscar insumo, tienda, guía o pedido..."
-                  value={busquedaOrden}
-                  onChange={e => setBusquedaOrden(e.target.value)}
-                />
-                <Search size={14} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
-              </div>
+              <WjgSearchInput
+                compact
+                value={busquedaOrden}
+                onChange={setBusquedaOrden}
+                placeholder="Buscar insumo, tienda, guía o pedido..."
+                style={{ minWidth: '220px', flex: '1 1 240px', maxWidth: '340px' }}
+              />
             </div>
 
             {/* Filtros por Estado Logístico */}
@@ -1519,6 +1517,24 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
           setTareaParaBitacora(tareaActualizada);
           refreshConteos();
         }}
+      />
+
+      <WjgConfirmModal
+        isOpen={Boolean(deleteSolTarget)}
+        onClose={() => setDeleteSolTarget(null)}
+        onConfirm={executeEliminarOrden}
+        title="Eliminar Orden de Insumo"
+        message={
+          deleteSolTarget
+            ? `¿Eliminar definitivamente la orden de "${deleteSolTarget.insumo_nombre}"?${
+                deleteSolTarget.stock_reabastecido
+                  ? '\n\n⚠️ Nota: Esta orden ya sumó inventario previamente en bodega. El stock físico actual NO se revertirá al borrar el historial.'
+                  : ''
+              }`
+            : ''
+        }
+        confirmText="Eliminar Orden"
+        variant="danger"
       />
     </div>
   );

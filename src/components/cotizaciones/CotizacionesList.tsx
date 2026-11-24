@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro, ModoMargen } from '../../types';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgSearchInput, WjgSelect } from '../ui';
 import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppUrl, openWhatsApp } from '../../services/whatsappService';
@@ -245,10 +245,9 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
           </p>
         </div>
 
-        <button className="btn btn-primary btn-sm" onClick={onNuevaCotizacion}>
-          <Plus size={16} />
-          <span>Nueva Cotización</span>
-        </button>
+        <WjgButton variant="quote" size="sm" leftIcon={<Plus size={16} />} onClick={onNuevaCotizacion}>
+          Nueva Cotización
+        </WjgButton>
       </div>
 
       {pendingSyncCount > 0 && (
@@ -273,10 +272,11 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
             </span>
           </div>
           {onForceSyncLocal && (
-            <button
-              type="button"
-              className="btn btn-sm btn-primary"
-              disabled={syncingLocals}
+            <WjgButton
+              variant="save"
+              size="sm"
+              loading={syncingLocals}
+              leftIcon={<RotateCw size={14} />}
               onClick={async () => {
                 setSyncingLocals(true);
                 try {
@@ -285,11 +285,10 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   setSyncingLocals(false);
                 }
               }}
-              style={{ fontWeight: 800, minHeight: '36px' }}
+              style={{ minHeight: '36px' }}
             >
-              <RotateCw size={14} className={syncingLocals ? 'animate-spin' : ''} />
-              <span>{syncingLocals ? 'Subiendo...' : 'Subir ahora a la nube'}</span>
-            </button>
+              {syncingLocals ? 'Subiendo...' : 'Subir ahora a la nube'}
+            </WjgButton>
           )}
         </div>
       )}
@@ -299,33 +298,13 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px', alignItems: 'center' }}>
           
           {/* Búsqueda Multicriterio por Cliente, Número o Ítem */}
-          <div style={{ position: 'relative' }}>
-            <label style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--text-muted)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <Search size={13} color="var(--brand-cyan)" />
-              BUSCAR POR CLIENTE, N° O ÍTEM
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input 
-                type="text"
-                className="form-input"
-                style={{ paddingLeft: '34px', paddingRight: busqueda ? '32px' : '12px', minHeight: '40px', fontSize: '0.88rem' }}
-                placeholder="Ej: Juan Pérez, 320..., 25-073, Figura..."
-                value={busqueda}
-                onChange={(e) => setBusqueda(e.target.value)}
-              />
-              <Search size={15} style={{ position: 'absolute', left: '11px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-subtle)' }} />
-              {busqueda && (
-                <button
-                  type="button"
-                  onClick={() => setBusqueda('')}
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: 0 }}
-                  title="Borrar búsqueda"
-                >
-                  <X size={15} />
-                </button>
-              )}
-            </div>
-          </div>
+          <WjgSearchInput
+            label="BUSCAR POR CLIENTE, N° O ÍTEM"
+            compact
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Ej: Juan Pérez, 320..., 25-073, Figura..."
+          />
 
           {/* Filtro por Cliente */}
           <div>

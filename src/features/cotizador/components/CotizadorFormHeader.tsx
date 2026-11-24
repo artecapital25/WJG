@@ -1,6 +1,8 @@
-import React from 'react';
-import { Box, Sparkles, Zap, Sliders } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { AlertTriangle, Box, RotateCcw, Sparkles, Sliders, Upload, Zap } from 'lucide-react';
 import { PiezaCotizada, TecnologiaFabricacion } from '../../../types';
+import { SlicerParsedResult } from '../../../services/slicerParserService';
+import { WjgBadge, WjgButton } from '../../../components/ui';
 
 interface CotizadorFormHeaderProps {
   piezaEnEdicion?: PiezaCotizada | null;
@@ -17,6 +19,10 @@ interface CotizadorFormHeaderProps {
   tecnologia?: TecnologiaFabricacion;
   modoVista?: 'rapido' | 'avanzado';
   setModoVista?: (val: 'rapido' | 'avanzado') => void;
+  onImportSlicerFile?: (file: File) => void;
+  lastSlicerResult?: SlicerParsedResult | null;
+  canUndoSlicer?: boolean;
+  onUndoSlicerImport?: () => void;
 }
 
 export const CotizadorFormHeader: React.FC<CotizadorFormHeaderProps> = ({
@@ -33,8 +39,15 @@ export const CotizadorFormHeader: React.FC<CotizadorFormHeaderProps> = ({
   onOpenTarifario,
   tecnologia = 'SLA_RESINA',
   modoVista = 'rapido',
-  setModoVista
+  setModoVista,
+  onImportSlicerFile,
+  lastSlicerResult,
+  canUndoSlicer = false,
+  onUndoSlicerImport
 }) => {
+  const slicerInputRef = useRef<HTMLInputElement>(null);
+  const [draggingSlicer, setDraggingSlicer] = useState(false);
+
   const tituloTecnologia = tecnologia === 'FDM_FILAMENTO'
     ? 'Cotizador 3D FDM & Filamento'
     : (tecnologia === 'CORTE_LASER' || tecnologia === 'GRABADO_LASER')
@@ -168,6 +181,105 @@ export const CotizadorFormHeader: React.FC<CotizadorFormHeaderProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Lector Universal de Archivos Slicer (FDM .3mf/.gcode y Resina .ctb/.goo/.pwmb) */}
+      {onImportSlicerFile && (
+        <div
+          onDragOver={e => {
+            e.preventDefault();
+            setDraggingSlicer(true);
+          }}
+          onDragLeave={() => setDraggingSlicer(false)}
+          onDrop={e => {
+            e.preventDefault();
+            setDraggingSlicer(false);
+            const f = e.dataTransfer.files?.[0];
+            if (f) onImportSlicerFile(f);
+          }}
+          onClick={() => slicerInputRef.current?.click()}
+          style={{
+            background: draggingSlicer ? 'rgba(56, 189, 248, 0.14)' : 'rgba(56, 189, 248, 0.05)',
+            border: `1px dashed ${draggingSlicer ? '#38bdf8' : 'rgba(56, 189, 248, 0.35)'}`,
+            borderRadius: '10px',
+            padding: '10px 14px',
+            marginBottom: '12px',
+            cursor: 'pointer',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '8px'
+          }}
+        >
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
+              <Upload size={16} color="var(--brand-cyan)" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e0f2fe' }}>
+                  Importar archivo Slicer (.3mf, .gcode, .ctb, .goo, .pwmb)
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                  {lastSlicerResult
+                    ? `Leído (${lastSlicerResult.slicerDetectado}): ${lastSlicerResult.pesoGramos > 0 ? `${lastSlicerResult.pesoGramos}g` : 'sin peso'} • ${lastSlicerResult.tiempoMinutos > 0 ? `${Math.floor(lastSlicerResult.tiempoMinutos / 60)}h ${lastSlicerResult.tiempoMinutos % 60}m` : 'sin tiempo'}${lastSlicerResult.capas ? ` • ${lastSlicerResult.capas} capas` : ''}`
+                    : 'Arrastra o haz clic para autocompletar peso/ml, tiempo, capas y miniatura'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+              {canUndoSlicer && onUndoSlicerImport && (
+                <WjgButton
+                  variant="ghost"
+                  size="sm"
+                  leftIcon={<RotateCcw size={13} />}
+                  onClick={onUndoSlicerImport}
+                  title="Restaurar valores previos a la importación"
+                >
+                  Deshacer
+                </WjgButton>
+              )}
+              <WjgButton
+                variant="cyan"
+                size="sm"
+                leftIcon={<Upload size={13} />}
+                onClick={() => slicerInputRef.current?.click()}
+              >
+                Cargar Slicer
+              </WjgButton>
+            </div>
+          </div>
+
+          {lastSlicerResult && (lastSlicerResult.camposExtraidos.length > 0 || lastSlicerResult.advertencia) && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              {lastSlicerResult.camposExtraidos.length > 0 && (
+                <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+                  {lastSlicerResult.camposExtraidos.map(campo => (
+                    <WjgBadge key={campo} variant="success">
+                      ✓ {campo}
+                    </WjgBadge>
+                  ))}
+                </div>
+              )}
+              {lastSlicerResult.advertencia && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.72rem', color: '#fbbf24' }}>
+                  <AlertTriangle size={13} style={{ flexShrink: 0 }} />
+                  <span>{lastSlicerResult.advertencia}</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <input
+            ref={slicerInputRef}
+            type="file"
+            accept=".3mf,.gcode,.gco,.g,.bgcode,.ctb,.goo,.pwmb,.pm5s,.pwmo,.photon"
+            style={{ display: 'none' }}
+            onChange={e => {
+              const f = e.target.files?.[0];
+              if (f) onImportSlicerFile(f);
+              e.target.value = '';
+            }}
+          />
+        </div>
+      )}
 
       {/* Selector de Modo Parcial / Pendiente de Slicer */}
       <div style={{

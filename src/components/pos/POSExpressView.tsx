@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgSearchInput, WjgSelect, toast } from '../ui';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
 import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock, Cotizacion } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
@@ -40,7 +40,6 @@ import { ModalConfirmacionWhatsApp } from '../common/ModalConfirmacionWhatsApp';
 import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
 import { obtenerBlobURLReciboPOS } from '../../services/pdfService';
 import { LEYENDA_IVA_CERO } from '../../features/cotizador/utils/pricingCalculator';
-import { toast } from '../ui/ToastProvider';
 import { EmailNotificationService } from '../../services/emailNotificationService';
 import { StorageService } from '../../services/storageService';
 import {
@@ -1459,14 +1458,15 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
             </div>
 
             {/* Botón Guardar Venta */}
-            <button 
-              type="submit" 
-              className="btn btn-primary"
-              style={{ width: '100%', padding: '12px', fontWeight: 800, fontSize: '0.95rem' }}
+            <WjgButton
+              type="submit"
+              variant="quote"
+              fullWidth
+              leftIcon={<Sparkles size={18} />}
+              style={{ padding: '12px', fontSize: '0.95rem' }}
             >
-              <Sparkles size={18} />
-              <span>Registrar Venta Express</span>
-            </button>
+              Registrar Venta Express
+            </WjgButton>
           </form>
         </div>
 
@@ -1475,17 +1475,13 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
           {/* Barra de Filtros y Búsqueda */}
           <div className="glass-card" style={{ margin: '0 0 16px 0', padding: '14px' }}>
             <div className="pos-filter-container" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-              <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
-                <Search size={16} style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-                <input 
-                  type="text"
-                  className="form-input"
-                  placeholder="Buscar por cliente, figura o código..."
-                  value={busqueda}
-                  onChange={e => setBusqueda(e.target.value)}
-                  style={{ paddingLeft: '34px', fontSize: '0.85rem' }}
-                />
-              </div>
+              <WjgSearchInput
+                value={busqueda}
+                onChange={setBusqueda}
+                placeholder="Buscar por cliente, figura o código..."
+                compact
+                style={{ flex: 1, minWidth: '200px' }}
+              />
 
               <div className="pos-filters-grid">
                 <button

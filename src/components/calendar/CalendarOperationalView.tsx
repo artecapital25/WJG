@@ -21,9 +21,8 @@ import {
   ConfiguracionTaller,
   TabType
 } from '../../types';
-import { toast } from '../ui/ToastProvider';
 import { useDateNavigation } from './useDateNavigation';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgSearchInput, WjgSelect, toast } from '../ui';
 import { MobileWeekStrip } from './MobileWeekStrip';
 import { MobileEventCard } from './MobileEventCard';
 import { MobileBottomSheet } from './MobileBottomSheet';
@@ -343,20 +342,20 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
           border: '1px solid var(--border-subtle)' 
         }}>
           {(isMobile ? ['agenda', 'mes'] as const : ['mes', 'semana', 'dia', 'agenda'] as const).map(v => (
-            <button
+            <WjgButton
               key={v}
-              className={`btn btn-sm ${vista === v ? 'btn-primary' : 'btn-secondary'}`}
-              style={{ 
-                padding: '4px 10px', 
-                fontSize: '0.74rem', 
-                textTransform: 'capitalize', 
-                fontWeight: 800,
+              variant={vista === v ? 'primary' : 'secondary'}
+              size="sm"
+              style={{
+                padding: '4px 10px',
+                fontSize: '0.74rem',
+                textTransform: 'capitalize',
                 minHeight: '28px'
               }}
               onClick={() => setVista(v)}
             >
               {v === 'agenda' && isMobile ? 'Día / Agenda' : v}
-            </button>
+            </WjgButton>
           ))}
         </div>
       </div>
@@ -374,21 +373,22 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
           
           {/* Navegación y Fecha Rápida */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-            <button 
-              className="btn btn-secondary btn-sm" 
-              onClick={isMobile && vista === 'agenda' ? prevWeek : prevMonth} 
+            <WjgButton
+              variant="secondary"
+              size="sm"
+              onClick={isMobile && vista === 'agenda' ? prevWeek : prevMonth}
               title="Periodo anterior"
-              style={{ width: '32px', height: '32px', padding: 0 }}
-            >
-              <ChevronLeft size={16} />
-            </button>
-            <button 
-              className="btn btn-secondary btn-sm" 
-              onClick={goToToday} 
-              style={{ fontWeight: 800, padding: '4px 10px', minHeight: '32px' }}
+              style={{ width: '32px', height: '32px', padding: 0, minHeight: '32px' }}
+              leftIcon={<ChevronLeft size={16} />}
+            />
+            <WjgButton
+              variant="secondary"
+              size="sm"
+              onClick={goToToday}
+              style={{ padding: '4px 10px', minHeight: '32px' }}
             >
               Hoy
-            </button>
+            </WjgButton>
             <button 
               className="btn btn-secondary btn-sm" 
               onClick={isMobile && vista === 'agenda' ? nextWeek : nextMonth} 
@@ -456,15 +456,13 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
                 />
               </div>
 
-              <input
-                type="text"
-                className="form-input"
+              <WjgSearchInput
+                compact
                 placeholder="Buscar compromiso..."
-                style={{ minHeight: '34px', fontSize: '0.8rem', width: '150px' }}
+                style={{ width: '175px' }}
                 value={filtros.busqueda}
-                onChange={e => setFiltros({ ...filtros, busqueda: e.target.value })}
-              >
-              </input>
+                onChange={val => setFiltros({ ...filtros, busqueda: val })}
+              />
             </div>
           )}
         </div>
@@ -506,13 +504,11 @@ export const CalendarOperationalView: React.FC<CalendarOperationalViewProps> = (
               ]}
             />
 
-            <input
-              type="text"
-              className="form-input"
+            <WjgSearchInput
+              compact
               placeholder="Buscar por texto..."
-              style={{ minHeight: '40px', fontSize: '0.85rem' }}
               value={filtros.busqueda}
-              onChange={e => setFiltros({ ...filtros, busqueda: e.target.value })}
+              onChange={val => setFiltros({ ...filtros, busqueda: val })}
             />
           </div>
         )}

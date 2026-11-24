@@ -23,7 +23,7 @@ import {
   ParametrosPiezaInput 
 } from '../utils/pricingCalculator';
 import { processAndOptimizeImage } from '../../../services/imageService';
-import { parseGCodeFile } from '../../../services/gcodeService';
+import { parseSlicerFile, SlicerParsedResult } from '../../../services/slicerParserService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { toast } from '../../../components/ui/ToastProvider';
 
@@ -91,6 +91,26 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [amsPurgaPct, setAmsPurgaPct] = useState<number>(piezaEnEdicion?.ams_purga_pct ?? 45);
   const [amsPurgaGramosManual, setAmsPurgaGramosManual] = useState<number>(piezaEnEdicion?.ams_purga_gramos || 0);
   const [gcodeInfo, setGcodeInfo] = useState<string | null>(null);
+  const [lastSlicerResult, setLastSlicerResult] = useState<SlicerParsedResult | null>(null);
+  const [slicerUndoSnapshot, setSlicerUndoSnapshot] = useState<{
+    tecnologia: TecnologiaFabricacion;
+    nombreItem: string;
+    pesoFilamentoG: number;
+    tiempoFDMMin: number;
+    pesoResinaManualG: number;
+    modoCalculoResina: 'volumen' | 'manual';
+    tiempoImpresionModo: 'auto' | 'manual';
+    tiempoImpresionManualMin: number;
+    altoMm: number;
+    anchoMm: number;
+    profundidadMm: number;
+    amsActivo: boolean;
+    amsColores: number;
+    amsPurgaGramosManual: number;
+    imagenUrl: string;
+    tipoOrigenImagen: 'archivo' | 'stl' | null;
+    gcodeInfo: string | null;
+  } | null>(null);
 
   // Tarifas fijadas
   const [precioFijadoTarifa, setPrecioFijadoTarifa] = useState(false);
@@ -243,6 +263,15 @@ export function useCotizadorForm(props: CotizadorFormProps) {
           setTiempoImpresionModo('manual');
           setTiempoImpresionManualMin(minRedondeados);
         }
+      }
+      if (initialPieceData.amsActivo !== undefined) {
+        setAmsActivo(Boolean(initialPieceData.amsActivo));
+      }
+      if (initialPieceData.amsColores !== undefined && initialPieceData.amsColores > 1) {
+        setAmsColores(initialPieceData.amsColores);
+      }
+      if (initialPieceData.amsPurgaGramos !== undefined && initialPieceData.amsPurgaGramos > 0) {
+        setAmsPurgaGramosManual(initialPieceData.amsPurgaGramos);
       }
     }
   }, [initialPieceData]);
@@ -863,38 +892,114 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     });
   };
 
-  // Lector rápido de .gcode (Bambu Studio, OrcaSlicer, PrusaSlicer, Cura)
-  const handleImportGCode = async (file: File) => {
+  // Lector Universal de Archivos Slicer (.3mf, .gcode, .ctb, .goo, .pwmb)
+  const handleImportSlicerFile = async (file: File) => {
     try {
-      const parsed = await parseGCodeFile(file);
-      setTecnologiaSegura('FDM_FILAMENTO');
+      setSlicerUndoSnapshot({
+        tecnologia,
+        nombreItem,
+        pesoFilamentoG,
+        tiempoFDMMin,
+        pesoResinaManualG,
+        modoCalculoResina,
+        tiempoImpresionModo,
+        tiempoImpresionManualMin,
+        altoMm,
+        anchoMm,
+        profundidadMm,
+        amsActivo,
+        amsColores,
+        amsPurgaGramosManual,
+        imagenUrl,
+        tipoOrigenImagen,
+        gcodeInfo
+      });
+
+      const parsed = await parseSlicerFile(file);
+      setLastSlicerResult(parsed);
+
+      if (parsed.formato === 'desconocido') {
+        toast.warning(parsed.advertencia || 'Formato de archivo no compatible.');
+        return;
+      }
+
+      setTecnologiaSegura(parsed.tecnologia);
       if (parsed.nombreSugerido && (nombreItem === 'Figura Coleccionable 3D' || !nombreItem.trim())) {
         setNombreItem(parsed.nombreSugerido);
       }
-      if (parsed.pesoGramos > 0) {
-        setPesoFilamentoG(parsed.pesoGramos);
-      }
-      if (parsed.tiempoMinutos > 0) {
-        setTiempoFDMMin(parsed.tiempoMinutos);
-      }
-      if (parsed.esMulticolorAMS) {
-        setAmsActivo(true);
-        setAmsColores(Math.max(2, parsed.cantidadColores));
-        if (parsed.pesoPurgaGramos > 0) {
-          setAmsPurgaGramosManual(parsed.pesoPurgaGramos);
+
+      if (parsed.altoMm && parsed.altoMm > 0) setAltoMm(parsed.altoMm);
+      if (parsed.anchoMm && parsed.anchoMm > 0) setAnchoMm(parsed.anchoMm);
+      if (parsed.profundidadMm && parsed.profundidadMm > 0) setProfundidadMm(parsed.profundidadMm);
+
+      if (parsed.tecnologia === 'FDM_FILAMENTO') {
+        if (parsed.pesoGramos > 0) setPesoFilamentoG(parsed.pesoGramos);
+        if (parsed.tiempoMinutos > 0) setTiempoFDMMin(parsed.tiempoMinutos);
+        if (parsed.esMulticolorAMS) {
+          setAmsActivo(true);
+          setAmsColores(Math.max(2, parsed.cantidadColores));
+          if (parsed.pesoPurgaGramos > 0) {
+            setAmsPurgaGramosManual(parsed.pesoPurgaGramos);
+          }
+        }
+        if (parsed.tipoMaterial && filamentos.length > 0) {
+          const matchFil = filamentos.find(f =>
+            f.tipo.toLowerCase().includes(parsed.tipoMaterial!.toLowerCase())
+          );
+          if (matchFil) setFilamentoId(matchFil.id);
+        }
+      } else {
+        if (parsed.pesoGramos > 0) {
+          setModoCalculoResina('manual');
+          setPesoResinaManualG(parsed.pesoGramos);
+        }
+        if (parsed.tiempoMinutos > 0) {
+          setTiempoImpresionModo('manual');
+          setTiempoImpresionManualMin(parsed.tiempoMinutos);
         }
       }
-      if (parsed.tipoFilamento && filamentos.length > 0) {
-        const matchFil = filamentos.find(f => f.tipo.toLowerCase().includes(parsed.tipoFilamento!.toLowerCase()));
-        if (matchFil) setFilamentoId(matchFil.id);
+
+      if (parsed.thumbnailDataUrl) {
+        setImagenUrl(parsed.thumbnailDataUrl);
+        setTipoOrigenImagen('stl');
       }
-      const infoTxt = `${parsed.slicerDetectado} • ${parsed.pesoGramos}g${parsed.pesoPurgaGramos > 0 ? ` (+${parsed.pesoPurgaGramos}g purga)` : ''} • ${Math.floor(parsed.tiempoMinutos / 60)}h ${parsed.tiempoMinutos % 60}m`;
+
+      const infoTxt = `${parsed.slicerDetectado} • ${parsed.pesoGramos > 0 ? `${parsed.pesoGramos}g` : 'peso manual'}${parsed.pesoPurgaGramos > 0 ? ` (+${parsed.pesoPurgaGramos}g purga)` : ''} • ${parsed.tiempoMinutos > 0 ? `${Math.floor(parsed.tiempoMinutos / 60)}h ${parsed.tiempoMinutos % 60}m` : 'tiempo manual'}`;
       setGcodeInfo(infoTxt);
-      toast.success(`📄 G-Code leído: ${infoTxt}`);
+
+      if (parsed.advertencia) {
+        toast.warning(parsed.advertencia);
+      } else {
+        toast.success(`📄 Slicer (${parsed.formato.toUpperCase()}) leído: ${infoTxt}`);
+      }
     } catch (e) {
-      console.error('Error leyendo G-Code:', e);
-      toast.error('No se pudo leer el archivo .gcode.');
+      console.error('Error leyendo archivo Slicer:', e);
+      toast.error('No se pudo leer el archivo de slicer.');
     }
+  };
+
+  const handleUndoSlicerImport = () => {
+    if (!slicerUndoSnapshot) return;
+    setTecnologiaSegura(slicerUndoSnapshot.tecnologia);
+    setNombreItem(slicerUndoSnapshot.nombreItem);
+    setPesoFilamentoG(slicerUndoSnapshot.pesoFilamentoG);
+    setTiempoFDMMin(slicerUndoSnapshot.tiempoFDMMin);
+    setPesoResinaManualG(slicerUndoSnapshot.pesoResinaManualG);
+    setModoCalculoResina(slicerUndoSnapshot.modoCalculoResina);
+    setTiempoImpresionModo(slicerUndoSnapshot.tiempoImpresionModo);
+    setTiempoImpresionManualMin(slicerUndoSnapshot.tiempoImpresionManualMin);
+    setAltoMm(slicerUndoSnapshot.altoMm);
+    setAnchoMm(slicerUndoSnapshot.anchoMm);
+    setProfundidadMm(slicerUndoSnapshot.profundidadMm);
+    setAmsActivo(slicerUndoSnapshot.amsActivo);
+    setAmsColores(slicerUndoSnapshot.amsColores);
+    setAmsPurgaGramosManual(slicerUndoSnapshot.amsPurgaGramosManual);
+    setImagenUrl(slicerUndoSnapshot.imagenUrl);
+    setTipoOrigenImagen(slicerUndoSnapshot.tipoOrigenImagen);
+    setGcodeInfo(slicerUndoSnapshot.gcodeInfo);
+    setLastSlicerResult(null);
+    setSlicerUndoSnapshot(null);
+    toast.info('Importación de slicer deshecha. Se restauraron los valores anteriores.');
   };
 
   // Aplicar promedios reales históricos registrados por Taller & Pintor
@@ -1400,7 +1505,11 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     amsPurgaGramosManual,
     setAmsPurgaGramosManual,
     gcodeInfo,
-    handleImportGCode,
+    lastSlicerResult,
+    canUndoSlicer: Boolean(slicerUndoSnapshot),
+    handleImportSlicerFile,
+    handleUndoSlicerImport,
+    handleImportGCode: handleImportSlicerFile,
     handleAplicarPromediosReales,
 
     // Cálculo y envío

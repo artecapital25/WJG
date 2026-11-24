@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgSelect } from '../ui';
 import { 
   Box, 
   UploadCloud, 
@@ -1586,6 +1586,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                 </label>
                 <input 
                   type="number" 
+                  step="any"
                   className="form-input" 
                   placeholder="Alto Z"
                   value={alturaDeseadaZ}
@@ -1600,6 +1601,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                 </label>
                 <input 
                   type="number" 
+                  step="any"
                   className="form-input" 
                   placeholder="Ancho X"
                   value={anchoDeseadoX}
@@ -1614,6 +1616,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                 </label>
                 <input 
                   type="number" 
+                  step="any"
                   className="form-input" 
                   placeholder="Fondo Y"
                   value={fondoDeseadoY}
@@ -1895,6 +1898,7 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
                 </span>
                 <input
                   type="number"
+                  step="any"
                   className="form-input"
                   style={{ width: '130px', minHeight: '32px', fontSize: '0.8rem' }}
                   placeholder="$0"
@@ -1906,21 +1910,19 @@ export const STLAnalyzer: React.FC<STLAnalyzerProps> = ({
 
             {/* Botón de Acción Directa al Cotizador */}
             {onApplyToCotizador && (
-              <button 
-                type="button" 
-                className="btn btn-primary"
-                style={{ width: '100%', justifyContent: 'center', padding: '12px', fontSize: '0.92rem' }}
+              <WjgButton
+                variant="quote"
+                fullWidth
+                leftIcon={<Sparkles size={16} />}
+                rightIcon={<ArrowRight size={16} />}
+                style={{ padding: '12px', fontSize: '0.92rem' }}
                 onClick={handleEnviarAlCotizador}
                 disabled={!analysis}
               >
-                <Sparkles size={16} />
-                <span>
-                  {tecnologiaSeleccionada === 'FDM_FILAMENTO'
-                    ? `✓ Enviar al Cotizador en FDM (${estimacionFilamento.gramosTotales}g · ${tiempoEstimadoFdmMin} min)`
-                    : `✓ Enviar al Cotizador en SLA (${estimacionResina.gramosTotales}g · ${tiempoEstimadoSlaMin} min)`}
-                </span>
-                <ArrowRight size={16} />
-              </button>
+                {tecnologiaSeleccionada === 'FDM_FILAMENTO'
+                  ? `Enviar al Cotizador en FDM (${estimacionFilamento.gramosTotales}g · ${tiempoEstimadoFdmMin} min)`
+                  : `Enviar al Cotizador en SLA (${estimacionResina.gramosTotales}g · ${tiempoEstimadoSlaMin} min)`}
+              </WjgButton>
             )}
           </div>
 

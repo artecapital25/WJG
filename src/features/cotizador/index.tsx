@@ -44,6 +44,10 @@ export const CotizadorForm: React.FC<CotizadorFormProps> = (props) => {
               tecnologia={form.tecnologia}
               modoVista={form.modoVista}
               setModoVista={form.setModoVista}
+              onImportSlicerFile={form.handleImportSlicerFile}
+              lastSlicerResult={form.lastSlicerResult}
+              canUndoSlicer={form.canUndoSlicer}
+              onUndoSlicerImport={form.handleUndoSlicerImport}
             />
 
             <RealCostFeedbackBanner

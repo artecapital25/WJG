@@ -15,19 +15,21 @@ import {
   FolderGit2, 
   Globe, 
   X,
-  Calculator
+  Calculator,
+  FileCode2
 } from 'lucide-react';
 import { HerramientaLink, CategoriaHerramienta, Resina, Filamento, Maquina, ConfiguracionTaller } from '../../types';
 import { StorageService } from '../../services/storageService';
-import { toast } from '../ui/ToastProvider';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgConfirmModal, WjgModal, WjgSearchInput, WjgSelect, toast } from '../ui';
 import { Suite3DProView } from './Suite3DProView';
+import { SlicerInspectorView, SlicerAppliedPieceData } from './SlicerInspectorView';
 
 interface ToolsHubViewProps {
   resinas?: Resina[];
   filamentos?: Filamento[];
   maquinas?: Maquina[];
   config?: ConfiguracionTaller;
+  onApplyToCotizador?: (data: SlicerAppliedPieceData) => void;
 }
 
 const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any; color: string; bg: string }> = {
@@ -67,9 +69,11 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
   resinas = [],
   filamentos = [],
   maquinas = [],
-  config
+  config,
+  onApplyToCotizador
 }) => {
-  const [activeSuiteTab, setActiveSuiteTab] = useState<'calculadoras' | 'apps'>('calculadoras');
+  const [activeSuiteTab, setActiveSuiteTab] = useState<'calculadoras' | 'slicer' | 'apps'>('calculadoras');
+  const [deleteToolTarget, setDeleteToolTarget] = useState<{ id: string; nombre: string } | null>(null);
   const [herramientas, setHerramientas] = useState<HerramientaLink[]>(() => StorageService.getHerramientas());
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todas');
   const [busqueda, setBusqueda] = useState<string>('');
@@ -164,11 +168,16 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
     setIsModalOpen(false);
   };
 
-  // Eliminar herramienta
+  // Eliminar herramienta (Design System WjgConfirmModal)
   const handleEliminarTool = (id: string, nombreTool: string) => {
-    const confirmacion = window.confirm(`¿Deseas eliminar '${nombreTool}' de tu lista de herramientas?`);
-    if (!confirmacion) return;
-    setHerramientas(herramientas.filter(t => t.id !== id));
+    setDeleteToolTarget({ id, nombre: nombreTool });
+  };
+
+  const confirmEliminarTool = () => {
+    if (!deleteToolTarget) return;
+    setHerramientas(herramientas.filter(t => t.id !== deleteToolTarget.id));
+    toast.success(`"${deleteToolTarget.nombre}" eliminada de Herramientas.`);
+    setDeleteToolTarget(null);
   };
 
   // Alternar favorito / frecuente
@@ -222,43 +231,51 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
             Herramientas & Suite 3D PRO
           </h2>
           <p className="section-subtitle">
-            Calculadoras técnicas 3D conectadas a tu catálogo, más lanzador de IAs generativas, repositorios STL y slicers.
+            Calculadoras técnicas 3D conectadas a tu catálogo, Inspector Universal de Slicer e IAs generativas/STL.
           </p>
         </div>
 
         {activeSuiteTab === 'apps' && (
-          <button
-            type="button"
-            className="btn btn-primary btn-sm"
+          <WjgButton
+            variant="save"
+            size="sm"
+            leftIcon={<Plus size={16} />}
             onClick={handleOpenCrearModal}
-            style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}
           >
-            <Plus size={16} />
-            <span>+ Agregar Nueva App / Link</span>
-          </button>
+            Agregar Nueva App / Link
+          </WjgButton>
         )}
       </div>
 
-      {/* Selector Principal: Suite 3D PRO (5 Calculadoras) vs Enlaces & Apps */}
+      {/* Selector Principal: Suite 3D PRO vs Inspector de Slicer vs Enlaces & Apps */}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
-        <button
-          type="button"
-          className={`btn btn-sm ${activeSuiteTab === 'calculadoras' ? 'btn-primary' : 'btn-secondary'}`}
+        <WjgButton
+          variant={activeSuiteTab === 'calculadoras' ? 'primary' : 'secondary'}
+          size="sm"
+          leftIcon={<Calculator size={16} />}
           onClick={() => setActiveSuiteTab('calculadoras')}
-          style={{ fontWeight: 800, minHeight: '42px', padding: '0 16px' }}
+          style={{ minHeight: '42px', padding: '0 16px' }}
         >
-          <Calculator size={16} />
-          <span>Suite 3D PRO (5 Calculadoras)</span>
-        </button>
-        <button
-          type="button"
-          className={`btn btn-sm ${activeSuiteTab === 'apps' ? 'btn-primary' : 'btn-secondary'}`}
+          Suite 3D PRO (5 Calculadoras)
+        </WjgButton>
+        <WjgButton
+          variant={activeSuiteTab === 'slicer' ? 'cyan' : 'secondary'}
+          size="sm"
+          leftIcon={<FileCode2 size={16} />}
+          onClick={() => setActiveSuiteTab('slicer')}
+          style={{ minHeight: '42px', padding: '0 16px' }}
+        >
+          Inspector de Slicer (.3mf / .gcode / .ctb / .goo / .pwmb)
+        </WjgButton>
+        <WjgButton
+          variant={activeSuiteTab === 'apps' ? 'primary' : 'secondary'}
+          size="sm"
+          leftIcon={<Globe size={16} />}
           onClick={() => setActiveSuiteTab('apps')}
-          style={{ fontWeight: 800, minHeight: '42px', padding: '0 16px' }}
+          style={{ minHeight: '42px', padding: '0 16px' }}
         >
-          <Globe size={16} />
-          <span>Enlaces & Apps 3D ({herramientas.length})</span>
-        </button>
+          Enlaces & Apps 3D ({herramientas.length})
+        </WjgButton>
       </div>
 
       {activeSuiteTab === 'calculadoras' && (
@@ -270,6 +287,15 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
         />
       )}
 
+      {activeSuiteTab === 'slicer' && (
+        <SlicerInspectorView
+          resinas={resinas}
+          filamentos={filamentos}
+          config={config}
+          onApplyToCotizador={onApplyToCotizador}
+        />
+      )}
+
       {activeSuiteTab === 'apps' && (
       <>
 
@@ -277,17 +303,11 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
       <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
           {/* Buscador */}
-          <div style={{ position: 'relative', width: '100%' }}>
-            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text"
-              className="form-input"
-              placeholder="Buscar por nombre, palabra clave o enlace (ej: Hunyuan, Tripo, Cults3D, Chitubox)..."
-              value={busqueda}
-              onChange={e => setBusqueda(e.target.value)}
-              style={{ paddingLeft: '38px', fontSize: '0.92rem' }}
-            />
-          </div>
+          <WjgSearchInput
+            value={busqueda}
+            onChange={setBusqueda}
+            placeholder="Buscar por nombre, palabra clave o enlace (ej: Hunyuan, Tripo, Cults3D, Chitubox)..."
+          />
 
           {/* Filtros por Categoría en Cuadrícula Simétrica */}
           <div className="subtabs-grid-mobile" style={{ gap: '6px' }}>
@@ -523,165 +543,116 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
       )}
 
       {/* MODAL PARA AGREGAR / EDITAR HERRAMIENTA */}
-      {isModalOpen && (
-        <div 
-          style={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: 'rgba(0, 0, 0, 0.85)',
-            backdropFilter: 'blur(8px)',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '16px'
-          }}
-          onClick={() => setIsModalOpen(false)}
-        >
-          <div 
-            className="glass-card"
-            style={{
-              margin: 0,
-              maxWidth: '520px',
-              width: '100%',
-              padding: '24px',
-              border: '1px solid rgba(56, 189, 248, 0.4)',
-              boxShadow: '0 20px 50px rgba(0,0,0,0.85)',
-              position: 'relative'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              style={{
-                position: 'absolute',
-                top: '16px',
-                right: '16px',
-                background: 'rgba(255, 255, 255, 0.06)',
-                border: 'none',
-                borderRadius: '50%',
-                width: '32px',
-                height: '32px',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: 'var(--text-muted)',
-                cursor: 'pointer'
-              }}
-            >
-              <X size={18} />
-            </button>
+      <WjgModal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingTool ? 'Editar Herramienta / App' : 'Agregar Nueva Herramienta / App'}
+        subtitle="Añade enlaces directos a IAs generativas 3D, repositorios STL o plataformas web de uso diario."
+        icon={<Wrench size={18} />}
+        maxWidth="520px"
+      >
+        <form onSubmit={handleGuardarTool}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div>
+              <label className="form-label">NOMBRE DE LA APLICACIÓN / PLATAFORMA *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="Ej: Tripo 3D / Tencent Hunyuan 3D / Cults3D"
+                value={nombre}
+                onChange={e => setNombre(e.target.value)}
+                required
+              />
+            </div>
 
-            <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#fff', margin: '0 0 4px 0', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Wrench size={20} color="var(--brand-cyan)" />
-              {editingTool ? 'Editar Herramienta / App' : 'Agregar Nueva Herramienta / App'}
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 18px 0' }}>
-              Añade enlaces directos a IAs generativas 3D, repositorios STL o plataformas web de uso diario.
-            </p>
+            <div>
+              <label className="form-label">ENLACE WEB (URL) *</label>
+              <input
+                type="text"
+                className="form-input"
+                placeholder="https://..."
+                value={url}
+                onChange={e => setUrl(e.target.value)}
+                required
+              />
+            </div>
 
-            <form onSubmit={handleGuardarTool}>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                <div>
-                  <label className="form-label">NOMBRE DE LA APLICACIÓN / PLATAFORMA *</label>
-                  <input 
-                    type="text"
-                    className="form-input"
-                    placeholder="Ej: Tripo 3D / Tencent Hunyuan 3D / Cults3D"
-                    value={nombre}
-                    onChange={e => setNombre(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="form-label">ENLACE WEB (URL) *</label>
-                  <input 
-                    type="text"
-                    className="form-input"
-                    placeholder="https://..."
-                    value={url}
-                    onChange={e => setUrl(e.target.value)}
-                    required
-                  />
-                </div>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
-                  <div>
-                    <label className="form-label">CATEGORÍA</label>
-                    <WjgSelect
-                      value={categoria}
-                      onChange={(val) => setCategoria(val as CategoriaHerramienta)}
-                      options={[
-                        { value: 'ia_3d', label: '🤖 IAs Generativas 3D' },
-                        { value: 'stl_repos', label: '📦 Repositorios STL' },
-                        { value: 'slicers', label: '⚙️ Slicers & Taller' },
-                        { value: 'pintura', label: '🎨 Pintura & Acabados' },
-                        { value: 'utilidades', label: '🛠️ Utilidades' },
-                      ]}
-                    />
-                  </div>
-
-                  <div>
-                    <label className="form-label">ETIQUETA RÁPIDA (OPCIONAL)</label>
-                    <input 
-                      type="text"
-                      className="form-input"
-                      placeholder="Ej: IA Oficial, Slicer, etc."
-                      value={etiqueta}
-                      onChange={e => setEtiqueta(e.target.value)}
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="form-label">DESCRIPCIÓN / RECOMENDACIÓN DE USO</label>
-                  <textarea 
-                    className="form-textarea"
-                    placeholder="¿Para qué sirve? ¿Cuándo la usamos? (Ej: Generador 3D desde imagen para cotizaciones rápidas)"
-                    value={descripcion}
-                    onChange={e => setDescripcion(e.target.value)}
-                    rows={2}
-                  />
-                </div>
-
-                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.84rem', color: '#fff', fontWeight: 600 }}>
-                  <input 
-                    type="checkbox"
-                    checked={esFrecuente}
-                    onChange={e => setEsFrecuente(e.target.checked)}
-                    style={{ width: '16px', height: '16px', accentColor: '#fbbf24', cursor: 'pointer' }}
-                  />
-                  <span>⭐ Marcar como aplicación de uso frecuente (Destacada)</span>
-                </label>
-
-                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
-                  <button
-                    type="button"
-                    className="btn btn-secondary"
-                    onClick={() => setIsModalOpen(false)}
-                  >
-                    Cancelar
-                  </button>
-                  <button
-                    type="submit"
-                    className="btn btn-primary"
-                    style={{ fontWeight: 800 }}
-                  >
-                    {editingTool ? 'Guardar Cambios' : 'Añadir al Lanzador'}
-                  </button>
-                </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
+              <div>
+                <label className="form-label">CATEGORÍA</label>
+                <WjgSelect
+                  value={categoria}
+                  onChange={(val) => setCategoria(val as CategoriaHerramienta)}
+                  options={[
+                    { value: 'ia_3d', label: '🤖 IAs Generativas 3D' },
+                    { value: 'stl_repos', label: '📦 Repositorios STL' },
+                    { value: 'slicers', label: '⚙️ Slicers & Taller' },
+                    { value: 'pintura', label: '🎨 Pintura & Acabados' },
+                    { value: 'utilidades', label: '🛠️ Utilidades' },
+                  ]}
+                />
               </div>
-            </form>
+
+              <div>
+                <label className="form-label">ETIQUETA RÁPIDA (OPCIONAL)</label>
+                <input
+                  type="text"
+                  className="form-input"
+                  placeholder="Ej: IA Oficial, Slicer, etc."
+                  value={etiqueta}
+                  onChange={e => setEtiqueta(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="form-label">DESCRIPCIÓN / RECOMENDACIÓN DE USO</label>
+              <textarea
+                className="form-textarea"
+                placeholder="¿Para qué sirve? ¿Cuándo la usamos? (Ej: Generador 3D desde imagen para cotizaciones rápidas)"
+                value={descripcion}
+                onChange={e => setDescripcion(e.target.value)}
+                rows={2}
+              />
+            </div>
+
+            <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.84rem', color: '#fff', fontWeight: 600 }}>
+              <input
+                type="checkbox"
+                checked={esFrecuente}
+                onChange={e => setEsFrecuente(e.target.checked)}
+                style={{ width: '16px', height: '16px', accentColor: '#fbbf24', cursor: 'pointer' }}
+              />
+              <span>⭐ Marcar como aplicación de uso frecuente (Destacada)</span>
+            </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '10px' }}>
+              <WjgButton variant="secondary" onClick={() => setIsModalOpen(false)}>
+                Cancelar
+              </WjgButton>
+              <WjgButton type="submit" variant="save">
+                {editingTool ? 'Guardar Cambios' : 'Añadir al Lanzador'}
+              </WjgButton>
+            </div>
           </div>
-        </div>
-      )}
+        </form>
+      </WjgModal>
       </>
       )}
+
+      <WjgConfirmModal
+        isOpen={Boolean(deleteToolTarget)}
+        onClose={() => setDeleteToolTarget(null)}
+        onConfirm={confirmEliminarTool}
+        title="Eliminar Herramienta / App"
+        message={
+          deleteToolTarget
+            ? `¿Deseas eliminar "${deleteToolTarget.nombre}" de tu lista de herramientas?`
+            : ''
+        }
+        confirmText="Eliminar"
+        variant="danger"
+      />
     </div>
   );
 };

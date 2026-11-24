@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { OrdenTrabajo, Cotizacion, ConfiguracionTaller } from '../../types';
+import { WjgButton, WjgSearchInput } from '../ui';
 
 interface CustomerTrackingViewProps {
   ordenes: OrdenTrabajo[];
@@ -221,28 +222,23 @@ export const CustomerTrackingView: React.FC<CustomerTrackingViewProps> = ({
         <label style={{ fontSize: '0.78rem', fontWeight: 700, color: 'var(--text-muted)', display: 'block', marginBottom: '8px' }}>
           INGRESA NÚMERO DE ORDEN (OT-0001) O COTIZACIÓN (25-074):
         </label>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <div style={{ position: 'relative', flex: 1 }}>
-            <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-            <input 
-              type="text"
-              className="form-input"
-              style={{ paddingLeft: '38px', fontSize: '0.95rem' }}
-              placeholder="Ej: OT-0001, 25-074 o nombre del cliente"
-              value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-            />
-          </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+          <WjgSearchInput
+            placeholder="Ej: OT-0001, 25-074 o nombre del cliente"
+            value={searchTerm}
+            onChange={setSearchTerm}
+            style={{ flex: 1, minWidth: '220px' }}
+          />
           {matchedOT && (
-            <button
-              className="btn btn-secondary"
+            <WjgButton
+              variant="secondary"
+              leftIcon={copiedLink ? <Check size={16} color="#34d399" /> : <Copy size={16} />}
               onClick={handleCopyShareLink}
               title="Copiar link directo para compartir con el cliente por WhatsApp"
               style={{ whiteSpace: 'nowrap' }}
             >
-              {copiedLink ? <Check size={16} color="#34d399" /> : <Copy size={16} />}
-              <span>{copiedLink ? '¡Link Copiado!' : 'Copiar Link'}</span>
-            </button>
+              {copiedLink ? '¡Link Copiado!' : 'Copiar Link'}
+            </WjgButton>
           )}
         </div>
       </div>

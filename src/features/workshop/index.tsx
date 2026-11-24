@@ -15,6 +15,7 @@ import { ModalEditarEnlacesOT } from './components/ModalEditarEnlacesOT';
 import { ModalConsumoRealOT } from './components/ModalConsumoRealOT';
 import { ModalRegistrarPago } from '../../components/common/ModalRegistrarPago';
 import { ModalEliminarOT } from '../../components/common/ModalEliminarOT';
+import { WjgButton } from '../../components/ui';
 
 export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => {
   const taller = useTallerOrders(props);
@@ -43,48 +44,48 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
             border: '1px solid var(--border-subtle)',
             padding: '2px'
           }}>
-            <button
-              type="button"
-              className={`btn btn-sm ${taller.vistaModo === 'lista' ? 'btn-primary' : 'btn-secondary'}`}
+            <WjgButton
+              variant={taller.vistaModo === 'lista' ? 'primary' : 'secondary'}
+              size="sm"
+              leftIcon={<List size={14} />}
               style={{ padding: '6px 10px', fontSize: '0.78rem' }}
               onClick={() => taller.setVistaModo('lista')}
               title="Vista Lista Móvil"
             >
-              <List size={14} />
-              <span>Lista</span>
-            </button>
-            <button
-              type="button"
-              className={`btn btn-sm ${taller.vistaModo === 'kanban' ? 'btn-cyan' : 'btn-secondary'}`}
+              Lista
+            </WjgButton>
+            <WjgButton
+              variant={taller.vistaModo === 'kanban' ? 'cyan' : 'secondary'}
+              size="sm"
+              leftIcon={<LayoutGrid size={14} />}
               style={{ padding: '6px 10px', fontSize: '0.78rem' }}
               onClick={() => taller.setVistaModo('kanban')}
               title="Vista Tablero Kanban"
             >
-              <LayoutGrid size={14} />
-              <span>Kanban</span>
-            </button>
+              Kanban
+            </WjgButton>
           </div>
 
           {props.onOpenProduccionInterna && (
-            <button 
-              type="button"
-              className="btn btn-secondary btn-sm"
+            <WjgButton
+              variant="secondary"
+              size="sm"
               onClick={props.onOpenProduccionInterna}
-              style={{ fontWeight: 800, padding: '8px 12px', border: '1px solid rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
+              style={{ borderColor: 'rgba(56, 189, 248, 0.4)', color: '#38bdf8' }}
               title="Registrar piezas de exhibición, vitrina, pruebas de calibración o fallas"
             >
-              <span>🧪 Pruebas & Exhibición</span>
-            </button>
+              🧪 Pruebas & Exhibición
+            </WjgButton>
           )}
 
-          <button 
-            className="btn btn-primary btn-sm"
+          <WjgButton
+            variant="quote"
+            size="sm"
+            leftIcon={<Plus size={16} />}
             onClick={() => taller.setShowModalRapido(true)}
-            style={{ fontWeight: 800, padding: '8px 14px' }}
           >
-            <Plus size={16} />
-            <span>➕ Proyecto Rápido</span>
-          </button>
+            Proyecto Rápido
+          </WjgButton>
         </div>
       </div>
 

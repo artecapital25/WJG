@@ -72,6 +72,9 @@ export interface CotizadorFormProps {
     imagenUrl?: string;
     tipoEstructura?: 'solido' | 'ahuecado';
     porcentajeRelleno?: number;
+    amsActivo?: boolean;
+    amsColores?: number;
+    amsPurgaGramos?: number;
     enlacesCompra?: { titulo: string; url: string; costo_estimado?: number }[];
   } | null;
   piezaEnEdicion?: PiezaCotizada | null;

@@ -22,8 +22,7 @@ import {
   Resina,
   TecnologiaFabricacion
 } from '../../../types';
-import { WjgSelect } from '../../../components/ui/WjgSelect';
-import { toast } from '../../../components/ui/ToastProvider';
+import { WjgConfirmModal, WjgSelect, toast } from '../../../components/ui';
 
 interface ModalConsumoRealOTProps {
   isOpen: boolean;
@@ -96,6 +95,7 @@ export const ModalConsumoRealOT: React.FC<ModalConsumoRealOTProps> = ({
   const [insumosConsumidos, setInsumosConsumidos] = useState<FilaInsumoForm[]>([]);
   const [descontarInventario, setDescontarInventario] = useState<boolean>(true);
   const [notas, setNotas] = useState<string>('');
+  const [deleteConsumoId, setDeleteConsumoId] = useState<string | null>(null);
 
   // Buscar pieza estimada dentro de la cotización vinculada
   const piezaCotizada = useMemo(() => {
@@ -753,11 +753,7 @@ export const ModalConsumoRealOT: React.FC<ModalConsumoRealOTProps> = ({
                     <button
                       type="button"
                       className="btn btn-danger btn-sm"
-                      onClick={() => {
-                        if (confirm('¿Eliminar este registro de consumo real de la base de datos?')) {
-                          onDeleteConsumo(reg.id);
-                        }
-                      }}
+                      onClick={() => setDeleteConsumoId(reg.id)}
                       title="Eliminar registro de consumo real"
                     >
                       <Trash2 size={13} />
@@ -769,6 +765,21 @@ export const ModalConsumoRealOT: React.FC<ModalConsumoRealOTProps> = ({
           </div>
         )}
       </div>
+
+      <WjgConfirmModal
+        isOpen={Boolean(deleteConsumoId)}
+        onClose={() => setDeleteConsumoId(null)}
+        onConfirm={() => {
+          if (deleteConsumoId && onDeleteConsumo) {
+            onDeleteConsumo(deleteConsumoId);
+            setDeleteConsumoId(null);
+          }
+        }}
+        title="Eliminar Registro de Consumo"
+        message="¿Eliminar este registro de consumo real de la base de datos?"
+        confirmText="Eliminar"
+        variant="danger"
+      />
     </div>
   );
 };

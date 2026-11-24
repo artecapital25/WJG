@@ -33,7 +33,7 @@ import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
 import { ModalConfirmarEliminarCobro, InfoCobroAEliminar } from '../common/ModalConfirmarEliminarCobro';
 import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
 import { CloudSyncService } from '../../services/cloudSyncService';
-import { toast } from '../ui/ToastProvider';
+import { WjgButton, WjgSearchInput, toast } from '../ui';
 
 export * from './cuentasCobroUtils';
 import { 
@@ -610,24 +610,15 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
           {/* Botón para Registrar Deuda Manual */}
-          <button
+          <WjgButton
             id="btn-abrir-deuda-manual"
-            type="button"
-            className="btn btn-primary"
+            variant="save"
+            leftIcon={<Plus size={18} />}
             onClick={() => setShowModalNuevaDeuda(true)}
-            style={{
-              fontWeight: 800,
-              fontSize: '0.88rem',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 4px 14px rgba(6, 182, 212, 0.35)',
-              padding: '8px 16px'
-            }}
+            style={{ fontSize: '0.88rem', padding: '8px 16px' }}
           >
-            <Plus size={18} />
-            <span>Registrar Deuda Manual</span>
-          </button>
+            Registrar Deuda Manual
+          </WjgButton>
 
           {/* Métricas destacadas */}
           <div className="metrics-header-grid" style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -735,17 +726,11 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
         <div>
           {/* Buscador de Deudores */}
           <div className="glass-card" style={{ margin: '0 0 16px 0', padding: '14px' }}>
-            <div style={{ position: 'relative' }}>
-              <Search size={18} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }} />
-              <input 
-                type="text"
-                className="form-input"
-                placeholder="Buscar deudor por nombre o número de WhatsApp..."
-                value={searchDeudor}
-                onChange={e => setSearchDeudor(e.target.value)}
-                style={{ paddingLeft: '38px', fontSize: '0.95rem' }}
-              />
-            </div>
+            <WjgSearchInput
+              placeholder="Buscar deudor por nombre o número de WhatsApp..."
+              value={searchDeudor}
+              onChange={setSearchDeudor}
+            />
           </div>
 
           {deudoresConsolidados.length === 0 ? (

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { WjgSelect } from '../ui/WjgSelect';
+import { WjgButton, WjgConfirmModal, WjgSearchInput, WjgSelect, toast } from '../ui';
 import { 
   Settings, 
   Layers, 
@@ -42,7 +42,6 @@ import {
 import { StorageService } from '../../services/storageService';
 import { CloudSyncService, ensureValidUuid } from '../../services/cloudSyncService';
 import { ImageUploadField } from '../common/ImageUploadField';
-import { toast } from '../ui/ToastProvider';
 import {
   obtenerHistorialCliente,
   coincideBusquedaCliente,
@@ -203,6 +202,13 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
 
   const [cloudStatus, setCloudStatus] = useState<string | null>(null);
   const [isCloudLoading, setIsCloudLoading] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<{
+    title: string;
+    message: string;
+    confirmText?: string;
+    variant?: 'danger' | 'warning' | 'primary';
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
 
   const handleTestCloud = async () => {
     setIsCloudLoading(true);
@@ -211,12 +217,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     setIsCloudLoading(false);
   };
 
-  const handleSeedCloud = async () => {
-    if (!confirm('¿Deseas subir todos los datos maestros del Excel (resinas, insumos, clientes, maquinaria) a tu base de datos Supabase en la nube?')) return;
-    setIsCloudLoading(true);
-    const res = await CloudSyncService.seedInitialData();
-    setCloudStatus(res.message);
-    setIsCloudLoading(false);
+  const handleSeedCloud = () => {
+    setConfirmAction({
+      title: 'Subir Datos Maestros a Supabase',
+      message: '¿Deseas subir todos los datos maestros del Excel (resinas, insumos, clientes, maquinaria) a tu base de datos Supabase en la nube?',
+      confirmText: 'Subir a la Nube',
+      variant: 'warning',
+      onConfirm: async () => {
+        setIsCloudLoading(true);
+        const res = await CloudSyncService.seedInitialData();
+        setCloudStatus(res.message);
+        setIsCloudLoading(false);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -280,15 +293,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const resinaABorrar = resinas.find(r => r.id === id);
     if (!resinaABorrar) return;
 
-    if (!confirm(`¿Eliminar definitivamente la resina "${resinaABorrar.tipo} (${resinaABorrar.color})"?\n\nEsta acción borrará el registro de Supabase y del inventario local de forma permanente.`)) {
-      return;
-    }
-
-    const updated = resinas.filter(r => r.id !== id);
-    onUpdateResinas(updated);
-    StorageService.saveResinas(updated);
-    CloudSyncService.deleteResina(id, resinaABorrar.tipo);
-    toast.success(`Resina "${resinaABorrar.tipo}" eliminada del catálogo`);
+    setConfirmAction({
+      title: 'Eliminar Resina',
+      message: `¿Eliminar definitivamente la resina "${resinaABorrar.tipo} (${resinaABorrar.color})"?\n\nEsta acción borrará el registro de Supabase y del inventario local de forma permanente.`,
+      confirmText: 'Eliminar Resina',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = resinas.filter(r => r.id !== id);
+        onUpdateResinas(updated);
+        StorageService.saveResinas(updated);
+        CloudSyncService.deleteResina(id, resinaABorrar.tipo);
+        toast.success(`Resina "${resinaABorrar.tipo}" eliminada del catálogo`);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -360,14 +377,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   const handleDeleteFilamento = (id: string) => {
     const fil = filamentos.find(f => f.id === id);
     if (!fil) return;
-    if (!confirm(`¿Eliminar definitivamente el filamento "${fil.marca} ${fil.tipo} (${fil.color})"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
-      return;
-    }
-    const updated = filamentos.filter(f => f.id !== id);
-    if (onUpdateFilamentos) onUpdateFilamentos(updated);
-    StorageService.saveFilamentos(updated);
-    CloudSyncService.deleteFilamento(id, fil.tipo);
-    toast.success('Filamento eliminado del taller');
+    setConfirmAction({
+      title: 'Eliminar Filamento',
+      message: `¿Eliminar definitivamente el filamento "${fil.marca} ${fil.tipo} (${fil.color})"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`,
+      confirmText: 'Eliminar Filamento',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = filamentos.filter(f => f.id !== id);
+        if (onUpdateFilamentos) onUpdateFilamentos(updated);
+        StorageService.saveFilamentos(updated);
+        CloudSyncService.deleteFilamento(id, fil.tipo);
+        toast.success('Filamento eliminado del taller');
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -440,15 +462,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const insumoABorrar = insumos.find(i => i.id === id);
     if (!insumoABorrar) return;
 
-    if (!confirm(`¿Eliminar definitivamente el insumo "${insumoABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
-      return;
-    }
-
-    const updated = insumos.filter(i => i.id !== id);
-    onUpdateInsumos(updated);
-    StorageService.saveInsumos(updated);
-    CloudSyncService.deleteInsumo(id, insumoABorrar.nombre);
-    toast.success(`Insumo "${insumoABorrar.nombre}" eliminado`);
+    setConfirmAction({
+      title: 'Eliminar Insumo',
+      message: `¿Eliminar definitivamente el insumo "${insumoABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`,
+      confirmText: 'Eliminar Insumo',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = insumos.filter(i => i.id !== id);
+        onUpdateInsumos(updated);
+        StorageService.saveInsumos(updated);
+        CloudSyncService.deleteInsumo(id, insumoABorrar.nombre);
+        toast.success(`Insumo "${insumoABorrar.nombre}" eliminado`);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -579,107 +605,117 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleCalibrarPotencias = () => {
-    if (!confirm('¿Deseas calibrar automáticamente todas las máquinas con sus potencias reales de fábrica (50W para Anycubic Mono 4, 60W para Mono X 6Ks, 130W para Bambulab P1S/P2S)? Esto corregirá el consumo antiguo del Excel (450W), limpiará repuestos incompatibles y sincronizará con todos los colaboradores.')) return;
+    setConfirmAction({
+      title: 'Calibrar Potencias de Fábrica',
+      message: '¿Deseas calibrar automáticamente todas las máquinas con sus potencias reales de fábrica (50W para Anycubic Mono 4, 60W para Mono X 6Ks, 130W para Bambulab P1S/P2S)? Esto corregirá el consumo antiguo del Excel (450W), limpiará repuestos incompatibles y sincronizará con todos los colaboradores.',
+      confirmText: 'Calibrar Máquinas',
+      variant: 'warning',
+      onConfirm: () => {
+        const tarifa = config.tarifa_kwh || 834.0;
+        const updated = maquinas.map(m => {
+          let nuevoConsumo = m.consumo_kwh;
+          let nuevosRepuestos = Array.isArray(m.repuestos) && m.repuestos.length > 0 ? [...m.repuestos] : [];
 
-    const tarifa = config.tarifa_kwh || 834.0;
-    const updated = maquinas.map(m => {
-      let nuevoConsumo = m.consumo_kwh;
-      let nuevosRepuestos = Array.isArray(m.repuestos) && m.repuestos.length > 0 ? [...m.repuestos] : [];
+          const nom = m.nombre.toLowerCase();
+          const tipo = (m.tipo || '').toLowerCase();
+          const esResina = nom.includes('mono') || nom.includes('photon') || tipo.includes('resina');
+          const esFdm = nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1') || nom.includes('kobra') || nom.includes('ender') || tipo.includes('filamento') || tipo.includes('fdm');
 
-      const nom = m.nombre.toLowerCase();
-      const tipo = (m.tipo || '').toLowerCase();
-      const esResina = nom.includes('mono') || nom.includes('photon') || tipo.includes('resina');
-      const esFdm = nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1') || nom.includes('kobra') || nom.includes('ender') || tipo.includes('filamento') || tipo.includes('fdm');
+          // Limpieza de repuestos incompatibles (ej. quitar boquilla FDM de impresora de resina)
+          if (esResina) {
+            nuevosRepuestos = nuevosRepuestos.filter(r => !/nozzle|boquilla|cama|pei|hotend/i.test(r.nombre));
+          } else if (esFdm) {
+            nuevosRepuestos = nuevosRepuestos.filter(r => !/fep|lcd|pantalla/i.test(r.nombre));
+          }
 
-      // Limpieza de repuestos incompatibles (ej. quitar boquilla FDM de impresora de resina)
-      if (esResina) {
-        nuevosRepuestos = nuevosRepuestos.filter(r => !/nozzle|boquilla|cama|pei|hotend/i.test(r.nombre));
-      } else if (esFdm) {
-        nuevosRepuestos = nuevosRepuestos.filter(r => !/fep|lcd|pantalla/i.test(r.nombre));
+          if (nom.includes('mono 4') || nom.includes('mono 2') || nom.includes('photon mono')) {
+            nuevoConsumo = 0.05; // 50W
+            const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
+            const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
+            if (!tieneFep) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true });
+            }
+            if (!tieneLcd) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true });
+            }
+          } else if (nom.includes('6k') || nom.includes('mono x')) {
+            nuevoConsumo = 0.06; // 60W
+            const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
+            const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
+            if (!tieneFep) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true });
+            }
+            if (!tieneLcd) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true });
+            }
+          } else if (nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1')) {
+            nuevoConsumo = 0.13; // 130W
+            const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla|hotend/i.test(r.nombre));
+            const tieneBed = nuevosRepuestos.some(r => /pei|placa|cama/i.test(r.nombre));
+            if (!tieneNozzle) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true });
+            }
+            if (!tieneBed) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true });
+            }
+          } else if (nom.includes('kobra') || nom.includes('ender') || nom.includes('fdm') || nom.includes('filamento')) {
+            nuevoConsumo = 0.15; // 150W
+            const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla/i.test(r.nombre));
+            if (!tieneNozzle) {
+              nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true });
+            }
+          } else if (nom.includes('wash') || nom.includes('cure') || nom.includes('curado')) {
+            nuevoConsumo = 0.048; // 48W
+          } else if (nom.includes('compresor') || nom.includes('paasche') || nom.includes('aerograf')) {
+            nuevoConsumo = 0.15; // 150W
+          } else if (nom.includes('dremel') || nom.includes('pulidora')) {
+            nuevoConsumo = 0.13; // 130W
+          }
+
+          const costo_energia_min = (nuevoConsumo * tarifa) / 60;
+          const costo_repuestos_min = nuevosRepuestos
+            .filter(r => r.activo !== false)
+            .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
+          const costo_total_min = costo_energia_min + costo_repuestos_min;
+
+          const maquinaCalibrada: Maquina = {
+            ...m,
+            consumo_kwh: nuevoConsumo,
+            costo_minuto_energia: Number(costo_energia_min.toFixed(4)),
+            costo_minuto_repuestos: Number(costo_repuestos_min.toFixed(4)),
+            costo_minuto: Number(costo_total_min.toFixed(4)),
+            repuestos: nuevosRepuestos
+          };
+
+          // Sincronizar con Supabase para replicación universal
+          CloudSyncService.saveMaquina(maquinaCalibrada);
+
+          return maquinaCalibrada;
+        });
+
+        onUpdateMaquinas(updated);
+        toast.success('¡Maquinaria calibrada a potencias reales de fábrica con repuestos filtrados y sincronizados!');
       }
-
-      if (nom.includes('mono 4') || nom.includes('mono 2') || nom.includes('photon mono')) {
-        nuevoConsumo = 0.05; // 50W
-        const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
-        const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
-        if (!tieneFep) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-fep`, nombre: 'Film FEP / Release Film', costo_compra: 75000, vida_util_horas: 300, costo_hora: 250, costo_minuto: 4.167, activo: true });
-        }
-        if (!tieneLcd) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-lcd`, nombre: 'Pantalla LCD 4K Monocromática', costo_compra: 180000, vida_util_horas: 2000, costo_hora: 90, costo_minuto: 1.5, activo: true });
-        }
-      } else if (nom.includes('6k') || nom.includes('mono x')) {
-        nuevoConsumo = 0.06; // 60W
-        const tieneFep = nuevosRepuestos.some(r => /fep/i.test(r.nombre));
-        const tieneLcd = nuevosRepuestos.some(r => /lcd|pantalla/i.test(r.nombre));
-        if (!tieneFep) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-fep6k`, nombre: 'Film FEP Gran Formato', costo_compra: 85000, vida_util_horas: 300, costo_hora: 283.33, costo_minuto: 4.722, activo: true });
-        }
-        if (!tieneLcd) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-lcd6k`, nombre: 'Pantalla LCD 6Ks 9.1 pulgadas', costo_compra: 220000, vida_util_horas: 2000, costo_hora: 110, costo_minuto: 1.833, activo: true });
-        }
-      } else if (nom.includes('bambu') || nom.includes('p1s') || nom.includes('p2s') || nom.includes('x1')) {
-        nuevoConsumo = 0.13; // 130W
-        const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla|hotend/i.test(r.nombre));
-        const tieneBed = nuevosRepuestos.some(r => /pei|placa|cama/i.test(r.nombre));
-        if (!tieneNozzle) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Hotend & Boquilla Endurecida', costo_compra: 45000, vida_util_horas: 600, costo_hora: 75, costo_minuto: 1.25, activo: true });
-        }
-        if (!tieneBed) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-bed`, nombre: 'Placa Texturada PEI & Lubricación', costo_compra: 40000, vida_util_horas: 1000, costo_hora: 40, costo_minuto: 0.667, activo: true });
-        }
-      } else if (nom.includes('kobra') || nom.includes('ender') || nom.includes('fdm') || nom.includes('filamento')) {
-        nuevoConsumo = 0.15; // 150W
-        const tieneNozzle = nuevosRepuestos.some(r => /nozzle|boquilla/i.test(r.nombre));
-        if (!tieneNozzle) {
-          nuevosRepuestos.push({ id: `rep-${m.id}-nozzle`, nombre: 'Boquilla Latón 0.4mm', costo_compra: 25000, vida_util_horas: 500, costo_hora: 50, costo_minuto: 0.833, activo: true });
-        }
-      } else if (nom.includes('wash') || nom.includes('cure') || nom.includes('curado')) {
-        nuevoConsumo = 0.048; // 48W
-      } else if (nom.includes('compresor') || nom.includes('paasche') || nom.includes('aerograf')) {
-        nuevoConsumo = 0.15; // 150W
-      } else if (nom.includes('dremel') || nom.includes('pulidora')) {
-        nuevoConsumo = 0.13; // 130W
-      }
-
-      const costo_energia_min = (nuevoConsumo * tarifa) / 60;
-      const costo_repuestos_min = nuevosRepuestos
-        .filter(r => r.activo !== false)
-        .reduce((sum, r) => sum + (Number(r.costo_minuto) || 0), 0);
-      const costo_total_min = costo_energia_min + costo_repuestos_min;
-
-      const maquinaCalibrada: Maquina = {
-        ...m,
-        consumo_kwh: nuevoConsumo,
-        costo_minuto_energia: Number(costo_energia_min.toFixed(4)),
-        costo_minuto_repuestos: Number(costo_repuestos_min.toFixed(4)),
-        costo_minuto: Number(costo_total_min.toFixed(4)),
-        repuestos: nuevosRepuestos
-      };
-
-      // Sincronizar con Supabase para replicación universal
-      CloudSyncService.saveMaquina(maquinaCalibrada);
-
-      return maquinaCalibrada;
     });
-
-    onUpdateMaquinas(updated);
-    toast.success('¡Maquinaria calibrada a potencias reales de fábrica con repuestos filtrados y sincronizados!');
   };
 
   const handleDeleteMaquina = (id: string) => {
     const maquinaABorrar = maquinas.find(m => m.id === id);
     if (!maquinaABorrar) return;
 
-    if (!confirm(`¿Eliminar definitivamente la máquina "${maquinaABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`)) {
-      return;
-    }
-
-    const updated = maquinas.filter(m => m.id !== id);
-    onUpdateMaquinas(updated);
-    StorageService.saveMaquinas(updated);
-    CloudSyncService.deleteMaquina(id, maquinaABorrar.nombre);
-    toast.success(`Máquina "${maquinaABorrar.nombre}" eliminada del taller`);
+    setConfirmAction({
+      title: 'Eliminar Máquina',
+      message: `¿Eliminar definitivamente la máquina "${maquinaABorrar.nombre}"?\n\nEsta acción borrará el registro de Supabase y del taller de forma permanente.`,
+      confirmText: 'Eliminar Máquina',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = maquinas.filter(m => m.id !== id);
+        onUpdateMaquinas(updated);
+        StorageService.saveMaquinas(updated);
+        CloudSyncService.deleteMaquina(id, maquinaABorrar.nombre);
+        toast.success(`Máquina "${maquinaABorrar.nombre}" eliminada del taller`);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -726,11 +762,17 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeletePersonal = (id: string) => {
-    if (confirm('¿Eliminar este rol de tarifa?')) {
-      const updated = personal.filter(p => p.id !== id);
-      onUpdatePersonal(updated);
-      CloudSyncService.deleteTarifaPersonal(id);
-    }
+    setConfirmAction({
+      title: 'Eliminar Rol de Tarifa',
+      message: '¿Eliminar este rol de tarifa del catálogo?',
+      confirmText: 'Eliminar',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = personal.filter(p => p.id !== id);
+        onUpdatePersonal(updated);
+        CloudSyncService.deleteTarifaPersonal(id);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -792,7 +834,7 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     setItemEnEdicion(null);
   };
 
-  const handleDeleteCliente = async (id: string) => {
+  const handleDeleteCliente = (id: string) => {
     const cotsList = cotizaciones.length > 0 ? cotizaciones : StorageService.getCotizaciones();
     const ventasList = ventasExpress.length > 0 ? ventasExpress : StorageService.getVentasExpress();
     const ordenesList = ordenes.length > 0 ? ordenes : StorageService.getOrdenes();
@@ -805,29 +847,29 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
     const cuentasAsociadas = cuentas.filter(c => c.cliente?.id === id || c.cliente?.nombre === cliente?.nombre);
     const tieneDeudas = cuentasAsociadas.some(c => c.saldo_pendiente > 0);
 
-    if (tieneDeudas) {
-      if (!confirm(`⚠️ ADVERTENCIA: ${cliente?.nombre || 'Este cliente'} tiene saldo pendiente en Cuentas de Cobro.\n¿Deseas forzar su eliminación definitiva del catálogo?`)) {
-        return;
-      }
-    } else if (historial.resumen.totalRegistros > 0) {
-      if (!confirm(`El cliente "${cliente?.nombre}" tiene ${historial.cotizaciones.length} cotización(es), ${historial.ventas.length} venta(s) POS y ${historial.ordenes.length} orden(es) OT.\n¿Deseas eliminarlo definitivamente del directorio? (Sus registros históricos conservarán el nombre de respaldo)`)) {
-        return;
-      }
-    } else {
-      if (!confirm(`¿Eliminar al cliente "${cliente?.nombre || 'seleccionado'}" del catálogo?`)) {
-        return;
-      }
-    }
+    const message = tieneDeudas
+      ? `⚠️ ADVERTENCIA: ${cliente?.nombre || 'Este cliente'} tiene saldo pendiente en Cuentas de Cobro.\n¿Deseas forzar su eliminación definitiva del catálogo?`
+      : historial.resumen.totalRegistros > 0
+        ? `El cliente "${cliente?.nombre}" tiene ${historial.cotizaciones.length} cotización(es), ${historial.ventas.length} venta(s) POS y ${historial.ordenes.length} orden(es) OT.\n¿Deseas eliminarlo definitivamente del directorio? (Sus registros históricos conservarán el nombre de respaldo)`
+        : `¿Eliminar al cliente "${cliente?.nombre || 'seleccionado'}" del catálogo?`;
 
-    const updated = clientes.filter(c => c.id !== id);
-    onUpdateClientes(updated);
-    StorageService.saveClientes(updated);
-    const ok = await CloudSyncService.deleteCliente(id, cliente?.nombre);
-    if (ok) {
-      toast.success('Cliente eliminado y desvinculado en base de datos Supabase');
-    } else {
-      toast.warning('Cliente eliminado localmente (verifica conexión con Supabase)');
-    }
+    setConfirmAction({
+      title: tieneDeudas ? 'Eliminar Cliente con Saldo Pendiente' : 'Eliminar Cliente',
+      message,
+      confirmText: 'Eliminar Definitivamente',
+      variant: 'danger',
+      onConfirm: async () => {
+        const updated = clientes.filter(c => c.id !== id);
+        onUpdateClientes(updated);
+        StorageService.saveClientes(updated);
+        const ok = await CloudSyncService.deleteCliente(id, cliente?.nombre);
+        if (ok) {
+          toast.success('Cliente eliminado y desvinculado en base de datos Supabase');
+        } else {
+          toast.warning('Cliente eliminado localmente (verifica conexión con Supabase)');
+        }
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -874,11 +916,17 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteProveedor = (id: string) => {
-    if (confirm('¿Eliminar este proveedor?')) {
-      const updated = proveedores.filter(p => p.id !== id);
-      onUpdateProveedores(updated);
-      CloudSyncService.deleteProveedor(id);
-    }
+    setConfirmAction({
+      title: 'Eliminar Proveedor',
+      message: '¿Eliminar este proveedor del catálogo?',
+      confirmText: 'Eliminar',
+      variant: 'danger',
+      onConfirm: () => {
+        const updated = proveedores.filter(p => p.id !== id);
+        onUpdateProveedores(updated);
+        CloudSyncService.deleteProveedor(id);
+      }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -926,13 +974,19 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   };
 
   const handleDeleteTarifa = (id: string) => {
-    if (confirm('¿Eliminar esta tarifa por tamaño del catálogo?')) {
-      if (onUpdateTarifasTamanos) {
-        const updated = tarifasTamanos.filter(t => t.id !== id);
-        onUpdateTarifasTamanos(updated);
-        CloudSyncService.deleteTarifaTamano(id);
+    setConfirmAction({
+      title: 'Eliminar Tarifa por Tamaño',
+      message: '¿Eliminar esta tarifa por tamaño del catálogo?',
+      confirmText: 'Eliminar',
+      variant: 'danger',
+      onConfirm: () => {
+        if (onUpdateTarifasTamanos) {
+          const updated = tarifasTamanos.filter(t => t.id !== id);
+          onUpdateTarifasTamanos(updated);
+          CloudSyncService.deleteTarifaTamano(id);
+        }
       }
-    }
+    });
   };
 
   // -----------------------------------------------------------------
@@ -1309,18 +1363,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               </p>
             </div>
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-              <input 
-                type="text" 
-                className="form-input" 
-                style={{ maxWidth: '200px', padding: '6px 12px', minHeight: '34px', fontSize: '0.8rem' }}
+              <WjgSearchInput
+                compact
                 placeholder="Buscar filamento..."
                 value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
+                onChange={setSearchQuery}
+                style={{ width: '210px' }}
               />
-              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalFilamento()}>
-                <Plus size={14} />
-                <span>Agregar Filamento</span>
-              </button>
+              <WjgButton variant="save" size="sm" leftIcon={<Plus size={14} />} onClick={() => handleOpenModalFilamento()}>
+                Agregar Filamento
+              </WjgButton>
             </div>
           </div>
 
@@ -1437,18 +1489,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Insumos de Acabados & Taller</h3>
-              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalInsumo()}>
-                <Plus size={14} />
-                <span>Agregar Insumo</span>
-              </button>
+              <WjgButton variant="save" size="sm" leftIcon={<Plus size={14} />} onClick={() => handleOpenModalInsumo()}>
+                Agregar Insumo
+              </WjgButton>
             </div>
-            <input 
-              type="text" 
-              className="form-input" 
-              style={{ maxWidth: '240px', padding: '6px 12px', minHeight: '36px' }}
+            <WjgSearchInput
+              compact
               placeholder="Buscar insumo (pescadores, tornillos, imanes...)..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={setSearchQuery}
+              style={{ width: '250px' }}
             />
           </div>
 
@@ -1988,18 +2038,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '10px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
               <h3 style={{ fontSize: '1.05rem', margin: 0 }}>Directorio de Clientes ({clientes.length})</h3>
-              <button className="btn btn-primary btn-sm" onClick={() => handleOpenModalCliente()}>
-                <Plus size={14} />
-                <span>Agregar Cliente</span>
-              </button>
+              <WjgButton variant="save" size="sm" leftIcon={<Plus size={14} />} onClick={() => handleOpenModalCliente()}>
+                Agregar Cliente
+              </WjgButton>
             </div>
-            <input 
-              type="text" 
-              className="form-input" 
-              style={{ maxWidth: '280px', padding: '6px 12px', minHeight: '36px' }}
+            <WjgSearchInput
+              compact
               placeholder="Buscar por nombre, tel, NIT o correo..."
               value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
+              onChange={setSearchQuery}
+              style={{ width: '280px' }}
             />
           </div>
 
@@ -3772,6 +3820,20 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
         </div>
       )}
+
+      <WjgConfirmModal
+        isOpen={Boolean(confirmAction)}
+        onClose={() => setConfirmAction(null)}
+        onConfirm={async () => {
+          if (confirmAction) {
+            await confirmAction.onConfirm();
+          }
+        }}
+        title={confirmAction?.title || 'Confirmar Acción'}
+        message={confirmAction?.message || ''}
+        confirmText={confirmAction?.confirmText || 'Confirmar'}
+        variant={confirmAction?.variant || 'danger'}
+      />
     </div>
   );
 };
