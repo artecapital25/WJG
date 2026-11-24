@@ -185,6 +185,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
   // Estados de Configuración
   const [tarifaKwh, setTarifaKwh] = useState(config.tarifa_kwh);
   const [margenMerma, setMargenMerma] = useState(config.margen_merma_resina);
+  const [margenMermaFdm, setMargenMermaFdm] = useState(config.margen_merma_fdm ?? 1.15);
+  const [tasaFalloSlaPct, setTasaFalloSlaPct] = useState(config.tasa_fallo_sla_pct ?? 8);
+  const [tasaFalloFdmPct, setTasaFalloFdmPct] = useState(config.tasa_fallo_fdm_pct ?? 5);
+  const [gastosFijosMensuales, setGastosFijosMensuales] = useState(config.gastos_fijos_mensuales ?? 0);
+  const [horasFacturablesMes, setHorasFacturablesMes] = useState(config.horas_facturables_mes ?? 160);
+  const [consumiblesSlaPorImpresion, setConsumiblesSlaPorImpresion] = useState(config.consumibles_sla_por_impresion ?? 0);
+  const [precioMinimoTrabajo, setPrecioMinimoTrabajo] = useState(config.precio_minimo_trabajo ?? 15000);
+  const [comisionPasarelaDefaultPct, setComisionPasarelaDefaultPct] = useState(config.comision_pasarela_default_pct ?? 0);
+  const [modoMargenDefault, setModoMargenDefault] = useState<'margen_bruto' | 'markup'>(config.modo_margen_default || 'margen_bruto');
+  const [pisoMargenAlertaPct, setPisoMargenAlertaPct] = useState(config.piso_margen_alerta_pct ?? 20);
   const [nequi, setNequi] = useState(config.nequi);
   const [breB, setBreB] = useState(config.bre_b || '0090778625');
   const [instagram, setInstagram] = useState(config.instagram);
@@ -547,6 +557,9 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       costo_minuto_repuestos: Number(costo_minuto_repuestos.toFixed(4)),
       costo_minuto: Number(costo_total_min.toFixed(4)),
       repuestos,
+      precio_compra: Number(itemEnEdicion.precio_compra) || 0,
+      vida_util_horas: Number(itemEnEdicion.vida_util_horas) || 0,
+      mantenimiento_mensual: Number(itemEnEdicion.mantenimiento_mensual) || 0,
       estado: itemEnEdicion.estado || 'Disponible',
       imagen_url: itemEnEdicion.imagen_url || ''
     };
@@ -926,6 +939,16 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
       ...config,
       tarifa_kwh: Number(tarifaKwh),
       margen_merma_resina: Number(margenMerma),
+      margen_merma_fdm: Number(margenMermaFdm) || 1.15,
+      tasa_fallo_sla_pct: Math.max(0, Number(tasaFalloSlaPct) || 0),
+      tasa_fallo_fdm_pct: Math.max(0, Number(tasaFalloFdmPct) || 0),
+      gastos_fijos_mensuales: Math.max(0, Number(gastosFijosMensuales) || 0),
+      horas_facturables_mes: Math.max(1, Number(horasFacturablesMes) || 160),
+      consumibles_sla_por_impresion: Math.max(0, Number(consumiblesSlaPorImpresion) || 0),
+      precio_minimo_trabajo: Math.max(0, Number(precioMinimoTrabajo) || 0),
+      comision_pasarela_default_pct: Math.max(0, Number(comisionPasarelaDefaultPct) || 0),
+      modo_margen_default: modoMargenDefault,
+      piso_margen_alerta_pct: Math.max(0, Number(pisoMargenAlertaPct) || 20),
       nequi,
       bre_b: breB,
       instagram
@@ -2157,6 +2180,141 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
               </div>
             </div>
 
+            {/* Parámetros Avanzados Cotizador 2.0 */}
+            <div style={{ marginTop: '18px', paddingTop: '14px', borderTop: '1px solid rgba(56, 189, 248, 0.2)' }}>
+              <h4 style={{ fontSize: '0.92rem', color: '#38bdf8', marginBottom: '12px', fontWeight: 700 }}>
+                Parámetros Cotizador 2.0 (Merma, Riesgo, Overhead y Margen Default)
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: '12px' }}>
+                <div className="form-group">
+                  <label className="form-label">Factor Merma Filamento FDM (ej: 1.15 = +15%)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="0.01"
+                    className="form-input"
+                    value={margenMermaFdm}
+                    onChange={e => setMargenMermaFdm(parseFloat(e.target.value) || 1.15)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Tasa Fallo / Reimpresión SLA (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={tasaFalloSlaPct === 0 ? '' : tasaFalloSlaPct}
+                    onChange={e => setTasaFalloSlaPct(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="8"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Tasa Fallo / Reimpresión FDM (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={tasaFalloFdmPct === 0 ? '' : tasaFalloFdmPct}
+                    onChange={e => setTasaFalloFdmPct(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="5"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Gastos Fijos / Overhead Mensual (COP)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={gastosFijosMensuales === 0 ? '' : gastosFijosMensuales}
+                    onChange={e => setGastosFijosMensuales(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Horas Facturables por Mes</label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="any"
+                    className="form-input"
+                    value={horasFacturablesMes}
+                    onChange={e => setHorasFacturablesMes(parseFloat(e.target.value) || 160)}
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Consumibles SLA Base por Impresión (COP)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={consumiblesSlaPorImpresion === 0 ? '' : consumiblesSlaPorImpresion}
+                    onChange={e => setConsumiblesSlaPorImpresion(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Precio Mínimo por Trabajo (COP)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={precioMinimoTrabajo === 0 ? '' : precioMinimoTrabajo}
+                    onChange={e => setPrecioMinimoTrabajo(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="15000"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Comisión Pasarela Default (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={comisionPasarelaDefaultPct === 0 ? '' : comisionPasarelaDefaultPct}
+                    onChange={e => setComisionPasarelaDefaultPct(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Piso de Alerta Margen Real (%)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="any"
+                    className="form-input"
+                    value={pisoMargenAlertaPct === 0 ? '' : pisoMargenAlertaPct}
+                    onChange={e => setPisoMargenAlertaPct(e.target.value === '' ? 0 : parseFloat(e.target.value) || 0)}
+                    placeholder="20"
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label className="form-label">Modo de Margen por Defecto</label>
+                  <WjgSelect
+                    value={modoMargenDefault}
+                    onChange={val => setModoMargenDefault(val === 'markup' ? 'markup' : 'margen_bruto')}
+                    options={[
+                      { value: 'margen_bruto', label: 'Margen Bruto sobre Venta: C / (1 - m)' },
+                      { value: 'markup', label: 'Markup sobre Costo: C × (1 + m)' }
+                    ]}
+                  />
+                </div>
+              </div>
+            </div>
+
             <div style={{ marginTop: '20px', display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
               <button type="submit" className="btn btn-primary">
                 <Save size={16} />
@@ -2831,6 +2989,51 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                   </div>
                 </div>
 
+                {/* Depreciación y Amortización del Equipo */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '10px', marginTop: '10px', background: 'rgba(15, 23, 42, 0.55)', padding: '12px', borderRadius: '8px', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem' }}>Precio Compra Máquina (COP)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="form-input"
+                      value={!itemEnEdicion.precio_compra ? '' : itemEnEdicion.precio_compra}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, precio_compra: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                      placeholder="Ej: 1800000"
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem' }}>Vida Útil Estimada (Horas)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="form-input"
+                      value={!itemEnEdicion.vida_util_horas ? '' : itemEnEdicion.vida_util_horas}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, vida_util_horas: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                      placeholder="Ej: 4000"
+                    />
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label" style={{ fontSize: '0.74rem' }}>Mantenimiento Mensual (COP)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="any"
+                      className="form-input"
+                      value={!itemEnEdicion.mantenimiento_mensual ? '' : itemEnEdicion.mantenimiento_mensual}
+                      onChange={e => setItemEnEdicion({ ...itemEnEdicion, mantenimiento_mensual: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
+                      placeholder="Ej: 35000"
+                    />
+                  </div>
+                  {(Number(itemEnEdicion.precio_compra) > 0 && Number(itemEnEdicion.vida_util_horas) > 0) && (
+                    <div style={{ gridColumn: '1 / -1', fontSize: '0.73rem', color: '#38bdf8' }}>
+                      Depreciación amortizada: <strong>${Math.round(Number(itemEnEdicion.precio_compra) / Number(itemEnEdicion.vida_util_horas)).toLocaleString('es-CO')} COP/h</strong> (${(Number(itemEnEdicion.precio_compra) / (Number(itemEnEdicion.vida_util_horas) * 60)).toFixed(2)}/min)
+                    </div>
+                  )}
+                </div>
+
                 {/* MODULO DE REPUESTOS Y MANTENIMIENTO DENTRO DEL MODAL */}
                 {(() => {
                   const consumoKwh = Number(itemEnEdicion.consumo_kwh) || 0.05;
@@ -3270,9 +3473,9 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                         type="number" 
                         className="form-input" 
                         min="0"
-                        step="1000"
-                        value={itemEnEdicion.precio_sugerido}
-                        onChange={e => setItemEnEdicion({ ...itemEnEdicion, precio_sugerido: parseFloat(e.target.value) || 0 })}
+                        step="any"
+                        value={itemEnEdicion.precio_sugerido === 0 ? '' : itemEnEdicion.precio_sugerido}
+                        onChange={e => setItemEnEdicion({ ...itemEnEdicion, precio_sugerido: e.target.value === '' ? 0 : parseFloat(e.target.value) || 0 })}
                         required
                       />
                       <span className="input-unit-badge">COP</span>

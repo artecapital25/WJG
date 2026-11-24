@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Kanban, Plus, Trash2, Clock, LayoutGrid, List } from 'lucide-react';
-import { EstadoOT } from '../../types';
+import { EstadoOT, OrdenTrabajo } from '../../types';
 import { WorkOrdersPipelineProps } from './types/workshop.types';
 import { useTallerOrders } from './hooks/useTallerOrders';
 import { ETAPAS } from './utils/workshopUtils';
@@ -12,11 +12,13 @@ import { ModalProyectoRapido } from './components/ModalProyectoRapido';
 import { ModalTrazabilidadSTL } from './components/ModalTrazabilidadSTL';
 import { ModalDetalleCotizacionOT } from './components/ModalDetalleCotizacionOT';
 import { ModalEditarEnlacesOT } from './components/ModalEditarEnlacesOT';
+import { ModalConsumoRealOT } from './components/ModalConsumoRealOT';
 import { ModalRegistrarPago } from '../../components/common/ModalRegistrarPago';
 import { ModalEliminarOT } from '../../components/common/ModalEliminarOT';
 
 export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => {
   const taller = useTallerOrders(props);
+  const [otParaConsumoReal, setOtParaConsumoReal] = useState<OrdenTrabajo | null>(null);
 
   return (
     <div style={{ paddingBottom: '70px' }}>
@@ -148,6 +150,8 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
                 cotizaciones={props.cotizaciones}
                 copiedOtId={taller.copiedOtId}
                 copiedLinkId={taller.copiedLinkId}
+                consumosReales={props.consumosReales}
+                onOpenConsumoReal={setOtParaConsumoReal}
                 colorBorder={etapa === 'Entregado' ? 'rgba(16, 185, 129, 0.4)' : undefined}
                 badgeBg={etapa === 'Entregado' ? 'rgba(16, 185, 129, 0.15)' : undefined}
                 onUpdateEstado={props.onUpdateEstado}
@@ -175,6 +179,8 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
               cotizaciones={props.cotizaciones}
               copiedOtId={taller.copiedOtId}
               copiedLinkId={taller.copiedLinkId}
+              consumosRealesCount={(props.consumosReales || []).filter(c => c.orden_trabajo_id === ot.id).length}
+              onOpenConsumoReal={setOtParaConsumoReal}
               onUpdateEstado={props.onUpdateEstado}
               onGenerarCuentaCobro={props.onGenerarCuentaCobro}
               onOpenCotizacionModal={taller.handleOpenCotizacionModal}
@@ -197,8 +203,40 @@ export const WorkOrdersPipeline: React.FC<WorkOrdersPipelineProps> = (props) => 
         ot={taller.otParaTransicion}
         handoffConfig={taller.configHandoffTransicion}
         siguienteEstado={taller.siguienteEstadoTransicion}
+        onOpenConsumoReal={setOtParaConsumoReal}
         onClose={taller.handleCerrarTransicionModal}
         onConfirmHandoff={taller.handleConfirmarTransicionModal}
+      />
+
+      {/* Modal Registro de Consumos Reales (Taller y Pintor) */}
+      <ModalConsumoRealOT
+        isOpen={Boolean(otParaConsumoReal)}
+        ot={otParaConsumoReal}
+        cotizacion={
+          otParaConsumoReal
+            ? (props.cotizaciones || []).find(
+                c =>
+                  (otParaConsumoReal.cotizacion_id && c.id === otParaConsumoReal.cotizacion_id) ||
+                  (otParaConsumoReal.cotizacion_numero && c.numero_cot === otParaConsumoReal.cotizacion_numero)
+              )
+            : null
+        }
+        resinas={props.resinas}
+        filamentos={props.filamentos}
+        insumos={props.insumos}
+        personal={props.personal}
+        consumosExistentes={
+          otParaConsumoReal
+            ? (props.consumosReales || []).filter(c => c.orden_trabajo_id === otParaConsumoReal.id)
+            : []
+        }
+        activeOperator={props.activeOperator}
+        activeOperatorId={props.activeOperatorId}
+        onClose={() => setOtParaConsumoReal(null)}
+        onSaveConsumo={(reg, descontar) => {
+          props.onSaveConsumoReal?.(reg, descontar);
+        }}
+        onDeleteConsumo={props.onDeleteConsumoReal}
       />
 
       {/* Modal Proyecto Rápido */}

@@ -7,7 +7,9 @@ import {
   ConfiguracionTaller, 
   PiezaCotizada,
   TarifaTamano,
-  EstadoCotizacion 
+  EstadoCotizacion,
+  ConsumoRealProduccion,
+  ModoMargen
 } from '../../../types';
 
 export interface ItemPinturaForm {
@@ -74,6 +76,7 @@ export interface CotizadorFormProps {
   } | null;
   piezaEnEdicion?: PiezaCotizada | null;
   onCancelarEdicionPieza?: () => void;
+  consumosReales?: ConsumoRealProduccion[];
 }
 
 export interface CotizacionBuilderProps {
@@ -131,6 +134,15 @@ export interface CotizadorTotalsSummaryProps {
   ivaMonto: number;
   ahorroVolumenTotal: number;
   total: number;
+  // Switch global de modo de cobro y rentabilidad interna (SOLO EMPLEADOS)
+  modoMargenCotizacion?: ModoMargen;
+  onCambiarModoMargenCotizacion?: (nuevoModo: ModoMargen) => void;
+  costoTotalTaller?: number;
+  utilidadNetaEstimada?: number;
+  margenRealCotizacionPct?: number;
+  pisoMargenAlertaPct?: number;
+  totalAlternoMargenBruto?: number;
+  totalAlternoMarkup?: number;
   tipoEstado: EstadoCotizacion;
   setTipoEstado: (tipo: EstadoCotizacion) => void;
   vendedorNombre: string;

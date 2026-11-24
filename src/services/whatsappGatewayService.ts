@@ -43,6 +43,8 @@ export interface GatewayStatusResponse {
   phone?: string;
   qrCode?: string; // Base64 image o raw string
   pairingCode?: string;
+  storageMode?: 'supabase_persistent' | 'local_ephemeral';
+  uptimeSec?: number;
   message?: string;
 }
 
@@ -274,6 +276,8 @@ export const WhatsAppGatewayService = {
           phone: data.phone || data.number || config.officialPhone,
           qrCode: data.qr || data.qrcode || null,
           pairingCode: data.pairingCode || null,
+          storageMode: data.storageMode,
+          uptimeSec: typeof data.uptimeSec === 'number' ? data.uptimeSec : undefined,
           message: isConnected 
             ? `Conectado exitosamente con ${data.phone || config.officialPhone}` 
             : (data.qr ? 'Código QR listo para escanear' : (data.message || 'Esperando vinculación...'))

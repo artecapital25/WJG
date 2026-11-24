@@ -14,12 +14,21 @@ import {
   Palette, 
   FolderGit2, 
   Globe, 
-  X
+  X,
+  Calculator
 } from 'lucide-react';
-import { HerramientaLink, CategoriaHerramienta } from '../../types';
+import { HerramientaLink, CategoriaHerramienta, Resina, Filamento, Maquina, ConfiguracionTaller } from '../../types';
 import { StorageService } from '../../services/storageService';
 import { toast } from '../ui/ToastProvider';
 import { WjgSelect } from '../ui/WjgSelect';
+import { Suite3DProView } from './Suite3DProView';
+
+interface ToolsHubViewProps {
+  resinas?: Resina[];
+  filamentos?: Filamento[];
+  maquinas?: Maquina[];
+  config?: ConfiguracionTaller;
+}
 
 const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any; color: string; bg: string }> = {
   ia_3d: {
@@ -54,7 +63,13 @@ const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any
   }
 };
 
-export const ToolsHubView: React.FC = () => {
+export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
+  resinas = [],
+  filamentos = [],
+  maquinas = [],
+  config
+}) => {
+  const [activeSuiteTab, setActiveSuiteTab] = useState<'calculadoras' | 'apps'>('calculadoras');
   const [herramientas, setHerramientas] = useState<HerramientaLink[]>(() => StorageService.getHerramientas());
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todas');
   const [busqueda, setBusqueda] = useState<string>('');
@@ -200,27 +215,63 @@ export const ToolsHubView: React.FC = () => {
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto' }}>
       {/* Encabezado Principal */}
-      <div className="section-header" style={{ marginBottom: '20px' }}>
+      <div className="section-header" style={{ marginBottom: '16px' }}>
         <div>
           <h2 className="section-title">
             <Wrench size={24} color="var(--brand-cyan)" />
-            Herramientas & Apps 3D del Taller
+            Herramientas & Suite 3D PRO
           </h2>
           <p className="section-subtitle">
-            Lanzador central de Inteligencias Artificiales (Hunyuan 3D, Tripo 3D), repositorios de archivos STL, laminadores y utilidades de producción.
+            Calculadoras técnicas 3D conectadas a tu catálogo, más lanzador de IAs generativas, repositorios STL y slicers.
           </p>
         </div>
 
+        {activeSuiteTab === 'apps' && (
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={handleOpenCrearModal}
+            style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}
+          >
+            <Plus size={16} />
+            <span>+ Agregar Nueva App / Link</span>
+          </button>
+        )}
+      </div>
+
+      {/* Selector Principal: Suite 3D PRO (5 Calculadoras) vs Enlaces & Apps */}
+      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
         <button
           type="button"
-          className="btn btn-primary btn-sm"
-          onClick={handleOpenCrearModal}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 800 }}
+          className={`btn btn-sm ${activeSuiteTab === 'calculadoras' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveSuiteTab('calculadoras')}
+          style={{ fontWeight: 800, minHeight: '42px', padding: '0 16px' }}
         >
-          <Plus size={16} />
-          <span>+ Agregar Nueva App / Link</span>
+          <Calculator size={16} />
+          <span>Suite 3D PRO (5 Calculadoras)</span>
+        </button>
+        <button
+          type="button"
+          className={`btn btn-sm ${activeSuiteTab === 'apps' ? 'btn-primary' : 'btn-secondary'}`}
+          onClick={() => setActiveSuiteTab('apps')}
+          style={{ fontWeight: 800, minHeight: '42px', padding: '0 16px' }}
+        >
+          <Globe size={16} />
+          <span>Enlaces & Apps 3D ({herramientas.length})</span>
         </button>
       </div>
+
+      {activeSuiteTab === 'calculadoras' && (
+        <Suite3DProView
+          resinas={resinas}
+          filamentos={filamentos}
+          maquinas={maquinas}
+          config={config}
+        />
+      )}
+
+      {activeSuiteTab === 'apps' && (
+      <>
 
       {/* Barra de Filtros y Búsqueda */}
       <div className="glass-card" style={{ padding: '16px', marginBottom: '20px' }}>
@@ -628,6 +679,8 @@ export const ToolsHubView: React.FC = () => {
             </form>
           </div>
         </div>
+      )}
+      </>
       )}
     </div>
   );

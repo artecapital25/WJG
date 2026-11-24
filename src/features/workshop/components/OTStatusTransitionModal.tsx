@@ -1,5 +1,5 @@
 import React from 'react';
-import { Send, Check, X, ArrowRight } from 'lucide-react';
+import { Send, Check, X, ArrowRight, Activity } from 'lucide-react';
 import { OrdenTrabajo, EstadoOT } from '../../../types';
 import { HandoffConfig } from '../types/workshop.types';
 
@@ -10,6 +10,7 @@ interface OTStatusTransitionModalProps {
   siguienteEstado: EstadoOT | null;
   onClose: () => void;
   onConfirmHandoff: (enviarWhatsApp: boolean) => void;
+  onOpenConsumoReal?: (ot: OrdenTrabajo) => void;
 }
 
 export const OTStatusTransitionModal: React.FC<OTStatusTransitionModalProps> = React.memo(({
@@ -18,7 +19,8 @@ export const OTStatusTransitionModal: React.FC<OTStatusTransitionModalProps> = R
   handoffConfig,
   siguienteEstado,
   onClose,
-  onConfirmHandoff
+  onConfirmHandoff,
+  onOpenConsumoReal
 }) => {
   if (!isOpen || !ot || !handoffConfig) return null;
 
@@ -95,6 +97,26 @@ export const OTStatusTransitionModal: React.FC<OTStatusTransitionModalProps> = R
 
         {/* Action Buttons */}
         <div style={{ display: 'flex', gap: '8px', flexDirection: 'column' }}>
+          {onOpenConsumoReal && (
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => {
+                onClose();
+                onOpenConsumoReal(ot);
+              }}
+              style={{
+                justifyContent: 'center',
+                borderColor: 'rgba(56, 189, 248, 0.45)',
+                color: '#38bdf8',
+                fontWeight: 700
+              }}
+            >
+              <Activity size={15} />
+              <span>Registrar Consumos Reales Antes de Avanzar</span>
+            </button>
+          )}
+
           <button 
             type="button" 
             className="btn btn-whatsapp" 

@@ -4,7 +4,11 @@ import {
   Insumo, 
   PiezaCotizada, 
   TarifaTamano,
-  TecnologiaFabricacion
+  TecnologiaFabricacion,
+  ModoMargen,
+  TipoObjetivoPrecio,
+  NivelComplejidad,
+  PromedioConsumoReal
 } from '../../../types';
 import { 
   ItemPinturaForm, 
@@ -19,6 +23,7 @@ import {
   ParametrosPiezaInput 
 } from '../utils/pricingCalculator';
 import { processAndOptimizeImage } from '../../../services/imageService';
+import { parseGCodeFile } from '../../../services/gcodeService';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { toast } from '../../../components/ui/ToastProvider';
 
@@ -41,9 +46,51 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   const [anchoMm, setAnchoMm] = useState<number>(60);
   const [profundidadMm, setProfundidadMm] = useState<number>(60);
 
-  // Parámetros avanzados
+  // Parámetros avanzados y Modo Vista (Rápido vs Avanzado)
+  const [modoVista, setModoVista] = useState<'rapido' | 'avanzado'>('rapido');
   const [showParametrosAvanzados, setShowParametrosAvanzados] = useState(false);
   const [showTarifarioModal, setShowTarifarioModal] = useState(false);
+
+  // Cotizador 2.0: Modo de Margen Dual, Prorrateo, Riesgo, Overhead, AMS y Pasarela
+  const [modoMargen, setModoMargen] = useState<ModoMargen>(
+    piezaEnEdicion?.modo_margen || config.modo_margen_default || 'margen_bruto'
+  );
+  const [tipoObjetivoPrecio, setTipoObjetivoPrecio] = useState<TipoObjetivoPrecio>(
+    piezaEnEdicion?.tipo_objetivo_precio || 'porcentaje'
+  );
+  const [gananciaDeseadaCop, setGananciaDeseadaCop] = useState<number>(
+    piezaEnEdicion?.ganancia_deseada_cop || 20000
+  );
+  const [prorratearArchivo3D, setProrratearArchivo3D] = useState<boolean>(
+    piezaEnEdicion?.prorratear_archivo_3d !== undefined ? piezaEnEdicion.prorratear_archivo_3d : true
+  );
+  const [prorratearDiseno3D, setProrratearDiseno3D] = useState<boolean>(
+    piezaEnEdicion?.prorratear_diseno_3d !== undefined ? piezaEnEdicion.prorratear_diseno_3d : true
+  );
+  const [nivelComplejidad, setNivelComplejidad] = useState<NivelComplejidad>(
+    piezaEnEdicion?.nivel_complejidad || 'simple'
+  );
+  const [tasaFalloPct, setTasaFalloPct] = useState<number>(() => {
+    if (piezaEnEdicion) return piezaEnEdicion.tasa_fallo_pct ?? 0;
+    return config.tasa_fallo_sla_pct ?? 10;
+  });
+  const [incluirOverhead, setIncluirOverhead] = useState<boolean>(
+    piezaEnEdicion ? ((piezaEnEdicion.costo_gastos_fijos || 0) > 0) : ((config.gastos_fijos_mensuales || 0) > 0)
+  );
+  const [consumiblesSlaExtra, setConsumiblesSlaExtra] = useState<number>(
+    piezaEnEdicion ? (piezaEnEdicion.costo_consumibles_sla_extra ?? 0) : (config.consumibles_sla_por_impresion ?? 1500)
+  );
+  const [comisionPasarelaPct, setComisionPasarelaPct] = useState<number>(
+    piezaEnEdicion ? (piezaEnEdicion.comision_pasarela_pct ?? 0) : (config.comision_pasarela_default_pct ?? 0)
+  );
+  const [costoEnvio, setCostoEnvio] = useState<number>(piezaEnEdicion?.costo_envio ?? 0);
+
+  // Multicolor AMS (FDM)
+  const [amsActivo, setAmsActivo] = useState<boolean>(Boolean(piezaEnEdicion?.ams_activo));
+  const [amsColores, setAmsColores] = useState<number>(piezaEnEdicion?.ams_colores || 4);
+  const [amsPurgaPct, setAmsPurgaPct] = useState<number>(piezaEnEdicion?.ams_purga_pct ?? 45);
+  const [amsPurgaGramosManual, setAmsPurgaGramosManual] = useState<number>(piezaEnEdicion?.ams_purga_gramos || 0);
+  const [gcodeInfo, setGcodeInfo] = useState<string | null>(null);
 
   // Tarifas fijadas
   const [precioFijadoTarifa, setPrecioFijadoTarifa] = useState(false);
@@ -98,6 +145,15 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   // Conmutación inteligente de tecnología con auto-asignación de máquina
   const setTecnologiaSegura = (tec: TecnologiaFabricacion) => {
     setTecnologia(tec);
+    if (!piezaEnEdicion) {
+      if (tec === 'FDM_FILAMENTO') {
+        setTasaFalloPct(config.tasa_fallo_fdm_pct ?? 5);
+      } else if (tec === 'SLA_RESINA') {
+        setTasaFalloPct(config.tasa_fallo_sla_pct ?? 10);
+      } else {
+        setTasaFalloPct(5);
+      }
+    }
     if (tec === 'FDM_FILAMENTO') {
       const fdmMaq = maquinas.find(m => 
         m.tecnologia === 'FDM_FILAMENTO' || 
@@ -222,6 +278,22 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setEmpaquesSeleccionados([]);
     setEnlacesCompra([]);
     setMaquinasAdicionales([]);
+    setModoMargen(config.modo_margen_default || 'margen_bruto');
+    setTipoObjetivoPrecio('porcentaje');
+    setGananciaDeseadaCop(20000);
+    setProrratearArchivo3D(true);
+    setProrratearDiseno3D(true);
+    setNivelComplejidad('simple');
+    setTasaFalloPct(config.tasa_fallo_sla_pct ?? 10);
+    setIncluirOverhead((config.gastos_fijos_mensuales || 0) > 0);
+    setConsumiblesSlaExtra(config.consumibles_sla_por_impresion ?? 1500);
+    setComisionPasarelaPct(config.comision_pasarela_default_pct ?? 0);
+    setCostoEnvio(0);
+    setAmsActivo(false);
+    setAmsColores(4);
+    setAmsPurgaPct(45);
+    setAmsPurgaGramosManual(0);
+    setGcodeInfo(null);
   };
 
   // Cargar datos completos (100% de hidratación) si se está editando una pieza
@@ -359,6 +431,23 @@ export function useCotizadorForm(props: CotizadorFormProps) {
 
       setAplicaDescuentoVolumen(piezaEnEdicion.aplica_descuento_volumen ?? true);
       setDescuentoVolumenManual(piezaEnEdicion.descuento_volumen_porcentaje);
+
+      // Restaurar Cotizador 2.0 (con retrocompatibilidad: piezas antiguas cargan 0 en factores nuevos)
+      setModoMargen(piezaEnEdicion.modo_margen || 'margen_bruto');
+      setTipoObjetivoPrecio(piezaEnEdicion.tipo_objetivo_precio || 'porcentaje');
+      setGananciaDeseadaCop(piezaEnEdicion.ganancia_deseada_cop || 20000);
+      setProrratearArchivo3D(piezaEnEdicion.prorratear_archivo_3d !== undefined ? piezaEnEdicion.prorratear_archivo_3d : true);
+      setProrratearDiseno3D(piezaEnEdicion.prorratear_diseno_3d !== undefined ? piezaEnEdicion.prorratear_diseno_3d : true);
+      setNivelComplejidad(piezaEnEdicion.nivel_complejidad || 'simple');
+      setTasaFalloPct(piezaEnEdicion.tasa_fallo_pct ?? 0);
+      setIncluirOverhead((piezaEnEdicion.costo_gastos_fijos || 0) > 0);
+      setConsumiblesSlaExtra(piezaEnEdicion.costo_consumibles_sla_extra ?? 0);
+      setComisionPasarelaPct(piezaEnEdicion.comision_pasarela_pct ?? 0);
+      setCostoEnvio(piezaEnEdicion.costo_envio ?? 0);
+      setAmsActivo(Boolean(piezaEnEdicion.ams_activo));
+      setAmsColores(piezaEnEdicion.ams_colores || 4);
+      setAmsPurgaPct(piezaEnEdicion.ams_purga_pct ?? 45);
+      setAmsPurgaGramosManual(piezaEnEdicion.ams_purga_gramos || 0);
 
       // Restaurar Pinturas
       if (Array.isArray(piezaEnEdicion.lista_pinturas)) {
@@ -716,17 +805,76 @@ export function useCotizadorForm(props: CotizadorFormProps) {
   };
 
   const handleUpdateEnlaceCompra = (tempId: string, field: keyof ItemEnlaceCompraForm, val: any) => {
-    setEnlacesCompra(prev => prev.map(e => {
-      if (e.tempId !== tempId) return e;
-      const updated = { ...e, [field]: val };
-      if (field === 'url' && val && !e.titulo) {
-        const detected = detect3DPlatform(val);
-        if (detected.name !== 'Enlace Web') {
-          updated.titulo = detected.name;
+    setEnlacesCompra(prev => {
+      const next = prev.map(e => {
+        if (e.tempId !== tempId) return e;
+        const updated = { ...e, [field]: val };
+        if (field === 'url' && val && !e.titulo) {
+          const detected = detect3DPlatform(val);
+          if (detected.name !== 'Enlace Web') {
+            updated.titulo = detected.name;
+          }
+        }
+        return updated;
+      });
+      if (field === 'costoEstimado') {
+        const sumaEnlaces = next.reduce((s, item) => s + (Number(item.costoEstimado) || 0), 0);
+        setCostoModeloComprado(Math.round(sumaEnlaces));
+      }
+      return next;
+    });
+  };
+
+  // Lector rápido de .gcode (Bambu Studio, OrcaSlicer, PrusaSlicer, Cura)
+  const handleImportGCode = async (file: File) => {
+    try {
+      const parsed = await parseGCodeFile(file);
+      setTecnologiaSegura('FDM_FILAMENTO');
+      if (parsed.nombreSugerido && (nombreItem === 'Figura Coleccionable 3D' || !nombreItem.trim())) {
+        setNombreItem(parsed.nombreSugerido);
+      }
+      if (parsed.pesoGramos > 0) {
+        setPesoFilamentoG(parsed.pesoGramos);
+      }
+      if (parsed.tiempoMinutos > 0) {
+        setTiempoFDMMin(parsed.tiempoMinutos);
+      }
+      if (parsed.esMulticolorAMS) {
+        setAmsActivo(true);
+        setAmsColores(Math.max(2, parsed.cantidadColores));
+        if (parsed.pesoPurgaGramos > 0) {
+          setAmsPurgaGramosManual(parsed.pesoPurgaGramos);
         }
       }
-      return updated;
-    }));
+      if (parsed.tipoFilamento && filamentos.length > 0) {
+        const matchFil = filamentos.find(f => f.tipo.toLowerCase().includes(parsed.tipoFilamento!.toLowerCase()));
+        if (matchFil) setFilamentoId(matchFil.id);
+      }
+      const infoTxt = `${parsed.slicerDetectado} • ${parsed.pesoGramos}g${parsed.pesoPurgaGramos > 0 ? ` (+${parsed.pesoPurgaGramos}g purga)` : ''} • ${Math.floor(parsed.tiempoMinutos / 60)}h ${parsed.tiempoMinutos % 60}m`;
+      setGcodeInfo(infoTxt);
+      toast.success(`📄 G-Code leído: ${infoTxt}`);
+    } catch (e) {
+      console.error('Error leyendo G-Code:', e);
+      toast.error('No se pudo leer el archivo .gcode.');
+    }
+  };
+
+  // Aplicar promedios reales históricos registrados por Taller & Pintor
+  const handleAplicarPromediosReales = (promedio: PromedioConsumoReal) => {
+    if (promedio.tasa_fallo_real_pct > 0) {
+      setTasaFalloPct(Math.max(tasaFalloPct, Math.round(promedio.tasa_fallo_real_pct)));
+    }
+    if (promedio.desviacion_material_pct > 0) {
+      if (tecnologia === 'FDM_FILAMENTO') {
+        setMermaPorcentajeFdm(prev => Math.max(prev, Math.round(promedio.desviacion_material_pct)));
+      } else {
+        setMermaPorcentajeResina(prev => Math.max(prev, Math.round(promedio.desviacion_material_pct)));
+      }
+    }
+    if (tecnologia === 'SLA_RESINA' && promedio.promedio_insumos_extras_por_pieza > 0) {
+      setConsumiblesSlaExtra(Math.max(consumiblesSlaExtra, promedio.promedio_insumos_extras_por_pieza));
+    }
+    toast.success(`✅ Promedios reales aplicados (${promedio.total_registros} orden(es) históricas).`);
   };
 
   // Aplicar tarifa estándar
@@ -878,7 +1026,23 @@ export function useCotizadorForm(props: CotizadorFormProps) {
       tarifaTamanoAplicada: precioFijadoTarifa && tarifaAplicada ? tarifaAplicada : undefined,
       precioFijadoTarifa,
       aplicaDescuentoVolumen,
-      descuentoVolumenPorcentaje: descuentoVolumenManual
+      descuentoVolumenPorcentaje: descuentoVolumenManual,
+      modoMargen,
+      tipoObjetivoPrecio,
+      gananciaDeseadaCop,
+      prorratearArchivo3D,
+      prorratearDiseno3D,
+      tasaFalloPct,
+      nivelComplejidad,
+      gastosFijosMensuales: incluirOverhead ? (config.gastos_fijos_mensuales || 0) : 0,
+      horasFacturablesMes: config.horas_facturables_mes || 160,
+      consumiblesSlaPorImpresion: tecnologia === 'SLA_RESINA' ? consumiblesSlaExtra : 0,
+      comisionPasarelaPct,
+      costoEnvio,
+      amsActivo: tecnologia === 'FDM_FILAMENTO' ? amsActivo : false,
+      amsColores,
+      amsPurgaPct,
+      amsPurgaGramosManual
     };
 
     return calcularCotizacionIntegral(input, personal, config);
@@ -947,7 +1111,22 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     tipoProcesoLaser,
     materialBloque,
     costoBloqueMaterial,
-    tiempoMecanizadoMin
+    tiempoMecanizadoMin,
+    modoMargen,
+    tipoObjetivoPrecio,
+    gananciaDeseadaCop,
+    prorratearArchivo3D,
+    prorratearDiseno3D,
+    tasaFalloPct,
+    nivelComplejidad,
+    incluirOverhead,
+    consumiblesSlaExtra,
+    comisionPasarelaPct,
+    costoEnvio,
+    amsActivo,
+    amsColores,
+    amsPurgaPct,
+    amsPurgaGramosManual
   ]);
 
   const handleSubmit = (e: FormEvent) => {
@@ -1136,6 +1315,43 @@ export function useCotizadorForm(props: CotizadorFormProps) {
     setCostoBloqueMaterial,
     tiempoMecanizadoMin,
     setTiempoMecanizadoMin,
+
+    // Cotizador 2.0: Modo vista, margen dual, prorrateo, riesgo, AMS y G-Code
+    modoVista,
+    setModoVista,
+    modoMargen,
+    setModoMargen,
+    tipoObjetivoPrecio,
+    setTipoObjetivoPrecio,
+    gananciaDeseadaCop,
+    setGananciaDeseadaCop,
+    prorratearArchivo3D,
+    setProrratearArchivo3D,
+    prorratearDiseno3D,
+    setProrratearDiseno3D,
+    nivelComplejidad,
+    setNivelComplejidad,
+    tasaFalloPct,
+    setTasaFalloPct,
+    incluirOverhead,
+    setIncluirOverhead,
+    consumiblesSlaExtra,
+    setConsumiblesSlaExtra,
+    comisionPasarelaPct,
+    setComisionPasarelaPct,
+    costoEnvio,
+    setCostoEnvio,
+    amsActivo,
+    setAmsActivo,
+    amsColores,
+    setAmsColores,
+    amsPurgaPct,
+    setAmsPurgaPct,
+    amsPurgaGramosManual,
+    setAmsPurgaGramosManual,
+    gcodeInfo,
+    handleImportGCode,
+    handleAplicarPromediosReales,
 
     // Cálculo y envío
     calculoEnVivo,

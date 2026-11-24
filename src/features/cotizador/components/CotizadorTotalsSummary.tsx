@@ -1,5 +1,5 @@
 import React from 'react';
-import { Save, Send, FileDown, X, Clock, Calendar, Check, Plus } from 'lucide-react';
+import { Save, Send, FileDown, X, Clock, Calendar, Check, Plus, Lock, AlertTriangle } from 'lucide-react';
 import { CotizadorTotalsSummaryProps } from '../types/cotizador.types';
 import { NOTAS_RAPIDAS_SUGERIDAS, toggleNotaRapida } from '../../../utils/businessDays';
 
@@ -14,6 +14,14 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
   ivaMonto,
   ahorroVolumenTotal,
   total,
+  modoMargenCotizacion = 'margen_bruto',
+  onCambiarModoMargenCotizacion,
+  costoTotalTaller = 0,
+  utilidadNetaEstimada = 0,
+  margenRealCotizacionPct = 0,
+  pisoMargenAlertaPct = 20,
+  totalAlternoMargenBruto,
+  totalAlternoMarkup,
   tipoEstado,
   setTipoEstado,
   vendedorNombre,
@@ -350,6 +358,88 @@ export const CotizadorTotalsSummary: React.FC<CotizadorTotalsSummaryProps> = Rea
           onChange={e => setNotas(e.target.value)}
           placeholder="Condiciones comerciales, especificaciones de entrega, etc."
         />
+      </div>
+
+      {/* Switch Global Modo de Cobro + Panel Rentabilidad Interna (SOLO EMPLEADOS) */}
+      <div
+        style={{
+          background: 'rgba(13, 19, 31, 0.85)',
+          border: '1px solid rgba(245, 158, 11, 0.35)',
+          borderRadius: '12px',
+          padding: '14px 16px',
+          margin: '16px 0 12px 0'
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginBottom: '10px' }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 800, color: '#fbbf24' }}>
+            <Lock size={13} />
+            CONTROLES INTERNOS DE RENTABILIDAD (NO SE EXPORTA A CLIENTE)
+          </span>
+          {onCambiarModoMargenCotizacion && (
+            <div className="modo-margen-switch" style={{ maxWidth: '340px', width: '100%' }}>
+              <button
+                type="button"
+                className={modoMargenCotizacion === 'margen_bruto' ? 'active' : ''}
+                onClick={() => onCambiarModoMargenCotizacion('margen_bruto')}
+              >
+                <div>Margen Bruto</div>
+                {totalAlternoMargenBruto !== undefined && (
+                  <div className="tabular-nums" style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                    ${totalAlternoMargenBruto.toLocaleString('es-CO')}
+                  </div>
+                )}
+              </button>
+              <button
+                type="button"
+                className={modoMargenCotizacion === 'markup' ? 'active' : ''}
+                onClick={() => onCambiarModoMargenCotizacion('markup')}
+              >
+                <div>Markup</div>
+                {totalAlternoMarkup !== undefined && (
+                  <div className="tabular-nums" style={{ fontSize: '0.68rem', opacity: 0.85 }}>
+                    ${totalAlternoMarkup.toLocaleString('es-CO')}
+                  </div>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '8px' }}>
+          <div style={{ background: 'rgba(15, 23, 42, 0.7)', borderRadius: '8px', padding: '8px 10px' }}>
+            <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Costo Taller Total</div>
+            <div className="tabular-nums" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#f8fafc' }}>
+              ${costoTotalTaller.toLocaleString('es-CO')}
+            </div>
+          </div>
+          <div style={{ background: 'rgba(15, 23, 42, 0.7)', borderRadius: '8px', padding: '8px 10px' }}>
+            <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Venta Neta (sin IVA)</div>
+            <div className="tabular-nums" style={{ fontSize: '0.95rem', fontWeight: 800, color: '#38bdf8' }}>
+              ${subtotalConDescuento.toLocaleString('es-CO')}
+            </div>
+          </div>
+          <div style={{ background: utilidadNetaEstimada >= 0 ? 'rgba(16, 185, 129, 0.12)' : 'rgba(239, 68, 68, 0.15)', borderRadius: '8px', padding: '8px 10px' }}>
+            <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Utilidad Neta Real</div>
+            <div className="tabular-nums" style={{ fontSize: '0.95rem', fontWeight: 800, color: utilidadNetaEstimada >= 0 ? '#34d399' : '#f87171' }}>
+              {utilidadNetaEstimada >= 0 ? '+' : ''}${utilidadNetaEstimada.toLocaleString('es-CO')}
+            </div>
+          </div>
+          <div style={{ background: margenRealCotizacionPct < pisoMargenAlertaPct ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.12)', borderRadius: '8px', padding: '8px 10px' }}>
+            <div style={{ fontSize: '0.68rem', color: '#94a3b8' }}>Margen Real Venta</div>
+            <div className="tabular-nums" style={{ fontSize: '0.95rem', fontWeight: 800, color: margenRealCotizacionPct < pisoMargenAlertaPct ? '#f87171' : '#34d399' }}>
+              {margenRealCotizacionPct.toFixed(1)}%
+            </div>
+          </div>
+        </div>
+
+        {margenRealCotizacionPct < pisoMargenAlertaPct && (
+          <div style={{ marginTop: '8px', display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.75rem', color: '#fca5a5', fontWeight: 700 }}>
+            <AlertTriangle size={14} />
+            <span>
+              Alerta: El descuento o tarifas dejan el margen real ({margenRealCotizacionPct.toFixed(1)}%) por debajo del piso mínimo del taller ({pisoMargenAlertaPct}%).
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Desglose de Totales Financieros */}

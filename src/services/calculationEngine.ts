@@ -1,15 +1,26 @@
-import { 
-  Resina, 
+import {
+  Resina,
   Filamento,
-  Maquina, 
-  Insumo, 
-  Personal, 
-  ConfiguracionTaller, 
-  PiezaCotizada, 
-  MaquinaInvolucrada, 
+  Maquina,
+  Insumo,
+  Personal,
+  ConfiguracionTaller,
+  PiezaCotizada,
+  MaquinaInvolucrada,
   EnlaceReferenciaCompra,
-  TecnologiaFabricacion
+  TecnologiaFabricacion,
+  ModoMargen,
+  TipoObjetivoPrecio,
+  NivelComplejidad,
+  DesgloseApartado
 } from '../types';
+
+export const MULTIPLICADOR_COMPLEJIDAD: Record<NivelComplejidad, number> = {
+  simple: 1.0,
+  estandar: 1.25,
+  complejo: 1.6,
+  extremo: 2.2
+};
 
 export interface ParametrosPiezaInput {
   nombre_item: string;
@@ -30,6 +41,12 @@ export interface ParametrosPiezaInput {
   desgasteBoquillaCosto?: number;
   mermaPorcentajeFdm?: number;
   mermaPorcentajeResina?: number;
+
+  // Multicolor / AMS (FDM)
+  amsActivo?: boolean;
+  amsColores?: number;
+  amsPurgaPct?: number;
+  amsPurgaGramosManual?: number;
 
   // Parámetros Láser CO2
   materialLamina?: string;
@@ -85,12 +102,38 @@ export interface ParametrosPiezaInput {
   precioFijadoTarifa?: boolean;
   aplicaDescuentoVolumen?: boolean;
   descuentoVolumenPorcentaje?: number;
+
+  // Cotizador 2.0: Margen dual, prorrateo, riesgo, overhead y comisiones
+  modoMargen?: ModoMargen;
+  tipoObjetivoPrecio?: TipoObjetivoPrecio;
+  gananciaDeseadaCop?: number;
+  prorratearArchivo3D?: boolean;
+  prorratearDiseno3D?: boolean;
+  tasaFalloPct?: number;
+  nivelComplejidad?: NivelComplejidad;
+  gastosFijosMensuales?: number;
+  horasFacturablesMes?: number;
+  consumiblesSlaPorImpresion?: number;
+  comisionPasarelaPct?: number;
+  costoEnvio?: number;
 }
 
 export interface DesgloseTarifaMaquina {
   costoMinutoEnergia: number;
   costoMinutoRepuestos: number;
+  costoMinutoDepreciacion: number;
   costoMinutoTotal: number;
+}
+
+export interface ResultadoPrecioUnificado {
+  precioActivo: number;
+  precioMargenBruto: number;
+  precioMarkup: number;
+  precioGananciaFija: number;
+  costoComision: number;
+  utilidadNeta: number;
+  margenRealSobreVenta: number;
+  factorMultiplicadorCobro: number;
 }
 
 /**
@@ -119,7 +162,6 @@ export function calcularCostoInsumoItem(
   }
 
   const cant = Math.max(0, Number(valorEntrada !== undefined ? valorEntrada : cantidad) || 0);
-  // Si el usuario ingresa un decimal menor a 1 (ej. 0.2 de cinta), calcula esa fracción sobre el total del rollo/empaque
   const costo = (cant > 0 && cant < 1)
     ? cant * costoTotalEmpaque
     : cant * costoUnitario;
@@ -134,22 +176,18 @@ export function calcularCostoInsumoItem(
 
 /**
  * Resuelve y desglosa con exactitud el costo por minuto de una máquina:
- * 1. Costo por minuto de energía eléctrica = (consumo_kwh * tarifa_kwh) / 60
- * 2. Costo por minuto de repuestos y amortización de desgaste = suma de repuestos activos (costo / vida_útil_min)
- * 3. Tarifa total por minuto = energía + repuestos (respetando tarifas históricas si no hay desglose cargado)
+ * 1. Energía eléctrica = (consumo_kwh * tarifa_kwh) / 60
+ * 2. Repuestos activos = suma de (costo_compra / (vida_util_horas * 60))
+ * 3. Depreciación / amortización = ((precio_compra / vida_util_horas) + (mantenimiento_mensual / 100)) / 60
  */
 export function resolverTarifasMaquina(maquina: Maquina, tarifaKwhConfig?: number): DesgloseTarifaMaquina {
   const tarifaKwh = (tarifaKwhConfig && tarifaKwhConfig > 0) ? tarifaKwhConfig : 834.0;
-  
-  // Consumo eléctrico en kW
   const consumoKwh = (typeof maquina.consumo_kwh === 'number' && maquina.consumo_kwh > 0)
     ? maquina.consumo_kwh
     : 0.05;
 
-  // Costo minuto de energía
   const costoMinutoEnergia = (consumoKwh * tarifaKwh) / 60;
 
-  // Costo minuto de repuestos y desgaste
   let costoMinutoRepuestos = 0;
   if (Array.isArray(maquina.repuestos) && maquina.repuestos.length > 0) {
     costoMinutoRepuestos = maquina.repuestos
@@ -165,18 +203,200 @@ export function resolverTarifasMaquina(maquina: Maquina, tarifaKwhConfig?: numbe
     costoMinutoRepuestos = maquina.costo_minuto_repuestos;
   }
 
-  // Costo total por minuto
-  let costoMinutoTotal = costoMinutoEnergia + costoMinutoRepuestos;
-  // Solo si no hay repuestos configurados y existe una tarifa plana previa se usa como fallback
-  if (costoMinutoRepuestos === 0 && (!Array.isArray(maquina.repuestos) || maquina.repuestos.length === 0) && typeof maquina.costo_minuto === 'number' && maquina.costo_minuto > 0) {
+  const precioCompra = Number(maquina.precio_compra) || 0;
+  const vidaHoras = (Number(maquina.vida_util_horas) || 0) > 0 ? Number(maquina.vida_util_horas) : 4000;
+  const mantMensual = Number(maquina.mantenimiento_mensual) || 0;
+  const costoHoraDep = (precioCompra > 0 ? precioCompra / vidaHoras : 0) + (mantMensual > 0 ? mantMensual / 100 : 0);
+  const costoMinutoDepreciacion = costoHoraDep / 60;
+
+  let costoMinutoTotal = costoMinutoEnergia + costoMinutoRepuestos + costoMinutoDepreciacion;
+  if (
+    costoMinutoRepuestos === 0 &&
+    costoMinutoDepreciacion === 0 &&
+    (!Array.isArray(maquina.repuestos) || maquina.repuestos.length === 0) &&
+    typeof maquina.costo_minuto === 'number' &&
+    maquina.costo_minuto > 0
+  ) {
     costoMinutoTotal = maquina.costo_minuto;
   }
 
   return {
     costoMinutoEnergia: Number(costoMinutoEnergia.toFixed(4)),
     costoMinutoRepuestos: Number(costoMinutoRepuestos.toFixed(4)),
+    costoMinutoDepreciacion: Number(costoMinutoDepreciacion.toFixed(4)),
     costoMinutoTotal: Number(costoMinutoTotal.toFixed(4))
   };
+}
+
+/**
+ * Calcula simultáneamente Margen Bruto sobre venta, Markup sobre costo y Ganancia Fija deseada,
+ * con protección estricta contra división por cero / precios negativos.
+ */
+export function calcularPrecioVentaUnificado(params: {
+  costoBase: number;
+  margen: number;
+  modoMargen?: ModoMargen;
+  tipoObjetivoPrecio?: TipoObjetivoPrecio;
+  gananciaDeseadaCop?: number;
+  comisionPct?: number;
+}): ResultadoPrecioUnificado {
+  const costo = Math.max(0, Number(params.costoBase) || 0);
+  const comision = Math.min(0.85, Math.max(0, (Number(params.comisionPct) || 0) / 100));
+  const denomCom = Math.max(0.10, 1 - comision);
+
+  const mBruto = Math.min(0.90, Math.max(0, Number(params.margen) || 0));
+  const denomBruto = Math.max(0.05, 1 - mBruto - comision);
+  const precioMargenBruto = costo > 0 ? Math.ceil((costo / denomBruto) / 100) * 100 : 0;
+
+  const mMarkup = Math.max(0, Number(params.margen) || 0);
+  const precioMarkup = costo > 0 ? Math.round(((costo * (1 + mMarkup)) / denomCom) / 100) * 100 : 0;
+
+  const gananciaFija = Math.max(0, Number(params.gananciaDeseadaCop) || 0);
+  const precioGananciaFija = (costo > 0 || gananciaFija > 0)
+    ? Math.ceil(((costo + gananciaFija) / denomCom) / 100) * 100
+    : 0;
+
+  const modo = params.modoMargen || 'margen_bruto';
+  let precioActivo = modo === 'markup' ? precioMarkup : precioMargenBruto;
+  if (params.tipoObjetivoPrecio === 'ganancia_fija') {
+    precioActivo = precioGananciaFija;
+  }
+
+  const costoComision = Math.round(precioActivo * comision);
+  const utilidadNeta = Math.round(precioActivo - costo - costoComision);
+  const margenRealSobreVenta = precioActivo > 0 ? Number(((utilidadNeta / precioActivo) * 100).toFixed(1)) : 0;
+  const factorMultiplicadorCobro = costo > 0 ? precioActivo / costo : 1;
+
+  return {
+    precioActivo,
+    precioMargenBruto,
+    precioMarkup,
+    precioGananciaFija,
+    costoComision,
+    utilidadNeta,
+    margenRealSobreVenta,
+    factorMultiplicadorCobro
+  };
+}
+
+interface ApartadoRaw {
+  clave: string;
+  etiqueta: string;
+  costoUnitario: number;
+  esProrrateado?: boolean;
+  color: string;
+  detalle?: string;
+}
+
+function construirDesgloseApartados(
+  apartadosRaw: ApartadoRaw[],
+  cantidad: number,
+  precioUnitarioBase: number,
+  costoComision: number
+): DesgloseApartado[] {
+  const cant = Math.max(1, cantidad || 1);
+  const activos = apartadosRaw
+    .map(a => ({ ...a, costoUnitario: Math.max(0, Math.round(a.costoUnitario)) }))
+    .filter(a => a.costoUnitario > 0);
+
+  const sumaCostos = activos.reduce((s, a) => s + a.costoUnitario, 0);
+  const precioDisponibleSinComision = Math.max(0, precioUnitarioBase - costoComision);
+  const factor = sumaCostos > 0 ? precioDisponibleSinComision / sumaCostos : 1;
+
+  const resultado: DesgloseApartado[] = activos.map(a => {
+    const cobroUnitario = Math.round(a.costoUnitario * factor);
+    const utilidadUnitaria = cobroUnitario - a.costoUnitario;
+    return {
+      clave: a.clave,
+      etiqueta: a.etiqueta,
+      costoUnitario: a.costoUnitario,
+      cobroUnitario,
+      utilidadUnitaria,
+      costoLote: a.costoUnitario * cant,
+      cobroLote: cobroUnitario * cant,
+      esProrrateado: a.esProrrateado,
+      color: a.color,
+      detalle: a.detalle
+    };
+  });
+
+  if (costoComision > 0) {
+    resultado.push({
+      clave: 'comision',
+      etiqueta: 'Comisión Pasarela / Canal',
+      costoUnitario: costoComision,
+      cobroUnitario: costoComision,
+      utilidadUnitaria: 0,
+      costoLote: costoComision * cant,
+      cobroLote: costoComision * cant,
+      esProrrateado: false,
+      color: '#ec4899',
+      detalle: 'Cargo financiero pasarela/marketplace'
+    });
+  }
+
+  // Ajustar delta mínimo de redondeo en el apartado principal para cuadre exacto contra precioUnitarioBase
+  if (resultado.length > 0 && precioUnitarioBase > 0) {
+    const sumaCobros = resultado.reduce((s, r) => s + r.cobroUnitario, 0);
+    const diff = precioUnitarioBase - sumaCobros;
+    if (diff !== 0) {
+      const idxMayor = resultado.reduce((bestIdx, item, idx, arr) =>
+        item.clave !== 'comision' && item.costoUnitario > arr[bestIdx].costoUnitario ? idx : bestIdx, 0);
+      resultado[idxMayor].cobroUnitario = Math.max(0, resultado[idxMayor].cobroUnitario + diff);
+      resultado[idxMayor].utilidadUnitaria = resultado[idxMayor].cobroUnitario - resultado[idxMayor].costoUnitario;
+      resultado[idxMayor].cobroLote = resultado[idxMayor].cobroUnitario * cant;
+    }
+  }
+
+  return resultado;
+}
+
+function resolverTarifasPersonal(personal: Personal[]) {
+  const tarifaDev = personal.find(p => {
+    const r = (p.rol || (p as any).cargo || '').toLowerCase();
+    return r.includes('desarroll') || r.includes('diseñ') || r.includes('model');
+  })?.costo_minuto || 166.67;
+
+  const tarifaPintor = personal.find(p => {
+    const r = (p.rol || (p as any).cargo || '').toLowerCase();
+    return r.includes('pint') || r.includes('acabad') || r.includes('armad');
+  })?.costo_minuto || 166.67;
+
+  const tarifaOperario = personal[0]?.costo_minuto || tarifaPintor || 166.67;
+
+  return { tarifaDev, tarifaPintor, tarifaOperario };
+}
+
+function calcularDescuentoVolumen(
+  precioUnitarioBase: number,
+  cantidad: number,
+  aplicaDescuentoVolumen?: boolean,
+  descuentoVolumenPorcentaje?: number
+) {
+  let precioUnitario = precioUnitarioBase;
+  let descVolumenPct = 0;
+  let descVolumenMonto = 0;
+  const aplicaVolumen = aplicaDescuentoVolumen !== false;
+
+  if (aplicaVolumen) {
+    if (descuentoVolumenPorcentaje !== undefined && descuentoVolumenPorcentaje > 0) {
+      descVolumenPct = descuentoVolumenPorcentaje;
+    } else if (cantidad >= 24) {
+      descVolumenPct = 20;
+    } else if (cantidad >= 12) {
+      descVolumenPct = 15;
+    } else if (cantidad >= 6) {
+      descVolumenPct = 10;
+    }
+
+    if (descVolumenPct > 0) {
+      descVolumenMonto = Math.round((precioUnitarioBase * (descVolumenPct / 100)) / 100) * 100;
+      precioUnitario = Math.max(0, precioUnitarioBase - descVolumenMonto);
+    }
+  }
+
+  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+  return { aplicaVolumen, descVolumenPct, descVolumenMonto, precioUnitario, precioTotal };
 }
 
 export function calcularPieza3D(
@@ -185,25 +405,21 @@ export function calcularPieza3D(
   config: ConfiguracionTaller
 ): PiezaCotizada {
   const esParcial = Boolean(input.datosPendientes);
+  const cantidad = Math.max(1, Number(input.cantidad) || 1);
+  const nivelComplejidad: NivelComplejidad = input.nivelComplejidad || 'simple';
+  const multComplejidad = MULTIPLICADOR_COMPLEJIDAD[nivelComplejidad] || 1.0;
 
   // 1. Geometría y Peso
   const alto = esParcial ? (input.alto_mm || 0) : Math.max(0, input.alto_mm || 0);
   const ancho = esParcial ? (input.ancho_mm || 0) : Math.max(0, input.ancho_mm || 0);
   const prof = esParcial ? (input.profundidad_mm || 0) : Math.max(0, input.profundidad_mm || 0);
-  
-  // Volumen de la pieza en cm3 (ml): (Alto mm * Ancho mm * Profundidad mm) / 1000
-  // Fórmula exacta verificada de WJGEEKS.xlsx celda AN2: = (L2 * K2 * J2) / 1000
   const volumen_cm3 = (alto * ancho * prof) / 1000;
-  
-  // Si los datos están pendientes, peso de resina es 0 o manual si fue estimado
+
   let peso_estimado_g = 0;
   if (!esParcial) {
     if (input.modoCalculoResina === 'manual' && input.pesoResinaManualG && input.pesoResinaManualG > 0) {
       peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
     } else {
-      // Modo volumen geométrico:
-      // Fórmula oficial WJGEEKS.xlsx celda AO2: =AN2*Densidad (100% Sólido / Macizo por defecto).
-      // Si el usuario especifica estructura ahuecada (ej. 35% o personalizado), se aplica dicho ratio.
       const ratioRelleno = input.tipoEstructura === 'ahuecado'
         ? ((input.porcentajeRelleno && input.porcentajeRelleno > 0) ? input.porcentajeRelleno / 100 : 0.35)
         : 1.0;
@@ -213,50 +429,57 @@ export function calcularPieza3D(
     peso_estimado_g = Number(input.pesoResinaManualG.toFixed(2));
   }
 
-  // 2. Proceso 1: Impresión 3D Principal (Desglose Dinámico Energía + Repuestos)
+  // 2. Proceso 1: Impresión 3D Principal (Energía + Repuestos + Depreciación)
   const vel = input.resina.velocidad_impresion_mm_h > 0 ? input.resina.velocidad_impresion_mm_h : 20;
   const tiempo_impresion_calc = (esParcial && alto === 0) ? 0 : Math.round((alto / vel) * 60);
   const tiempo_impresion_min = (input.tiempoImpresionManualMin !== undefined && input.tiempoImpresionManualMin > 0)
     ? input.tiempoImpresionManualMin
     : tiempo_impresion_calc;
-  
+
   const impresoraTarifas = resolverTarifasMaquina(input.impresora, config.tarifa_kwh);
   const costo_energia_impresion = tiempo_impresion_min * impresoraTarifas.costoMinutoEnergia;
   const costo_repuestos_impresion = tiempo_impresion_min * impresoraTarifas.costoMinutoRepuestos;
+  const costo_dep_impresion = tiempo_impresion_min * impresoraTarifas.costoMinutoDepreciacion;
 
-  // 3. Proceso 2: Curado Térmico / UV y Químico (Wash & Cure)
+  // 3. Proceso 2: Lavado y Curado UV
   const requiereCurado = input.requiereCurado !== false;
   let tiempo_curado_min = 0;
   let costo_energia_curado = 0;
   let costo_repuestos_curado = 0;
+  let costo_dep_curado = 0;
   let costo_quimico_curado = 0;
-  let curadoTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoTotal: 0 };
+  let curadoTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoDepreciacion: 0, costoMinutoTotal: 0 };
 
   if (requiereCurado) {
     tiempo_curado_min = (input.tiempoCuradoMin !== undefined && input.tiempoCuradoMin >= 0)
       ? input.tiempoCuradoMin
       : (peso_estimado_g >= 250 ? 15 : peso_estimado_g <= 50 ? 5 : 10);
-    
+
     if (input.estacionCurado) {
       curadoTarifas = resolverTarifasMaquina(input.estacionCurado, config.tarifa_kwh);
     } else {
-      curadoTarifas = { costoMinutoEnergia: (0.36 * (config.tarifa_kwh || 834)) / 60, costoMinutoRepuestos: 0, costoMinutoTotal: (0.36 * (config.tarifa_kwh || 834)) / 60 };
+      const eMin = (0.36 * (config.tarifa_kwh || 834)) / 60;
+      curadoTarifas = { costoMinutoEnergia: eMin, costoMinutoRepuestos: 0, costoMinutoDepreciacion: 0, costoMinutoTotal: eMin };
     }
 
     costo_energia_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * curadoTarifas.costoMinutoEnergia;
     costo_repuestos_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * curadoTarifas.costoMinutoRepuestos;
-    
-    // Insumo curado (etanol ~ 10.27 COP por gramo de pieza lavada)
+    costo_dep_curado = (esParcial && peso_estimado_g === 0) ? 0 : tiempo_curado_min * curadoTarifas.costoMinutoDepreciacion;
+
     const costo_unitario_insumo_curado = input.insumoCurado ? input.insumoCurado.costo_unitario : 10.27;
     costo_quimico_curado = peso_estimado_g * costo_unitario_insumo_curado;
   }
-  const costo_curado = costo_energia_curado + costo_repuestos_curado + costo_quimico_curado;
+  const costoConsumiblesSlaExtra = (requiereCurado && !esParcial)
+    ? Math.max(0, Number(input.consumiblesSlaPorImpresion ?? 0))
+    : 0;
+  const costo_curado_solo = Math.round(costo_energia_curado + costo_repuestos_curado + costo_dep_curado + costo_quimico_curado + costoConsumiblesSlaExtra);
 
-  // 4. Proceso 3: Pintura y Acabado / Aerografía (Compresor de Pintura)
+  // 4. Proceso 3: Compresor de Pintura
   let tiempo_compresor_min = 0;
   let costo_energia_compresor = 0;
   let costo_repuestos_compresor = 0;
-  let compresorTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoTotal: 0 };
+  let costo_dep_compresor = 0;
+  let compresorTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoDepreciacion: 0, costoMinutoTotal: 0 };
 
   if (input.requiereCompresorPintura && input.maquinaPintura) {
     tiempo_compresor_min = (input.tiempoCompresorMin !== undefined && input.tiempoCompresorMin >= 0)
@@ -265,11 +488,13 @@ export function calcularPieza3D(
     compresorTarifas = resolverTarifasMaquina(input.maquinaPintura, config.tarifa_kwh);
     costo_energia_compresor = tiempo_compresor_min * compresorTarifas.costoMinutoEnergia;
     costo_repuestos_compresor = tiempo_compresor_min * compresorTarifas.costoMinutoRepuestos;
+    costo_dep_compresor = tiempo_compresor_min * compresorTarifas.costoMinutoDepreciacion;
   }
 
-  // 5. Procesos 4: Máquinas Adicionales Dinámicas (FDM, Láser, Dremel, Hornos, etc.)
+  // 5. Máquinas Adicionales Dinámicas
   let costo_energia_adicionales = 0;
   let costo_repuestos_adicionales = 0;
+  let costo_dep_adicionales = 0;
   const maquinasAdicionalesList: MaquinaInvolucrada[] = [];
   if (input.maquinasAdicionales && input.maquinasAdicionales.length > 0) {
     for (const item of input.maquinasAdicionales) {
@@ -277,12 +502,14 @@ export function calcularPieza3D(
         const adicTarifas = resolverTarifasMaquina(item.maquina, config.tarifa_kwh);
         const costo_maq_energia = item.tiempo_min * adicTarifas.costoMinutoEnergia;
         const costo_maq_repuestos = item.tiempo_min * adicTarifas.costoMinutoRepuestos;
+        const costo_maq_dep = item.tiempo_min * adicTarifas.costoMinutoDepreciacion;
         costo_energia_adicionales += costo_maq_energia;
         costo_repuestos_adicionales += costo_maq_repuestos;
+        costo_dep_adicionales += costo_maq_dep;
 
         const procesoSanitizado = (item.proceso || '').trim();
-        const esVisibleCliente = Boolean(item.mostrar_en_cliente) && 
-          procesoSanitizado !== '' && 
+        const esVisibleCliente = Boolean(item.mostrar_en_cliente) &&
+          procesoSanitizado !== '' &&
           !procesoSanitizado.toLowerCase().includes('proceso adicional') &&
           !procesoSanitizado.toLowerCase().includes('proceso extra');
 
@@ -301,23 +528,23 @@ export function calcularPieza3D(
     }
   }
 
-  // Costo Total de Energía Eléctrica Consolidada
   const costo_energia_total = Math.round(
-    costo_energia_impresion +
-    costo_energia_curado +
-    costo_energia_compresor +
-    costo_energia_adicionales
+    costo_energia_impresion + costo_energia_curado + costo_energia_compresor + costo_energia_adicionales
   );
-
-  // Costo Total de Desgaste y Repuestos de Maquinaria Consolidado
   const costo_repuestos_total = Math.round(
-    costo_repuestos_impresion +
-    costo_repuestos_curado +
-    costo_repuestos_compresor +
-    costo_repuestos_adicionales
+    costo_repuestos_impresion + costo_repuestos_curado + costo_repuestos_compresor + costo_repuestos_adicionales
+  );
+  const costo_depreciacion_maquina = Math.round(
+    costo_dep_impresion + costo_dep_curado + costo_dep_compresor + costo_dep_adicionales
   );
 
-  // Lista detallada de todas las máquinas y procesos involucrados
+  // Separar costo máquina principal + extras (sin duplicar el curado en desglose_apartados)
+  const costoMaquinaImpresionYExtras = Math.round(
+    costo_energia_impresion + costo_repuestos_impresion + costo_dep_impresion +
+    costo_energia_compresor + costo_repuestos_compresor + costo_dep_compresor +
+    costo_energia_adicionales + costo_repuestos_adicionales + costo_dep_adicionales
+  );
+
   const maquinas_involucradas: MaquinaInvolucrada[] = [
     {
       maquina_id: input.impresora.id,
@@ -356,10 +583,9 @@ export function calcularPieza3D(
       costo_repuestos: Math.round(costo_repuestos_compresor)
     });
   }
-
   maquinas_involucradas.push(...maquinasAdicionalesList);
 
-  // 6. Costo de Resina con factor de merma y soportes
+  // 6. Costo de Resina con factor de merma
   let costo_resina = 0;
   const costoGramoResina = input.resina.costo_gramo || (input.resina.precio_compra ? input.resina.precio_compra / 1000 : 135);
   if (peso_estimado_g > 0) {
@@ -371,10 +597,14 @@ export function calcularPieza3D(
     } else {
       factorMerma = config.margen_merma_resina || 1.40;
     }
-    costo_resina = peso_estimado_g * costoGramoResina * factorMerma;
+    costo_resina = Math.round(peso_estimado_g * costoGramoResina * factorMerma);
   }
 
-  // 7. Insumos Adicionales (Accesorios, cintas, porcionados, bisutería, empaque, pinturas - Uso Interno Taller)
+  // 7. Insumos Adicionales (100% por figura: herrajes, pinturas y empaques)
+  const va_pintado = typeof input.vaPintadoManual === 'boolean'
+    ? input.vaPintadoManual
+    : (input.tiempoPinturaMin > 0 || input.pinturas.length > 0 || Boolean(input.requiereCompresorPintura));
+
   const accesoriosCalculados = input.accesorios.map(item => {
     const calc = calcularCostoInsumoItem(item.insumo, item.cantidad, item.modo_consumo, item.valor_entrada);
     return {
@@ -388,7 +618,7 @@ export function calcularPieza3D(
   });
   const costoAccesorios = accesoriosCalculados.reduce((acc, item) => acc + item.costo, 0);
 
-  const pinturasCalculadas = input.pinturas.map(p => ({
+  const pinturasCalculadas = (va_pintado ? input.pinturas : []).map(p => ({
     insumo_id: p.insumo.id,
     nombre: p.insumo.nombre,
     cantidad_ml: p.cantidad_ml,
@@ -408,65 +638,107 @@ export function calcularPieza3D(
   const costoEmpaques = empaquesCalculados.reduce((acc, item) => acc + item.costo, 0);
   const costo_insumos = costoAccesorios + costoPinturas + costoEmpaques;
 
-  // 8. Tarifas de Mano de Obra (Personal)
-  const tarifaDev = personal.find(p => (p.rol || (p as any).cargo || '').toLowerCase().includes('desarrollador'))?.costo_minuto || 166.67;
-  const tarifaPintor = personal.find(p => (p.rol || (p as any).cargo || '').toLowerCase().includes('pintor'))?.costo_minuto || 166.67;
+  // 8. Mano de Obra (Diseño 3D prorrateable en lote; Armado y Pintura 100% por figura)
+  const { tarifaDev, tarifaPintor } = resolverTarifasPersonal(personal);
+  const prorratearDiseno = input.prorratearDiseno3D !== false;
+  const valorDesarrolloTotal = (input.tiempoDesarrolloMin || 0) * tarifaDev * multComplejidad;
+  const costo_diseno_unitario = Math.round(prorratearDiseno ? (valorDesarrolloTotal / cantidad) : valorDesarrolloTotal);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaPintor * multComplejidad);
+  const costo_pintura_mo_unitario = Math.round(va_pintado ? (input.tiempoPinturaMin || 0) * tarifaPintor : 0);
+  const costo_mano_obra = costo_diseno_unitario + costo_armado_unitario + costo_pintura_mo_unitario;
 
-  const valorDesarrollo = input.tiempoDesarrolloMin * tarifaDev;
-  const valorArmado = input.tiempoArmadoMin * tarifaPintor;
-  const valorPintura = input.tiempoPinturaMin * tarifaPintor;
-  const costo_mano_obra = valorDesarrollo + valorArmado + valorPintura;
+  // 9. Archivo 3D Comprado (prorrateado por defecto entre N figuras) & Envío unitario
+  const prorratearArchivo = input.prorratearArchivo3D !== false;
+  const costoModeloUnitario = Math.round(
+    prorratearArchivo ? ((input.costoModeloComprado || 0) / cantidad) : (input.costoModeloComprado || 0)
+  );
+  const costoEnvioUnitario = Math.max(0, Math.round(Number(input.costoEnvio) || 0));
 
-  // 9. Costo Base de Producción (Incluye Energía + Fondo de Repuestos/Desgaste + Materiales + Personal)
-  const costo_base_produccion = 
-    costo_energia_total +
-    costo_repuestos_total +
+  // 10. Gastos Fijos (Overhead) y Tasa de Fallo / Riesgo
+  const overheadPorHora = (input.gastosFijosMensuales && input.gastosFijosMensuales > 0)
+    ? (input.gastosFijosMensuales / Math.max(1, input.horasFacturablesMes || 160))
+    : 0;
+  const costo_gastos_fijos = Math.round(overheadPorHora * (tiempo_impresion_min / 60));
+
+  const subtotalAntesRiesgo =
     costo_resina +
-    costo_quimico_curado +
-    costo_insumos +
+    costoMaquinaImpresionYExtras +
+    costo_curado_solo +
     costo_mano_obra +
-    (input.costoModeloComprado || 0);
+    costoAccesorios +
+    costoPinturas +
+    costoEmpaques +
+    costoModeloUnitario +
+    costoEnvioUnitario +
+    costo_gastos_fijos;
 
-  // 10. Precio de Venta (Redondeado a centenas COP exactas con MROUND)
-  let precio_unitario_base: number;
+  const tasaFalloPct = Math.min(80, Math.max(0, (Number(input.tasaFalloPct) || 0) * multComplejidad));
+  const factorFallo = tasaFalloPct > 0 ? (tasaFalloPct / 100) / (1 - tasaFalloPct / 100) : 0;
+  const costo_riesgo_fallo = Math.round(subtotalAntesRiesgo * factorFallo);
+
+  const costo_base_produccion = Math.round(subtotalAntesRiesgo + costo_riesgo_fallo);
+
+  // 11. Precio de Venta Dual (Margen Bruto vs Markup vs Ganancia Fija + Tarifa Fijada)
+  const modoMargen: ModoMargen = input.modoMargen || 'margen_bruto';
+  const tipoObjetivoPrecio: TipoObjetivoPrecio = input.tipoObjetivoPrecio || 'porcentaje';
+
+  const resPrecio = calcularPrecioVentaUnificado({
+    costoBase: costo_base_produccion,
+    margen: input.margenGanancia,
+    modoMargen,
+    tipoObjetivoPrecio,
+    gananciaDeseadaCop: input.gananciaDeseadaCop,
+    comisionPct: input.comisionPasarelaPct
+  });
+
+  let precio_unitario_base = resPrecio.precioActivo;
   let margen_calculado = input.margenGanancia;
 
   if (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0) {
     precio_unitario_base = Math.round(input.precioUnitarioManual / 100) * 100;
     if (costo_base_produccion > 0) {
-      margen_calculado = (precio_unitario_base - costo_base_produccion) / costo_base_produccion;
-    }
-  } else {
-    const precio_unitario_raw = costo_base_produccion * (1 + input.margenGanancia);
-    precio_unitario_base = Math.round(precio_unitario_raw / 100) * 100;
-  }
-
-  // Descuento por Cantidad / Volumen (Escala 6+ unidades)
-  let precio_unitario = precio_unitario_base;
-  let descVolumenPct = 0;
-  let descVolumenMonto = 0;
-  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
-
-  if (aplicaVolumen) {
-    if (input.descuentoVolumenPorcentaje !== undefined && input.descuentoVolumenPorcentaje > 0) {
-      descVolumenPct = input.descuentoVolumenPorcentaje;
-    } else if (input.cantidad >= 24) {
-      descVolumenPct = 20;
-    } else if (input.cantidad >= 12) {
-      descVolumenPct = 15;
-    } else if (input.cantidad >= 6) {
-      descVolumenPct = 10;
-    }
-
-    if (descVolumenPct > 0) {
-      descVolumenMonto = Math.round((precio_unitario_base * (descVolumenPct / 100)) / 100) * 100;
-      precio_unitario = Math.max(0, precio_unitario_base - descVolumenMonto);
+      margen_calculado = modoMargen === 'markup'
+        ? (precio_unitario_base - costo_base_produccion) / costo_base_produccion
+        : (precio_unitario_base - costo_base_produccion) / precio_unitario_base;
     }
   }
 
-  const precio_total = Math.ceil((precio_unitario * input.cantidad) / 100) * 100;
+  const comisionPct = Math.min(85, Math.max(0, Number(input.comisionPasarelaPct) || 0));
+  const costo_comision_pasarela = Math.round(precio_unitario_base * (comisionPct / 100));
+  const utilidad_neta_unitaria = Math.round(precio_unitario_base - costo_base_produccion - costo_comision_pasarela);
 
-  // 11. Tiempo Estimado de Entrega de Taller
+  const desglose_apartados = construirDesgloseApartados(
+    [
+      { clave: 'material', etiqueta: 'Resina & Merma', costoUnitario: costo_resina, color: '#38bdf8', detalle: `${peso_estimado_g} g` },
+      { clave: 'maquina', etiqueta: 'Impresora, Energía & Desgaste', costoUnitario: costoMaquinaImpresionYExtras, color: '#f59e0b', detalle: `${tiempo_impresion_min} min` },
+      { clave: 'curado', etiqueta: 'Lavado, Curado UV & Consumibles', costoUnitario: costo_curado_solo, color: '#06b6d4', detalle: requiereCurado ? `${tiempo_curado_min} min + IPA/PPE` : 'No aplica' },
+      { clave: 'mano_obra', etiqueta: 'Mano de Obra (Diseño/Armado/Pintura)', costoUnitario: costo_mano_obra, esProrrateado: prorratearDiseno && input.tiempoDesarrolloMin > 0, color: '#10b981' },
+      { clave: 'pinturas', etiqueta: 'Pinturas & Acabados', costoUnitario: costoPinturas, color: '#a855f7' },
+      { clave: 'herrajes', etiqueta: 'Herrajes & Insumos (por figura)', costoUnitario: costoAccesorios, color: '#6366f1' },
+      { clave: 'empaques', etiqueta: 'Empaques & Cajas (por figura)', costoUnitario: costoEmpaques, color: '#14b8a6' },
+      { clave: 'archivo_envio', etiqueta: 'Archivo 3D & Envío', costoUnitario: costoModeloUnitario + costoEnvioUnitario, esProrrateado: prorratearArchivo && (input.costoModeloComprado || 0) > 0, color: '#64748b' },
+      { clave: 'riesgo_overhead', etiqueta: 'Riesgo de Fallo & Gastos Fijos', costoUnitario: costo_riesgo_fallo + costo_gastos_fijos, color: '#ef4444', detalle: `${tasaFalloPct.toFixed(1)}% riesgo` }
+    ],
+    cantidad,
+    precio_unitario_base,
+    costo_comision_pasarela
+  );
+
+  // Descuento por Cantidad / Volumen
+  const vol = calcularDescuentoVolumen(
+    precio_unitario_base,
+    cantidad,
+    input.aplicaDescuentoVolumen,
+    input.descuentoVolumenPorcentaje
+  );
+
+  const precioDespuesDescSinComision = vol.precioUnitario;
+  const utilidadNetaFinalUnit = Math.round(precioDespuesDescSinComision - costo_base_produccion - Math.round(precioDespuesDescSinComision * (comisionPct / 100)));
+  const margen_real_venta_pct = precioDespuesDescSinComision > 0
+    ? Number(((utilidadNetaFinalUnit / precioDespuesDescSinComision) * 100).toFixed(1))
+    : 0;
+
+  // 12. Tiempo Estimado de Entrega
   const tiempoTotalFabricacion = tiempo_curado_min + tiempo_impresion_min + input.tiempoPinturaMin + input.tiempoArmadoMin;
   let tiempo_entrega = '(3) Días hábiles';
   if (tiempoTotalFabricacion > 600) {
@@ -474,11 +746,6 @@ export function calcularPieza3D(
   } else if (tiempoTotalFabricacion > 300) {
     tiempo_entrega = '(7) Días hábiles';
   }
-
-  // 12. Descripción Técnica Detallada
-  const va_pintado = typeof input.vaPintadoManual === 'boolean'
-    ? input.vaPintadoManual
-    : (input.tiempoPinturaMin > 0 || input.pinturas.length > 0 || Boolean(input.requiereCompresorPintura));
 
   const tiene_empaque = Boolean(empaquesCalculados.length > 0);
   const lista_empaques = empaquesCalculados;
@@ -496,10 +763,9 @@ export function calcularPieza3D(
     ? `Empaque: Con empaque (${lista_empaques.map(e => e.nombre).join(', ')})`
     : tiene_empaque ? 'Empaque: Con empaque' : 'Empaque: Sin empaque especial';
 
-  // Procesos visibles para el cliente (nunca 'Proceso Adicional' ni pasos internos de impresión/curado)
-  const procesosCliente = maquinas_involucradas.filter(m => 
-    Boolean(m.mostrar_en_cliente) && 
-    m.proceso && 
+  const procesosCliente = maquinas_involucradas.filter(m =>
+    Boolean(m.mostrar_en_cliente) &&
+    m.proceso &&
     m.proceso.trim() !== '' &&
     !m.proceso.toLowerCase().includes('proceso adicional') &&
     !m.proceso.toLowerCase().includes('proceso extra') &&
@@ -516,7 +782,7 @@ export function calcularPieza3D(
   return {
     id: `item-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
     nombre_item: input.nombre_item,
-    cantidad: input.cantidad,
+    cantidad,
     alto_mm: alto,
     ancho_mm: ancho,
     profundidad_mm: prof,
@@ -532,19 +798,19 @@ export function calcularPieza3D(
     tiempo_pintura_min: input.tiempoPinturaMin,
     costo_energia: costo_energia_total,
     costo_repuestos_maquina: costo_repuestos_total,
-    costo_resina: Math.round(costo_resina),
-    costo_curado: Math.round(costo_curado),
-    costo_insumos: Math.round(costo_insumos),
-    costo_mano_obra: Math.round(costo_mano_obra),
-    costo_modelo_comprado: input.costoModeloComprado || 0,
-    costo_base_produccion: Math.round(costo_base_produccion),
+    costo_resina,
+    costo_curado: costo_curado_solo,
+    costo_insumos,
+    costo_mano_obra,
+    costo_modelo_comprado: costoModeloUnitario,
+    costo_base_produccion,
     margen_ganancia: margen_calculado,
-    precio_unitario,
-    precio_total,
-    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
-    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
-    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
-    precio_unitario_original: descVolumenPct > 0 ? precio_unitario_base : undefined,
+    precio_unitario: vol.precioUnitario,
+    precio_total: vol.precioTotal,
+    aplica_descuento_volumen: vol.aplicaVolumen && vol.descVolumenPct > 0,
+    descuento_volumen_porcentaje: vol.descVolumenPct > 0 ? vol.descVolumenPct : undefined,
+    descuento_volumen_monto: vol.descVolumenMonto > 0 ? vol.descVolumenMonto : undefined,
+    precio_unitario_original: vol.descVolumenPct > 0 ? precio_unitario_base : undefined,
     tarifa_tamano_aplicada: input.tarifaTamanoAplicada,
     precio_fijado_tarifa: input.precioFijadoTarifa,
     tiempo_entrega,
@@ -559,80 +825,202 @@ export function calcularPieza3D(
     notas_pendientes: input.notasPendientes,
     requiere_curado: requiereCurado,
     curado_maquina_id: input.estacionCurado?.id,
-    tiempo_curado_min: tiempo_curado_min,
+    tiempo_curado_min,
     tiempo_curado_personalizado: input.tiempoCuradoPersonalizado,
     requiere_compresor_pintura: input.requiereCompresorPintura,
     compresor_maquina_id: input.maquinaPintura?.id,
-    tiempo_compresor_min: tiempo_compresor_min,
+    tiempo_compresor_min,
     tiempo_compresor_sincronizado: input.tiempoCompresorSincronizado,
     tiempo_impresion_modo: input.tiempoImpresionModo || (input.tiempoImpresionManualMin !== undefined ? 'manual' : 'auto'),
     maquinas_involucradas,
     enlaces_compra: input.enlacesCompra && input.enlacesCompra.length > 0 ? input.enlacesCompra : undefined,
     va_pintado,
     tiene_empaque,
-    costo_empaque: Math.round(costoEmpaques),
+    costo_empaque: costoEmpaques,
     lista_empaques,
     tecnologia: 'SLA_RESINA',
     lista_pinturas: pinturasCalculadas,
-    lista_accesorios: accesoriosCalculados
+    lista_accesorios: accesoriosCalculados,
+    // Campos Cotizador 2.0
+    modo_margen: modoMargen,
+    tipo_objetivo_precio: tipoObjetivoPrecio,
+    ganancia_deseada_cop: input.gananciaDeseadaCop,
+    precio_con_margen_bruto: resPrecio.precioMargenBruto,
+    precio_con_markup: resPrecio.precioMarkup,
+    utilidad_neta_unitaria: utilidadNetaFinalUnit,
+    utilidad_neta_total: utilidadNetaFinalUnit * cantidad,
+    margen_real_venta_pct,
+    prorratear_archivo_3d: prorratearArchivo,
+    prorratear_diseno_3d: prorratearDiseno,
+    tasa_fallo_pct: tasaFalloPct,
+    costo_riesgo_fallo,
+    nivel_complejidad: nivelComplejidad,
+    costo_depreciacion_maquina,
+    costo_gastos_fijos,
+    costo_consumibles_sla_extra: costoConsumiblesSlaExtra,
+    costo_comision_pasarela,
+    comision_pasarela_pct: comisionPct,
+    costo_envio: costoEnvioUnitario,
+    desglose_apartados,
+    costo_diseno_unitario,
+    costo_armado_unitario,
+    costo_pintura_mo_unitario,
+    costo_herrajes_total: costoAccesorios,
+    costo_pinturas_total: costoPinturas
   };
 }
 
 /**
  * Motor de Cálculo para Impresión 3D FDM (Filamentos PLA, PETG, ABS, TPU, etc.)
- * Implementa el estándar industrial 3DPCC (Material + Merma + Energía + Desgaste + Mano de Obra)
+ * Paridad completa con SLA: compresor, máquinas extra, roles de personal, AMS, fallo, depreciación y margen dual.
  */
 export function calcularPiezaFDM(
   input: ParametrosPiezaInput,
   personal: Personal[],
   config: ConfiguracionTaller
 ): PiezaCotizada {
+  const esParcial = Boolean(input.datosPendientes);
   const tarifaKwh = config.tarifa_kwh || 834.0;
   const cantidad = Math.max(1, input.cantidad || 1);
-  const pesoGramos = Number(input.pesoFilamentoG) || 50;
+  const nivelComplejidad: NivelComplejidad = input.nivelComplejidad || 'simple';
+  const multComplejidad = MULTIPLICADOR_COMPLEJIDAD[nivelComplejidad] || 1.0;
 
-  // 1. Filamento y Merma Editable
+  const pesoBaseGramos = esParcial ? (Number(input.pesoFilamentoG) || 0) : (Number(input.pesoFilamentoG) || 50);
+
+  // 1. Filamento + Purga Multicolor AMS + Merma Editable
   const filamento = input.filamentoSeleccionado;
   const materialFilamento = filamento ? `${filamento.marca} ${filamento.tipo} (${filamento.color})` : (input.materialFilamento || 'PLA');
   const costoGramo = filamento?.costo_gramo || ((Number(input.costoRolloKg) || 85000) / 1000);
   const costoRolloKg = filamento ? (filamento.costo_gramo * 1000) : (Number(input.costoRolloKg) || 85000);
 
-  // Merma de seguridad (% editable, por defecto config o 5%)
+  let purgaAmsGramos = 0;
+  if (input.amsActivo && pesoBaseGramos > 0) {
+    if (input.amsPurgaGramosManual !== undefined && input.amsPurgaGramosManual > 0) {
+      purgaAmsGramos = Number(input.amsPurgaGramosManual);
+    } else {
+      const pctPurga = Number(input.amsPurgaPct ?? 45);
+      purgaAmsGramos = Number(((pesoBaseGramos * pctPurga) / 100).toFixed(2));
+    }
+  }
+  const pesoTotalMaterialG = Number((pesoBaseGramos + purgaAmsGramos).toFixed(2));
+
   const mermaPct = input.mermaPorcentajeFdm !== undefined
     ? input.mermaPorcentajeFdm
     : (config.margen_merma_fdm !== undefined ? config.margen_merma_fdm : 5);
   const factorMerma = 1 + (mermaPct / 100);
-
-  // Costo Material = Peso Slicer * Factor Merma * Costo Gramo
-  const costoFilamento = Math.round(pesoGramos * factorMerma * costoGramo);
+  const costoFilamento = Math.round(pesoTotalMaterialG * factorMerma * costoGramo);
 
   const tiempoMinutos = Number(input.tiempoFDMMin) || 180;
   const alto = Number(input.alto_mm) || 60;
   const ancho = Number(input.ancho_mm) || 60;
   const prof = Number(input.profundidad_mm) || 60;
 
-  // 2. Energía FDM (Tarifas dinámicas de máquina)
+  // 2. Energía + Desgaste + Depreciación (Impresora principal + Compresor + Máquinas Adicionales)
   const desgloseMaquina = resolverTarifasMaquina(input.impresora, tarifaKwh);
-  const costoEnergia = Math.round(tiempoMinutos * desgloseMaquina.costoMinutoEnergia);
+  const costoEnergiaPrincipal = tiempoMinutos * desgloseMaquina.costoMinutoEnergia;
+  const costoRepuestosPrincipal = desgloseMaquina.costoMinutoRepuestos > 0
+    ? tiempoMinutos * desgloseMaquina.costoMinutoRepuestos
+    : (Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 1.25));
+  const costoDepPrincipal = tiempoMinutos * desgloseMaquina.costoMinutoDepreciacion;
 
-  // 3. Desgaste y Repuestos (Amortización boquilla, PEI, lubricación)
-  const costoRepuestos = Math.round(
-    desgloseMaquina.costoMinutoRepuestos > 0
-      ? tiempoMinutos * desgloseMaquina.costoMinutoRepuestos
-      : (Number(input.desgasteBoquillaCosto) || (tiempoMinutos * 1.25))
-  );
+  let tiempo_compresor_min = 0;
+  let costoEnergiaCompresor = 0;
+  let costoRepuestosCompresor = 0;
+  let costoDepCompresor = 0;
+  let compresorTarifas: DesgloseTarifaMaquina = { costoMinutoEnergia: 0, costoMinutoRepuestos: 0, costoMinutoDepreciacion: 0, costoMinutoTotal: 0 };
 
-  // 4. Mano de obra operario (Slicing, cama, retiro soportes + pintura si aplica)
+  if (input.requiereCompresorPintura && input.maquinaPintura) {
+    tiempo_compresor_min = (input.tiempoCompresorMin !== undefined && input.tiempoCompresorMin >= 0)
+      ? input.tiempoCompresorMin
+      : input.tiempoPinturaMin;
+    compresorTarifas = resolverTarifasMaquina(input.maquinaPintura, tarifaKwh);
+    costoEnergiaCompresor = tiempo_compresor_min * compresorTarifas.costoMinutoEnergia;
+    costoRepuestosCompresor = tiempo_compresor_min * compresorTarifas.costoMinutoRepuestos;
+    costoDepCompresor = tiempo_compresor_min * compresorTarifas.costoMinutoDepreciacion;
+  }
+
+  let costoEnergiaAdicionales = 0;
+  let costoRepuestosAdicionales = 0;
+  let costoDepAdicionales = 0;
+  const maquinasAdicionalesList: MaquinaInvolucrada[] = [];
+
+  if (input.maquinasAdicionales && input.maquinasAdicionales.length > 0) {
+    for (const item of input.maquinasAdicionales) {
+      if (item.maquina && item.tiempo_min > 0) {
+        const adicTarifas = resolverTarifasMaquina(item.maquina, tarifaKwh);
+        const eAdic = item.tiempo_min * adicTarifas.costoMinutoEnergia;
+        const rAdic = item.tiempo_min * adicTarifas.costoMinutoRepuestos;
+        const dAdic = item.tiempo_min * adicTarifas.costoMinutoDepreciacion;
+        costoEnergiaAdicionales += eAdic;
+        costoRepuestosAdicionales += rAdic;
+        costoDepAdicionales += dAdic;
+
+        const procesoSanitizado = (item.proceso || '').trim();
+        const esVisibleCliente = Boolean(item.mostrar_en_cliente) &&
+          procesoSanitizado !== '' &&
+          !procesoSanitizado.toLowerCase().includes('proceso adicional') &&
+          !procesoSanitizado.toLowerCase().includes('proceso extra');
+
+        maquinasAdicionalesList.push({
+          maquina_id: item.maquina.id,
+          maquina_nombre: item.maquina.nombre,
+          tipo: item.maquina.tipo,
+          proceso: procesoSanitizado || item.maquina.nombre,
+          tiempo_min: item.tiempo_min,
+          costo_minuto: Number(adicTarifas.costoMinutoTotal.toFixed(4)),
+          costo_energia: Math.round(eAdic),
+          costo_repuestos: Math.round(rAdic),
+          mostrar_en_cliente: esVisibleCliente
+        });
+      }
+    }
+  }
+
+  const costoEnergia = Math.round(costoEnergiaPrincipal + costoEnergiaCompresor + costoEnergiaAdicionales);
+  const costoRepuestos = Math.round(costoRepuestosPrincipal + costoRepuestosCompresor + costoRepuestosAdicionales);
+  const costo_depreciacion_maquina = Math.round(costoDepPrincipal + costoDepCompresor + costoDepAdicionales);
+  const costoMaquinaTotal = costoEnergia + costoRepuestos + costo_depreciacion_maquina;
+
+  const maquinas_involucradas: MaquinaInvolucrada[] = [
+    {
+      maquina_id: input.impresora?.id || 'maq-fdm',
+      maquina_nombre: input.impresora?.nombre || 'Impresora FDM',
+      tipo: input.impresora?.tipo || 'Impresora 3D FDM',
+      proceso: 'Impresión 3D FDM',
+      tiempo_min: tiempoMinutos,
+      costo_minuto: Number(desgloseMaquina.costoMinutoTotal.toFixed(4)),
+      costo_energia: Math.round(costoEnergiaPrincipal),
+      costo_repuestos: Math.round(costoRepuestosPrincipal)
+    }
+  ];
+  if (input.requiereCompresorPintura && input.maquinaPintura) {
+    maquinas_involucradas.push({
+      maquina_id: input.maquinaPintura.id,
+      maquina_nombre: input.maquinaPintura.nombre,
+      tipo: input.maquinaPintura.tipo,
+      proceso: 'Pintura y Aerografía',
+      tiempo_min: tiempo_compresor_min,
+      costo_minuto: Number(compresorTarifas.costoMinutoTotal.toFixed(4)),
+      costo_energia: Math.round(costoEnergiaCompresor),
+      costo_repuestos: Math.round(costoRepuestosCompresor)
+    });
+  }
+  maquinas_involucradas.push(...maquinasAdicionalesList);
+
+  // 3. Mano de obra con roles diferenciados (Desarrollador prorrateado en lote + Pintor/Armado unitario)
   const va_pintado = typeof input.vaPintadoManual === 'boolean'
     ? input.vaPintadoManual
-    : (input.tiempoPinturaMin > 0 || (input.pinturas && input.pinturas.length > 0));
-  const tiempoPinturaMin = va_pintado ? (input.tiempoPinturaMin || 0) : 0;
-  const operador = personal[0];
-  const costoMinutoOperario = operador?.costo_minuto || 130.21;
-  const tiempoOperario = (input.tiempoDesarrolloMin || 0) + (input.tiempoArmadoMin || 0) + tiempoPinturaMin;
-  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+    : (input.tiempoPinturaMin > 0 || (input.pinturas && input.pinturas.length > 0) || Boolean(input.requiereCompresorPintura));
 
-  // 5. Insumos, Pinturas y Empaques (con soporte de fracción decimal y porcentaje)
+  const { tarifaDev, tarifaPintor } = resolverTarifasPersonal(personal);
+  const prorratearDiseno = input.prorratearDiseno3D !== false;
+  const valorDesarrolloTotal = (input.tiempoDesarrolloMin || 0) * tarifaDev * multComplejidad;
+  const costo_diseno_unitario = Math.round(prorratearDiseno ? (valorDesarrolloTotal / cantidad) : valorDesarrolloTotal);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 0) * tarifaPintor * multComplejidad);
+  const costo_pintura_mo_unitario = Math.round(va_pintado ? (input.tiempoPinturaMin || 0) * tarifaPintor : 0);
+  const costoManoObra = costo_diseno_unitario + costo_armado_unitario + costo_pintura_mo_unitario;
+
+  // 4. Insumos, Pinturas y Empaques (100% por figura)
   const accesoriosCalculados = (input.accesorios || []).map(a => {
     const calc = calcularCostoInsumoItem(a.insumo, a.cantidad, a.modo_consumo, a.valor_entrada);
     return {
@@ -665,33 +1053,93 @@ export function calcularPiezaFDM(
   });
   const costoEmpaques = empaquesCalculados.reduce((acc, item) => acc + item.costo, 0);
 
-  // 6. Costo Base de Producción Industrial (3DPCC)
-  const costoBaseProduccion = costoFilamento + costoEnergia + costoRepuestos + costoManoObra + costoEmpaques + costoAccesorios + costoPinturas + (input.costoModeloComprado || 0);
+  // 5. Archivo 3D (prorrateado), Envío, Overhead y Riesgo de Fallo
+  const prorratearArchivo = input.prorratearArchivo3D !== false;
+  const costoModeloUnitario = Math.round(
+    prorratearArchivo ? ((input.costoModeloComprado || 0) / cantidad) : (input.costoModeloComprado || 0)
+  );
+  const costoEnvioUnitario = Math.max(0, Math.round(Number(input.costoEnvio) || 0));
 
-  // 7. Margen de ganancia
-  const margen = Number(input.margenGanancia) || 0.40;
-  let precioUnitarioBase: number;
+  const overheadPorHora = (input.gastosFijosMensuales && input.gastosFijosMensuales > 0)
+    ? (input.gastosFijosMensuales / Math.max(1, input.horasFacturablesMes || 160))
+    : 0;
+  const costo_gastos_fijos = Math.round(overheadPorHora * (tiempoMinutos / 60));
+
+  const subtotalAntesRiesgo =
+    costoFilamento +
+    costoMaquinaTotal +
+    costoManoObra +
+    costoAccesorios +
+    costoPinturas +
+    costoEmpaques +
+    costoModeloUnitario +
+    costoEnvioUnitario +
+    costo_gastos_fijos;
+
+  const tasaFalloPct = Math.min(80, Math.max(0, (Number(input.tasaFalloPct) || 0) * multComplejidad));
+  const factorFallo = tasaFalloPct > 0 ? (tasaFalloPct / 100) / (1 - tasaFalloPct / 100) : 0;
+  const costo_riesgo_fallo = Math.round(subtotalAntesRiesgo * factorFallo);
+
+  const costoBaseProduccion = Math.round(subtotalAntesRiesgo + costo_riesgo_fallo);
+
+  // 6. Precio Dual (Margen Bruto vs Markup vs Ganancia Fija)
+  const modoMargen: ModoMargen = input.modoMargen || 'margen_bruto';
+  const tipoObjetivoPrecio: TipoObjetivoPrecio = input.tipoObjetivoPrecio || 'porcentaje';
+  const margenInput = Number(input.margenGanancia) || 0.40;
+
+  const resPrecio = calcularPrecioVentaUnificado({
+    costoBase: costoBaseProduccion,
+    margen: margenInput,
+    modoMargen,
+    tipoObjetivoPrecio,
+    gananciaDeseadaCop: input.gananciaDeseadaCop,
+    comisionPct: input.comisionPasarelaPct
+  });
+
+  let precioUnitarioBase = resPrecio.precioActivo;
+  let margenCalculado = margenInput;
   if (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0) {
     precioUnitarioBase = Math.round(input.precioUnitarioManual / 100) * 100;
-  } else {
-    precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
+    if (costoBaseProduccion > 0) {
+      margenCalculado = modoMargen === 'markup'
+        ? (precioUnitarioBase - costoBaseProduccion) / costoBaseProduccion
+        : (precioUnitarioBase - costoBaseProduccion) / precioUnitarioBase;
+    }
   }
 
-  // 8. Escala de Descuento por Volumen (6+ = 10%, 12+ = 15%, 24+ = 20%)
-  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
-  let descVolumenPct = 0;
-  if (aplicaVolumen) {
-    if (input.descuentoVolumenPorcentaje !== undefined) {
-      descVolumenPct = input.descuentoVolumenPorcentaje;
-    } else if (cantidad >= 24) descVolumenPct = 20;
-    else if (cantidad >= 12) descVolumenPct = 15;
-    else if (cantidad >= 6) descVolumenPct = 10;
-  }
-  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
-  const precioUnitario = precioUnitarioBase - descVolumenMonto;
-  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+  const comisionPct = Math.min(85, Math.max(0, Number(input.comisionPasarelaPct) || 0));
+  const costo_comision_pasarela = Math.round(precioUnitarioBase * (comisionPct / 100));
 
-  const descTecnica = `Tecnología: Impresión 3D FDM • Material: Filamento ${materialFilamento}\nPeso: ${pesoGramos}g (+${mermaPct}% merma) • Medidas: ${alto}x${ancho}x${prof}mm\nTiempo est.: ${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}m • Máquina: ${input.impresora?.nombre || 'Bambulab P1S'}`;
+  const desglose_apartados = construirDesgloseApartados(
+    [
+      { clave: 'material', etiqueta: input.amsActivo ? 'Filamento + Purga AMS & Merma' : 'Filamento & Merma', costoUnitario: costoFilamento, color: '#38bdf8', detalle: `${pesoTotalMaterialG} g total` },
+      { clave: 'maquina', etiqueta: 'Impresora FDM, Energía & Desgaste', costoUnitario: costoMaquinaTotal, color: '#f59e0b', detalle: `${tiempoMinutos} min` },
+      { clave: 'mano_obra', etiqueta: 'Mano de Obra (Diseño/Armado/Pintura)', costoUnitario: costoManoObra, esProrrateado: prorratearDiseno && (input.tiempoDesarrolloMin || 0) > 0, color: '#10b981' },
+      { clave: 'pinturas', etiqueta: 'Pinturas & Acabados', costoUnitario: costoPinturas, color: '#a855f7' },
+      { clave: 'herrajes', etiqueta: 'Herrajes & Insumos (por figura)', costoUnitario: costoAccesorios, color: '#6366f1' },
+      { clave: 'empaques', etiqueta: 'Empaques & Cajas (por figura)', costoUnitario: costoEmpaques, color: '#14b8a6' },
+      { clave: 'archivo_envio', etiqueta: 'Archivo 3D & Envío', costoUnitario: costoModeloUnitario + costoEnvioUnitario, esProrrateado: prorratearArchivo && (input.costoModeloComprado || 0) > 0, color: '#64748b' },
+      { clave: 'riesgo_overhead', etiqueta: 'Riesgo de Fallo & Gastos Fijos', costoUnitario: costo_riesgo_fallo + costo_gastos_fijos, color: '#ef4444', detalle: `${tasaFalloPct.toFixed(1)}% riesgo` }
+    ],
+    cantidad,
+    precioUnitarioBase,
+    costo_comision_pasarela
+  );
+
+  const vol = calcularDescuentoVolumen(
+    precioUnitarioBase,
+    cantidad,
+    input.aplicaDescuentoVolumen,
+    input.descuentoVolumenPorcentaje
+  );
+
+  const utilidadNetaFinalUnit = Math.round(vol.precioUnitario - costoBaseProduccion - Math.round(vol.precioUnitario * (comisionPct / 100)));
+  const margen_real_venta_pct = vol.precioUnitario > 0
+    ? Number(((utilidadNetaFinalUnit / vol.precioUnitario) * 100).toFixed(1))
+    : 0;
+
+  const amsNota = input.amsActivo ? ` • Multicolor AMS (${input.amsColores || 4} colores, +${purgaAmsGramos}g purga)` : '';
+  const descTecnica = `Tecnología: Impresión 3D FDM • Material: Filamento ${materialFilamento}${amsNota}\nPeso: ${pesoTotalMaterialG}g (+${mermaPct}% merma) • Medidas: ${alto}x${ancho}x${prof}mm\nTiempo est.: ${Math.floor(tiempoMinutos / 60)}h ${tiempoMinutos % 60}m • Máquina: ${input.impresora?.nombre || 'Bambulab P1S'}`;
 
   return {
     id: `fdm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
@@ -701,7 +1149,7 @@ export function calcularPiezaFDM(
     ancho_mm: ancho,
     profundidad_mm: prof,
     volumen_cm3: Number(((ancho * prof * alto) / 1000).toFixed(2)),
-    peso_estimado_g: pesoGramos,
+    peso_estimado_g: pesoTotalMaterialG,
     tecnologia: 'FDM_FILAMENTO',
     material_filamento: materialFilamento,
     filamento_id: filamento?.id,
@@ -709,7 +1157,7 @@ export function calcularPiezaFDM(
     filamento_marca: filamento?.marca,
     filamento_color: filamento?.color,
     merma_porcentaje: mermaPct,
-    peso_filamento_g: pesoGramos,
+    peso_filamento_g: pesoBaseGramos,
     costo_filamento_kg: costoRolloKg,
     desgaste_boquilla_costo: costoRepuestos,
     resina_id: filamento?.id || 'fdm-filamento',
@@ -719,28 +1167,33 @@ export function calcularPiezaFDM(
     tiempo_impresion_min: tiempoMinutos,
     tiempo_desarrollo_min: input.tiempoDesarrolloMin || 0,
     tiempo_armado_min: input.tiempoArmadoMin || 0,
-    tiempo_pintura_min: tiempoPinturaMin,
+    tiempo_pintura_min: va_pintado ? (input.tiempoPinturaMin || 0) : 0,
+    requiere_compresor_pintura: input.requiereCompresorPintura,
+    compresor_maquina_id: input.maquinaPintura?.id,
+    tiempo_compresor_min,
+    tiempo_compresor_sincronizado: input.tiempoCompresorSincronizado,
+    maquinas_involucradas,
     costo_energia: costoEnergia,
     costo_repuestos_maquina: costoRepuestos,
     costo_resina: costoFilamento,
     costo_curado: 0,
     costo_insumos: costoAccesorios + costoPinturas + costoEmpaques,
     costo_mano_obra: costoManoObra,
-    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_modelo_comprado: costoModeloUnitario,
     costo_base_produccion: costoBaseProduccion,
-    margen_ganancia: margen,
-    precio_unitario: precioUnitario,
-    precio_total: precioTotal,
-    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
-    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
-    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
-    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    margen_ganancia: margenCalculado,
+    precio_unitario: vol.precioUnitario,
+    precio_total: vol.precioTotal,
+    aplica_descuento_volumen: vol.aplicaVolumen && vol.descVolumenPct > 0,
+    descuento_volumen_porcentaje: vol.descVolumenPct > 0 ? vol.descVolumenPct : undefined,
+    descuento_volumen_monto: vol.descVolumenMonto > 0 ? vol.descVolumenMonto : undefined,
+    precio_unitario_original: vol.descVolumenPct > 0 ? precioUnitarioBase : undefined,
     tarifa_tamano_aplicada: input.tarifaTamanoAplicada,
     precio_fijado_tarifa: input.precioFijadoTarifa,
     tiempo_entrega: tiempoMinutos > 360 ? '(2 a 3) Días hábiles' : '(1 a 2) Días hábiles',
     descripcion_tecnica: descTecnica,
     imagen_url: input.imagen_url,
-    datos_pendientes: Boolean(input.datosPendientes),
+    datos_pendientes: esParcial,
     notas_pendientes: input.notasPendientes,
     enlaces_compra: input.enlacesCompra && input.enlacesCompra.length > 0 ? input.enlacesCompra : undefined,
     va_pintado,
@@ -748,7 +1201,36 @@ export function calcularPiezaFDM(
     costo_empaque: costoEmpaques,
     lista_empaques: empaquesCalculados,
     lista_pinturas: pinturasCalculadas,
-    lista_accesorios: accesoriosCalculados
+    lista_accesorios: accesoriosCalculados,
+    // Campos Cotizador 2.0
+    modo_margen: modoMargen,
+    tipo_objetivo_precio: tipoObjetivoPrecio,
+    ganancia_deseada_cop: input.gananciaDeseadaCop,
+    precio_con_margen_bruto: resPrecio.precioMargenBruto,
+    precio_con_markup: resPrecio.precioMarkup,
+    utilidad_neta_unitaria: utilidadNetaFinalUnit,
+    utilidad_neta_total: utilidadNetaFinalUnit * cantidad,
+    margen_real_venta_pct,
+    prorratear_archivo_3d: prorratearArchivo,
+    prorratear_diseno_3d: prorratearDiseno,
+    tasa_fallo_pct: tasaFalloPct,
+    costo_riesgo_fallo,
+    nivel_complejidad: nivelComplejidad,
+    costo_depreciacion_maquina,
+    costo_gastos_fijos,
+    costo_comision_pasarela,
+    comision_pasarela_pct: comisionPct,
+    costo_envio: costoEnvioUnitario,
+    ams_activo: Boolean(input.amsActivo),
+    ams_colores: input.amsActivo ? (input.amsColores || 4) : undefined,
+    ams_purga_pct: input.amsActivo ? (input.amsPurgaPct ?? 45) : undefined,
+    ams_purga_gramos: input.amsActivo ? purgaAmsGramos : undefined,
+    desglose_apartados,
+    costo_diseno_unitario,
+    costo_armado_unitario,
+    costo_pintura_mo_unitario,
+    costo_herrajes_total: costoAccesorios,
+    costo_pinturas_total: costoPinturas
   };
 }
 
@@ -766,50 +1248,83 @@ export function calcularPiezaLaser(
   const altoMm = Number(input.altoLaminaMm || input.alto_mm) || 100;
   const espesorMm = Number(input.espesorLaminaMm) || 3;
   const materialLamina = input.materialLamina || 'Acrílico Cristal 3mm';
-  const costoM2 = Number(input.costoMetroCuadradoLamina) || 95000; // COP/m2
+  const costoM2 = Number(input.costoMetroCuadradoLamina) || 95000;
   const tiempoLaserMin = Number(input.tiempoLaserMin) || 15;
   const proceso = input.tipoProcesoLaser || 'corte';
 
-  // 1. Costo Material de Lámina (área en cm2 convertida a m2 con 15% desperdicio corte)
   const areaCm2 = (anchoMm * altoMm) / 100;
   const areaM2 = (areaCm2 / 10000) * 1.15;
   const costoMaterial = Math.round(areaM2 * costoM2);
 
-  // 2. Energía Láser (Láser CO2 80W-100W consume ~1.2 kW con chiller, extractor y compresor)
   const potenciaKw = 1.2;
   const costoEnergia = Math.round((potenciaKw * (tiempoLaserMin / 60)) * tarifaKwh);
+  const costoDesgasteTubo = Math.round(tiempoLaserMin * 12);
 
-  // 3. Amortización del Tubo Láser CO2 ($1.800.000 COP / 2500 horas = ~$720 COP/hora)
-  const costoTuboMinuto = 12; // ~$720 COP / 60 min
-  const costoDesgasteTubo = Math.round(tiempoLaserMin * costoTuboMinuto);
+  const { tarifaDev, tarifaOperario } = resolverTarifasPersonal(personal);
+  const prorratearDiseno = input.prorratearDiseno3D !== false;
+  const devTotal = (input.tiempoDesarrolloMin || 10) * tarifaDev;
+  const costo_diseno_unitario = Math.round(prorratearDiseno ? devTotal / cantidad : devTotal);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 5) * tarifaOperario);
+  const costoManoObra = costo_diseno_unitario + costo_armado_unitario;
 
-  // 4. Mano de Obra (Vectorizado, preparación de cama y desprendimiento)
-  const operador = personal[0];
-  const costoMinutoOperario = operador?.costo_minuto || 130.21;
-  const tiempoOperario = (input.tiempoDesarrolloMin || 10) + (input.tiempoArmadoMin || 5);
-  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+  const empaquesCalculados = (input.empaques || []).map(e => {
+    const calc = calcularCostoInsumoItem(e.insumo, e.cantidad, 'unidad', e.cantidad);
+    return { insumo_id: e.insumo.id, nombre: e.insumo.nombre, cantidad: calc.cantidadEquivalente, costo: calc.costo };
+  });
+  const costoEmpaques = empaquesCalculados.reduce((acc, e) => acc + e.costo, 0);
 
-  // 5. Costo Base de Producción
-  const costoEmpaques = (input.empaques || []).reduce((acc, e) => acc + (e.insumo.costo_unitario * e.cantidad), 0);
-  const costoBaseProduccion = costoMaterial + costoEnergia + costoDesgasteTubo + costoManoObra + costoEmpaques + (input.costoModeloComprado || 0);
+  const accesoriosCalculados = (input.accesorios || []).map(a => {
+    const calc = calcularCostoInsumoItem(a.insumo, a.cantidad, a.modo_consumo, a.valor_entrada);
+    return { insumo_id: a.insumo.id, nombre: a.insumo.nombre, cantidad: calc.cantidadEquivalente, modo_consumo: calc.modo, valor_entrada: calc.valor, costo: calc.costo };
+  });
+  const costoAccesorios = accesoriosCalculados.reduce((acc, a) => acc + a.costo, 0);
 
-  // 6. Margen de ganancia
+  const prorratearArchivo = input.prorratearArchivo3D !== false;
+  const costoModeloUnitario = Math.round(prorratearArchivo ? ((input.costoModeloComprado || 0) / cantidad) : (input.costoModeloComprado || 0));
+  const costoEnvioUnitario = Math.max(0, Math.round(Number(input.costoEnvio) || 0));
+
+  const subtotalAntesRiesgo = costoMaterial + costoEnergia + costoDesgasteTubo + costoManoObra + costoEmpaques + costoAccesorios + costoModeloUnitario + costoEnvioUnitario;
+  const tasaFalloPct = Math.min(80, Math.max(0, Number(input.tasaFalloPct) || 0));
+  const costo_riesgo_fallo = tasaFalloPct > 0 ? Math.round(subtotalAntesRiesgo * ((tasaFalloPct / 100) / (1 - tasaFalloPct / 100))) : 0;
+  const costoBaseProduccion = subtotalAntesRiesgo + costo_riesgo_fallo;
+
+  const modoMargen: ModoMargen = input.modoMargen || 'margen_bruto';
+  const tipoObjetivoPrecio: TipoObjetivoPrecio = input.tipoObjetivoPrecio || 'porcentaje';
   const margen = Number(input.margenGanancia) || 0.45;
-  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
 
-  // 7. Descuento por Volumen
-  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
-  let descVolumenPct = 0;
-  if (aplicaVolumen) {
-    if (input.descuentoVolumenPorcentaje !== undefined) {
-      descVolumenPct = input.descuentoVolumenPorcentaje;
-    } else if (cantidad >= 24) descVolumenPct = 20;
-    else if (cantidad >= 12) descVolumenPct = 15;
-    else if (cantidad >= 6) descVolumenPct = 10;
-  }
-  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
-  const precioUnitario = precioUnitarioBase - descVolumenMonto;
-  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+  const resPrecio = calcularPrecioVentaUnificado({
+    costoBase: costoBaseProduccion,
+    margen,
+    modoMargen,
+    tipoObjetivoPrecio,
+    gananciaDeseadaCop: input.gananciaDeseadaCop,
+    comisionPct: input.comisionPasarelaPct
+  });
+  const precioUnitarioBase = (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0)
+    ? Math.round(input.precioUnitarioManual / 100) * 100
+    : resPrecio.precioActivo;
+
+  const comisionPct = Math.min(85, Math.max(0, Number(input.comisionPasarelaPct) || 0));
+  const costo_comision_pasarela = Math.round(precioUnitarioBase * (comisionPct / 100));
+
+  const desglose_apartados = construirDesgloseApartados(
+    [
+      { clave: 'material', etiqueta: 'Lámina & Merma Corte', costoUnitario: costoMaterial, color: '#38bdf8' },
+      { clave: 'maquina', etiqueta: 'Láser CO₂, Energía & Tubo', costoUnitario: costoEnergia + costoDesgasteTubo, color: '#f59e0b' },
+      { clave: 'mano_obra', etiqueta: 'Mano de Obra', costoUnitario: costoManoObra, esProrrateado: prorratearDiseno, color: '#10b981' },
+      { clave: 'herrajes', etiqueta: 'Herrajes & Insumos', costoUnitario: costoAccesorios, color: '#6366f1' },
+      { clave: 'empaques', etiqueta: 'Empaques', costoUnitario: costoEmpaques, color: '#14b8a6' },
+      { clave: 'archivo_envio', etiqueta: 'Vector / Archivo & Envío', costoUnitario: costoModeloUnitario + costoEnvioUnitario, esProrrateado: prorratearArchivo, color: '#64748b' },
+      { clave: 'riesgo_overhead', etiqueta: 'Riesgo de Fallo', costoUnitario: costo_riesgo_fallo, color: '#ef4444' }
+    ],
+    cantidad,
+    precioUnitarioBase,
+    costo_comision_pasarela
+  );
+
+  const vol = calcularDescuentoVolumen(precioUnitarioBase, cantidad, input.aplicaDescuentoVolumen, input.descuentoVolumenPorcentaje);
+  const utilidadNetaFinalUnit = Math.round(vol.precioUnitario - costoBaseProduccion - Math.round(vol.precioUnitario * (comisionPct / 100)));
+  const margen_real_venta_pct = vol.precioUnitario > 0 ? Number(((utilidadNetaFinalUnit / vol.precioUnitario) * 100).toFixed(1)) : 0;
 
   const descTecnica = `Corte Láser CO₂: ${materialLamina} (${espesorMm}mm)\nDimensiones: ${anchoMm}x${altoMm}mm (${areaCm2.toFixed(1)} cm²)\nProceso: ${proceso.toUpperCase()} • Tiempo láser: ${tiempoLaserMin} min`;
 
@@ -821,7 +1336,7 @@ export function calcularPiezaLaser(
     ancho_mm: anchoMm,
     profundidad_mm: espesorMm,
     volumen_cm3: Number(((anchoMm * altoMm * espesorMm) / 1000).toFixed(2)),
-    peso_estimado_g: Math.round(areaCm2 * espesorMm * 0.12), // Densidad aprox acrílico/mdf
+    peso_estimado_g: Math.round(areaCm2 * espesorMm * 0.12),
     tecnologia: 'CORTE_LASER',
     material_lamina: materialLamina,
     espesor_lamina_mm: espesorMm,
@@ -841,25 +1356,46 @@ export function calcularPiezaLaser(
     costo_repuestos_maquina: costoDesgasteTubo,
     costo_resina: costoMaterial,
     costo_curado: 0,
-    costo_insumos: 0,
+    costo_insumos: costoAccesorios + costoEmpaques,
     costo_mano_obra: costoManoObra,
-    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_modelo_comprado: costoModeloUnitario,
     costo_base_produccion: costoBaseProduccion,
     margen_ganancia: margen,
-    precio_unitario: precioUnitario,
-    precio_total: precioTotal,
-    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
-    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
-    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
-    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    precio_unitario: vol.precioUnitario,
+    precio_total: vol.precioTotal,
+    aplica_descuento_volumen: vol.aplicaVolumen && vol.descVolumenPct > 0,
+    descuento_volumen_porcentaje: vol.descVolumenPct > 0 ? vol.descVolumenPct : undefined,
+    descuento_volumen_monto: vol.descVolumenMonto > 0 ? vol.descVolumenMonto : undefined,
+    precio_unitario_original: vol.descVolumenPct > 0 ? precioUnitarioBase : undefined,
     tiempo_entrega: '(1 a 2) Días hábiles',
     descripcion_tecnica: descTecnica,
     imagen_url: input.imagen_url,
-    tiene_empaque: (input.empaques || []).length > 0,
+    tiene_empaque: empaquesCalculados.length > 0,
     costo_empaque: costoEmpaques,
-    lista_empaques: (input.empaques || []).map(e => ({ nombre: e.insumo.nombre, cantidad: e.cantidad, costo: e.insumo.costo_unitario * e.cantidad })),
+    lista_empaques: empaquesCalculados,
     lista_pinturas: [],
-    lista_accesorios: []
+    lista_accesorios: accesoriosCalculados,
+    modo_margen: modoMargen,
+    tipo_objetivo_precio: tipoObjetivoPrecio,
+    ganancia_deseada_cop: input.gananciaDeseadaCop,
+    precio_con_margen_bruto: resPrecio.precioMargenBruto,
+    precio_con_markup: resPrecio.precioMarkup,
+    utilidad_neta_unitaria: utilidadNetaFinalUnit,
+    utilidad_neta_total: utilidadNetaFinalUnit * cantidad,
+    margen_real_venta_pct,
+    prorratear_archivo_3d: prorratearArchivo,
+    prorratear_diseno_3d: prorratearDiseno,
+    tasa_fallo_pct: tasaFalloPct,
+    costo_riesgo_fallo,
+    costo_comision_pasarela,
+    comision_pasarela_pct: comisionPct,
+    costo_envio: costoEnvioUnitario,
+    desglose_apartados,
+    costo_diseno_unitario,
+    costo_armado_unitario,
+    costo_pintura_mo_unitario: 0,
+    costo_herrajes_total: costoAccesorios,
+    costo_pinturas_total: 0
   };
 }
 
@@ -880,31 +1416,61 @@ export function calcularPiezaCNC(
   const costoMaterial = Number(input.costoBloqueMaterial) || 35000;
   const tiempoMecanizadoMin = Number(input.tiempoMecanizadoMin) || 45;
 
-  const potenciaKw = 1.5; // Spindle CNC + motores
+  const potenciaKw = 1.5;
   const costoEnergia = Math.round((potenciaKw * (tiempoMecanizadoMin / 60)) * tarifaKwh);
   const costoDesgasteFresa = Math.round(Number(input.desgasteFresaCosto) || (tiempoMecanizadoMin * 15));
 
-  const operador = personal[0];
-  const costoMinutoOperario = operador?.costo_minuto || 130.21;
-  const tiempoOperario = (input.tiempoDesarrolloMin || 15) + (input.tiempoArmadoMin || 10);
-  const costoManoObra = Math.round(tiempoOperario * costoMinutoOperario);
+  const { tarifaDev, tarifaOperario } = resolverTarifasPersonal(personal);
+  const prorratearDiseno = input.prorratearDiseno3D !== false;
+  const devTotal = (input.tiempoDesarrolloMin || 15) * tarifaDev;
+  const costo_diseno_unitario = Math.round(prorratearDiseno ? devTotal / cantidad : devTotal);
+  const costo_armado_unitario = Math.round((input.tiempoArmadoMin || 10) * tarifaOperario);
+  const costoManoObra = costo_diseno_unitario + costo_armado_unitario;
 
-  const costoBaseProduccion = costoMaterial + costoEnergia + costoDesgasteFresa + costoManoObra + (input.costoModeloComprado || 0);
+  const prorratearArchivo = input.prorratearArchivo3D !== false;
+  const costoModeloUnitario = Math.round(prorratearArchivo ? ((input.costoModeloComprado || 0) / cantidad) : (input.costoModeloComprado || 0));
+  const costoEnvioUnitario = Math.max(0, Math.round(Number(input.costoEnvio) || 0));
+
+  const subtotalAntesRiesgo = costoMaterial + costoEnergia + costoDesgasteFresa + costoManoObra + costoModeloUnitario + costoEnvioUnitario;
+  const tasaFalloPct = Math.min(80, Math.max(0, Number(input.tasaFalloPct) || 0));
+  const costo_riesgo_fallo = tasaFalloPct > 0 ? Math.round(subtotalAntesRiesgo * ((tasaFalloPct / 100) / (1 - tasaFalloPct / 100))) : 0;
+  const costoBaseProduccion = subtotalAntesRiesgo + costo_riesgo_fallo;
+
+  const modoMargen: ModoMargen = input.modoMargen || 'margen_bruto';
+  const tipoObjetivoPrecio: TipoObjetivoPrecio = input.tipoObjetivoPrecio || 'porcentaje';
   const margen = Number(input.margenGanancia) || 0.40;
-  const precioUnitarioBase = Math.ceil((costoBaseProduccion / (1 - margen)) / 100) * 100;
 
-  const aplicaVolumen = input.aplicaDescuentoVolumen !== false;
-  let descVolumenPct = 0;
-  if (aplicaVolumen) {
-    if (input.descuentoVolumenPorcentaje !== undefined) {
-      descVolumenPct = input.descuentoVolumenPorcentaje;
-    } else if (cantidad >= 24) descVolumenPct = 20;
-    else if (cantidad >= 12) descVolumenPct = 15;
-    else if (cantidad >= 6) descVolumenPct = 10;
-  }
-  const descVolumenMonto = Math.round(precioUnitarioBase * (descVolumenPct / 100));
-  const precioUnitario = precioUnitarioBase - descVolumenMonto;
-  const precioTotal = Math.ceil((precioUnitario * cantidad) / 100) * 100;
+  const resPrecio = calcularPrecioVentaUnificado({
+    costoBase: costoBaseProduccion,
+    margen,
+    modoMargen,
+    tipoObjetivoPrecio,
+    gananciaDeseadaCop: input.gananciaDeseadaCop,
+    comisionPct: input.comisionPasarelaPct
+  });
+  const precioUnitarioBase = (input.precioFijadoTarifa && input.precioUnitarioManual && input.precioUnitarioManual > 0)
+    ? Math.round(input.precioUnitarioManual / 100) * 100
+    : resPrecio.precioActivo;
+
+  const comisionPct = Math.min(85, Math.max(0, Number(input.comisionPasarelaPct) || 0));
+  const costo_comision_pasarela = Math.round(precioUnitarioBase * (comisionPct / 100));
+
+  const desglose_apartados = construirDesgloseApartados(
+    [
+      { clave: 'material', etiqueta: 'Bloque Material CNC', costoUnitario: costoMaterial, color: '#38bdf8' },
+      { clave: 'maquina', etiqueta: 'Router CNC, Energía & Fresa', costoUnitario: costoEnergia + costoDesgasteFresa, color: '#f59e0b' },
+      { clave: 'mano_obra', etiqueta: 'Mano de Obra CAM/Acabado', costoUnitario: costoManoObra, esProrrateado: prorratearDiseno, color: '#10b981' },
+      { clave: 'archivo_envio', etiqueta: 'Archivo / Diseño & Envío', costoUnitario: costoModeloUnitario + costoEnvioUnitario, esProrrateado: prorratearArchivo, color: '#64748b' },
+      { clave: 'riesgo_overhead', etiqueta: 'Riesgo de Fallo', costoUnitario: costo_riesgo_fallo, color: '#ef4444' }
+    ],
+    cantidad,
+    precioUnitarioBase,
+    costo_comision_pasarela
+  );
+
+  const vol = calcularDescuentoVolumen(precioUnitarioBase, cantidad, input.aplicaDescuentoVolumen, input.descuentoVolumenPorcentaje);
+  const utilidadNetaFinalUnit = Math.round(vol.precioUnitario - costoBaseProduccion - Math.round(vol.precioUnitario * (comisionPct / 100)));
+  const margen_real_venta_pct = vol.precioUnitario > 0 ? Number(((utilidadNetaFinalUnit / vol.precioUnitario) * 100).toFixed(1)) : 0;
 
   const descTecnica = `Mecanizado Router CNC: ${materialBloque}\nMedidas: ${altoMm}x${anchoMm}x${profMm}mm • Tiempo: ${tiempoMecanizadoMin} min`;
 
@@ -935,15 +1501,15 @@ export function calcularPiezaCNC(
     costo_curado: 0,
     costo_insumos: 0,
     costo_mano_obra: costoManoObra,
-    costo_modelo_comprado: input.costoModeloComprado || 0,
+    costo_modelo_comprado: costoModeloUnitario,
     costo_base_produccion: costoBaseProduccion,
     margen_ganancia: margen,
-    precio_unitario: precioUnitario,
-    precio_total: precioTotal,
-    aplica_descuento_volumen: aplicaVolumen && descVolumenPct > 0,
-    descuento_volumen_porcentaje: descVolumenPct > 0 ? descVolumenPct : undefined,
-    descuento_volumen_monto: descVolumenMonto > 0 ? descVolumenMonto : undefined,
-    precio_unitario_original: descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    precio_unitario: vol.precioUnitario,
+    precio_total: vol.precioTotal,
+    aplica_descuento_volumen: vol.aplicaVolumen && vol.descVolumenPct > 0,
+    descuento_volumen_porcentaje: vol.descVolumenPct > 0 ? vol.descVolumenPct : undefined,
+    descuento_volumen_monto: vol.descVolumenMonto > 0 ? vol.descVolumenMonto : undefined,
+    precio_unitario_original: vol.descVolumenPct > 0 ? precioUnitarioBase : undefined,
     tiempo_entrega: '(2 a 3) Días hábiles',
     descripcion_tecnica: descTecnica,
     imagen_url: input.imagen_url,
@@ -951,7 +1517,106 @@ export function calcularPiezaCNC(
     costo_empaque: 0,
     lista_empaques: [],
     lista_pinturas: [],
-    lista_accesorios: []
+    lista_accesorios: [],
+    modo_margen: modoMargen,
+    tipo_objetivo_precio: tipoObjetivoPrecio,
+    ganancia_deseada_cop: input.gananciaDeseadaCop,
+    precio_con_margen_bruto: resPrecio.precioMargenBruto,
+    precio_con_markup: resPrecio.precioMarkup,
+    utilidad_neta_unitaria: utilidadNetaFinalUnit,
+    utilidad_neta_total: utilidadNetaFinalUnit * cantidad,
+    margen_real_venta_pct,
+    prorratear_archivo_3d: prorratearArchivo,
+    prorratear_diseno_3d: prorratearDiseno,
+    tasa_fallo_pct: tasaFalloPct,
+    costo_riesgo_fallo,
+    costo_comision_pasarela,
+    comision_pasarela_pct: comisionPct,
+    costo_envio: costoEnvioUnitario,
+    desglose_apartados,
+    costo_diseno_unitario,
+    costo_armado_unitario,
+    costo_pintura_mo_unitario: 0,
+    costo_herrajes_total: 0,
+    costo_pinturas_total: 0
+  };
+}
+
+/**
+ * Alterna el modo de cobro (Margen Bruto ⇄ Markup) de una pieza ya cotizada
+ * preservando su costo base, descuentos de volumen y retrocompatibilidad.
+ */
+export function recalcularPiezaPorModoMargen(pieza: PiezaCotizada, nuevoModo: ModoMargen): PiezaCotizada {
+  const cantidad = Math.max(1, pieza.cantidad || 1);
+  const costoBase = Number(pieza.costo_base_produccion) || 0;
+  const margen = Number(pieza.margen_ganancia) || 0.40;
+  const comisionPct = Number(pieza.comision_pasarela_pct) || 0;
+
+  const resPrecio = calcularPrecioVentaUnificado({
+    costoBase,
+    margen,
+    modoMargen: nuevoModo,
+    tipoObjetivoPrecio: pieza.tipo_objetivo_precio || 'porcentaje',
+    gananciaDeseadaCop: pieza.ganancia_deseada_cop,
+    comisionPct
+  });
+
+  if (pieza.precio_fijado_tarifa) {
+    return {
+      ...pieza,
+      modo_margen: nuevoModo,
+      precio_con_margen_bruto: resPrecio.precioMargenBruto,
+      precio_con_markup: resPrecio.precioMarkup
+    };
+  }
+
+  const precioUnitarioBase = resPrecio.precioActivo;
+  const costoComision = Math.round(precioUnitarioBase * (comisionPct / 100));
+
+  const vol = calcularDescuentoVolumen(
+    precioUnitarioBase,
+    cantidad,
+    pieza.aplica_descuento_volumen,
+    pieza.descuento_volumen_porcentaje
+  );
+
+  const utilidadNetaUnit = Math.round(vol.precioUnitario - costoBase - Math.round(vol.precioUnitario * (comisionPct / 100)));
+  const margenRealPct = vol.precioUnitario > 0
+    ? Number(((utilidadNetaUnit / vol.precioUnitario) * 100).toFixed(1))
+    : 0;
+
+  const desgloseActualizado = Array.isArray(pieza.desglose_apartados) && pieza.desglose_apartados.length > 0
+    ? construirDesgloseApartados(
+        pieza.desglose_apartados
+          .filter(d => d.clave !== 'comision')
+          .map(d => ({
+            clave: d.clave,
+            etiqueta: d.etiqueta,
+            costoUnitario: d.costoUnitario,
+            esProrrateado: d.esProrrateado,
+            color: d.color,
+            detalle: d.detalle
+          })),
+        cantidad,
+        precioUnitarioBase,
+        costoComision
+      )
+    : undefined;
+
+  return {
+    ...pieza,
+    modo_margen: nuevoModo,
+    precio_con_margen_bruto: resPrecio.precioMargenBruto,
+    precio_con_markup: resPrecio.precioMarkup,
+    precio_unitario: vol.precioUnitario,
+    precio_total: vol.precioTotal,
+    precio_unitario_original: vol.descVolumenPct > 0 ? precioUnitarioBase : undefined,
+    descuento_volumen_monto: vol.descVolumenMonto > 0 ? vol.descVolumenMonto : undefined,
+    utilidad_neta_unitaria: utilidadNetaUnit,
+    utilidad_neta_total: utilidadNetaUnit * cantidad,
+    margen_real_venta_pct: margenRealPct,
+    costo_comision_pasarela: costoComision,
+    desglose_apartados: desgloseActualizado
   };
 }
 

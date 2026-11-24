@@ -244,6 +244,14 @@ export const CotizacionBuilderView: React.FC<CotizacionBuilderProps> = (props) =
             ivaMonto={b.ivaMonto}
             ahorroVolumenTotal={b.ahorroVolumenTotal}
             total={b.total}
+            modoMargenCotizacion={b.modoMargenCotizacion}
+            onCambiarModoMargenCotizacion={b.handleCambiarModoMargenCotizacion}
+            costoTotalTaller={b.costoTotalTaller}
+            utilidadNetaEstimada={b.utilidadNetaEstimada}
+            margenRealCotizacionPct={b.margenRealCotizacionPct}
+            pisoMargenAlertaPct={props.config.piso_margen_alerta_pct ?? 20}
+            totalAlternoMargenBruto={b.totalAlternoMargenBruto}
+            totalAlternoMarkup={b.totalAlternoMarkup}
             tipoEstado={b.tipoEstado}
             setTipoEstado={b.setTipoEstado}
             vendedorNombre={b.vendedorNombre}

@@ -18,6 +18,7 @@ import {
   PiezaCotizada,
   Filamento,
   RegistroProduccionInterna,
+  ConsumoRealProduccion,
   ItemBacklogEmpresa
 } from '../types';
 import {
@@ -69,7 +70,8 @@ const STORAGE_KEYS = {
   DRAFT_BUILDER_META: 'wjg_draft_builder_meta',
   EDITING_COTIZACION: 'wjg_editing_cotizacion',
   RECENT_MUTATIONS: 'wjg_recent_mutations',
-  BACKLOG_EMPRESA: 'wjg_company_backlog'
+  BACKLOG_EMPRESA: 'wjg_company_backlog',
+  CONSUMOS_REALES: 'wjg_consumos_reales_produccion'
 };
 
 export const BACKLOG_EMPRESA_INICIAL: ItemBacklogEmpresa[] = [
@@ -369,6 +371,11 @@ export const StorageService = {
     return loadItem<RegistroProduccionInterna[]>(STORAGE_KEYS.PRODUCCION_INTERNA, []);
   },
   saveProduccionesInternas: (items: RegistroProduccionInterna[]) => saveItem(STORAGE_KEYS.PRODUCCION_INTERNA, items),
+
+  getConsumosReales: (): ConsumoRealProduccion[] => {
+    return loadItem<ConsumoRealProduccion[]>(STORAGE_KEYS.CONSUMOS_REALES, []);
+  },
+  saveConsumosReales: (items: ConsumoRealProduccion[]) => saveItem(STORAGE_KEYS.CONSUMOS_REALES, items),
 
   descontarStockMaterial: (tecnologia: string, materialId: string, gramos: number): void => {
     if (!materialId || gramos <= 0) return;

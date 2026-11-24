@@ -114,6 +114,77 @@ export interface RepuestoMaquina {
   fecha_instalacion?: string;  // Fecha del último cambio o instalación
 }
 
+export type ModoMargen = 'margen_bruto' | 'markup';
+export type TipoObjetivoPrecio = 'porcentaje' | 'ganancia_fija';
+export type NivelComplejidad = 'simple' | 'estandar' | 'complejo' | 'extremo';
+export type EtapaConsumoReal = 'TALLER_IMPRESION' | 'PINTURA_ACABADOS' | 'POST_PROCESADO' | 'EMPAQUE_ENVIO';
+
+export interface DesgloseApartado {
+  clave: string;
+  etiqueta: string;
+  costoUnitario: number;
+  cobroUnitario: number;
+  utilidadUnitaria: number;
+  costoLote: number;
+  cobroLote: number;
+  esProrrateado?: boolean;
+  color: string;
+  detalle?: string;
+}
+
+export interface InsumoRealConsumido {
+  insumo_id?: string;
+  nombre: string;
+  categoria?: string;
+  cantidad: number;
+  unidad: string;
+  costo_unitario: number;
+  costo_total: number;
+  estaba_cotizado: boolean;
+}
+
+export interface ConsumoRealProduccion {
+  id: string;
+  orden_trabajo_id: string;
+  cotizacion_id?: string;
+  numero_referencia: string;
+  etapa: EtapaConsumoReal;
+  tecnologia: TecnologiaFabricacion;
+  altura_referencia_mm?: number;
+  cantidad_piezas: number;
+  registrado_por_id?: string;
+  registrado_por_nombre: string;
+  material_id?: string;
+  material_nombre?: string;
+  material_estimado_g?: number;
+  material_real_g?: number;
+  tiempo_real_impresion_min?: number;
+  tiempo_real_mano_obra_min?: number;
+  hubo_fallo?: boolean;
+  piezas_fallidas?: number;
+  insumos_consumidos: InsumoRealConsumido[];
+  costo_material_real: number;
+  costo_insumos_reales: number;
+  costo_mano_obra_real: number;
+  costo_total_real: number;
+  descontado_de_inventario?: boolean;
+  notas?: string;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface PromedioConsumoReal {
+  tecnologia: string;
+  etapa: string;
+  rango_altura: 'PEQUENA_HASTA_8CM' | 'MEDIANA_8_18CM' | 'GRANDE_MAS_18CM' | 'GENERAL';
+  total_registros: number;
+  desviacion_material_pct: number;
+  promedio_material_real_g: number;
+  promedio_insumos_extras_por_pieza: number;
+  promedio_mano_obra_min_por_pieza: number;
+  tasa_fallo_real_pct: number;
+}
+
 export interface Maquina {
   id: string;
   nombre: string;
@@ -126,6 +197,9 @@ export interface Maquina {
   estado: string;
   imagen_url?: string;
   repuestos?: RepuestoMaquina[];
+  precio_compra?: number;
+  vida_util_horas?: number;
+  mantenimiento_mensual?: number;
 }
 
 export interface Personal {
@@ -166,6 +240,16 @@ export interface ConfiguracionTaller {
   daviplata?: string; // Deprecado
   bancolombia?: string; // Deprecado
   titular_cuenta: string;
+  // Parámetros Cotizador 2.0
+  tasa_fallo_sla_pct?: number;
+  tasa_fallo_fdm_pct?: number;
+  gastos_fijos_mensuales?: number;
+  horas_facturables_mes?: number;
+  consumibles_sla_por_impresion?: number;
+  precio_minimo_trabajo?: number;
+  comision_pasarela_default_pct?: number;
+  modo_margen_default?: ModoMargen;
+  piso_margen_alerta_pct?: number;
 }
 
 export interface MaquinaInvolucrada {
@@ -285,6 +369,37 @@ export interface PiezaCotizada {
   desgaste_fresa_costo?: number;
   // Diccionario genérico de parámetros
   parametros_tecnicos?: Record<string, any>;
+
+  // Cotizador 2.0: Margen dual, prorrateo, riesgo, overhead y desglose por apartado (USO INTERNO TALLER)
+  modo_margen?: ModoMargen;
+  tipo_objetivo_precio?: TipoObjetivoPrecio;
+  ganancia_deseada_cop?: number;
+  precio_con_margen_bruto?: number;
+  precio_con_markup?: number;
+  utilidad_neta_unitaria?: number;
+  utilidad_neta_total?: number;
+  margen_real_venta_pct?: number;
+  prorratear_archivo_3d?: boolean;
+  prorratear_diseno_3d?: boolean;
+  tasa_fallo_pct?: number;
+  costo_riesgo_fallo?: number;
+  nivel_complejidad?: NivelComplejidad;
+  costo_depreciacion_maquina?: number;
+  costo_gastos_fijos?: number;
+  costo_consumibles_sla_extra?: number;
+  costo_comision_pasarela?: number;
+  comision_pasarela_pct?: number;
+  costo_envio?: number;
+  ams_activo?: boolean;
+  ams_colores?: number;
+  ams_purga_pct?: number;
+  ams_purga_gramos?: number;
+  desglose_apartados?: DesgloseApartado[];
+  costo_diseno_unitario?: number;
+  costo_armado_unitario?: number;
+  costo_pintura_mo_unitario?: number;
+  costo_herrajes_total?: number;
+  costo_pinturas_total?: number;
 }
 
 export type TecnologiaFabricacion = 
@@ -366,6 +481,11 @@ export interface Cotizacion {
   metodo_pago?: string;
   comprobante_pago?: string;
   tracking_token?: string;
+
+  // Uso Interno Taller (NO imprimir en PDF ni WhatsApp cliente)
+  modo_margen?: ModoMargen;
+  costo_total_taller?: number;
+  utilidad_neta_estimada?: number;
 }
 
 export type EstadoOT = 'En Cola' | 'Imprimiendo' | 'Curado' | 'Pintura y Armado' | 'Control de Calidad' | 'Listo para Entrega' | 'Entregado';
@@ -417,6 +537,7 @@ export interface OrdenTrabajo {
   filamento_id?: string;
   filamento_nombre?: string;
   inventario_descontado?: boolean;
+  costo_real_acumulado?: number;
   
   // Trazabilidad de Modelos 3D y STL (Germán ➔ Juan)
   stl_url?: string;

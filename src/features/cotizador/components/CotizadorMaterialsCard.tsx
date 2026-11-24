@@ -1,5 +1,5 @@
 import React from 'react';
-import { Scale, Zap } from 'lucide-react';
+import { Scale, Zap, Upload, Layers } from 'lucide-react';
 import { Resina, Filamento, Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
 import { WjgSelect } from '../../../components/ui/WjgSelect';
 
@@ -65,6 +65,21 @@ interface CotizadorMaterialsCardProps {
   setCostoBloqueMaterial?: (val: number) => void;
   tiempoMecanizadoMin?: number;
   setTiempoMecanizadoMin?: (val: number) => void;
+
+  // Cotizador 2.0: AMS, Consumibles SLA & G-Code
+  modoVista?: 'rapido' | 'avanzado';
+  amsActivo?: boolean;
+  setAmsActivo?: (val: boolean) => void;
+  amsColores?: number;
+  setAmsColores?: (val: number) => void;
+  amsPurgaPct?: number;
+  setAmsPurgaPct?: (val: number) => void;
+  amsPurgaGramosManual?: number;
+  setAmsPurgaGramosManual?: (val: number) => void;
+  consumiblesSlaExtra?: number;
+  setConsumiblesSlaExtra?: (val: number) => void;
+  gcodeInfo?: string | null;
+  onImportGCode?: (file: File) => void;
 }
 
 export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
@@ -120,7 +135,20 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
   costoBloqueMaterial = 35000,
   setCostoBloqueMaterial,
   tiempoMecanizadoMin = 45,
-  setTiempoMecanizadoMin
+  setTiempoMecanizadoMin,
+  modoVista = 'rapido',
+  amsActivo = false,
+  setAmsActivo,
+  amsColores = 1,
+  setAmsColores,
+  amsPurgaPct = 12,
+  setAmsPurgaPct,
+  amsPurgaGramosManual = 0,
+  setAmsPurgaGramosManual,
+  consumiblesSlaExtra = 0,
+  setConsumiblesSlaExtra,
+  gcodeInfo = null,
+  onImportGCode
 }) => {
   // Filtrado estricto de maquinaria por tecnología
   const maquinasSLA = maquinas.filter(m => 
@@ -151,18 +179,27 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
       return keyA.localeCompare(keyB);
     });
   }, [filamentos]);
+
+  const gcodeInputRef = React.useRef<HTMLInputElement>(null);
+  const apartadoMat = calculoEnVivo?.desglose_apartados?.find(d => d.clave === 'material');
+  const apartadoMaq = calculoEnVivo?.desglose_apartados?.find(d => d.clave === 'maquina');
+  const costoMatMaq = (apartadoMat?.costoUnitario ?? (calculoEnVivo?.costo_resina || 0)) + (apartadoMaq?.costoUnitario ?? 0);
+  const cobroMatMaq = (apartadoMat?.cobroUnitario ?? 0) + (apartadoMaq?.cobroUnitario ?? 0);
+
   return (
-    <div style={{ background: 'rgba(0, 0, 0, 0.25)', padding: '14px', borderRadius: '12px', marginBottom: '16px', border: '1px solid var(--border-subtle)' }}>
+    <div className="cotizador-section-card">
       
       {/* Selector de Tecnología de Fabricación */}
       <div style={{ marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid rgba(255, 255, 255, 0.08)' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
           <label className="form-label" style={{ margin: 0, display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.85rem', fontWeight: 800, color: 'var(--brand-cyan)' }}>
             <Zap size={15} color="var(--brand-cyan)" />
-            Tecnología de Fabricación
+            Tecnología, Material y Máquina
           </label>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-            Permite combinar múltiples tecnologías en una sola cotización
+          <span className="section-subtotal-pill">
+            <span className="costo-txt">Costo: ${costoMatMaq.toLocaleString('es-CO')}</span>
+            <span style={{ opacity: 0.4 }}>|</span>
+            <span className="cobro-txt">Cobro: ${cobroMatMaq.toLocaleString('es-CO')}</span>
           </span>
         </div>
 
@@ -432,12 +469,83 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               );
             })()}
           </div>
+
+          {(modoVista === 'avanzado' || consumiblesSlaExtra > 0) && setConsumiblesSlaExtra && (
+            <div style={{ marginTop: '10px', background: 'rgba(6, 182, 212, 0.06)', border: '1px solid rgba(6, 182, 212, 0.25)', borderRadius: '10px', padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+              <div style={{ fontSize: '0.76rem', color: '#cbd5e1' }}>
+                🧤 <strong style={{ color: '#22d3ee' }}>Consumibles SLA por impresión</strong> (guantes nitrilo, papel, filtros 190µm)
+              </div>
+              <div className="input-with-unit" style={{ width: '150px' }}>
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="form-input"
+                  value={consumiblesSlaExtra === 0 ? '' : consumiblesSlaExtra}
+                  onChange={e => setConsumiblesSlaExtra(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                  placeholder="1500"
+                />
+                <span className="input-unit-badge">COP</span>
+              </div>
+            </div>
+          )}
         </>
       )}
 
       {/* 2. MODO FDM FILAMENTO */}
       {tecnologia === 'FDM_FILAMENTO' && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {/* Dropzone rápido .gcode */}
+          {onImportGCode && (
+            <div
+              onDragOver={e => e.preventDefault()}
+              onDrop={e => {
+                e.preventDefault();
+                const file = e.dataTransfer.files?.[0];
+                if (file) onImportGCode(file);
+              }}
+              onClick={() => gcodeInputRef.current?.click()}
+              style={{
+                border: '1px dashed rgba(56, 189, 248, 0.45)',
+                background: 'rgba(56, 189, 248, 0.06)',
+                borderRadius: '10px',
+                padding: '10px 14px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '10px',
+                flexWrap: 'wrap'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <Upload size={16} color="var(--brand-cyan)" />
+                <div>
+                  <div style={{ fontSize: '0.8rem', fontWeight: 700, color: '#e0f2fe' }}>
+                    Importar archivo .gcode (Bambu Studio / OrcaSlicer / Cura)
+                  </div>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
+                    {gcodeInfo ? `✓ Leído: ${gcodeInfo}` : 'Arrastra o toca aquí para cargar gramos, purga AMS y tiempo exacto automáticamente'}
+                  </div>
+                </div>
+              </div>
+              <span className="btn btn-secondary btn-sm" style={{ minHeight: '32px', padding: '4px 10px', fontSize: '0.74rem' }}>
+                Elegir .gcode
+              </span>
+              <input
+                ref={gcodeInputRef}
+                type="file"
+                accept=".gcode,.gco,.g"
+                style={{ display: 'none' }}
+                onChange={e => {
+                  const file = e.target.files?.[0];
+                  if (file) onImportGCode(file);
+                  e.target.value = '';
+                }}
+              />
+            </div>
+          )}
+
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
@@ -468,10 +576,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <input
                   type="number"
                   className="form-input"
-                  value={pesoFilamentoG}
-                  onChange={e => setPesoFilamentoG && setPesoFilamentoG(Math.max(1, parseFloat(e.target.value) || 1))}
+                  min="0"
+                  step="any"
+                  value={pesoFilamentoG === 0 ? '' : pesoFilamentoG}
+                  onChange={e => setPesoFilamentoG && setPesoFilamentoG(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Gramos"
-                  step="1"
                 />
                 <span className="input-unit-badge">g</span>
               </div>
@@ -479,17 +588,18 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
 
             <div>
               <label className="form-label" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                <span>% Merma / Purga</span>
-                <span style={{ fontSize: '0.7rem', color: 'var(--brand-cyan)' }}>Soportes & AMS</span>
+                <span>% Merma / Soportes</span>
+                <span style={{ fontSize: '0.7rem', color: 'var(--brand-cyan)' }}>Desperdicio</span>
               </label>
               <div className="input-with-unit">
                 <input
                   type="number"
                   className="form-input"
-                  value={mermaPorcentajeFdm}
-                  onChange={e => setMermaPorcentajeFdm && setMermaPorcentajeFdm(Math.max(0, parseFloat(e.target.value) || 0))}
+                  min="0"
+                  step="any"
+                  value={mermaPorcentajeFdm === 0 ? '' : mermaPorcentajeFdm}
+                  onChange={e => setMermaPorcentajeFdm && setMermaPorcentajeFdm(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="5"
-                  step="1"
                 />
                 <span className="input-unit-badge">%</span>
               </div>
@@ -501,10 +611,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <input
                   type="number"
                   className="form-input"
-                  value={filamentoActual ? Math.round(filamentoActual.costo_gramo * 1000) : costoRolloKg}
-                  onChange={e => setCostoRolloKg && setCostoRolloKg(Math.max(1000, parseFloat(e.target.value) || 85000))}
+                  min="0"
+                  step="any"
+                  value={filamentoActual ? Math.round(filamentoActual.costo_gramo * 1000) : (costoRolloKg === 0 ? '' : costoRolloKg)}
+                  onChange={e => setCostoRolloKg && setCostoRolloKg(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="COP por kg"
-                  step="1000"
                   readOnly={Boolean(filamentoActual)}
                   style={filamentoActual ? { background: 'rgba(255,255,255,0.04)', color: 'var(--text-muted)' } : {}}
                 />
@@ -512,6 +623,89 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
               </div>
             </div>
           </div>
+
+          {/* Multicolor / Bambu AMS */}
+          {setAmsActivo && (
+            <div style={{
+              background: amsActivo ? 'rgba(139, 92, 246, 0.08)' : 'rgba(255,255,255,0.02)',
+              border: `1px solid ${amsActivo ? 'rgba(139, 92, 246, 0.35)' : 'rgba(255,255,255,0.07)'}`,
+              borderRadius: '10px',
+              padding: '10px 12px'
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 700, color: amsActivo ? '#c4b5fd' : '#94a3b8' }}>
+                  <input
+                    type="checkbox"
+                    checked={amsActivo}
+                    onChange={e => setAmsActivo(e.target.checked)}
+                    style={{ accentColor: '#8b5cf6', width: '16px', height: '16px' }}
+                  />
+                  <Layers size={14} color={amsActivo ? '#a78bfa' : '#94a3b8'} />
+                  <span>Impresión Multicolor / Bambu AMS (Purga + Torre)</span>
+                </label>
+                {amsActivo && (
+                  <span style={{ fontSize: '0.74rem', color: '#c4b5fd', fontWeight: 700 }} className="tabular-nums">
+                    Purga estimada: +{calculoEnVivo?.ams_purga_gramos ?? Math.round((pesoFilamentoG * amsPurgaPct) / 100)} g
+                  </span>
+                )}
+              </div>
+
+              {amsActivo && (
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '10px' }}>
+                  <div>
+                    <label className="form-label">Colores AMS</label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[2, 4, 8].map(c => (
+                        <button
+                          key={c}
+                          type="button"
+                          className={`btn btn-sm ${amsColores === c ? 'btn-cyan' : 'btn-secondary'}`}
+                          style={{ flex: 1, minHeight: '34px', padding: '2px' }}
+                          onClick={() => setAmsColores?.(c)}
+                        >
+                          {c} col.
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Purga % sobre modelo</label>
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      {[20, 45, 90].map(p => (
+                        <button
+                          key={p}
+                          type="button"
+                          className={`btn btn-sm ${amsPurgaPct === p && amsPurgaGramosManual === 0 ? 'btn-primary' : 'btn-secondary'}`}
+                          style={{ flex: 1, minHeight: '34px', padding: '2px', fontSize: '0.72rem' }}
+                          onClick={() => {
+                            setAmsPurgaGramosManual?.(0);
+                            setAmsPurgaPct?.(p);
+                          }}
+                        >
+                          +{p}%
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="form-label">Purga exacta (opcional)</label>
+                    <div className="input-with-unit">
+                      <input
+                        type="number"
+                        min="0"
+                        step="any"
+                        className="form-input"
+                        value={amsPurgaGramosManual === 0 ? '' : amsPurgaGramosManual}
+                        onChange={e => setAmsPurgaGramosManual?.(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
+                        placeholder="Auto %"
+                      />
+                      <span className="input-unit-badge">g</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {filamentoActual && (
             <div style={{ display: 'flex', gap: '12px', fontSize: '0.72rem', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.02)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(255,255,255,0.05)', flexWrap: 'wrap' }}>
@@ -677,10 +871,11 @@ export const CotizadorMaterialsCard: React.FC<CotizadorMaterialsCardProps> = ({
                 <input
                   type="number"
                   className="form-input"
-                  value={costoBloqueMaterial}
-                  onChange={e => setCostoBloqueMaterial && setCostoBloqueMaterial(Math.max(1000, parseFloat(e.target.value) || 35000))}
+                  value={costoBloqueMaterial === 0 ? '' : costoBloqueMaterial}
+                  onChange={e => setCostoBloqueMaterial && setCostoBloqueMaterial(e.target.value === '' ? 0 : Math.max(0, parseFloat(e.target.value) || 0))}
                   placeholder="Costo material"
-                  step="5000"
+                  min="0"
+                  step="any"
                 />
                 <span className="input-unit-badge">COP</span>
               </div>

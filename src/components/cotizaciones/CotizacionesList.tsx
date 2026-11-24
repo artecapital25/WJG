@@ -22,7 +22,7 @@ import {
   Lock
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro } from '../../types';
+import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro, ModoMargen } from '../../types';
 import { WjgSelect } from '../ui/WjgSelect';
 import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
@@ -42,6 +42,7 @@ interface CotizacionesListProps {
   onAprobarCotizacion: (cot: Cotizacion, datosPago?: DatosPagoRegistro, redirigirTaller?: boolean) => void;
   onActualizarPagoCotizacion?: (cotId: string, datosPago: DatosPagoRegistro) => void;
   onEliminarCotizacion?: (cotId: string, numeroCot?: string) => void;
+  onToggleModoMargenCotizacion?: (cot: Cotizacion, nuevoModo: ModoMargen) => void;
   onNuevaCotizacion: () => void;
 }
 
@@ -56,6 +57,7 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
   onAprobarCotizacion,
   onActualizarPagoCotizacion,
   onEliminarCotizacion,
+  onToggleModoMargenCotizacion,
   onNuevaCotizacion
 }) => {
   const [filtroEstado, setFiltroEstado] = useState<string>('todos');
@@ -474,6 +476,75 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                     >
                       {cot.estado === 'Parcial' ? '🟡 Parcial (Pendiente Slicer)' : cot.estado}
                     </span>
+                    {(() => {
+                      const modoActual: ModoMargen = cot.modo_margen || cot.items?.[0]?.modo_margen || config.modo_margen_default || 'margen_bruto';
+                      const estLower = (cot.estado || '').toLowerCase();
+                      const blqCambio = estLower.includes('acept') || estLower.includes('aprob') || estLower.includes('factur');
+                      const utilidadEst = cot.utilidad_neta_estimada ?? cot.items?.reduce((s, it) => s + ((it.utilidad_neta_unitaria ?? 0) * (it.cantidad || 1)), 0);
+                      return (
+                        <>
+                          {onToggleModoMargenCotizacion && !blqCambio ? (
+                            <button
+                              type="button"
+                              onClick={() => onToggleModoMargenCotizacion(cot, modoActual === 'margen_bruto' ? 'markup' : 'margen_bruto')}
+                              title="USO INTERNO: clic para alternar esta cotización entre Margen Bruto y Markup"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                border: '1px solid rgba(245, 158, 11, 0.45)',
+                                background: 'rgba(245, 158, 11, 0.14)',
+                                color: '#fbbf24',
+                                cursor: 'pointer'
+                              }}
+                            >
+                              <Lock size={10} />
+                              <span>{modoActual === 'margen_bruto' ? 'Margen Bruto ⇄' : 'Markup ⇄'}</span>
+                            </button>
+                          ) : (
+                            <span
+                              title="Fórmula interna usada en esta cotización (no visible para el cliente)"
+                              style={{
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                padding: '2px 8px',
+                                borderRadius: '999px',
+                                border: '1px solid rgba(245, 158, 11, 0.3)',
+                                background: 'rgba(245, 158, 11, 0.08)',
+                                color: '#fcd34d'
+                              }}
+                            >
+                              <Lock size={10} />
+                              <span>{modoActual === 'margen_bruto' ? 'Margen Bruto' : 'Markup'}</span>
+                            </span>
+                          )}
+                          {utilidadEst !== undefined && utilidadEst !== 0 && (
+                            <span
+                              className="tabular-nums"
+                              title="Utilidad neta estimada de taller (uso interno)"
+                              style={{
+                                fontSize: '0.68rem',
+                                fontWeight: 700,
+                                padding: '2px 7px',
+                                borderRadius: '999px',
+                                background: utilidadEst >= 0 ? 'rgba(16, 185, 129, 0.14)' : 'rgba(239, 68, 68, 0.14)',
+                                color: utilidadEst >= 0 ? '#34d399' : '#f87171',
+                                border: `1px solid ${utilidadEst >= 0 ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
+                              }}
+                            >
+                              Utilidad: ${Math.round(utilidadEst).toLocaleString('es-CO')}
+                            </span>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap', marginTop: '6px' }}>
                     <div style={{ fontSize: '1rem', fontWeight: 700, color: '#fff' }}>

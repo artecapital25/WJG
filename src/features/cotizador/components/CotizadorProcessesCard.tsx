@@ -1,7 +1,8 @@
 import React from 'react';
 import { Plus, Trash2 } from 'lucide-react';
-import { Maquina, PiezaCotizada, TecnologiaFabricacion } from '../../../types';
+import { Maquina, Personal, PiezaCotizada, TecnologiaFabricacion, NivelComplejidad } from '../../../types';
 import { ItemMaquinaExtraForm } from '../types/cotizador.types';
+import { MULTIPLICADOR_COMPLEJIDAD } from '../utils/pricingCalculator';
 import { WjgSelect } from '../../../components/ui/WjgSelect';
 
 interface CotizadorProcessesCardProps {
@@ -37,6 +38,12 @@ interface CotizadorProcessesCardProps {
   setTiempoDesarrolloMin: (val: number) => void;
   tiempoArmadoMin: number;
   setTiempoArmadoMin: (val: number) => void;
+  personal?: Personal[];
+  cantidad?: number;
+  prorratearDiseno3D?: boolean;
+  setProrratearDiseno3D?: (val: boolean) => void;
+  nivelComplejidad?: NivelComplejidad;
+  modoVista?: 'rapido' | 'avanzado';
 }
 
 export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
@@ -71,37 +78,54 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
   tiempoDesarrolloMin,
   setTiempoDesarrolloMin,
   tiempoArmadoMin,
-  setTiempoArmadoMin
+  setTiempoArmadoMin,
+  personal = [],
+  cantidad = 1,
+  prorratearDiseno3D = true,
+  setProrratearDiseno3D
 }) => {
+  const apartadoCurado = calculoEnVivo?.desglose_apartados?.find(d => d.clave === 'curado');
+  const apartadoMO = calculoEnVivo?.desglose_apartados?.find(d => d.clave === 'mano_obra');
+  const costoSeccion = (apartadoCurado?.costoUnitario || 0) + (apartadoMO?.costoUnitario || 0);
+  const cobroSeccion = (apartadoCurado?.cobroUnitario || 0) + (apartadoMO?.cobroUnitario || 0);
+
+  const tarifaDev = personal.find(p => (p.rol || '').toLowerCase().includes('desarroll'))?.costo_minuto || 166.67;
+  const tarifaPintor = personal.find(p => (p.rol || '').toLowerCase().includes('pint'))?.costo_minuto || 166.67;
+  const multComp = MULTIPLICADOR_COMPLEJIDAD[calculoEnVivo?.nivel_complejidad || 'simple'] || 1;
+  const costoPinturaMO = calculoEnVivo?.costo_pintura_mo_unitario ?? (vaPintado ? Math.round(tiempoPinturaMin * tarifaPintor) : 0);
+  const costoArmadoMO = calculoEnVivo?.costo_armado_unitario ?? Math.round(tiempoArmadoMin * tarifaPintor * multComp);
+  const costoDisenoMO = calculoEnVivo?.costo_diseno_unitario ?? Math.round((tiempoDesarrolloMin * tarifaDev * multComp) / (prorratearDiseno3D ? Math.max(1, cantidad) : 1));
+
   return (
-    <div style={{
-      background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.75) 0%, rgba(17, 24, 39, 0.85) 100%)',
-      border: '1px solid rgba(56, 189, 248, 0.25)',
-      borderRadius: '12px',
-      padding: '16px',
-      marginBottom: '16px',
-      boxShadow: '0 8px 24px rgba(0,0,0,0.25)'
-    }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px', flexWrap: 'wrap', gap: '8px' }}>
+    <div className="cotizador-section-card">
+      <div className="cotizador-section-header" style={{ marginBottom: '14px' }}>
         <div>
-          <h3 style={{ margin: 0, fontSize: '0.96rem', fontWeight: 700, color: '#fff' }}>
-            ☀️ Post-Procesamiento, Lavado y Pintura
+          <h3 style={{ margin: 0, fontSize: '0.95rem', fontWeight: 700, color: '#fff' }}>
+            ☀️ Post-Procesamiento, Lavado y Mano de Obra
           </h3>
           <p style={{ margin: '3px 0 0 0', fontSize: '0.74rem', color: 'var(--text-muted)' }}>
-            Configura los equipos de acabado UV, aerógrafo y procesos extras
+            Equipos de acabado UV, aerógrafo, máquinas extras y tarifas reales por fase
           </p>
         </div>
 
-        <button
-          type="button"
-          className="btn btn-secondary btn-sm"
-          onClick={handleAddMaquinaAdicional}
-          style={{ fontSize: '0.75rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(56, 189, 248, 0.4)' }}
-          title="Agregar otra máquina o proceso adicional"
-        >
-          <Plus size={13} color="var(--brand-cyan)" />
-          <span>+ Proceso / Máquina Extra</span>
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <span className="section-subtotal-pill">
+            <span className="costo-txt">Costo: ${costoSeccion.toLocaleString('es-CO')}</span>
+            <span style={{ opacity: 0.4 }}>|</span>
+            <span className="cobro-txt">Cobro: ${cobroSeccion.toLocaleString('es-CO')}</span>
+          </span>
+
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={handleAddMaquinaAdicional}
+            style={{ fontSize: '0.74rem', padding: '5px 10px', display: 'flex', alignItems: 'center', gap: '5px', borderColor: 'rgba(56, 189, 248, 0.4)' }}
+            title="Agregar otra máquina o proceso adicional"
+          >
+            <Plus size={13} color="var(--brand-cyan)" />
+            <span>+ Máquina Extra</span>
+          </button>
+        </div>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -175,8 +199,8 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
                     ? `${tiempoCuradoMin} minutos de exposición UV`
                     : `Tiempo auto: ${calculoEnVivo && calculoEnVivo.peso_estimado_g >= 250 ? 15 : calculoEnVivo && calculoEnVivo.peso_estimado_g <= 50 ? 5 : 10} min (según ${calculoEnVivo?.peso_estimado_g || 0}g resina)`}
                 </span>
-                <span style={{ color: 'var(--brand-cyan)', fontWeight: 600 }}>
-                  Curado eléctrico + insumos solventes incluidos
+                <span style={{ color: 'var(--brand-cyan)', fontWeight: 700 }} className="tabular-nums">
+                  Costo Lavado/Curado + PPE: ${(calculoEnVivo?.costo_curado || 0).toLocaleString('es-CO')} COP
                 </span>
               </div>
             </>
@@ -357,49 +381,105 @@ export const CotizadorProcessesCard: React.FC<CotizadorProcessesCardProps> = ({
           </div>
         )}
 
-        {/* Tiempos de Mano de Obra: Diseño, Armado y Pintura */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px', marginTop: '6px' }}>
-          <div>
-            <label className="form-label" style={{ fontSize: '0.72rem' }}>🎨 Acabado Pintado</label>
-            <button
-              type="button"
-              className={`btn ${vaPintado ? 'btn-cyan' : 'btn-secondary'}`}
-              style={{ width: '100%', fontSize: '0.82rem', padding: '8px' }}
-              onClick={() => setVaPintado(!vaPintado)}
-            >
-              {vaPintado ? '✓ Va Pintado' : 'Sin Pintura'}
-            </button>
+        {/* Tiempos de Mano de Obra con Subtotal Visible por Fase */}
+        <div style={{
+          background: 'rgba(16, 185, 129, 0.05)',
+          border: '1px solid rgba(16, 185, 129, 0.2)',
+          borderRadius: '10px',
+          padding: '12px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#34d399' }}>
+              👷 Mano de Obra por Fase
+            </span>
+            <span className="section-subtotal-pill" style={{ borderColor: 'rgba(16, 185, 129, 0.35)' }}>
+              <span className="costo-txt">Costo MO: ${(apartadoMO?.costoUnitario ?? (costoPinturaMO + costoArmadoMO + costoDisenoMO)).toLocaleString('es-CO')}</span>
+              <span style={{ opacity: 0.4 }}>|</span>
+              <span className="cobro-txt" style={{ color: '#34d399' }}>Cobro MO: ${(apartadoMO?.cobroUnitario ?? 0).toLocaleString('es-CO')}</span>
+            </span>
           </div>
 
-          <div>
-            <label className="form-label" style={{ fontSize: '0.72rem' }}>Pintura (Minutos)</label>
-            <input 
-              type="number"
-              className="form-input"
-              disabled={!vaPintado}
-              value={tiempoPinturaMin}
-              onChange={e => setTiempoPinturaMin(Math.max(0, parseInt(e.target.value) || 0))}
-            />
-          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: '10px' }}>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.72rem' }}>🎨 Acabado Pintado</label>
+              <button
+                type="button"
+                className={`btn ${vaPintado ? 'btn-cyan' : 'btn-secondary'}`}
+                style={{ width: '100%', fontSize: '0.82rem', padding: '8px', minHeight: '44px' }}
+                onClick={() => setVaPintado(!vaPintado)}
+              >
+                {vaPintado ? '✓ Va Pintado' : 'Sin Pintura'}
+              </button>
+            </div>
 
-          <div>
-            <label className="form-label" style={{ fontSize: '0.72rem' }}>Armado (Minutos)</label>
-            <input 
-              type="number"
-              className="form-input"
-              value={tiempoArmadoMin}
-              onChange={e => setTiempoArmadoMin(Math.max(0, parseInt(e.target.value) || 0))}
-            />
-          </div>
+            <div>
+              <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Pintura</span>
+                <span style={{ color: '#34d399' }}>${costoPinturaMO.toLocaleString('es-CO')}</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="form-input"
+                  disabled={!vaPintado}
+                  value={tiempoPinturaMin === 0 ? '' : tiempoPinturaMin}
+                  onChange={e => setTiempoPinturaMin(e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  placeholder="0"
+                />
+                <span className="input-unit-badge">min</span>
+              </div>
+            </div>
 
-          <div>
-            <label className="form-label" style={{ fontSize: '0.72rem' }}>Diseño 3D (Minutos)</label>
-            <input 
-              type="number"
-              className="form-input"
-              value={tiempoDesarrolloMin}
-              onChange={e => setTiempoDesarrolloMin(Math.max(0, parseInt(e.target.value) || 0))}
-            />
+            <div>
+              <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Armado/Soportes</span>
+                <span style={{ color: '#34d399' }}>${costoArmadoMO.toLocaleString('es-CO')}</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="form-input"
+                  value={tiempoArmadoMin === 0 ? '' : tiempoArmadoMin}
+                  onChange={e => setTiempoArmadoMin(e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  placeholder="0"
+                />
+                <span className="input-unit-badge">min</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="form-label" style={{ fontSize: '0.72rem', display: 'flex', justifyContent: 'space-between' }}>
+                <span>Diseño 3D</span>
+                <span style={{ color: '#34d399' }}>${costoDisenoMO.toLocaleString('es-CO')}</span>
+              </label>
+              <div className="input-with-unit">
+                <input
+                  type="number"
+                  min="0"
+                  step="any"
+                  className="form-input"
+                  value={tiempoDesarrolloMin === 0 ? '' : tiempoDesarrolloMin}
+                  onChange={e => setTiempoDesarrolloMin(e.target.value === '' ? 0 : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                  placeholder="0"
+                />
+                <span className="input-unit-badge">min</span>
+              </div>
+              {setProrratearDiseno3D && (
+                <label style={{ display: 'flex', alignItems: 'center', gap: '5px', marginTop: '5px', fontSize: '0.68rem', color: '#94a3b8', cursor: 'pointer' }}>
+                  <input
+                    type="checkbox"
+                    checked={prorratearDiseno3D}
+                    onChange={e => setProrratearDiseno3D(e.target.checked)}
+                    style={{ accentColor: '#10b981' }}
+                  />
+                  <span>Prorratear Diseño ({cantidad}u)</span>
+                </label>
+              )}
+            </div>
           </div>
         </div>
       </div>

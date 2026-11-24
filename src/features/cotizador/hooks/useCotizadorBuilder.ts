@@ -7,14 +7,16 @@ import {
   MaquinaInvolucrada, 
   EnlaceReferenciaCompra, 
   EstadoPago,
-  EstadoCotizacion 
+  EstadoCotizacion,
+  ModoMargen
 } from '../../../types';
 import { CotizacionBuilderProps } from '../types/cotizador.types';
 import { 
   calcularTotalesCotizacion, 
   validarRegla50Anticipo, 
   generarNumeroCotSugerido, 
-  limpiarNotasObservaciones 
+  limpiarNotasObservaciones,
+  recalcularPiezaPorModoMargen
 } from '../utils/pricingCalculator';
 import { calcularFechaEstimada, calcularDiasHabilesEntre, formatearTiempoEntrega } from '../../../utils/businessDays';
 import { calcularCotizacionIntegral, ParametrosPiezaInput } from '../../../services/calculationEngine';
@@ -222,6 +224,18 @@ export function useCotizadorBuilder({
   }, [tieneItemsPendientes, cotizacionEnEdicion]);
 
   // Cálculos puros y reactivos de totales
+  const [modoMargenCotizacion, setModoMargenCotizacion] = useState<ModoMargen>(() => {
+    return cotizacionEnEdicion?.modo_margen || items[0]?.modo_margen || config.modo_margen_default || 'margen_bruto';
+  });
+
+  useEffect(() => {
+    if (cotizacionEnEdicion?.modo_margen) {
+      setModoMargenCotizacion(cotizacionEnEdicion.modo_margen);
+    } else if (items.length > 0 && items[0]?.modo_margen) {
+      setModoMargenCotizacion(items[0].modo_margen);
+    }
+  }, [cotizacionEnEdicion?.id]);
+
   const { 
     subtotal, 
     descuentoMonto, 
@@ -232,6 +246,57 @@ export function useCotizadorBuilder({
   } = useMemo(() => {
     return calcularTotalesCotizacion(items, descuentoPorcentaje, ivaPorcentaje);
   }, [items, descuentoPorcentaje, ivaPorcentaje]);
+
+  const {
+    costoTotalTaller,
+    utilidadNetaEstimada,
+    margenRealCotizacionPct,
+    totalAlternoMargenBruto,
+    totalAlternoMarkup
+  } = useMemo(() => {
+    const costoTaller = items.reduce(
+      (sum, it) => sum + (it.costo_base_produccion || 0) * (it.cantidad || 1),
+      0
+    );
+    const comisionTotal = items.reduce(
+      (sum, it) => sum + (it.costo_comision_pasarela || 0) * (it.cantidad || 1),
+      0
+    );
+    const utilidad = Math.round(subtotalConDescuento - costoTaller - comisionTotal);
+    const margenPct = subtotalConDescuento > 0
+      ? Math.round((utilidad / subtotalConDescuento) * 1000) / 10
+      : 0;
+    const altMb = calcularTotalesCotizacion(
+      items.map(it => recalcularPiezaPorModoMargen(it, 'margen_bruto')),
+      descuentoPorcentaje,
+      ivaPorcentaje
+    ).total;
+    const altMk = calcularTotalesCotizacion(
+      items.map(it => recalcularPiezaPorModoMargen(it, 'markup')),
+      descuentoPorcentaje,
+      ivaPorcentaje
+    ).total;
+    return {
+      costoTotalTaller: Math.round(costoTaller),
+      utilidadNetaEstimada: utilidad,
+      margenRealCotizacionPct: margenPct,
+      totalAlternoMargenBruto: altMb,
+      totalAlternoMarkup: altMk
+    };
+  }, [items, subtotalConDescuento, descuentoPorcentaje, ivaPorcentaje]);
+
+  const handleCambiarModoMargenCotizacion = (nuevoModo: ModoMargen) => {
+    setModoMargenCotizacion(nuevoModo);
+    items.forEach(it => {
+      const recalc = recalcularPiezaPorModoMargen(it, nuevoModo);
+      onUpdatePiece?.({ ...recalc, id: it.id });
+    });
+    toast.info(
+      nuevoModo === 'margen_bruto'
+        ? 'Cotización recalculada usando Margen Bruto sobre Venta'
+        : 'Cotización recalculada usando Markup sobre Costo'
+    );
+  };
 
   // Regla del 50% de anticipo
   const { abonoEfectivo, saldoPendiente, cumpleMinimo50, porcentajeAbonado } = useMemo(() => {
@@ -472,7 +537,10 @@ export function useCotizadorBuilder({
       abono: abonoEfectivo,
       saldo_pendiente: saldoPendiente,
       metodo_pago: estadoPagoInicial === 'Pendiente' ? undefined : metodoPagoInicial,
-      comprobante_pago: comprobantePagoInicial.trim() || undefined
+      comprobante_pago: comprobantePagoInicial.trim() || undefined,
+      modo_margen: modoMargenCotizacion,
+      costo_total_taller: costoTotalTaller,
+      utilidad_neta_estimada: utilidadNetaEstimada
     };
   };
 
@@ -667,6 +735,20 @@ export function useCotizadorBuilder({
         tarifaTamanoAplicada: it.tarifa_tamano_aplicada,
         aplicaDescuentoVolumen: it.aplica_descuento_volumen,
         descuentoVolumenPorcentaje: it.descuento_volumen_porcentaje,
+        modoMargen: it.modo_margen || modoMargenCotizacion,
+        tipoObjetivoPrecio: it.tipo_objetivo_precio,
+        gananciaDeseadaCop: it.ganancia_deseada_cop,
+        prorratearArchivo3D: it.prorratear_archivo_3d,
+        prorratearDiseno3D: it.prorratear_diseno_3d,
+        tasaFalloPct: it.tasa_fallo_pct ?? 0,
+        nivelComplejidad: it.nivel_complejidad,
+        comisionPasarelaPct: it.comision_pasarela_pct ?? 0,
+        costoEnvio: it.costo_envio ?? 0,
+        amsActivo: it.ams_activo,
+        amsColores: it.ams_colores,
+        amsPurgaPct: it.ams_purga_pct,
+        amsPurgaGramosManual: it.ams_purga_gramos,
+        consumiblesSlaPorImpresion: it.costo_consumibles_sla_extra ?? 0,
         accesorios,
         pinturas,
         empaques,
@@ -757,6 +839,13 @@ export function useCotizadorBuilder({
     ivaMonto,
     ahorroVolumenTotal,
     total,
+    modoMargenCotizacion,
+    handleCambiarModoMargenCotizacion,
+    costoTotalTaller,
+    utilidadNetaEstimada,
+    margenRealCotizacionPct,
+    totalAlternoMargenBruto,
+    totalAlternoMarkup,
     estadoPagoInicial,
     setEstadoPagoInicial,
     abonoInicial,

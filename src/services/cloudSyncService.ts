@@ -30,7 +30,10 @@ import {
   PaymentRecord,
   EstadoOT,
   EstadoCotizacion,
-  ItemBacklogEmpresa
+  ItemBacklogEmpresa,
+  ConsumoRealProduccion,
+  PromedioConsumoReal,
+  ModoMargen
 } from '../types';
 import {
   normalizarNitCc,
@@ -74,9 +77,27 @@ export interface OutboxSyncTask {
 }
 
 const OUTBOX_STORAGE_KEY = 'wjg_sync_outbox';
+const CLIENT_INSTANCE_ID = `wjg-${Math.random().toString(36).slice(2, 8)}`;
+let activeRealtimeChannel: any = null;
 
 export const CloudSyncService = {
   isAvailable: () => isSupabaseConfigured && supabase !== null,
+
+  broadcastChange(entity: string, action: string = 'upsert'): void {
+    try {
+      if (!activeRealtimeChannel) return;
+      activeRealtimeChannel.send({
+        type: 'broadcast',
+        event: 'wjg_entity_changed',
+        payload: {
+          entity,
+          action,
+          senderId: CLIENT_INSTANCE_ID,
+          ts: Date.now()
+        }
+      });
+    } catch (_) {}
+  },
 
   // --- GESTIÓN DE COLA OUTBOX Y RESILIENCIA OFFLINE ---
   getOutboxQueue(): OutboxSyncTask[] {
@@ -336,6 +357,9 @@ export const CloudSyncService = {
           saldo_pendiente?: number;
           metodo_pago?: string;
           comprobante_pago?: string;
+          modo_margen?: ModoMargen;
+          costo_total_taller?: number;
+          utilidad_neta_estimada?: number;
         } = {};
         if (row.notas && row.notas.includes('<!-- WJ_ITEMS_SNAPSHOT:')) {
           try {
@@ -366,7 +390,10 @@ export const CloudSyncService = {
                   abono: parsed.abono,
                   saldo_pendiente: parsed.saldo_pendiente,
                   metodo_pago: parsed.metodo_pago,
-                  comprobante_pago: parsed.comprobante_pago
+                  comprobante_pago: parsed.comprobante_pago,
+                  modo_margen: parsed.modo_margen,
+                  costo_total_taller: parsed.costo_total_taller,
+                  utilidad_neta_estimada: parsed.utilidad_neta_estimada
                 };
               }
               notasLimpia = row.notas.replace(/<!-- WJ_ITEMS_SNAPSHOT:[\s\S]*?:WJ_ITEMS_SNAPSHOT -->/g, '').trim();
@@ -416,7 +443,10 @@ export const CloudSyncService = {
           saldo_pendiente: saldoFinal,
           estado_pago: estadoPagoFinal,
           metodo_pago: metaFinanciera.metodo_pago || row.metodo_pago || 'Bre-B',
-          comprobante_pago: metaFinanciera.comprobante_pago || row.comprobante_pago || undefined
+          comprobante_pago: metaFinanciera.comprobante_pago || row.comprobante_pago || undefined,
+          modo_margen: (metaFinanciera as any).modo_margen || row.modo_margen || 'margen_bruto',
+          costo_total_taller: (metaFinanciera as any).costo_total_taller ?? (row.costo_total_taller !== undefined ? Number(row.costo_total_taller) : undefined),
+          utilidad_neta_estimada: (metaFinanciera as any).utilidad_neta_estimada ?? (row.utilidad_neta_estimada !== undefined ? Number(row.utilidad_neta_estimada) : undefined)
         };
       });
     } catch (e) {
@@ -589,7 +619,9 @@ export const CloudSyncService = {
           saldo_pendiente: saldo,
           estado_pago: estadoPagoFinal,
           metodo_pago: meta.metodo_pago || row.metodo_pago || 'Bre-B',
-          comprobante_pago: row.comprobante_pago || undefined
+          comprobante_pago: row.comprobante_pago || undefined,
+          inventario_descontado: meta.inventario_descontado !== undefined ? Boolean(meta.inventario_descontado) : Boolean(row.inventario_descontado),
+          costo_real_acumulado: meta.costo_real_acumulado !== undefined ? Number(meta.costo_real_acumulado) : (row.costo_real_acumulado !== undefined ? Number(row.costo_real_acumulado) : 0)
         };
       });
     } catch (e) {
@@ -724,13 +756,16 @@ export const CloudSyncService = {
         abono: abonoCot,
         saldo_pendiente: saldoCot,
         metodo_pago: cot.metodo_pago || 'Bre-B',
-        comprobante_pago: cot.comprobante_pago || undefined
+        comprobante_pago: cot.comprobante_pago || undefined,
+        modo_margen: cot.modo_margen || 'margen_bruto',
+        costo_total_taller: Number(cot.costo_total_taller) || 0,
+        utilidad_neta_estimada: Number(cot.utilidad_neta_estimada) || 0
       };
       const encodedSnapshot = encodeURIComponent(JSON.stringify(payloadSnapshot));
       const notasConSnapshot = `${rawNotas}\n${snapshotPrefix}${encodedSnapshot}${snapshotSuffix}`;
 
-      // 5.2 Upsert directo con columnas canónicas compatibles (evita errores 400 PGRST204 en consola)
-      const canonicalPayload = {
+      // 5.2 Upsert directo con columnas canónicas compatibles (y campos extendidos con fallback defensivo)
+      const canonicalPayload: any = {
         numero_cot: cot.numero_cot,
         cliente_id: clienteId,
         fecha_emision: cot.fecha || new Date().toISOString().slice(0, 10),
@@ -742,11 +777,28 @@ export const CloudSyncService = {
         notas: notasConSnapshot
       };
 
-      const { data: cotData, error: cotErr } = await supabase!
+      const extendedPayload = {
+        ...canonicalPayload,
+        costo_total_taller: Number(cot.costo_total_taller) || 0,
+        utilidad_neta_estimada: Number(cot.utilidad_neta_estimada) || 0,
+        modo_margen: cot.modo_margen || 'margen_bruto'
+      };
+
+      let { data: cotData, error: cotErr } = await supabase!
         .from('cotizaciones')
-        .upsert(canonicalPayload, { onConflict: 'numero_cot' })
+        .upsert(extendedPayload, { onConflict: 'numero_cot' })
         .select('id')
         .single();
+
+      if (cotErr && (cotErr.code === 'PGRST204' || cotErr.code === '42703' || /column/i.test(cotErr.message || ''))) {
+        const retryCot = await supabase!
+          .from('cotizaciones')
+          .upsert(canonicalPayload, { onConflict: 'numero_cot' })
+          .select('id')
+          .single();
+        cotData = retryCot.data;
+        cotErr = retryCot.error;
+      }
 
       if (cotErr) {
         console.warn('Error saving cotizacion in Supabase:', cotErr);
@@ -781,6 +833,7 @@ export const CloudSyncService = {
         }
       }
 
+      this.broadcastChange('cotizacion', 'upsert');
       return true;
     } catch (e) {
       console.warn('Exception in saveCotizacion to cloud:', e);
@@ -839,7 +892,9 @@ export const CloudSyncService = {
         filamento_nombre: ot.filamento_nombre || undefined,
         maquina_nombre: ot.maquina_nombre || undefined,
         va_pintado: Boolean(ot.va_pintado),
-        tiene_empaque: Boolean(ot.tiene_empaque)
+        tiene_empaque: Boolean(ot.tiene_empaque),
+        inventario_descontado: Boolean(ot.inventario_descontado),
+        costo_real_acumulado: Number(ot.costo_real_acumulado) || 0
       };
       const metaTag = `<!-- WJ_OT_META:${encodeURIComponent(JSON.stringify(otMeta))}:WJ_OT_META -->`;
       const descConMeta = `${rawDesc}\n${metaTag}`.trim();
@@ -865,12 +920,28 @@ export const CloudSyncService = {
         payloadV3.id = ot.id;
       }
 
-      // Intento en Core V3 (tabla ordenes_trabajo)
-      const { error: errV3 } = await supabase!
-        .from('ordenes_trabajo')
-        .upsert(payloadV3, { onConflict: 'numero_ot' });
+      const payloadV3Extended = {
+        ...payloadV3,
+        inventario_descontado: Boolean(ot.inventario_descontado),
+        costo_real_acumulado: Number(ot.costo_real_acumulado) || 0
+      };
 
-      if (!errV3) return true;
+      // Intento en Core V3 (con columnas extendidas y fallback limpio)
+      let { error: errV3 } = await supabase!
+        .from('ordenes_trabajo')
+        .upsert(payloadV3Extended, { onConflict: 'numero_ot' });
+
+      if (errV3 && (errV3.code === 'PGRST204' || errV3.code === '42703' || /column/i.test(errV3.message || ''))) {
+        const retryV3 = await supabase!
+          .from('ordenes_trabajo')
+          .upsert(payloadV3, { onConflict: 'numero_ot' });
+        errV3 = retryV3.error;
+      }
+
+      if (!errV3) {
+        this.broadcastChange('orden', 'upsert');
+        return true;
+      }
 
       // Fallback para esquema legado (sin saldo_pendiente generado)
       const payloadLegacy: any = {
@@ -898,6 +969,7 @@ export const CloudSyncService = {
       if (errLegacy && !isFlushingQueue) {
         this.enqueueOutboxTask({ type: 'orden', payload: ot });
       }
+      if (!errLegacy) this.broadcastChange('orden', 'upsert');
       return !errLegacy;
     } catch (e) {
       console.warn('Exception saving OT to cloud:', e);
@@ -926,6 +998,7 @@ export const CloudSyncService = {
         console.warn('Error deleting OT from cloud:', error);
         return false;
       }
+      this.broadcastChange('orden', 'delete');
       return true;
     } catch (e) {
       console.warn('Exception deleting OT from cloud:', e);
@@ -1344,6 +1417,7 @@ export const CloudSyncService = {
         if (!isFlushingQueue) this.enqueueOutboxTask({ type: 'venta_express', payload: venta });
         return { success: false, error: error.message };
       }
+      this.broadcastChange('venta_express', 'upsert');
       return { success: true };
     } catch (e: any) {
       console.warn('Exception in saveVentaExpress:', e);
@@ -1397,6 +1471,7 @@ export const CloudSyncService = {
         console.warn('Error deleting venta_express in Supabase:', error.message);
         return { success: false, error: error.message };
       }
+      this.broadcastChange('venta_express', 'delete');
       return { success: true };
     } catch (e: any) {
       console.warn('Exception in deleteVentaExpress:', e);
@@ -1468,6 +1543,7 @@ export const CloudSyncService = {
         return { success: false, error: error.message };
       }
 
+      this.broadcastChange('cotizacion', 'delete');
       return { success: true };
     } catch (e: any) {
       console.warn('Exception in deleteCotizacion:', e);
@@ -1488,6 +1564,7 @@ export const CloudSyncService = {
           .delete()
           .eq('referencia_transaccion', numero_cc);
       }
+      this.broadcastChange('cuenta', 'delete');
       return true;
     } catch (e) {
       console.warn('Exception in deleteCuentaCobro:', e);
@@ -1733,6 +1810,7 @@ export const CloudSyncService = {
         console.warn('Error saving producto_stock in Supabase:', error.message);
         return false;
       }
+      this.broadcastChange('stock', 'upsert');
       return true;
     } catch (e) {
       console.warn('Exception in saveProductoStock:', e);
@@ -1760,13 +1838,14 @@ export const CloudSyncService = {
         imagen_url: resina.imagen_url || null
       };
       const { error } = await supabase!.from('resinas').upsert(payload, { onConflict: 'id' });
+      if (!error) this.broadcastChange('resina', 'upsert');
       return !error;
     } catch (e) {
       return false;
     }
   },
 
-  // 20.01 Sincronizar Filamento en Supabase
+  // 20.01 Sincronizar Filamento en Supabase (mapeado exacto a columnas temperatura_extrusor_c / temperatura_cama_c)
   async saveFilamento(filamento: Filamento): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
@@ -1780,15 +1859,14 @@ export const CloudSyncService = {
         peso_bobina_g: Number(filamento.peso_bobina_g) || 1000,
         precio_compra: Number(filamento.precio_compra) || 85000,
         costo_gramo: Number(filamento.costo_gramo) || 85,
-        stock_actual_g: Number(filamento.stock_actual_g) || 1000,
-        temperatura_nozzle: filamento.temperatura_nozzle ? Number(filamento.temperatura_nozzle) : 215,
-        temperatura_bed: filamento.temperatura_bed ? Number(filamento.temperatura_bed) : 60,
-        densidad_g_cm3: filamento.densidad_g_cm3 ? Number(filamento.densidad_g_cm3) : 1.24,
+        stock_actual_g: Number(filamento.stock_actual_g ?? 1000),
+        temperatura_extrusor_c: filamento.temperatura_nozzle ? Number(filamento.temperatura_nozzle) : 215,
+        temperatura_cama_c: filamento.temperatura_bed ? Number(filamento.temperatura_bed) : 60,
         enlace_compra: filamento.enlace_compra || null,
-        imagen_url: filamento.imagen_url || null,
         activo: filamento.activo !== false
       };
       const { error } = await supabase!.from('filamentos').upsert(payload, { onConflict: 'id' });
+      if (!error) this.broadcastChange('filamento', 'upsert');
       return !error;
     } catch (e) {
       return false;
@@ -1818,9 +1896,9 @@ export const CloudSyncService = {
           peso_bobina_g: Number(row.peso_bobina_g) || 1000,
           precio_compra: Number(row.precio_compra) || 85000,
           costo_gramo: Number(row.costo_gramo) || 85,
-          stock_actual_g: Number(row.stock_actual_g) || 1000,
-          temperatura_nozzle: Number(row.temperatura_nozzle) || 215,
-          temperatura_bed: Number(row.temperatura_bed) || 60,
+          stock_actual_g: row.stock_actual_g !== undefined && row.stock_actual_g !== null ? Number(row.stock_actual_g) : 1000,
+          temperatura_nozzle: Number(row.temperatura_extrusor_c ?? row.temperatura_nozzle) || 215,
+          temperatura_bed: Number(row.temperatura_cama_c ?? row.temperatura_bed) || 60,
           densidad_g_cm3: Number(row.densidad_g_cm3) || 1.24,
           enlace_compra: row.enlace_compra || '',
           imagen_url: row.imagen_url || '',
@@ -1838,9 +1916,13 @@ export const CloudSyncService = {
     if (!this.isAvailable()) return false;
     try {
       const { error } = await supabase!.from('filamentos').delete().eq('id', id);
-      if (!error) return true;
+      if (!error) {
+        this.broadcastChange('filamento', 'delete');
+        return true;
+      }
       if (marcaTipo) {
         const { error: err2 } = await supabase!.from('filamentos').delete().ilike('tipo', `%${marcaTipo}%`);
+        if (!err2) this.broadcastChange('filamento', 'delete');
         return !err2;
       }
       return false;
@@ -1913,7 +1995,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 21. Sincronizar Insumos en Supabase
+  // 21. Sincronizar Insumos en Supabase (incluye stock_actual y unidad_medida)
   async saveInsumo(insumo: Insumo): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
@@ -1926,6 +2008,8 @@ export const CloudSyncService = {
         marca: insumo.marca,
         categoria: insumo.categoria,
         cantidad_presentacion: Number(insumo.presentacion) || 1,
+        unidad_medida: insumo.unidad_medida || 'und',
+        stock_actual: insumo.stock_actual !== undefined ? Number(insumo.stock_actual) : (Number(insumo.presentacion) || 0),
         costo_total: Number(insumo.costo_total) || 0,
         costo_unitario: Number(insumo.costo_unitario) || 0,
         enlace_compra: insumo.enlace_compra || null,
@@ -1933,6 +2017,7 @@ export const CloudSyncService = {
         imagen_url: insumo.imagen_url || null
       };
       const { error } = await supabase!.from('insumos').upsert(payload, { onConflict: 'id' });
+      if (!error) this.broadcastChange('insumo', 'upsert');
       return !error;
     } catch (e) {
       return false;
@@ -2020,7 +2105,10 @@ export const CloudSyncService = {
           costo_minuto_repuestos: Number(costo_minuto_repuestos.toFixed(4)),
           estado: row.estado || 'Disponible',
           imagen_url: row.imagen_url || undefined,
-          repuestos: repuestosParsed
+          repuestos: repuestosParsed,
+          precio_compra: row.precio_compra !== undefined ? Number(row.precio_compra) : 0,
+          vida_util_horas: row.vida_util_horas !== undefined && Number(row.vida_util_horas) > 0 ? Number(row.vida_util_horas) : 4000,
+          mantenimiento_mensual: row.mantenimiento_mensual !== undefined ? Number(row.mantenimiento_mensual) : 0
         };
       }).sort((a, b) => a.nombre.localeCompare(b.nombre));
     } catch (e) {
@@ -2029,14 +2117,14 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.05 Sincronizar Maquinaria en Supabase
+  // 21.05 Sincronizar Maquinaria en Supabase (con repuestos y amortización + fallback defensivo)
   async saveMaquina(maquina: Maquina): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
       const validId = ensureValidUuid(maquina.id);
       maquina.id = validId;
 
-      const payload: any = {
+      const basePayload: any = {
         id: validId,
         nombre: maquina.nombre,
         tipo: maquina.tipo || 'Impresora 3D',
@@ -2047,11 +2135,24 @@ export const CloudSyncService = {
         imagen_url: maquina.imagen_url || null
       };
 
-      const { error } = await supabase!.from('maquinas').upsert(payload, { onConflict: 'id' });
+      const extendedPayload: any = {
+        ...basePayload,
+        repuestos: Array.isArray(maquina.repuestos) ? maquina.repuestos : [],
+        precio_compra: Number(maquina.precio_compra) || 0,
+        vida_util_horas: Number(maquina.vida_util_horas) || 4000,
+        mantenimiento_mensual: Number(maquina.mantenimiento_mensual) || 0
+      };
+
+      let { error } = await supabase!.from('maquinas').upsert(extendedPayload, { onConflict: 'id' });
+      if (error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message || ''))) {
+        const retry = await supabase!.from('maquinas').upsert(basePayload, { onConflict: 'id' });
+        error = retry.error;
+      }
       if (error) {
         console.warn('Error saving maquina in Supabase:', error.message);
         return false;
       }
+      this.broadcastChange('maquina', 'upsert');
       return true;
     } catch (e) {
       return false;
@@ -2064,10 +2165,14 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('maquinas').delete().eq('id', id);
-        if (!error) return true;
+        if (!error) {
+          this.broadcastChange('maquina', 'delete');
+          return true;
+        }
       }
       if (nombre) {
         const { error } = await supabase!.from('maquinas').delete().ilike('nombre', `%${nombre}%`);
+        if (!error) this.broadcastChange('maquina', 'delete');
         return !error;
       }
       return false;
@@ -2118,10 +2223,14 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('insumos').delete().eq('id', id);
-        if (!error) return true;
+        if (!error) {
+          this.broadcastChange('insumo', 'delete');
+          return true;
+        }
       }
       if (nombre) {
         const { error } = await supabase!.from('insumos').delete().ilike('nombre', `%${nombre}%`);
+        if (!error) this.broadcastChange('insumo', 'delete');
         return !error;
       }
       return false;
@@ -2172,10 +2281,14 @@ export const CloudSyncService = {
     try {
       if (UUID_REGEX.test(id)) {
         const { error } = await supabase!.from('resinas').delete().eq('id', id);
-        if (!error) return true;
+        if (!error) {
+          this.broadcastChange('resina', 'delete');
+          return true;
+        }
       }
       if (resumen) {
         const { error } = await supabase!.from('resinas').delete().ilike('tipo', `%${resumen}%`);
+        if (!error) this.broadcastChange('resina', 'delete');
         return !error;
       }
       return false;
@@ -2209,7 +2322,16 @@ export const CloudSyncService = {
         instagram: data.instagram || '@wjgeeks3d',
         nequi: data.nequi || '3202796115',
         bre_b: data.bre_b || '0090778625',
-        titular_cuenta: data.titular_cuenta || 'WJGEEKS 3D PRO'
+        titular_cuenta: data.titular_cuenta || 'WJGEEKS 3D PRO',
+        tasa_fallo_sla_pct: data.tasa_fallo_sla_pct !== undefined ? Number(data.tasa_fallo_sla_pct) : 10,
+        tasa_fallo_fdm_pct: data.tasa_fallo_fdm_pct !== undefined ? Number(data.tasa_fallo_fdm_pct) : 5,
+        gastos_fijos_mensuales: data.gastos_fijos_mensuales !== undefined ? Number(data.gastos_fijos_mensuales) : 0,
+        horas_facturables_mes: data.horas_facturables_mes !== undefined && Number(data.horas_facturables_mes) > 0 ? Number(data.horas_facturables_mes) : 160,
+        consumibles_sla_por_impresion: data.consumibles_sla_por_impresion !== undefined ? Number(data.consumibles_sla_por_impresion) : 1500,
+        precio_minimo_trabajo: data.precio_minimo_trabajo !== undefined ? Number(data.precio_minimo_trabajo) : 15000,
+        comision_pasarela_default_pct: data.comision_pasarela_default_pct !== undefined ? Number(data.comision_pasarela_default_pct) : 0,
+        modo_margen_default: (data.modo_margen_default === 'markup' ? 'markup' : 'margen_bruto'),
+        piso_margen_alerta_pct: data.piso_margen_alerta_pct !== undefined ? Number(data.piso_margen_alerta_pct) : 20
       };
     } catch (e) {
       console.warn('Exception in fetchConfiguracion:', e);
@@ -2217,11 +2339,11 @@ export const CloudSyncService = {
     }
   },
 
-  // 21.12 Guardar Configuración del Taller en Supabase (Sin columnas inexistentes)
+  // 21.12 Guardar Configuración del Taller en Supabase (Con columnas Cotizador 2.0 y fallback defensivo)
   async saveConfiguracion(cfg: ConfiguracionTaller): Promise<boolean> {
     if (!this.isAvailable()) return false;
     try {
-      const payload: any = {
+      const basePayload: any = {
         tarifa_kwh: Number(cfg.tarifa_kwh) || 834,
         margen_merma_resina: Number(cfg.margen_merma_resina) || 1.4,
         margen_merma_fdm: Number(cfg.margen_merma_fdm) || 5.0,
@@ -2235,13 +2357,35 @@ export const CloudSyncService = {
         updated_at: new Date().toISOString()
       };
 
+      const extendedPayload: any = {
+        ...basePayload,
+        tasa_fallo_sla_pct: cfg.tasa_fallo_sla_pct !== undefined ? Number(cfg.tasa_fallo_sla_pct) : 10,
+        tasa_fallo_fdm_pct: cfg.tasa_fallo_fdm_pct !== undefined ? Number(cfg.tasa_fallo_fdm_pct) : 5,
+        gastos_fijos_mensuales: Number(cfg.gastos_fijos_mensuales) || 0,
+        horas_facturables_mes: Number(cfg.horas_facturables_mes) > 0 ? Number(cfg.horas_facturables_mes) : 160,
+        consumibles_sla_por_impresion: cfg.consumibles_sla_por_impresion !== undefined ? Number(cfg.consumibles_sla_por_impresion) : 1500,
+        precio_minimo_trabajo: cfg.precio_minimo_trabajo !== undefined ? Number(cfg.precio_minimo_trabajo) : 15000,
+        comision_pasarela_default_pct: Number(cfg.comision_pasarela_default_pct) || 0,
+        modo_margen_default: cfg.modo_margen_default || 'margen_bruto',
+        piso_margen_alerta_pct: cfg.piso_margen_alerta_pct !== undefined ? Number(cfg.piso_margen_alerta_pct) : 20
+      };
+
       const { data: existing } = await supabase!.from('configuracion_taller').select('id').limit(1).maybeSingle();
       if (existing?.id) {
-        payload.id = existing.id;
-        const { error } = await supabase!.from('configuracion_taller').update(payload).eq('id', existing.id);
+        let { error } = await supabase!.from('configuracion_taller').update({ ...extendedPayload, id: existing.id }).eq('id', existing.id);
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message || ''))) {
+          const retry = await supabase!.from('configuracion_taller').update({ ...basePayload, id: existing.id }).eq('id', existing.id);
+          error = retry.error;
+        }
+        if (!error) this.broadcastChange('configuracion', 'upsert');
         return !error;
       } else {
-        const { error } = await supabase!.from('configuracion_taller').insert([payload]);
+        let { error } = await supabase!.from('configuracion_taller').insert([extendedPayload]);
+        if (error && (error.code === 'PGRST204' || error.code === '42703' || /column/i.test(error.message || ''))) {
+          const retry = await supabase!.from('configuracion_taller').insert([basePayload]);
+          error = retry.error;
+        }
+        if (!error) this.broadcastChange('configuracion', 'upsert');
         return !error;
       }
     } catch (e) {
@@ -2833,7 +2977,7 @@ export const CloudSyncService = {
     }
   },
 
-  // 22. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs
+  // 22. Escucha en tiempo real para sincronización entre dispositivos móviles y PCs (Postgres Changes + Broadcast + Auto-Reconexión)
   subscribeRealtime(
     onCotizacionChange: () => void, 
     onOTChange: () => void, 
@@ -2846,7 +2990,8 @@ export const CloudSyncService = {
     onMaquinaChange?: () => void,
     onCatalogChange?: () => void,
     onClientesChange?: () => void,
-    onBacklogChange?: () => void
+    onBacklogChange?: () => void,
+    onConsumosRealesChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
 
@@ -2858,61 +3003,156 @@ export const CloudSyncService = {
       }
     } catch {}
 
-    const channel = supabase!.channel('wjgeeks_live_sync')
+    // Debounce por entidad (300ms) para evitar tormentas de refetch al guardar lotes o ítems
+    const timers = new Map<string, ReturnType<typeof setTimeout>>();
+    const triggerDebounced = (key: string, fn?: () => void) => {
+      if (!fn) return;
+      const prevTimer = timers.get(key);
+      if (prevTimer) clearTimeout(prevTimer);
+      timers.set(
+        key,
+        setTimeout(() => {
+          timers.delete(key);
+          fn();
+        }, 300)
+      );
+    };
+
+    const channel = supabase!.channel('wjgeeks_live_sync', {
+      config: { broadcast: { self: false } }
+    })
+      .on('broadcast', { event: 'wjg_entity_changed' }, (msg: any) => {
+        const payload = msg?.payload;
+        if (!payload || payload.senderId === CLIENT_INSTANCE_ID) return;
+        const entity = String(payload.entity || '');
+        if (entity === 'cotizacion') triggerDebounced('cotizacion', onCotizacionChange);
+        else if (entity === 'orden') {
+          triggerDebounced('orden', onOTChange);
+          triggerDebounced('cuenta', onCuentaChange);
+        } else if (entity === 'cuenta') triggerDebounced('cuenta', onCuentaChange);
+        else if (entity === 'venta_express') triggerDebounced('venta_express', onVentaExpressChange);
+        else if (entity === 'stock') triggerDebounced('stock', onStockChange);
+        else if (entity === 'cliente') {
+          triggerDebounced('cliente', onClientesChange);
+          triggerDebounced('catalogo', onCatalogChange);
+        } else if (entity === 'consumo_real') triggerDebounced('consumo_real', onConsumosRealesChange);
+        else if (entity === 'tarea') triggerDebounced('tarea', onTareaChange);
+        else if (entity === 'solicitud') triggerDebounced('solicitud', onSolicitudChange);
+        else if (entity === 'catalogo' || entity === 'maquina' || entity === 'insumo' || entity === 'resina' || entity === 'filamento' || entity === 'configuracion') {
+          if (entity === 'maquina') triggerDebounced('maquina', onMaquinaChange);
+          triggerDebounced('catalogo', onCatalogChange);
+        }
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'cotizaciones' }, () => {
-        onCotizacionChange();
+        triggerDebounced('cotizacion', onCotizacionChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ordenes_trabajo' }, () => {
-        onOTChange();
-        onCuentaChange();
+        triggerDebounced('orden', onOTChange);
+        triggerDebounced('cuenta', onCuentaChange);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'cuentas_cobro' }, () => {
+        triggerDebounced('cuenta', onCuentaChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'abonos_pagos' }, () => {
-        onOTChange();
-        onCuentaChange();
-        if (onPaymentChange) onPaymentChange();
+        triggerDebounced('orden', onOTChange);
+        triggerDebounced('cuenta', onCuentaChange);
+        triggerDebounced('payment', onPaymentChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'ventas_express' }, () => {
-        if (onVentaExpressChange) onVentaExpressChange();
+        triggerDebounced('venta_express', onVentaExpressChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tareas_equipo' }, () => {
-        if (onTareaChange) onTareaChange();
+        triggerDebounced('tarea', onTareaChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'solicitudes_insumos' }, () => {
-        if (onSolicitudChange) onSolicitudChange();
+        triggerDebounced('solicitud', onSolicitudChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'productos_stock' }, () => {
-        if (onStockChange) onStockChange();
+        triggerDebounced('stock', onStockChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maquinas' }, () => {
-        if (onMaquinaChange) onMaquinaChange();
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('maquina', onMaquinaChange);
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'insumos' }, () => {
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'resinas' }, () => {
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('catalogo', onCatalogChange);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'filamentos' }, () => {
+        triggerDebounced('catalogo', onCatalogChange);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'produccion_interna' }, () => {
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'configuracion_taller' }, () => {
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('catalogo', onCatalogChange);
       })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_personal' }, () => {
-        if (onCatalogChange) onCatalogChange();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'usuarios_taller' }, () => {
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'proveedores' }, () => {
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tarifas_tamanos' }, () => {
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'clientes' }, () => {
-        if (onClientesChange) onClientesChange();
-        if (onCatalogChange) onCatalogChange();
+        triggerDebounced('cliente', onClientesChange);
+        triggerDebounced('catalogo', onCatalogChange);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'backlog_mejoras_empresa' }, () => {
-        if (onBacklogChange) onBacklogChange();
+        triggerDebounced('backlog', onBacklogChange);
       })
-      .subscribe();
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'consumos_reales_produccion' }, () => {
+        triggerDebounced('consumo_real', onConsumosRealesChange);
+      });
+
+    let reconnectAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    let isManuallyUnsubscribed = false;
+
+    const attachSubscription = (targetChannel: any) => {
+      targetChannel.subscribe((status: string) => {
+        if (status === 'SUBSCRIBED') {
+          reconnectAttempt = 0;
+          activeRealtimeChannel = targetChannel;
+        } else if (
+          !isManuallyUnsubscribed &&
+          (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED')
+        ) {
+          if (reconnectTimer) return;
+          const delay = Math.min(30000, 2000 * Math.pow(2, reconnectAttempt));
+          reconnectAttempt += 1;
+          reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            if (isManuallyUnsubscribed) return;
+            try {
+              targetChannel.subscribe();
+            } catch (_) {}
+          }, delay);
+        }
+      });
+    };
+
+    attachSubscription(channel);
+    activeRealtimeChannel = channel;
+
+    const origUnsubscribe = channel.unsubscribe.bind(channel);
+    channel.unsubscribe = async () => {
+      isManuallyUnsubscribed = true;
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      timers.forEach(t => clearTimeout(t));
+      timers.clear();
+      if (activeRealtimeChannel === channel) {
+        activeRealtimeChannel = null;
+      }
+      return origUnsubscribe();
+    };
 
     return channel;
   },
@@ -3063,6 +3303,142 @@ export const CloudSyncService = {
       return !error;
     } catch (e) {
       return false;
+    }
+  },
+
+  // 26. Consumos Reales de Producción (Taller + Pintor) & Promedios para el Cotizador
+  async fetchConsumosReales(): Promise<ConsumoRealProduccion[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('consumos_reales_produccion')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Info fetching consumos_reales_produccion:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any): ConsumoRealProduccion => ({
+        id: row.id,
+        orden_trabajo_id: row.orden_trabajo_id || '',
+        cotizacion_id: row.cotizacion_id || undefined,
+        numero_referencia: row.numero_referencia || '',
+        etapa: row.etapa || 'TALLER_IMPRESION',
+        tecnologia: row.tecnologia || 'SLA_RESINA',
+        altura_referencia_mm: Number(row.altura_referencia_mm) || 0,
+        cantidad_piezas: Number(row.cantidad_piezas) || 1,
+        registrado_por_id: row.registrado_por_id || undefined,
+        registrado_por_nombre: row.registrado_por_nombre || 'Equipo WJGEEKS',
+        material_id: row.material_id || undefined,
+        material_nombre: row.material_nombre || undefined,
+        material_estimado_g: Number(row.material_estimado_g) || 0,
+        material_real_g: Number(row.material_real_g) || 0,
+        tiempo_real_impresion_min: Number(row.tiempo_real_impresion_min) || 0,
+        tiempo_real_mano_obra_min: Number(row.tiempo_real_mano_obra_min) || 0,
+        hubo_fallo: Boolean(row.hubo_fallo),
+        piezas_fallidas: Number(row.piezas_fallidas) || 0,
+        insumos_consumidos: Array.isArray(row.insumos_consumidos) ? row.insumos_consumidos : [],
+        costo_material_real: Number(row.costo_material_real) || 0,
+        costo_insumos_reales: Number(row.costo_insumos_reales) || 0,
+        costo_mano_obra_real: Number(row.costo_mano_obra_real) || 0,
+        costo_total_real: Number(row.costo_total_real) || 0,
+        descontado_de_inventario: Boolean(row.descontado_de_inventario),
+        notas: row.notas || undefined,
+        created_at: row.created_at,
+        updated_at: row.updated_at
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchConsumosReales:', e);
+      return null;
+    }
+  },
+
+  async saveConsumoReal(consumo: ConsumoRealProduccion): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const validId = ensureValidUuid(consumo.id);
+      consumo.id = validId;
+      const payload = {
+        id: validId,
+        orden_trabajo_id: (consumo.orden_trabajo_id && UUID_REGEX.test(consumo.orden_trabajo_id)) ? consumo.orden_trabajo_id : null,
+        cotizacion_id: (consumo.cotizacion_id && UUID_REGEX.test(consumo.cotizacion_id)) ? consumo.cotizacion_id : null,
+        numero_referencia: consumo.numero_referencia,
+        etapa: consumo.etapa,
+        tecnologia: consumo.tecnologia || 'SLA_RESINA',
+        altura_referencia_mm: Number(consumo.altura_referencia_mm) || 0,
+        cantidad_piezas: Math.max(1, Number(consumo.cantidad_piezas) || 1),
+        registrado_por_id: (consumo.registrado_por_id && UUID_REGEX.test(consumo.registrado_por_id)) ? consumo.registrado_por_id : null,
+        registrado_por_nombre: consumo.registrado_por_nombre || 'Equipo WJGEEKS',
+        material_id: consumo.material_id || null,
+        material_nombre: consumo.material_nombre || null,
+        material_estimado_g: Number(consumo.material_estimado_g) || 0,
+        material_real_g: Number(consumo.material_real_g) || 0,
+        tiempo_real_impresion_min: Math.round(Number(consumo.tiempo_real_impresion_min) || 0),
+        tiempo_real_mano_obra_min: Math.round(Number(consumo.tiempo_real_mano_obra_min) || 0),
+        hubo_fallo: Boolean(consumo.hubo_fallo),
+        piezas_fallidas: Math.round(Number(consumo.piezas_fallidas) || 0),
+        insumos_consumidos: Array.isArray(consumo.insumos_consumidos) ? consumo.insumos_consumidos : [],
+        costo_material_real: Number(consumo.costo_material_real) || 0,
+        costo_insumos_reales: Number(consumo.costo_insumos_reales) || 0,
+        costo_mano_obra_real: Number(consumo.costo_mano_obra_real) || 0,
+        costo_total_real: Number(consumo.costo_total_real) || 0,
+        descontado_de_inventario: Boolean(consumo.descontado_de_inventario),
+        notas: consumo.notas || null,
+        updated_at: new Date().toISOString()
+      };
+
+      const { error } = await supabase!
+        .from('consumos_reales_produccion')
+        .upsert(payload, { onConflict: 'id' });
+
+      if (error) {
+        console.warn('Error saving consumo_real in Supabase:', error.message);
+        return false;
+      }
+      this.broadcastChange('consumo_real', 'upsert');
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveConsumoReal:', e);
+      return false;
+    }
+  },
+
+  async deleteConsumoReal(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('consumos_reales_produccion')
+        .delete()
+        .eq('id', id);
+      if (!error) this.broadcastChange('consumo_real', 'delete');
+      return !error;
+    } catch (e) {
+      console.warn('Exception in deleteConsumoReal:', e);
+      return false;
+    }
+  },
+
+  async fetchPromediosConsumoReal(): Promise<PromedioConsumoReal[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('vista_promedios_consumo_real')
+        .select('*');
+      if (error || !data) return null;
+      return data.map((row: any): PromedioConsumoReal => ({
+        tecnologia: row.tecnologia || 'SLA_RESINA',
+        etapa: row.etapa || 'TALLER_IMPRESION',
+        rango_altura: row.rango_altura || 'GENERAL',
+        total_registros: Number(row.total_registros) || 0,
+        desviacion_material_pct: Number(row.desviacion_material_pct) || 0,
+        promedio_material_real_g: Number(row.promedio_material_real_g) || 0,
+        promedio_insumos_extras_por_pieza: Number(row.promedio_insumos_extras_por_pieza) || 0,
+        promedio_mano_obra_min_por_pieza: Number(row.promedio_mano_obra_min_por_pieza) || 0,
+        tasa_fallo_real_pct: Number(row.tasa_fallo_real_pct) || 0
+      }));
+    } catch (e) {
+      return null;
     }
   }
 };

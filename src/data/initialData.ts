@@ -74,6 +74,15 @@ export interface ConfiguracionTaller {
   daviplata: string;
   bancolombia: string;
   titular_cuenta: string;
+  tasa_fallo_sla_pct?: number;
+  tasa_fallo_fdm_pct?: number;
+  gastos_fijos_mensuales?: number;
+  horas_facturables_mes?: number;
+  consumibles_sla_por_impresion?: number;
+  precio_minimo_trabajo?: number;
+  comision_pasarela_default_pct?: number;
+  modo_margen_default?: 'margen_bruto' | 'markup';
+  piso_margen_alerta_pct?: number;
 }
 
 export const RESINAS_INICIALES: Resina[] = [
@@ -1133,7 +1142,16 @@ export const CONFIGURACION_INICIAL: ConfiguracionTaller = {
   "bre_b": "0090778625",
   "daviplata": "3217273025",
   "bancolombia": "Ahorros 245-000123-98",
-  "titular_cuenta": "WJGEEKS 3D PRO"
+  "titular_cuenta": "WJGEEKS 3D PRO",
+  "tasa_fallo_sla_pct": 10,
+  "tasa_fallo_fdm_pct": 5,
+  "gastos_fijos_mensuales": 0,
+  "horas_facturables_mes": 160,
+  "consumibles_sla_por_impresion": 1500,
+  "precio_minimo_trabajo": 15000,
+  "comision_pasarela_default_pct": 0,
+  "modo_margen_default": "margen_bruto",
+  "piso_margen_alerta_pct": 20
 };
 
 export const TARIFAS_TAMANOS_INICIALES = [

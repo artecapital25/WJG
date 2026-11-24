@@ -1,5 +1,5 @@
 import React from 'react';
-import { OrdenTrabajo, EstadoOT, ConfiguracionTaller, Cotizacion } from '../../../types';
+import { OrdenTrabajo, EstadoOT, ConfiguracionTaller, Cotizacion, ConsumoRealProduccion } from '../../../types';
 import { OTCardItem } from './OTCardItem';
 
 interface OTKanbanColumnProps {
@@ -8,10 +8,12 @@ interface OTKanbanColumnProps {
   ordenes: OrdenTrabajo[];
   config: ConfiguracionTaller;
   cotizaciones?: Cotizacion[];
+  consumosReales?: ConsumoRealProduccion[];
   copiedOtId: string | null;
   copiedLinkId: string | null;
   colorBorder?: string;
   badgeBg?: string;
+  onOpenConsumoReal?: (ot: OrdenTrabajo) => void;
   onUpdateEstado: (otId: string, nuevoEstado: EstadoOT) => void;
   onGenerarCuentaCobro?: (ot: OrdenTrabajo) => void;
   onOpenCotizacionModal: (ot: OrdenTrabajo) => void;
@@ -30,10 +32,12 @@ export const OTKanbanColumn: React.FC<OTKanbanColumnProps> = React.memo(({
   ordenes,
   config,
   cotizaciones = [],
+  consumosReales = [],
   copiedOtId,
   copiedLinkId,
   colorBorder = 'rgba(56, 189, 248, 0.3)',
   badgeBg = 'rgba(56, 189, 248, 0.15)',
+  onOpenConsumoReal,
   onUpdateEstado,
   onGenerarCuentaCobro,
   onOpenCotizacionModal,
@@ -105,6 +109,8 @@ export const OTKanbanColumn: React.FC<OTKanbanColumnProps> = React.memo(({
               cotizaciones={cotizaciones}
               copiedOtId={copiedOtId}
               copiedLinkId={copiedLinkId}
+              consumosRealesCount={consumosReales.filter(c => c.orden_trabajo_id === ot.id).length}
+              onOpenConsumoReal={onOpenConsumoReal}
               onUpdateEstado={onUpdateEstado}
               onGenerarCuentaCobro={onGenerarCuentaCobro}
               onOpenCotizacionModal={onOpenCotizacionModal}

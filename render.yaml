@@ -13,3 +13,11 @@ services:
         value: 20.18.0
       - key: PORT
         value: 3001
+      - key: WA_SESSION_ID
+        value: wjgeeks-main
+      - key: RENDER_EXTERNAL_URL
+        value: https://wjg.onrender.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false

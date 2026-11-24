@@ -59,7 +59,9 @@ import {
   ProductoStock,
   VentaExpress,
   TareaEquipo,
-  SolicitudInsumo
+  SolicitudInsumo,
+  ConsumoRealProduccion,
+  ModoMargen
 } from './types';
 import {
   type ItemDeudaConsolidado,
@@ -69,8 +71,10 @@ import {
 } from './components/cuentasCobro/cuentasCobroUtils';
 import { StorageService } from './services/storageService';
 import { CloudSyncService } from './services/cloudSyncService';
-import { calcularDescuentoVolumenSugerido } from './features/cotizador/utils/pricingCalculator';
-import { calcularCotizacionIntegral, ParametrosPiezaInput } from './services/calculationEngine';
+import { WhatsAppGatewayService } from './services/whatsappGatewayService';
+import { mergeRemoteWithLocalEntities } from './utils/realtimeMerge';
+import { calcularDescuentoVolumenSugerido, calcularTotalesCotizacion } from './features/cotizador/utils/pricingCalculator';
+import { calcularCotizacionIntegral, recalcularPiezaPorModoMargen, ParametrosPiezaInput } from './services/calculationEngine';
 import {
   buscarCoincidenciasCliente,
   enriquecerClienteExistente,
@@ -148,12 +152,38 @@ export const App: React.FC = () => {
   const [showWhatsAppModal, setShowWhatsAppModal] = useState(false);
   const [showModalProduccionInterna, setShowModalProduccionInterna] = useState(false);
   const [whatsappHealthStatus, setWhatsappHealthStatus] = useState<'operativo' | 'alerta_critica' | 'desconocido'>('operativo');
+  const [lastSyncAt, setLastSyncAt] = useState<string | null>(null);
+  const syncCloudDataRef = React.useRef<(() => Promise<void>) | null>(null);
 
-  // Monitor periódico de salud de WhatsApp (+57 320 2796115)
+  const handleManualSyncNow = async () => {
+    if (!CloudSyncService.isAvailable()) {
+      toast.warning('Sin conexión a Supabase en este dispositivo.');
+      return;
+    }
+    setCloudSyncStatus('syncing');
+    try {
+      await CloudSyncService.flushOutboxQueue();
+      if (syncCloudDataRef.current) {
+        await syncCloudDataRef.current();
+      }
+      toast.success('Datos sincronizados con Supabase en tiempo real.');
+    } catch {
+      toast.error('No fue posible completar la sincronización.');
+    }
+  };
+
+  // Monitor periódico de salud de WhatsApp (+57 320 2796115) + keep-alive Gateway cada 8 min
   useEffect(() => {
     let isMounted = true;
     const checkWA = async () => {
       try {
+        // Ping ligero /status para mantener vivo el gateway en nube (Render) y conocer su estado real
+        WhatsAppGatewayService.checkStatus().then(st => {
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('wjg:wa-status-updated', { detail: { connected: st.connected } }));
+          }
+        }).catch(() => {});
+
         const res = await WhatsAppNotificationService.obtenerSaludWhatsApp();
         if (isMounted && res?.status) {
           setWhatsappHealthStatus(res.status);
@@ -163,7 +193,7 @@ export const App: React.FC = () => {
       }
     };
     checkWA();
-    const intervalId = setInterval(checkWA, 5 * 60 * 1000); // Cada 5 minutos
+    const intervalId = setInterval(checkWA, 8 * 60 * 1000); // Cada 8 minutos (< 15 min sleep de Render)
     const handleOpenWaModal = () => setShowWhatsAppModal(true);
     window.addEventListener('wjg:open-whatsapp-modal', handleOpenWaModal);
     return () => {
@@ -317,6 +347,7 @@ export const App: React.FC = () => {
   const [ventasExpress, setVentasExpress] = useState<VentaExpress[]>(() => StorageService.getVentasExpress());
   const [tareas, setTareas] = useState<TareaEquipo[]>(() => StorageService.getTareas());
   const [solicitudesInsumos, setSolicitudesInsumos] = useState<SolicitudInsumo[]>(() => StorageService.getSolicitudesInsumos());
+  const [consumosReales, setConsumosReales] = useState<ConsumoRealProduccion[]>(() => StorageService.getConsumosReales());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
   const lastLocalMutationRef = React.useRef<number>(0);
   const markLocalMutation = () => {
@@ -343,6 +374,7 @@ export const App: React.FC = () => {
     setVentasExpress(StorageService.getVentasExpress());
     setTareas(StorageService.getTareas());
     setSolicitudesInsumos(StorageService.getSolicitudesInsumos());
+    setConsumosReales(StorageService.getConsumosReales());
 
     if (!CloudSyncService.isAvailable()) {
       setCloudSyncStatus('offline');
@@ -372,7 +404,8 @@ export const App: React.FC = () => {
           cloudConfig,
           cloudPersonal,
           cloudProveedores,
-          cloudTarifasTamanos
+          cloudTarifasTamanos,
+          cloudConsumosReales
         ] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
@@ -391,7 +424,8 @@ export const App: React.FC = () => {
           CloudSyncService.fetchConfiguracion(),
           CloudSyncService.fetchTarifasPersonal(),
           CloudSyncService.fetchProveedores(),
-          CloudSyncService.fetchTarifasTamanos()
+          CloudSyncService.fetchTarifasTamanos(),
+          CloudSyncService.fetchConsumosReales()
         ]);
 
         const pagosLedger = cloudPayments || [];
@@ -402,24 +436,16 @@ export const App: React.FC = () => {
 
         if (cloudCots !== null) {
           setCotizaciones(prev => {
-            const mergedMap = new Map<string, Cotizacion>();
-            cloudCots.forEach(c => {
-              const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
-                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
-              mergedMap.set(c.numero_cot, recentLocal || c);
+            const mergedList = mergeRemoteWithLocalEntities<Cotizacion>({
+              fresh: cloudCots,
+              prev,
+              getKeys: c => [c.numero_cot, c.id],
+              isInOutbox: c => pendingCotNums.has(c.numero_cot),
+              getRecentLocal: c =>
+                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id),
+              sortFn: (a, b) => b.numero_cot.localeCompare(a.numero_cot)
             });
-            prev.forEach(c => {
-              const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
-                StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
-              if (recentLocal) {
-                mergedMap.set(c.numero_cot, recentLocal);
-              } else if (!mergedMap.has(c.numero_cot) || pendingCotNums.has(c.numero_cot)) {
-                mergedMap.set(c.numero_cot, c);
-              }
-            });
-            const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
-              b.numero_cot.localeCompare(a.numero_cot)
-            );
             StorageService.saveCotizaciones(mergedList);
             return mergedList;
           });
@@ -458,21 +484,14 @@ export const App: React.FC = () => {
           });
 
           setOrdenes(prev => {
-            const merged = reconciledOTs.map(ot => {
-              const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
-                StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id);
-              if (recentLocal) return recentLocal;
-              if (pendingOTNums.has(ot.numero_ot)) {
-                return prev.find(p => p.numero_ot === ot.numero_ot) || ot;
-              }
-              return ot;
-            });
-            prev.forEach(p => {
-              const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', p.numero_ot) ||
-                StorageService.getRecentMutation<OrdenTrabajo>('orden', p.id);
-              if ((recentLocal || pendingOTNums.has(p.numero_ot)) && !merged.some(m => m.numero_ot === p.numero_ot || m.id === p.id)) {
-                merged.unshift(recentLocal || p);
-              }
+            const merged = mergeRemoteWithLocalEntities<OrdenTrabajo>({
+              fresh: reconciledOTs,
+              prev,
+              getKeys: ot => [ot.numero_ot, ot.id],
+              isInOutbox: ot => pendingOTNums.has(ot.numero_ot),
+              getRecentLocal: ot =>
+                StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
+                StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id)
             });
             StorageService.saveOrdenes(merged);
             return merged;
@@ -507,21 +526,14 @@ export const App: React.FC = () => {
           });
 
           setVentasExpress(prev => {
-            const merged = reconciledVentas.map(v => {
-              const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
-                StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta);
-              if (recentLocal) return recentLocal;
-              if (pendingVentaIds.has(v.id)) {
-                return prev.find(p => p.id === v.id) || v;
-              }
-              return v;
-            });
-            prev.forEach(p => {
-              const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', p.id) ||
-                StorageService.getRecentMutation<VentaExpress>('venta', p.numero_venta);
-              if ((recentLocal || pendingVentaIds.has(p.id)) && !merged.some(m => m.id === p.id)) {
-                merged.unshift(recentLocal || p);
-              }
+            const merged = mergeRemoteWithLocalEntities<VentaExpress>({
+              fresh: reconciledVentas,
+              prev,
+              getKeys: v => [v.id, v.numero_venta],
+              isInOutbox: v => pendingVentaIds.has(v.id),
+              getRecentLocal: v =>
+                StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
+                StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta)
             });
             StorageService.saveVentasExpress(merged);
             return merged;
@@ -553,26 +565,16 @@ export const App: React.FC = () => {
             return cc;
           });
 
+          const pendingCCIds = new Set(outbox.filter(t => t.type === 'cuenta').map(t => t.payload?.id).filter(Boolean));
           setCuentas(prev => {
-            const merged = reconciledCCs.map(cc => {
-              const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
-                StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc);
-              return recentLocal || cc;
-            });
-            prev.forEach(localCC => {
-              const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.id) ||
-                StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.numero_cc);
-              const alreadyIn = merged.some(m =>
-                m.id === localCC.id ||
-                m.numero_cc === localCC.numero_cc ||
-                (localCC.cotizacion_numero && m.cotizacion_numero === localCC.cotizacion_numero)
-              );
-              if (!alreadyIn) {
-                merged.push(recentLocal || localCC);
-              } else if (recentLocal) {
-                const idx = merged.findIndex(m => m.id === localCC.id || m.numero_cc === localCC.numero_cc);
-                if (idx !== -1) merged[idx] = recentLocal;
-              }
+            const merged = mergeRemoteWithLocalEntities<CuentaCobro>({
+              fresh: reconciledCCs,
+              prev,
+              getKeys: cc => [cc.id, cc.numero_cc],
+              isInOutbox: cc => pendingCCIds.has(cc.id),
+              getRecentLocal: cc =>
+                StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
+                StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc)
             });
             StorageService.saveCuentas(merged);
             return merged;
@@ -666,12 +668,26 @@ export const App: React.FC = () => {
           StorageService.saveProductosStock(cloudStock);
         }
 
+        if (cloudConsumosReales !== null) {
+          setConsumosReales(cloudConsumosReales);
+          StorageService.saveConsumosReales(cloudConsumosReales);
+        }
+
         setCloudSyncStatus('connected');
+        setLastSyncAt(
+          new Date().toLocaleTimeString('es-CO', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          })
+        );
       } catch (err) {
         console.warn('Error sincronizando con Supabase:', err);
         setCloudSyncStatus('connected');
       }
     };
+
+    syncCloudDataRef.current = syncCloudData;
 
     // Saneamiento proactivo de memoria en localStorage para evitar errores de cuota en móviles
     StorageService.sanitizeLocalStorage();
@@ -689,24 +705,16 @@ export const App: React.FC = () => {
           .filter(Boolean)
       );
       setCotizaciones(prev => {
-        const mergedMap = new Map<string, Cotizacion>();
-        freshCots.forEach(c => {
-          const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
-            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
-          mergedMap.set(c.numero_cot, recentLocal || c);
+        const mergedList = mergeRemoteWithLocalEntities<Cotizacion>({
+          fresh: freshCots,
+          prev,
+          getKeys: c => [c.numero_cot, c.id],
+          isInOutbox: c => pendingCotNums.has(c.numero_cot),
+          getRecentLocal: c =>
+            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
+            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id),
+          sortFn: (a, b) => b.numero_cot.localeCompare(a.numero_cot)
         });
-        prev.forEach(c => {
-          const recentLocal = StorageService.getRecentMutation<Cotizacion>('cotizacion', c.numero_cot) ||
-            StorageService.getRecentMutation<Cotizacion>('cotizacion', c.id);
-          if (recentLocal) {
-            mergedMap.set(c.numero_cot, recentLocal);
-          } else if (!mergedMap.has(c.numero_cot) || pendingCotNums.has(c.numero_cot)) {
-            mergedMap.set(c.numero_cot, c);
-          }
-        });
-        const mergedList = Array.from(mergedMap.values()).sort((a, b) =>
-          b.numero_cot.localeCompare(a.numero_cot)
-        );
         StorageService.saveCotizaciones(mergedList);
         return mergedList;
       });
@@ -720,19 +728,14 @@ export const App: React.FC = () => {
           .filter(Boolean)
       );
       setOrdenes(prev => {
-        const merged = freshOTs.map(ot => {
-          const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
-            StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id);
-          if (recentLocal) return recentLocal;
-          if (pendingOTNums.has(ot.numero_ot)) return prev.find(p => p.numero_ot === ot.numero_ot) || ot;
-          return ot;
-        });
-        prev.forEach(p => {
-          const recentLocal = StorageService.getRecentMutation<OrdenTrabajo>('orden', p.numero_ot) ||
-            StorageService.getRecentMutation<OrdenTrabajo>('orden', p.id);
-          if ((recentLocal || pendingOTNums.has(p.numero_ot)) && !merged.some(m => m.numero_ot === p.numero_ot || m.id === p.id)) {
-            merged.unshift(recentLocal || p);
-          }
+        const merged = mergeRemoteWithLocalEntities<OrdenTrabajo>({
+          fresh: freshOTs,
+          prev,
+          getKeys: ot => [ot.numero_ot, ot.id],
+          isInOutbox: ot => pendingOTNums.has(ot.numero_ot),
+          getRecentLocal: ot =>
+            StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.numero_ot) ||
+            StorageService.getRecentMutation<OrdenTrabajo>('orden', ot.id)
         });
         StorageService.saveOrdenes(merged);
         return merged;
@@ -740,26 +743,21 @@ export const App: React.FC = () => {
     };
 
     const mergeCuentasConLocales = (freshCCs: CuentaCobro[]) => {
+      const pendingCCIds = new Set(
+        CloudSyncService.getOutboxQueue()
+          .filter(t => t.type === 'cuenta')
+          .map(t => t.payload?.id)
+          .filter(Boolean)
+      );
       setCuentas(prev => {
-        const merged = freshCCs.map(cc => {
-          const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
-            StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc);
-          return recentLocal || cc;
-        });
-        prev.forEach(localCC => {
-          const recentLocal = StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.id) ||
-            StorageService.getRecentMutation<CuentaCobro>('cuenta', localCC.numero_cc);
-          const alreadyIn = merged.some(m =>
-            m.id === localCC.id ||
-            m.numero_cc === localCC.numero_cc ||
-            (localCC.cotizacion_numero && m.cotizacion_numero === localCC.cotizacion_numero)
-          );
-          if (!alreadyIn) {
-            merged.push(recentLocal || localCC);
-          } else if (recentLocal) {
-            const idx = merged.findIndex(m => m.id === localCC.id || m.numero_cc === localCC.numero_cc);
-            if (idx !== -1) merged[idx] = recentLocal;
-          }
+        const merged = mergeRemoteWithLocalEntities<CuentaCobro>({
+          fresh: freshCCs,
+          prev,
+          getKeys: cc => [cc.id, cc.numero_cc],
+          isInOutbox: cc => pendingCCIds.has(cc.id),
+          getRecentLocal: cc =>
+            StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.id) ||
+            StorageService.getRecentMutation<CuentaCobro>('cuenta', cc.numero_cc)
         });
         StorageService.saveCuentas(merged);
         return merged;
@@ -774,50 +772,69 @@ export const App: React.FC = () => {
           .filter(Boolean)
       );
       setVentasExpress(prev => {
-        const merged = freshVentas.map(v => {
-          const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
-            StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta);
-          if (recentLocal) return recentLocal;
-          return pendingVentaIds.has(v.id) ? (prev.find(p => p.id === v.id) || v) : v;
-        });
-        prev.forEach(p => {
-          const recentLocal = StorageService.getRecentMutation<VentaExpress>('venta', p.id) ||
-            StorageService.getRecentMutation<VentaExpress>('venta', p.numero_venta);
-          if ((recentLocal || pendingVentaIds.has(p.id)) && !merged.some(m => m.id === p.id)) {
-            merged.unshift(recentLocal || p);
-          }
+        const merged = mergeRemoteWithLocalEntities<VentaExpress>({
+          fresh: freshVentas,
+          prev,
+          getKeys: v => [v.id, v.numero_venta],
+          isInOutbox: v => pendingVentaIds.has(v.id),
+          getRecentLocal: v =>
+            StorageService.getRecentMutation<VentaExpress>('venta', v.id) ||
+            StorageService.getRecentMutation<VentaExpress>('venta', v.numero_venta)
         });
         StorageService.saveVentasExpress(merged);
         return merged;
       });
     };
 
+    const touchSyncTime = () => {
+      setLastSyncAt(
+        new Date().toLocaleTimeString('es-CO', {
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        })
+      );
+    };
+
     const channel = CloudSyncService.subscribeRealtime(
       async () => {
         if (isInMutationGracePeriod()) return;
         const freshCots = await CloudSyncService.fetchCotizaciones();
-        if (freshCots !== null) mergeCotizacionesConLocales(freshCots);
+        if (freshCots !== null) {
+          mergeCotizacionesConLocales(freshCots);
+          touchSyncTime();
+        }
       },
       async () => {
         if (isInMutationGracePeriod()) return;
         const freshOTs = await CloudSyncService.fetchOrdenes();
-        if (freshOTs !== null) mergeOrdenesConLocales(freshOTs);
+        if (freshOTs !== null) {
+          mergeOrdenesConLocales(freshOTs);
+          touchSyncTime();
+        }
       },
       async () => {
         if (isInMutationGracePeriod()) return;
         const freshCCs = await CloudSyncService.fetchCuentas();
-        if (freshCCs !== null) mergeCuentasConLocales(freshCCs);
+        if (freshCCs !== null) {
+          mergeCuentasConLocales(freshCCs);
+          touchSyncTime();
+        }
       },
       async () => {
         if (isInMutationGracePeriod()) return;
         const freshVentas = await CloudSyncService.fetchVentasExpress();
-        if (freshVentas !== null) mergeVentasConLocales(freshVentas);
+        if (freshVentas !== null) {
+          mergeVentasConLocales(freshVentas);
+          touchSyncTime();
+        }
       },
       async () => {
         const freshTareas = await CloudSyncService.fetchTareasEquipo();
         if (freshTareas !== null) {
           setTareas(freshTareas);
           StorageService.saveTareas(freshTareas);
+          touchSyncTime();
         }
       },
       async () => {
@@ -825,6 +842,7 @@ export const App: React.FC = () => {
         if (freshSols !== null) {
           setSolicitudesInsumos(freshSols);
           StorageService.saveSolicitudesInsumos(freshSols);
+          touchSyncTime();
         }
       },
       async () => {
@@ -839,6 +857,7 @@ export const App: React.FC = () => {
         if (ots) mergeOrdenesConLocales(ots);
         if (ccs) mergeCuentasConLocales(ccs);
         if (vts) mergeVentasConLocales(vts);
+        touchSyncTime();
       },
       async () => {
         // Sincronización en tiempo real de productos_stock
@@ -846,6 +865,7 @@ export const App: React.FC = () => {
         if (freshStock !== null) {
           setProductosStock(freshStock);
           StorageService.saveProductosStock(freshStock);
+          touchSyncTime();
         }
       },
       async () => {
@@ -854,14 +874,17 @@ export const App: React.FC = () => {
         if (freshMaq !== null) {
           setMaquinas(freshMaq);
           StorageService.saveMaquinas(freshMaq);
+          touchSyncTime();
         }
       },
       async () => {
         // Sincronización en tiempo real de todos los catálogos maestros entre colaboradores
-        const [freshMaq, freshIns, freshRes, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
+        const [freshMaq, freshIns, freshRes, freshFil, freshProd, freshCfg, freshPer, freshProv, freshTar] = await Promise.all([
           CloudSyncService.fetchMaquinas(),
           CloudSyncService.fetchInsumos(),
           CloudSyncService.fetchResinas(),
+          CloudSyncService.fetchFilamentos(),
+          CloudSyncService.fetchProduccionInterna(),
           CloudSyncService.fetchConfiguracion(),
           CloudSyncService.fetchTarifasPersonal(),
           CloudSyncService.fetchProveedores(),
@@ -870,10 +893,13 @@ export const App: React.FC = () => {
         if (freshMaq !== null) { setMaquinas(freshMaq); StorageService.saveMaquinas(freshMaq); }
         if (freshIns !== null) { setInsumos(freshIns); StorageService.saveInsumos(freshIns); }
         if (freshRes !== null) { setResinas(freshRes); StorageService.saveResinas(freshRes); }
+        if (freshFil !== null) { setFilamentos(freshFil); StorageService.saveFilamentos(freshFil); }
+        if (freshProd !== null) { setProduccionesInternas(freshProd); StorageService.saveProduccionesInternas(freshProd); }
         if (freshCfg !== null) { setConfig(freshCfg); StorageService.saveConfig(freshCfg); }
         if (freshPer !== null && freshPer.length > 0) { setPersonal(freshPer); StorageService.savePersonal(freshPer); }
         if (freshProv !== null && freshProv.length > 0) { setProveedores(freshProv); StorageService.saveProveedores(freshProv); }
         if (freshTar !== null && freshTar.length > 0) { setTarifasTamanos(freshTar); StorageService.saveTarifasTamanos(freshTar); }
+        touchSyncTime();
       },
       async () => {
         if (isInMutationGracePeriod()) return;
@@ -881,6 +907,17 @@ export const App: React.FC = () => {
         if (freshClis !== null) {
           setClientes(freshClis);
           StorageService.saveClientes(freshClis);
+          touchSyncTime();
+        }
+      },
+      undefined,
+      async () => {
+        if (isInMutationGracePeriod()) return;
+        const freshConsumos = await CloudSyncService.fetchConsumosReales();
+        if (freshConsumos !== null) {
+          setConsumosReales(freshConsumos);
+          StorageService.saveConsumosReales(freshConsumos);
+          touchSyncTime();
         }
       }
     );
@@ -905,7 +942,17 @@ export const App: React.FC = () => {
     window.addEventListener('visibilitychange', handleVisibilityOrFocus);
     window.addEventListener('focus', handleVisibilityOrFocus);
 
+    // Respaldo periódico silencioso cada 20 segundos cuando la pestaña está activa y sin mutación local reciente
+    const pollingIntervalId = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      if (isInMutationGracePeriod()) return;
+      if (CloudSyncService.isAvailable()) {
+        syncCloudData();
+      }
+    }, 20000);
+
     return () => {
+      clearInterval(pollingIntervalId);
       if (channel) channel.unsubscribe();
       unbindReconnection();
       window.removeEventListener('wjg:outbox-flushed', handleOutboxFlushed);
@@ -1041,6 +1088,20 @@ export const App: React.FC = () => {
           tarifaTamanoAplicada: it.tarifa_tamano_aplicada,
           aplicaDescuentoVolumen: it.aplica_descuento_volumen,
           descuentoVolumenPorcentaje: it.descuento_volumen_porcentaje,
+          modoMargen: it.modo_margen || nextConfig.modo_margen_default || 'margen_bruto',
+          tipoObjetivoPrecio: it.tipo_objetivo_precio,
+          gananciaDeseadaCop: it.ganancia_deseada_cop,
+          prorratearArchivo3D: it.prorratear_archivo_3d,
+          prorratearDiseno3D: it.prorratear_diseno_3d,
+          tasaFalloPct: it.tasa_fallo_pct ?? 0,
+          nivelComplejidad: it.nivel_complejidad,
+          comisionPasarelaPct: it.comision_pasarela_pct ?? 0,
+          costoEnvio: it.costo_envio ?? 0,
+          amsActivo: it.ams_activo,
+          amsColores: it.ams_colores,
+          amsPurgaPct: it.ams_purga_pct,
+          amsPurgaGramosManual: it.ams_purga_gramos,
+          consumiblesSlaPorImpresion: it.costo_consumibles_sla_extra ?? 0,
           accesorios,
           pinturas,
           empaques,
@@ -1098,6 +1159,14 @@ export const App: React.FC = () => {
         : 0;
       const nuevoTotal = Math.ceil((subtotalConDescuento + ivaMonto) / 100) * 100;
       const nuevoSaldo = Math.max(0, nuevoTotal - (cot.abono || 0));
+      const costoTotalTaller = Math.round(
+        nuevas.reduce((s, it) => s + (it.costo_base_produccion || 0) * (it.cantidad || 1), 0)
+      );
+      const comisionTotal = nuevas.reduce(
+        (s, it) => s + (it.costo_comision_pasarela || 0) * (it.cantidad || 1),
+        0
+      );
+      const utilidadNeta = Math.round(subtotalConDescuento - costoTotalTaller - comisionTotal);
 
       cotizacionesRecalculadasCount++;
       const cotRecalculada: Cotizacion = {
@@ -1107,7 +1176,9 @@ export const App: React.FC = () => {
         descuento_monto: descuentoMonto,
         iva_monto: ivaMonto,
         total: nuevoTotal,
-        saldo_pendiente: nuevoSaldo
+        saldo_pendiente: nuevoSaldo,
+        costo_total_taller: costoTotalTaller,
+        utilidad_neta_estimada: utilidadNeta
       };
       CloudSyncService.saveCotizacion(cotRecalculada);
       return cotRecalculada;
@@ -1123,6 +1194,47 @@ export const App: React.FC = () => {
       const { nuevas } = recalcularListaPiezas(draftPieces);
       setDraftPieces(nuevas);
     }
+  };
+
+  // Alternar modo de cobro (Margen Bruto ⇄ Markup) en una cotización desde la lista
+  const handleToggleModoMargenCotizacion = (cot: Cotizacion, nuevoModo: ModoMargen) => {
+    markLocalMutation();
+    const itemsActualizados = (cot.items || []).map(it => recalcularPiezaPorModoMargen(it, nuevoModo));
+    const totales = calcularTotalesCotizacion(
+      itemsActualizados,
+      cot.descuento_porcentaje || 0,
+      cot.iva_porcentaje || 0
+    );
+    const costoTotalTaller = Math.round(
+      itemsActualizados.reduce((s, it) => s + (it.costo_base_produccion || 0) * (it.cantidad || 1), 0)
+    );
+    const comisionTotal = itemsActualizados.reduce(
+      (s, it) => s + (it.costo_comision_pasarela || 0) * (it.cantidad || 1),
+      0
+    );
+    const utilidadNeta = Math.round(totales.subtotalConDescuento - costoTotalTaller - comisionTotal);
+    const cotActualizada: Cotizacion = {
+      ...cot,
+      items: itemsActualizados,
+      subtotal: totales.subtotal,
+      descuento_monto: totales.descuentoMonto,
+      iva_monto: totales.ivaMonto,
+      total: totales.total,
+      saldo_pendiente: Math.max(0, totales.total - (cot.abono || 0)),
+      modo_margen: nuevoModo,
+      costo_total_taller: costoTotalTaller,
+      utilidad_neta_estimada: utilidadNeta
+    };
+    const nextCots = cotizaciones.map(c => (c.id === cot.id ? cotActualizada : c));
+    setCotizaciones(nextCots);
+    StorageService.saveCotizaciones(nextCots);
+    StorageService.markEntityMutated('cotizacion', cotActualizada.numero_cot, cotActualizada);
+    CloudSyncService.saveCotizacion(cotActualizada).then(() => markLocalMutation());
+    toast.info(
+      nuevoModo === 'margen_bruto'
+        ? `Cotización #${cot.numero_cot} cambiada a Margen Bruto ($${totales.total.toLocaleString('es-CO')})`
+        : `Cotización #${cot.numero_cot} cambiada a Markup ($${totales.total.toLocaleString('es-CO')})`
+    );
   };
 
   // Handlers para Piezas en Borrador / Cotización en Edición
@@ -1882,6 +1994,19 @@ export const App: React.FC = () => {
           modificado = true;
         }
 
+        // Descuento de pinturas en ml (lista_pinturas)
+        const pintMatches = (targetOT.lista_pinturas || []).filter(
+          p => (p.insumo_id && p.insumo_id === ins.id) || p.nombre.trim().toLowerCase() === nom.trim()
+        );
+        if (pintMatches.length > 0) {
+          const totalMl = pintMatches.reduce((acc, p) => acc + (Number(p.cantidad_ml) || 0), 0) * cant;
+          const stockBase = nuevoIns.stock_actual !== undefined ? nuevoIns.stock_actual : nuevoIns.presentacion;
+          const nuevoStock = Math.max(0, Math.round((stockBase - totalMl) * 100) / 100);
+          nuevoIns.stock_actual = nuevoStock;
+          nuevoIns.presentacion = nuevoStock;
+          modificado = true;
+        }
+
         if (modificado) {
           insumosAfectadosIds.add(nuevoIns.id);
         }
@@ -1921,6 +2046,123 @@ export const App: React.FC = () => {
         toast.success(`🎉 Orden ${updatedTargetOT.numero_ot} entregada y archivada en el historial.`);
       }
     }
+  };
+
+  // Guardar / Actualizar Consumo Real de Taller o Pintor (con ajuste opcional de bodega y costo real acumulado en OT)
+  const handleSaveConsumoReal = async (consumo: ConsumoRealProduccion, descontarInventario: boolean) => {
+    markLocalMutation();
+    let consumoFinal = { ...consumo };
+
+    if (descontarInventario && !consumo.descontado_de_inventario) {
+      // 1. Ajustar material principal si se reportaron gramos reales
+      if (consumo.material_real_g && consumo.material_real_g > 0 && consumo.material_id) {
+        const esFDM = consumo.tecnologia === 'FDM_FILAMENTO';
+        if (esFDM) {
+          const updFil = filamentos.map(f => {
+            if (f.id === consumo.material_id) {
+              return { ...f, stock_actual_g: Math.max(0, Math.round(((f.stock_actual_g || 1000) - consumo.material_real_g!) * 10) / 10) };
+            }
+            return f;
+          });
+          setFilamentos(updFil);
+          StorageService.saveFilamentos(updFil);
+          const filAfectado = updFil.find(f => f.id === consumo.material_id);
+          if (filAfectado) CloudSyncService.saveFilamento(filAfectado);
+        } else {
+          const updRes = resinas.map(r => {
+            if (r.id === consumo.material_id) {
+              return { ...r, peso_g: Math.max(0, Math.round((r.peso_g - consumo.material_real_g!) * 10) / 10) };
+            }
+            return r;
+          });
+          setResinas(updRes);
+          StorageService.saveResinas(updRes);
+          const resAfectada = updRes.find(r => r.id === consumo.material_id);
+          if (resAfectada) CloudSyncService.saveResina(resAfectada);
+        }
+      }
+
+      // 2. Descontar insumos reales reportados (guantes, IPA, pinturas, filtros, etc.)
+      if (consumo.insumos_consumidos.length > 0) {
+        const idsAfectados = new Set<string>();
+        const updIns = insumos.map(ins => {
+          const matches = consumo.insumos_consumidos.filter(
+            ic => (ic.insumo_id && ic.insumo_id === ins.id) || ic.nombre.trim().toLowerCase() === ins.nombre.trim().toLowerCase()
+          );
+          if (matches.length === 0) return ins;
+          const totalUsado = matches.reduce((s, m) => s + (Number(m.cantidad) || 0), 0);
+          const stockBase = ins.stock_actual !== undefined ? ins.stock_actual : ins.presentacion;
+          const nuevoStock = Math.max(0, Math.round((stockBase - totalUsado) * 100) / 100);
+          idsAfectados.add(ins.id);
+          return { ...ins, stock_actual: nuevoStock, presentacion: nuevoStock };
+        });
+        if (idsAfectados.size > 0) {
+          setInsumos(updIns);
+          StorageService.saveInsumos(updIns);
+          updIns.filter(i => idsAfectados.has(i.id)).forEach(i => CloudSyncService.saveInsumo(i));
+        }
+      }
+
+      consumoFinal.descontado_de_inventario = true;
+    }
+
+    const updatedConsumos = [
+      consumoFinal,
+      ...consumosReales.filter(c => c.id !== consumoFinal.id)
+    ];
+    setConsumosReales(updatedConsumos);
+    StorageService.saveConsumosReales(updatedConsumos);
+
+    // Recalcular costo_real_acumulado de la OT vinculada
+    const totalRealOT = updatedConsumos
+      .filter(c => c.orden_trabajo_id === consumoFinal.orden_trabajo_id)
+      .reduce((sum, c) => sum + (Number(c.costo_total_real) || 0), 0);
+
+    const updatedOTs = ordenes.map(o => {
+      if (o.id === consumoFinal.orden_trabajo_id) {
+        return { ...o, costo_real_acumulado: Math.round(totalRealOT) };
+      }
+      return o;
+    });
+    setOrdenes(updatedOTs);
+    StorageService.saveOrdenes(updatedOTs);
+    const otActualizada = updatedOTs.find(o => o.id === consumoFinal.orden_trabajo_id);
+    if (otActualizada) {
+      StorageService.markEntityMutated('orden', otActualizada.numero_ot, otActualizada);
+      CloudSyncService.saveOrdenTrabajo(otActualizada);
+    }
+
+    const ok = await CloudSyncService.saveConsumoReal(consumoFinal);
+    markLocalMutation();
+    if (ok) {
+      toast.success(`📋 Consumo real registrado en ${consumoFinal.numero_referencia} y sincronizado.`);
+    } else {
+      toast.warning(`📋 Consumo real guardado localmente (${consumoFinal.numero_referencia}). Sincronización pendiente.`);
+    }
+  };
+
+  const handleDeleteConsumoReal = async (consumoId: string) => {
+    markLocalMutation();
+    const target = consumosReales.find(c => c.id === consumoId);
+    const updatedConsumos = consumosReales.filter(c => c.id !== consumoId);
+    setConsumosReales(updatedConsumos);
+    StorageService.saveConsumosReales(updatedConsumos);
+
+    if (target) {
+      const totalRealOT = updatedConsumos
+        .filter(c => c.orden_trabajo_id === target.orden_trabajo_id)
+        .reduce((sum, c) => sum + (Number(c.costo_total_real) || 0), 0);
+      const updatedOTs = ordenes.map(o =>
+        o.id === target.orden_trabajo_id ? { ...o, costo_real_acumulado: Math.round(totalRealOT) } : o
+      );
+      setOrdenes(updatedOTs);
+      StorageService.saveOrdenes(updatedOTs);
+      const otActualizada = updatedOTs.find(o => o.id === target.orden_trabajo_id);
+      if (otActualizada) CloudSyncService.saveOrdenTrabajo(otActualizada);
+    }
+
+    await CloudSyncService.deleteConsumoReal(consumoId);
+    toast.info('Registro de consumo real eliminado.');
   };
 
   // Generar Cuenta de Cobro a partir de una OT terminada (sin duplicaciones ni abonos inventados)
@@ -3082,6 +3324,8 @@ export const App: React.FC = () => {
       <HeaderMinimal
         cloudStatus={cloudSyncStatus}
         activeOperator={activeOperator}
+        lastSyncAt={lastSyncAt}
+        onManualSync={handleManualSyncNow}
         onOpenDailyBriefing={() => setShowDailyBriefingModal(true)}
         onOpenBackup={() => setShowBackupModal(true)}
         onOpenWhatsAppConnect={() => setShowWhatsAppModal(true)}
@@ -3127,6 +3371,7 @@ export const App: React.FC = () => {
                     initialPieceData={stlAppliedData}
                     piezaEnEdicion={pieceToEditInCalculator}
                     onCancelarEdicionPieza={() => setPieceToEditInCalculator(null)}
+                    consumosReales={consumosReales}
                   />
 
                   <CotizacionBuilder
@@ -3167,11 +3412,20 @@ export const App: React.FC = () => {
                   cotizaciones={cotizaciones}
                   tarifasTamanos={tarifasTamanos}
                   clientes={clientes}
+                  insumos={insumos}
+                  resinas={resinas}
+                  filamentos={filamentos}
+                  personal={personal}
+                  consumosReales={consumosReales}
+                  activeOperator={activeOperator}
+                  activeOperatorId={currentUser?.id}
                   onUpdateEstado={handleUpdateEstadoOT}
                   onGenerarCuentaCobro={handleGenerarCuentaCobro}
                   onCrearOrdenRapida={handleCrearOrdenRapida}
                   onActualizarOT={handleActualizarOT}
                   onEliminarOT={handleEliminarOT}
+                  onSaveConsumoReal={handleSaveConsumoReal}
+                  onDeleteConsumoReal={handleDeleteConsumoReal}
                   onNavigateToCotizaciones={() => {
                     setActiveTab('cotizaciones');
                   }}
@@ -3206,6 +3460,7 @@ export const App: React.FC = () => {
                   onAprobarCotizacion={handleAprobarCotizacion}
                   onActualizarPagoCotizacion={handleActualizarPagoCotizacion}
                   onEliminarCotizacion={handleEliminarCotizacion}
+                  onToggleModoMargenCotizacion={handleToggleModoMargenCotizacion}
                   onNuevaCotizacion={handleNuevaCotizacion}
                 />
               )}
@@ -3416,7 +3671,12 @@ export const App: React.FC = () => {
               )}
 
               {activeTab === 'herramientas' && (
-                <ToolsHubView />
+                <ToolsHubView
+                  resinas={resinas}
+                  filamentos={filamentos}
+                  maquinas={maquinas}
+                  config={config}
+                />
               )}
 
               {activeTab === 'calendario' && (

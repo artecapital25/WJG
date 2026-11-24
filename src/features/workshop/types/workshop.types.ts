@@ -5,7 +5,12 @@ import {
   TarifaTamano, 
   Cliente, 
   Cotizacion, 
-  EstadoCotizacion
+  EstadoCotizacion,
+  Insumo,
+  Resina,
+  Filamento,
+  Personal,
+  ConsumoRealProduccion
 } from '../../../types';
 
 export interface WorkOrdersPipelineProps {
@@ -14,6 +19,15 @@ export interface WorkOrdersPipelineProps {
   cotizaciones?: Cotizacion[];
   tarifasTamanos?: TarifaTamano[];
   clientes?: Cliente[];
+  insumos?: Insumo[];
+  resinas?: Resina[];
+  filamentos?: Filamento[];
+  personal?: Personal[];
+  consumosReales?: ConsumoRealProduccion[];
+  activeOperator?: string;
+  activeOperatorId?: string;
+  onSaveConsumoReal?: (registro: ConsumoRealProduccion, descontarInventario: boolean) => void;
+  onDeleteConsumoReal?: (consumoId: string) => void;
   onUpdateEstado: (otId: string, nuevoEstado: EstadoOT) => void;
   onGenerarCuentaCobro?: (ot: OrdenTrabajo) => void;
   onCrearOrdenRapida?: (nuevaOT: OrdenTrabajo, crearCobroPOS?: boolean) => void;

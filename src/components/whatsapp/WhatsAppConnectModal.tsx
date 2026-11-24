@@ -354,6 +354,30 @@ export const WhatsAppConnectModal: React.FC<WhatsAppConnectModalProps> = ({ isOp
           </button>
         </div>
 
+        {/* Banner de Persistencia Permanente de Sesión */}
+        {config.provider === 'qr_gateway' && (
+          <div style={{
+            padding: '0.55rem 1.5rem',
+            backgroundColor: status.storageMode === 'supabase_persistent'
+              ? 'rgba(16, 185, 129, 0.08)'
+              : 'rgba(245, 158, 11, 0.08)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+            fontSize: '0.74rem',
+            color: status.storageMode === 'supabase_persistent' ? '#6ee7b7' : '#fcd34d',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '6px'
+          }}>
+            <span>
+              {status.storageMode === 'supabase_persistent'
+                ? '🔒 Sesión permanente en Supabase activa: sobrevive reinicios y despliegues de Render sin pedir QR.'
+                : '⚠️ Modo efímero detectado en Gateway: configura SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY en Render para que la vinculación QR sea permanente.'}
+            </span>
+          </div>
+        )}
+
         {/* Tab Navigation */}
         <div style={{
           display: 'flex',

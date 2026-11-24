@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown } from 'lucide-react';
+import { Sun, ShieldCheck, KeyRound, LogOut, Database, MessageSquare, ChevronDown, RefreshCw } from 'lucide-react';
 import { WhatsAppGatewayService } from '../../services/whatsappGatewayService';
 
 interface HeaderMinimalProps {
   cloudStatus?: 'connected' | 'syncing' | 'offline';
   activeOperator?: string;
+  lastSyncAt?: string | null;
+  onManualSync?: () => void;
   onSelectOperator?: (operator: string) => void;
   onOpenDailyBriefing?: () => void;
   onOpenBackup?: () => void;
@@ -17,6 +19,8 @@ interface HeaderMinimalProps {
 export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
   cloudStatus = 'connected',
   activeOperator = 'Juan',
+  lastSyncAt = null,
+  onManualSync,
   onOpenDailyBriefing,
   onOpenBackup,
   onOpenWhatsAppConnect,
@@ -161,9 +165,22 @@ export const HeaderMinimal: React.FC<HeaderMinimalProps> = ({
                 </span>
                 <span style={{ color: '#94a3b8', fontSize: '0.68rem' }}>
                   {cloudStatus === 'connected' ? 'Supabase Online en vivo' : 'Modo Local (Offline)'}
+                  {lastSyncAt ? ` • ${lastSyncAt}` : ''}
                 </span>
               </div>
             </div>
+
+            {onManualSync && (
+              <button
+                type="button"
+                role="menuitem"
+                className="header-operator-menu-item"
+                onClick={() => handleAction(onManualSync)}
+              >
+                <RefreshCw size={15} color="#38bdf8" />
+                <span>Sincronizar Ahora</span>
+              </button>
+            )}
 
             {onOpenDailyBriefing && (
               <button

@@ -13,7 +13,8 @@ import {
   Copy, 
   Trash2, 
   CreditCard,
-  Sparkles
+  Sparkles,
+  Activity
 } from 'lucide-react';
 import { 
   OrdenTrabajo, 
@@ -30,6 +31,8 @@ interface OTCardItemProps {
   cotizaciones?: Cotizacion[];
   copiedOtId: string | null;
   copiedLinkId: string | null;
+  consumosRealesCount?: number;
+  onOpenConsumoReal?: (ot: OrdenTrabajo) => void;
   onUpdateEstado: (otId: string, nuevoEstado: EstadoOT) => void;
   onGenerarCuentaCobro?: (ot: OrdenTrabajo) => void;
   onOpenCotizacionModal: (ot: OrdenTrabajo) => void;
@@ -49,6 +52,8 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
   cotizaciones = [],
   copiedOtId,
   copiedLinkId,
+  consumosRealesCount = 0,
+  onOpenConsumoReal,
   onUpdateEstado,
   onGenerarCuentaCobro,
   onOpenCotizacionModal,
@@ -578,6 +583,27 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
           {copiedOtId === ot.id ? <Check size={14} color="#4ade80" /> : <Compass size={14} color="var(--brand-cyan)" />}
           <span>{copiedOtId === ot.id ? '¡Copiado!' : 'Rastreo'}</span>
         </button>
+
+        {onOpenConsumoReal && (
+          <button
+            type="button"
+            className="btn btn-secondary btn-sm"
+            onClick={() => onOpenConsumoReal(ot)}
+            style={{
+              borderColor: consumosRealesCount > 0 ? 'rgba(16, 185, 129, 0.45)' : 'rgba(56, 189, 248, 0.4)',
+              color: consumosRealesCount > 0 ? '#34d399' : '#38bdf8',
+              background: consumosRealesCount > 0 ? 'rgba(16, 185, 129, 0.1)' : 'rgba(56, 189, 248, 0.08)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              fontWeight: 700
+            }}
+            title="Registrar gramos reales, pinturas, guantes o extras gastados en Taller/Pintura"
+          >
+            <Activity size={13} />
+            <span>{consumosRealesCount > 0 ? `Consumos (${consumosRealesCount})` : 'Consumo Real'}</span>
+          </button>
+        )}
 
         <button 
           className="btn btn-secondary btn-sm"

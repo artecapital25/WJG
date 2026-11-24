@@ -78,6 +78,13 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - **Prohibido** colocar atributos `step="500"`, `step="1000"` o `step="5000"` sobre montos financieros: provocan errores nativos HTML5 de validez modular al ingresar valores exactos (ej. `$80.000` con `min="1"` o `$78.500`).
 - **Obligatorio:** Usar `min="0" step="any"` (o `min="1" step="any"` en minutos positivos) y permitir borrado limpio (`value === 0 ? '' : value`).
 
+### Patrones Cotizador 2.0 & Consumos Reales de Producción
+- **Layout 2 Columnas Sticky (`.cotizador-two-col-layout` + `.cotizador-sticky-sidebar`):** En escritorio (`>= 1024px`), el formulario ocupa `60%` a la izquierda y el resumen financiero permanece visible (`position: sticky`) en `40%` a la derecha; en móvil apila en `1fr` acompañado por una barra flotante fija inferior (`.cotizador-mobile-sticky-bar`) con Costo, Utilidad Neta, Precio Unitario y botón Guardar/Agregar.
+- **Píldoras por Apartado (`.section-subtotal-pill`):** Cada tarjeta del cotizador muestra en su cabecera su `Costo` interno y su `Cobro` al cliente en tiempo real, con números tabulares (`tabular-nums`).
+- **Switch Dual `Margen Bruto` ⇄ `Markup` (`.modo-margen-switch`) & `🔒 USO INTERNO TALLER`:** Selector comparativo en el Cotizador y en las Cotizaciones para alternar fórmulas (`C / (1 - m)` vs `C × (1 + m)`) junto al panel de rentabilidad interna; ningún dato interno (`costo_total_taller`, `utilidad_neta_estimada`, `modo_margen`, `desglose_apartados`) se exporta a PDF ni WhatsApp del cliente.
+- **Trazabilidad de Consumos Reales (`ModalConsumoRealOT`):** En Órdenes de Trabajo, pestañas dedicadas para **Taller / Impresión** y **Pintura / Acabados** comparan consumo estimado vs real, registran consumibles no contemplados (guantes, alcohol IPA, filtros, pinturas) y retroalimentan el banner `RealCostFeedbackBanner` en el cotizador.
+- **Suite 3D PRO (`ToolsHubView` + `Suite3DProView`):** 5 calculadoras especializadas integradas con el catálogo del taller (Convertidor Volumen/Peso/COP, Escala 3D $k^3$, Cama Multi-Pieza, Altura de Capa y Envío Volumétrico Colombia) respetando `WjgSelect`, `step="any"` y `tabular-nums`.
+
 ---
 
 ## 5. Do's & Don'ts

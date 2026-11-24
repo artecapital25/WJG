@@ -10,12 +10,18 @@ import {
   calcularPiezaLaser, 
   calcularPiezaCNC, 
   calcularCotizacionIntegral,
-  calcularCostoInsumoItem
+  calcularCostoInsumoItem,
+  calcularPrecioVentaUnificado,
+  recalcularPiezaPorModoMargen,
+  MULTIPLICADOR_COMPLEJIDAD
 } from '../../../services/calculationEngine';
 
 export {
   calcularCotizacionIntegral,
   calcularCostoInsumoItem,
+  calcularPrecioVentaUnificado,
+  recalcularPiezaPorModoMargen,
+  MULTIPLICADOR_COMPLEJIDAD,
   calcularPieza3D,
   calcularPiezaFDM,
   calcularPiezaLaser,
