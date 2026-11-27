@@ -35,7 +35,8 @@ import {
   PromedioConsumoReal,
   ModoMargen,
   EgresoTaller,
-  CategoriaEgresoTaller
+  CategoriaEgresoTaller,
+  HerramientaLink
 } from '../types';
 import {
   normalizarNitCc,
@@ -3465,7 +3466,8 @@ export const CloudSyncService = {
     onCatalogChange?: () => void,
     onClientesChange?: () => void,
     onBacklogChange?: () => void,
-    onConsumosRealesChange?: () => void
+    onConsumosRealesChange?: () => void,
+    onHerramientasChange?: () => void
   ) {
     if (!this.isAvailable()) return null;
 
@@ -3510,6 +3512,7 @@ export const CloudSyncService = {
           triggerDebounced('cliente', onClientesChange);
           triggerDebounced('catalogo', onCatalogChange);
         } else if (entity === 'consumo_real') triggerDebounced('consumo_real', onConsumosRealesChange);
+        else if (entity === 'herramienta') triggerDebounced('herramienta', onHerramientasChange);
         else if (entity === 'tarea') triggerDebounced('tarea', onTareaChange);
         else if (entity === 'solicitud') triggerDebounced('solicitud', onSolicitudChange);
         else if (entity === 'personal' || entity === 'catalogo' || entity === 'maquina' || entity === 'insumo' || entity === 'resina' || entity === 'filamento' || entity === 'configuracion') {
@@ -3581,6 +3584,9 @@ export const CloudSyncService = {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'consumos_reales_produccion' }, () => {
         triggerDebounced('consumo_real', onConsumosRealesChange);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'herramientas_links' }, () => {
+        triggerDebounced('herramienta', onHerramientasChange);
       });
 
     let reconnectAttempt = 0;
@@ -3913,6 +3919,114 @@ export const CloudSyncService = {
       }));
     } catch (e) {
       return null;
+    }
+  },
+
+  // 27. Enlaces y Herramientas 3D (Sincronización bidireccional Supabase)
+  async fetchHerramientas(): Promise<HerramientaLink[] | null> {
+    if (!this.isAvailable()) return null;
+    try {
+      const { data, error } = await supabase!
+        .from('herramientas_links')
+        .select('*')
+        .order('es_frecuente', { ascending: false })
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.warn('Error fetching herramientas_links:', error.message);
+        return null;
+      }
+      return (data || []).map((row: any): HerramientaLink => ({
+        id: row.id,
+        nombre: row.nombre,
+        url: row.url,
+        categoria: (row.categoria as any) || 'utilidades',
+        descripcion: row.descripcion || undefined,
+        etiqueta: row.etiqueta || undefined,
+        icono: row.icono || undefined,
+        esFrecuente: Boolean(row.es_frecuente),
+        creado_el: row.creado_el || (row.created_at ? String(row.created_at).slice(0, 10) : undefined)
+      }));
+    } catch (e) {
+      console.warn('Exception in fetchHerramientas:', e);
+      return null;
+    }
+  },
+
+  async saveHerramienta(tool: HerramientaLink): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('herramientas_links')
+        .upsert(
+          {
+            id: tool.id,
+            nombre: tool.nombre,
+            url: tool.url,
+            categoria: tool.categoria || 'utilidades',
+            descripcion: tool.descripcion || null,
+            etiqueta: tool.etiqueta || null,
+            icono: tool.icono || null,
+            es_frecuente: Boolean(tool.esFrecuente),
+            creado_el: tool.creado_el || new Date().toISOString().slice(0, 10),
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: 'id' }
+        );
+      if (error) {
+        console.warn('Error saving herramienta in Supabase:', error.message);
+        return false;
+      }
+      this.broadcastChange('herramienta', 'upsert');
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveHerramienta:', e);
+      return false;
+    }
+  },
+
+  async saveHerramientasBatch(tools: HerramientaLink[]): Promise<boolean> {
+    if (!this.isAvailable() || tools.length === 0) return false;
+    try {
+      const rows = tools.map(tool => ({
+        id: tool.id,
+        nombre: tool.nombre,
+        url: tool.url,
+        categoria: tool.categoria || 'utilidades',
+        descripcion: tool.descripcion || null,
+        etiqueta: tool.etiqueta || null,
+        icono: tool.icono || null,
+        es_frecuente: Boolean(tool.esFrecuente),
+        creado_el: tool.creado_el || new Date().toISOString().slice(0, 10),
+        updated_at: new Date().toISOString()
+      }));
+      const { error } = await supabase!
+        .from('herramientas_links')
+        .upsert(rows, { onConflict: 'id' });
+      if (error) {
+        console.warn('Error saving herramientas batch in Supabase:', error.message);
+        return false;
+      }
+      this.broadcastChange('herramienta', 'upsert');
+      return true;
+    } catch (e) {
+      console.warn('Exception in saveHerramientasBatch:', e);
+      return false;
+    }
+  },
+
+  async deleteHerramienta(id: string): Promise<boolean> {
+    if (!this.isAvailable()) return false;
+    try {
+      const { error } = await supabase!
+        .from('herramientas_links')
+        .delete()
+        .eq('id', id);
+      if (!error) this.broadcastChange('herramienta', 'delete');
+      return !error;
+    } catch (e) {
+      console.warn('Exception in deleteHerramienta:', e);
+      return false;
     }
   }
 };

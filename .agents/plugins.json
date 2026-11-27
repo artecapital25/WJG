@@ -1,0 +1,8 @@
+{
+  "entries": [
+    {
+      "path": "~/.gemini/project-plugins",
+      "include_only": ["wjg-ops"]
+    }
+  ]
+}

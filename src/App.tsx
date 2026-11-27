@@ -62,7 +62,8 @@ import {
   SolicitudInsumo,
   ConsumoRealProduccion,
   ModoMargen,
-  TratamientoAbonoOT
+  TratamientoAbonoOT,
+  HerramientaLink
 } from './types';
 import {
   type ItemDeudaConsolidado,
@@ -390,6 +391,7 @@ export const App: React.FC = () => {
   const [tareas, setTareas] = useState<TareaEquipo[]>(() => StorageService.getTareas());
   const [solicitudesInsumos, setSolicitudesInsumos] = useState<SolicitudInsumo[]>(() => StorageService.getSolicitudesInsumos());
   const [consumosReales, setConsumosReales] = useState<ConsumoRealProduccion[]>(() => StorageService.getConsumosReales());
+  const [herramientas, setHerramientas] = useState<HerramientaLink[]>(() => StorageService.getHerramientas());
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'connected' | 'syncing' | 'offline'>('syncing');
   const lastLocalMutationRef = React.useRef<number>(0);
   const markLocalMutation = () => {
@@ -453,7 +455,8 @@ export const App: React.FC = () => {
           cloudPersonal,
           cloudProveedores,
           cloudTarifasTamanos,
-          cloudConsumosReales
+          cloudConsumosReales,
+          cloudHerramientas
         ] = await Promise.all([
           CloudSyncService.fetchCotizaciones(),
           CloudSyncService.fetchClientes(),
@@ -473,7 +476,8 @@ export const App: React.FC = () => {
           CloudSyncService.fetchTarifasPersonal(),
           CloudSyncService.fetchProveedores(),
           CloudSyncService.fetchTarifasTamanos(),
-          CloudSyncService.fetchConsumosReales()
+          CloudSyncService.fetchConsumosReales(),
+          CloudSyncService.fetchHerramientas()
         ]);
 
         const pagosLedger = cloudPayments || [];
@@ -750,6 +754,11 @@ export const App: React.FC = () => {
           StorageService.saveConsumosReales(cloudConsumosReales);
         }
 
+        if (cloudHerramientas !== null) {
+          setHerramientas(cloudHerramientas);
+          StorageService.saveHerramientas(cloudHerramientas);
+        }
+
         setCloudSyncStatus('connected');
         setLastSyncAt(
           new Date().toLocaleTimeString('es-CO', {
@@ -994,6 +1003,14 @@ export const App: React.FC = () => {
         if (freshConsumos !== null) {
           setConsumosReales(freshConsumos);
           StorageService.saveConsumosReales(freshConsumos);
+          touchSyncTime();
+        }
+      },
+      async () => {
+        const freshHerramientas = await CloudSyncService.fetchHerramientas();
+        if (freshHerramientas !== null) {
+          setHerramientas(freshHerramientas);
+          StorageService.saveHerramientas(freshHerramientas);
           touchSyncTime();
         }
       }
@@ -3766,6 +3783,40 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSaveHerramienta = async (tool: HerramientaLink) => {
+    markLocalMutation();
+    setHerramientas(prev => {
+      const exists = prev.some(t => t.id === tool.id);
+      const updated = exists ? prev.map(t => (t.id === tool.id ? tool : t)) : [tool, ...prev];
+      StorageService.saveHerramientas(updated);
+      return updated;
+    });
+    await CloudSyncService.saveHerramienta(tool);
+  };
+
+  const handleDeleteHerramienta = async (id: string) => {
+    markLocalMutation();
+    setHerramientas(prev => {
+      const updated = prev.filter(t => t.id !== id);
+      StorageService.saveHerramientas(updated);
+      return updated;
+    });
+    await CloudSyncService.deleteHerramienta(id);
+  };
+
+  const handleRestoreDefaultHerramientas = async () => {
+    markLocalMutation();
+    const merged = StorageService.mergeMissingDefaultHerramientas(herramientas);
+    setHerramientas(merged);
+    StorageService.saveHerramientas(merged);
+    const ok = await CloudSyncService.saveHerramientasBatch(merged);
+    toast.success(
+      ok
+        ? `Catálogo restaurado (${merged.length} herramientas sincronizadas con Supabase).`
+        : `Catálogo restaurado localmente (${merged.length} herramientas).`
+    );
+  };
+
   const pendingOTs = ordenes.filter(o => o.estado !== 'Listo para Entrega').length;
 
   // Si estamos en Modo Portal de Cliente Aislado, NO mostrar barra de navegación ni opciones administrativas
@@ -4167,6 +4218,11 @@ export const App: React.FC = () => {
                   filamentos={filamentos}
                   maquinas={maquinas}
                   config={config}
+                  herramientas={herramientas}
+                  cloudConnected={cloudSyncStatus !== 'offline'}
+                  onSaveHerramienta={handleSaveHerramienta}
+                  onDeleteHerramienta={handleDeleteHerramienta}
+                  onRestoreDefaultHerramientas={handleRestoreDefaultHerramientas}
                   onApplyToCotizador={(data) => {
                     setStlAppliedData(data);
                     setActiveTab('cotizador');

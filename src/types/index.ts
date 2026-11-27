@@ -22,7 +22,7 @@ export * from './pos';
 export * from './tasks';
 export * from './calendar';
 
-export type CategoriaHerramienta = 'ia_3d' | 'stl_repos' | 'slicers' | 'pintura' | 'utilidades';
+export type CategoriaHerramienta = 'ia_3d' | 'generadores' | 'stl_repos' | 'slicers' | 'pintura' | 'utilidades';
 
 export interface HerramientaLink {
   id: string;

@@ -89,7 +89,7 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - **Píldoras por Apartado (`.section-subtotal-pill`):** Cada tarjeta del cotizador muestra en su cabecera su `Costo` interno y su `Cobro` al cliente en tiempo real, con números tabulares (`tabular-nums`).
 - **Switch Dual `Margen Bruto` ⇄ `Markup` (`.modo-margen-switch`) & `🔒 USO INTERNO TALLER`:** Selector comparativo en el Cotizador y en las Cotizaciones para alternar fórmulas (`C / (1 - m)` vs `C × (1 + m)`) junto al panel de rentabilidad interna; ningún dato interno (`costo_total_taller`, `utilidad_neta_estimada`, `modo_margen`, `desglose_apartados`) se exporta a PDF ni WhatsApp del cliente.
 - **Trazabilidad de Consumos Reales (`ModalConsumoRealOT`):** En Órdenes de Trabajo, pestañas dedicadas para **Taller / Impresión** y **Pintura / Acabados** comparan consumo estimado vs real, registran consumibles no contemplados (guantes, alcohol IPA, filtros, pinturas) y retroalimentan el banner `RealCostFeedbackBanner` en el cotizador.
-- **Suite 3D PRO (`ToolsHubView` + `Suite3DProView`):** 5 calculadoras especializadas integradas con el catálogo del taller (Convertidor Volumen/Peso/COP, Escala 3D $k^3$, Cama Multi-Pieza, Altura de Capa y Envío Volumétrico Colombia) respetando `WjgSelect`, `step="any"` y `tabular-nums`.
+- **Suite 3D PRO & Estudio Generador 3D (`ToolsHubView` + `Studio3DGeneratorsView` + `Suite3DProView`):** 7 generadores 3D nativos con descarga `.STL`/`.SVG` y envío directo al Cotizador (Llavero 3D, Litofanía 3D, Medallas 3D, Placas & Eventos, Imagen→SVG/STL, Código QR 3D, Cortador & Sello), más 5 calculadoras especializadas integradas con el catálogo del taller y directorio de `herramientas_links` sincronizado bidireccionalmente en Supabase.
 
 ---
 

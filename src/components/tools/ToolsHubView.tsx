@@ -16,19 +16,27 @@ import {
   Globe, 
   X,
   Calculator,
-  FileCode2
+  FileCode2,
+  RotateCcw,
+  Cloud
 } from 'lucide-react';
 import { HerramientaLink, CategoriaHerramienta, Resina, Filamento, Maquina, ConfiguracionTaller } from '../../types';
 import { StorageService } from '../../services/storageService';
-import { WjgButton, WjgConfirmModal, WjgModal, WjgSearchInput, WjgSelect, toast } from '../ui';
+import { WjgBadge, WjgButton, WjgConfirmModal, WjgModal, WjgSearchInput, WjgSelect, toast } from '../ui';
 import { Suite3DProView } from './Suite3DProView';
 import { SlicerInspectorView, SlicerAppliedPieceData } from './SlicerInspectorView';
+import { Studio3DGeneratorsView } from './Studio3DGeneratorsView';
 
 interface ToolsHubViewProps {
   resinas?: Resina[];
   filamentos?: Filamento[];
   maquinas?: Maquina[];
   config?: ConfiguracionTaller;
+  herramientas?: HerramientaLink[];
+  cloudConnected?: boolean;
+  onSaveHerramienta?: (tool: HerramientaLink) => Promise<void> | void;
+  onDeleteHerramienta?: (id: string) => Promise<void> | void;
+  onRestoreDefaultHerramientas?: () => Promise<void> | void;
   onApplyToCotizador?: (data: SlicerAppliedPieceData) => void;
 }
 
@@ -38,6 +46,12 @@ const CATEGORIAS_CONFIG: Record<CategoriaHerramienta, { label: string; icon: any
     icon: Sparkles,
     color: '#38bdf8',
     bg: 'rgba(56, 189, 248, 0.15)'
+  },
+  generadores: {
+    label: 'Generadores 3D Web',
+    icon: Wrench,
+    color: '#2dd4bf',
+    bg: 'rgba(45, 212, 191, 0.15)'
   },
   stl_repos: {
     label: 'Repositorios STL',
@@ -70,11 +84,17 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
   filamentos = [],
   maquinas = [],
   config,
+  herramientas: herramientasProp,
+  cloudConnected = false,
+  onSaveHerramienta,
+  onDeleteHerramienta,
+  onRestoreDefaultHerramientas,
   onApplyToCotizador
 }) => {
-  const [activeSuiteTab, setActiveSuiteTab] = useState<'calculadoras' | 'slicer' | 'apps'>('calculadoras');
+  const [activeSuiteTab, setActiveSuiteTab] = useState<'generadores' | 'calculadoras' | 'slicer' | 'apps'>('generadores');
   const [deleteToolTarget, setDeleteToolTarget] = useState<{ id: string; nombre: string } | null>(null);
-  const [herramientas, setHerramientas] = useState<HerramientaLink[]>(() => StorageService.getHerramientas());
+  const [localHerramientas, setLocalHerramientas] = useState<HerramientaLink[]>(() => StorageService.getHerramientas());
+  const herramientas = herramientasProp ?? localHerramientas;
   const [categoriaFiltro, setCategoriaFiltro] = useState<string>('todas');
   const [busqueda, setBusqueda] = useState<string>('');
   const [copiadoId, setCopiadoId] = useState<string | null>(null);
@@ -86,22 +106,24 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
   // Campos del formulario modal
   const [nombre, setNombre] = useState('');
   const [url, setUrl] = useState('');
-  const [categoria, setCategoria] = useState<CategoriaHerramienta>('ia_3d');
+  const [categoria, setCategoria] = useState<CategoriaHerramienta>('generadores');
   const [descripcion, setDescripcion] = useState('');
   const [etiqueta, setEtiqueta] = useState('');
   const [esFrecuente, setEsFrecuente] = useState(false);
 
-  // Sincronizar persistencia cada vez que cambien las herramientas
+  // Sincronizar persistencia local cuando no se pasan props externos
   useEffect(() => {
-    StorageService.saveHerramientas(herramientas);
-  }, [herramientas]);
+    if (!herramientasProp) {
+      StorageService.saveHerramientas(localHerramientas);
+    }
+  }, [localHerramientas, herramientasProp]);
 
   // Abrir modal para crear
   const handleOpenCrearModal = () => {
     setEditingTool(null);
     setNombre('');
     setUrl('');
-    setCategoria('ia_3d');
+    setCategoria('generadores');
     setDescripcion('');
     setEtiqueta('');
     setEsFrecuente(false);
@@ -134,24 +156,22 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
     }
 
     if (editingTool) {
-      // Editar existente
-      const updated = herramientas.map(t => {
-        if (t.id === editingTool.id) {
-          return {
-            ...t,
-            nombre: nombre.trim(),
-            url: urlFinal,
-            categoria,
-            descripcion: descripcion.trim() || undefined,
-            etiqueta: etiqueta.trim() || undefined,
-            esFrecuente
-          };
-        }
-        return t;
-      });
-      setHerramientas(updated);
+      const updatedTool: HerramientaLink = {
+        ...editingTool,
+        nombre: nombre.trim(),
+        url: urlFinal,
+        categoria,
+        descripcion: descripcion.trim() || undefined,
+        etiqueta: etiqueta.trim() || undefined,
+        esFrecuente
+      };
+      if (onSaveHerramienta) {
+        onSaveHerramienta(updatedTool);
+      } else {
+        setLocalHerramientas(prev => prev.map(t => (t.id === editingTool.id ? updatedTool : t)));
+      }
+      toast.success(`"${updatedTool.nombre}" actualizada.`);
     } else {
-      // Crear nueva
       const nueva: HerramientaLink = {
         id: `tool-${Date.now()}`,
         nombre: nombre.trim(),
@@ -162,7 +182,12 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
         esFrecuente,
         creado_el: new Date().toISOString().slice(0, 10)
       };
-      setHerramientas([nueva, ...herramientas]);
+      if (onSaveHerramienta) {
+        onSaveHerramienta(nueva);
+      } else {
+        setLocalHerramientas(prev => [nueva, ...prev]);
+      }
+      toast.success(`"${nueva.nombre}" agregada al lanzador.`);
     }
 
     setIsModalOpen(false);
@@ -175,19 +200,35 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
 
   const confirmEliminarTool = () => {
     if (!deleteToolTarget) return;
-    setHerramientas(herramientas.filter(t => t.id !== deleteToolTarget.id));
+    if (onDeleteHerramienta) {
+      onDeleteHerramienta(deleteToolTarget.id);
+    } else {
+      setLocalHerramientas(prev => prev.filter(t => t.id !== deleteToolTarget.id));
+    }
     toast.success(`"${deleteToolTarget.nombre}" eliminada de Herramientas.`);
     setDeleteToolTarget(null);
   };
 
   // Alternar favorito / frecuente
   const handleToggleFrecuente = (id: string) => {
-    setHerramientas(herramientas.map(t => {
-      if (t.id === id) {
-        return { ...t, esFrecuente: !t.esFrecuente };
-      }
-      return t;
-    }));
+    const target = herramientas.find(t => t.id === id);
+    if (!target) return;
+    const updatedTool = { ...target, esFrecuente: !target.esFrecuente };
+    if (onSaveHerramienta) {
+      onSaveHerramienta(updatedTool);
+    } else {
+      setLocalHerramientas(prev => prev.map(t => (t.id === id ? updatedTool : t)));
+    }
+  };
+
+  const handleRestoreDefaults = () => {
+    if (onRestoreDefaultHerramientas) {
+      onRestoreDefaultHerramientas();
+    } else {
+      const merged = StorageService.mergeMissingDefaultHerramientas(localHerramientas);
+      setLocalHerramientas(merged);
+      toast.success(`Predeterminados restaurados (${merged.length} herramientas).`);
+    }
   };
 
   // Copiar link al portapapeles
@@ -236,19 +277,42 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
         </div>
 
         {activeSuiteTab === 'apps' && (
-          <WjgButton
-            variant="save"
-            size="sm"
-            leftIcon={<Plus size={16} />}
-            onClick={handleOpenCrearModal}
-          >
-            Agregar Nueva App / Link
-          </WjgButton>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+            <WjgBadge variant={cloudConnected ? 'success' : 'warning'} icon={<Cloud size={12} />}>
+              {cloudConnected ? 'Sincronizado Supabase' : 'Modo Local'}
+            </WjgBadge>
+            <WjgButton
+              variant="secondary"
+              size="sm"
+              leftIcon={<RotateCcw size={15} />}
+              onClick={handleRestoreDefaults}
+              title="Restaura enlaces predeterminados faltantes sin borrar los tuyos"
+            >
+              Restaurar Predeterminados
+            </WjgButton>
+            <WjgButton
+              variant="save"
+              size="sm"
+              leftIcon={<Plus size={16} />}
+              onClick={handleOpenCrearModal}
+            >
+              Agregar Nueva App / Link
+            </WjgButton>
+          </div>
         )}
       </div>
 
-      {/* Selector Principal: Suite 3D PRO vs Inspector de Slicer vs Enlaces & Apps */}
+      {/* Selector Principal: Estudio Generador 3D vs Suite 3D PRO vs Inspector de Slicer vs Enlaces & Apps */}
       <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' }}>
+        <WjgButton
+          variant={activeSuiteTab === 'generadores' ? 'quote' : 'secondary'}
+          size="sm"
+          leftIcon={<Sparkles size={16} />}
+          onClick={() => setActiveSuiteTab('generadores')}
+          style={{ minHeight: '42px', padding: '0 16px' }}
+        >
+          ✨ Estudio Generador 3D (7)
+        </WjgButton>
         <WjgButton
           variant={activeSuiteTab === 'calculadoras' ? 'primary' : 'secondary'}
           size="sm"
@@ -277,6 +341,15 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
           Enlaces & Apps 3D ({herramientas.length})
         </WjgButton>
       </div>
+
+      {activeSuiteTab === 'generadores' && (
+        <Studio3DGeneratorsView
+          resinas={resinas}
+          filamentos={filamentos}
+          config={config}
+          onApplyToCotizador={onApplyToCotizador}
+        />
+      )}
 
       {activeSuiteTab === 'calculadoras' && (
         <Suite3DProView
@@ -327,6 +400,15 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
               style={{ fontWeight: 700, color: categoriaFiltro === 'frecuentes' ? '#fff' : '#fbbf24' }}
             >
               ⭐ Frecuentes ({totalFrecuentes})
+            </button>
+
+            <button
+              type="button"
+              className={`btn btn-sm ${categoriaFiltro === 'generadores' ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setCategoriaFiltro('generadores')}
+              style={{ fontWeight: 700 }}
+            >
+              ✨ Generadores 3D Web
             </button>
 
             <button
@@ -584,6 +666,7 @@ export const ToolsHubView: React.FC<ToolsHubViewProps> = ({
                   value={categoria}
                   onChange={(val) => setCategoria(val as CategoriaHerramienta)}
                   options={[
+                    { value: 'generadores', label: '✨ Generadores 3D Web' },
                     { value: 'ia_3d', label: '🤖 IAs Generativas 3D' },
                     { value: 'stl_repos', label: '📦 Repositorios STL' },
                     { value: 'slicers', label: '⚙️ Slicers & Taller' },

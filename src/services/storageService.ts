@@ -215,6 +215,56 @@ export const HERRAMIENTAS_INICIALES: HerramientaLink[] = [
     creado_el: '2026-10-14'
   },
   {
+    id: 'tool-makerlab',
+    nombre: 'MakerWorld MakerLab (Llavero, Litofanía, Relieve)',
+    url: 'https://makerworld.com/en/makerlab',
+    categoria: 'generadores',
+    descripcion: 'Suite oficial de Bambu Lab con Image to Keychain, Make My Lithophane, Relief Sculpture y Make My Sign.',
+    etiqueta: 'Generador Pro',
+    esFrecuente: true,
+    creado_el: '2026-11-26'
+  },
+  {
+    id: 'tool-itslitho',
+    nombre: 'ItsLitho (Litofanías Avanzadas)',
+    url: 'https://tool.itslitho.com/',
+    categoria: 'generadores',
+    descripcion: 'Generador profesional de litofanías planas, curvas, lámparas y esferas con marcos y difusores.',
+    etiqueta: 'Litofanía',
+    esFrecuente: true,
+    creado_el: '2026-11-26'
+  },
+  {
+    id: 'tool-lithophanemaker',
+    nombre: 'Lithophane Maker',
+    url: 'https://lithophanemaker.com/',
+    categoria: 'generadores',
+    descripcion: 'Herramienta especializada para litofanías nocturnas, lámparas de mesa, corazones y llaveros.',
+    etiqueta: 'Litofanía',
+    esFrecuente: false,
+    creado_el: '2026-11-26'
+  },
+  {
+    id: 'tool-cookiecad',
+    nombre: 'CookieCAD (Cortadores & Sellos)',
+    url: 'https://app.cookiecad.com/',
+    categoria: 'generadores',
+    descripcion: 'Convierte imágenes y siluetas en cortadores de galletas y sellos 3D listos para imprimir.',
+    etiqueta: 'Cortadores',
+    esFrecuente: false,
+    creado_el: '2026-11-26'
+  },
+  {
+    id: 'tool-imagetostl',
+    nombre: 'ImageToSTL (Imagen/SVG a 3D)',
+    url: 'https://imagetostl.com/',
+    categoria: 'generadores',
+    descripcion: 'Conversor rápido online de imágenes PNG/JPG o SVG a relieves y archivos STL imprimibles.',
+    etiqueta: 'SVG / Relieve',
+    esFrecuente: false,
+    creado_el: '2026-11-26'
+  },
+  {
     id: 'tool-cults',
     nombre: 'Cults 3D',
     url: 'https://cults3d.com/es',
@@ -233,6 +283,16 @@ export const HERRAMIENTAS_INICIALES: HerramientaLink[] = [
     etiqueta: 'Estatuas Premium',
     esFrecuente: true,
     creado_el: '2026-10-14'
+  },
+  {
+    id: 'tool-makerworld-repos',
+    nombre: 'MakerWorld (Bambu Lab STL/3MF)',
+    url: 'https://makerworld.com/es',
+    categoria: 'stl_repos',
+    descripcion: 'Repositorio global con millones de perfiles 3MF multicolor y modelos optimizados para FDM.',
+    etiqueta: 'Catálogo 3MF',
+    esFrecuente: true,
+    creado_el: '2026-11-26'
   },
   {
     id: 'tool-printables',
@@ -501,6 +561,11 @@ export const StorageService = {
 
   getHerramientas: (): HerramientaLink[] => loadItem(STORAGE_KEYS.HERRAMIENTAS, HERRAMIENTAS_INICIALES),
   saveHerramientas: (items: HerramientaLink[]) => saveItem(STORAGE_KEYS.HERRAMIENTAS, items),
+  mergeMissingDefaultHerramientas: (current: HerramientaLink[]): HerramientaLink[] => {
+    const existingIds = new Set(current.map(item => item.id));
+    const missing = HERRAMIENTAS_INICIALES.filter(def => !existingIds.has(def.id));
+    return [...current, ...missing];
+  },
 
   getBacklogEmpresa: (): ItemBacklogEmpresa[] => loadItem(STORAGE_KEYS.BACKLOG_EMPRESA, BACKLOG_EMPRESA_INICIAL),
   saveBacklogEmpresa: (items: ItemBacklogEmpresa[]) => saveItem(STORAGE_KEYS.BACKLOG_EMPRESA, items),
