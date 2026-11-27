@@ -26,8 +26,11 @@ import {
   WjgConfirmModal,
   WjgModal,
   WjgNumberInput,
+  WjgProgressBar,
   WjgSearchInput,
   WjgSelect,
+  getAlertSurfaceClassName,
+  resolveStockAlert,
   toast,
 } from '../ui';
 
@@ -552,11 +555,17 @@ ${itemsText}
             const hasStock = stockActual > 0;
             const isLowStock = hasStock && stockActual <= stockMin;
             const isCopied = copiedId === prod.id;
+            const stockAlert = resolveStockAlert({
+              actual: stockActual,
+              minimo: stockMin,
+              capacidadMaxima: Math.max(stockMin * 3, stockActual, 6),
+              tipo: 'producto',
+            });
 
             return (
               <div
                 key={prod.id}
-                className="glass-card"
+                className={getAlertSurfaceClassName(stockAlert.tone, 'glass-card')}
                 style={{
                   margin: 0,
                   padding: '14px',
@@ -566,7 +575,6 @@ ${itemsText}
                   gap: '12px',
                   position: 'relative',
                   overflow: 'hidden',
-                  borderColor: !hasStock ? 'rgba(239, 68, 68, 0.35)' : isLowStock ? 'rgba(245, 158, 11, 0.35)' : 'var(--border-subtle)',
                   contentVisibility: 'auto',
                   containIntrinsicSize: '0 380px'
                 }}
@@ -699,6 +707,14 @@ ${itemsText}
 
                 {/* CONTROLES RÁPIDOS DE STOCK & ACCIONES */}
                 <div>
+                  <div style={{ marginBottom: '10px' }}>
+                    <WjgProgressBar
+                      percent={stockAlert.percent ?? 0}
+                      label={stockAlert.label}
+                      rightText={`${stockActual} ud(s)`}
+                      size="sm"
+                    />
+                  </div>
                   {/* Stepper rápido de Stock físico */}
                   <div style={{
                     background: 'rgba(0, 0, 0, 0.35)',

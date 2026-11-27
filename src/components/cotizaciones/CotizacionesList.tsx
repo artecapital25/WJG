@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { Cotizacion, EstadoCotizacion, ConfiguracionTaller, OrdenTrabajo, DatosPagoRegistro, ModoMargen } from '../../types';
-import { WjgButton, WjgSearchInput, WjgSelect } from '../ui';
+import { WjgAlertBanner, WjgButton, WjgProgressBar, WjgSearchInput, WjgSelect, getAlertSurfaceClassName, resolvePaymentAlert } from '../ui';
 import { VentaExpress } from '../../types/pos';
 import { generarPDFCotizacion, compartirPDFWhatsApp } from '../../services/pdfService';
 import { generateCotizacionWhatsAppText } from '../../services/whatsappService';
@@ -253,46 +253,34 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
       </div>
 
       {pendingSyncCount > 0 && (
-        <div
-          className="glass-card"
-          style={{
-            padding: '12px 16px',
-            marginBottom: '14px',
-            border: '1px solid rgba(245, 158, 11, 0.45)',
-            background: 'rgba(245, 158, 11, 0.1)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '10px'
-          }}
+        <WjgAlertBanner
+          tone="warning"
+          icon={<AlertCircle size={17} />}
+          style={{ marginBottom: '14px' }}
+          action={
+            onForceSyncLocal ? (
+              <WjgButton
+                variant="save"
+                size="sm"
+                loading={syncingLocals}
+                leftIcon={<RotateCw size={14} />}
+                onClick={async () => {
+                  setSyncingLocals(true);
+                  try {
+                    await onForceSyncLocal();
+                  } finally {
+                    setSyncingLocals(false);
+                  }
+                }}
+                style={{ minHeight: '36px' }}
+              >
+                {syncingLocals ? 'Subiendo...' : 'Subir ahora a la nube'}
+              </WjgButton>
+            ) : undefined
+          }
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fcd34d', fontSize: '0.84rem', fontWeight: 700 }}>
-            <AlertCircle size={17} color="#f59e0b" />
-            <span>
-              Hay {pendingSyncCount} cotización(es) guardada(s) solo en este dispositivo sin subir a Supabase.
-            </span>
-          </div>
-          {onForceSyncLocal && (
-            <WjgButton
-              variant="save"
-              size="sm"
-              loading={syncingLocals}
-              leftIcon={<RotateCw size={14} />}
-              onClick={async () => {
-                setSyncingLocals(true);
-                try {
-                  await onForceSyncLocal();
-                } finally {
-                  setSyncingLocals(false);
-                }
-              }}
-              style={{ minHeight: '36px' }}
-            >
-              {syncingLocals ? 'Subiendo...' : 'Subir ahora a la nube'}
-            </WjgButton>
-          )}
-        </div>
+          Hay {pendingSyncCount} cotización(es) guardada(s) solo en este dispositivo sin subir a Supabase.
+        </WjgAlertBanner>
       )}
 
       {/* Barra de Búsqueda, Filtro por Cliente y Ordenamiento */}
@@ -482,8 +470,17 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
         </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {cotizacionesProcesadas.map(cot => (
-            <div key={cot.id} className="glass-card" style={{ margin: 0, padding: '18px' }}>
+          {cotizacionesProcesadas.map(cot => {
+            const esCancelada = /cancel|rechaz|anul/i.test(cot.estado || '');
+            const payAlert = resolvePaymentAlert({
+              total: cot.total,
+              abono: cot.abono || 0,
+              saldoPendiente: cot.saldo_pendiente,
+              estadoPago: cot.estado_pago,
+              cancelado: esCancelada,
+            });
+            return (
+            <div key={cot.id} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '18px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -692,6 +689,17 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                   </div>
                 </div>
               </div>
+
+              {/* Barra de Avance de Pago 0% -> 100% */}
+              {!esCancelada && (
+                <div style={{ marginBottom: '12px' }}>
+                  <WjgProgressBar
+                    percent={payAlert.percent ?? 0}
+                    label="Avance de Pago"
+                    size="sm"
+                  />
+                </div>
+              )}
 
               {/* Resumen de piezas */}
               <div style={{ background: 'rgba(0,0,0,0.25)', padding: '10px 14px', borderRadius: '8px', fontSize: '0.82rem', color: 'var(--text-muted)', marginBottom: '14px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -937,7 +945,8 @@ export const CotizacionesList: React.FC<CotizacionesListProps> = ({
                 })()}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 

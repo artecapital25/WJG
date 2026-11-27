@@ -35,8 +35,11 @@ import {
   WjgBadge,
   WjgButton,
   WjgCard,
+  WjgProgressBar,
   WjgSelect,
   WjgTabs,
+  getAlertSurfaceClassName,
+  resolvePaymentAlert,
   type WjgTabOption
 } from '../ui';
 import { AbonosLedgerTab } from './AbonosLedgerTab';
@@ -633,13 +636,9 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
         <>
           {/* Widget Ejecutivo: Monitor de WhatsApp y Daily Briefing 7:00 AM */}
           <div
+            className={getAlertSurfaceClassName(whatsappStatus === 'alerta_critica' ? 'danger' : 'success')}
             style={{
-              background: 'linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(8, 13, 22, 0.95) 100%)',
               borderRadius: '16px',
-              border:
-                whatsappStatus === 'alerta_critica'
-                  ? '1px solid rgba(239, 68, 68, 0.4)'
-                  : '1px solid rgba(0, 240, 255, 0.25)',
               padding: '16px 20px',
               marginBottom: '20px',
               display: 'flex',
@@ -647,7 +646,6 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
               justifyContent: 'space-between',
               flexWrap: 'wrap',
               gap: '14px',
-              boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)',
             }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
@@ -903,10 +901,8 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
               >
                 ${resumenCaja.totalIngresos.toLocaleString('es-CO')}
               </div>
-              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                <span>
-                  Tasa de cobro efectiva: <strong style={{ color: '#34d399' }}>{tasaRecaudoPct}%</strong>
-                </span>
+              <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '6px', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <WjgProgressBar percent={tasaRecaudoPct} label="Tasa de cobro efectiva" size="sm" />
                 <span>
                   Cotiz: <strong style={{ color: '#38bdf8' }}>${recaudoCotizaciones.toLocaleString('es-CO')}</strong> · POS:{' '}
                   <strong style={{ color: '#fbbf24' }}>${recaudoPOS.toLocaleString('es-CO')}</strong>
@@ -1099,11 +1095,19 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
                       </td>
                     </tr>
                   ) : (
-                    pedidosFiltrados.map((p, idx) => (
+                    pedidosFiltrados.map((p, idx) => {
+                      const payAlert = resolvePaymentAlert({
+                        total: p.total,
+                        abono: p.abono,
+                        saldoPendiente: p.saldo,
+                        estadoPago: p.estadoPago,
+                      });
+                      return (
                       <tr
                         key={p.id || idx}
                         style={{
                           borderBottom: '1px solid rgba(255,255,255,0.04)',
+                          borderLeft: `3px solid ${payAlert.tokens.accentColor}`,
                           background: idx % 2 === 0 ? 'transparent' : 'rgba(255,255,255,0.01)',
                         }}
                       >
@@ -1160,26 +1164,13 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({
                           ${p.saldo.toLocaleString('es-CO')}
                         </td>
                         <td style={{ padding: '10px 14px', textAlign: 'center', whiteSpace: 'nowrap' }}>
-                          <span
-                            style={{
-                              fontSize: '0.70rem',
-                              padding: '2px 8px',
-                              borderRadius: '4px',
-                              fontWeight: 700,
-                              background:
-                                p.saldo <= 0
-                                  ? 'rgba(34, 197, 94, 0.15)'
-                                  : p.abono > 0
-                                  ? 'rgba(56, 189, 248, 0.15)'
-                                  : 'rgba(239, 68, 68, 0.15)',
-                              color: p.saldo <= 0 ? '#4ade80' : p.abono > 0 ? '#38bdf8' : '#f87171',
-                            }}
-                          >
-                            {p.estadoPago}
-                          </span>
+                          <WjgBadge variant={payAlert.badgeVariant}>
+                            {p.estadoPago} ({payAlert.percent ?? 0}%)
+                          </WjgBadge>
                         </td>
                       </tr>
-                    ))
+                      );
+                    })
                   )}
                 </tbody>
               </table>

@@ -26,7 +26,7 @@ import {
   getTeamContacts,
   resolveGroupDestination
 } from '../../services/messaging';
-import { WjgButton, toast } from '../ui';
+import { WjgAlertBanner, WjgButton, getAlertSurfaceClassName, toast } from '../ui';
 
 interface DailyBriefingModalProps {
   isOpen: boolean;
@@ -286,33 +286,27 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
 
         {/* Feedback Alert */}
         {feedbackMsg && (
-          <div style={{
-            padding: '10px 24px',
-            fontSize: '0.85rem',
-            fontWeight: 600,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '8px',
-            background: feedbackMsg.tipo === 'success' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)',
-            color: feedbackMsg.tipo === 'success' ? '#34d399' : '#f87171',
-            borderBottom: `1px solid ${feedbackMsg.tipo === 'success' ? 'rgba(16, 185, 129, 0.3)' : 'rgba(239, 68, 68, 0.3)'}`
-          }}>
-            {feedbackMsg.tipo === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
-            <span>{feedbackMsg.texto}</span>
-          </div>
+          <WjgAlertBanner
+            tone={feedbackMsg.tipo === 'success' ? 'success' : 'danger'}
+            icon={feedbackMsg.tipo === 'success' ? <CheckCircle2 size={16} /> : <AlertTriangle size={16} />}
+            compact
+            style={{ borderRadius: 0 }}
+          >
+            {feedbackMsg.texto}
+          </WjgAlertBanner>
         )}
 
         {/* Cuerpo del Modal con Scroll */}
         <div style={{ padding: '20px 24px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: '20px' }}>
           
           {/* 1. SECCIÓN MONITOR DE SALUD DE WHATSAPP (HEARTBEAT) */}
-          <div style={{
-            background: 'rgba(15, 23, 42, 0.6)',
-            borderRadius: '12px',
-            border: isOperativo ? '1px solid rgba(16, 185, 129, 0.3)' : '1px solid rgba(239, 68, 68, 0.4)',
-            padding: '16px',
-            boxShadow: isOperativo ? '0 0 15px rgba(16, 185, 129, 0.05)' : '0 0 20px rgba(239, 68, 68, 0.15)'
-          }}>
+          <div
+            className={getAlertSurfaceClassName(isOperativo ? 'success' : 'danger')}
+            style={{
+              borderRadius: '12px',
+              padding: '16px',
+            }}
+          >
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '10px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <div style={{
@@ -421,17 +415,18 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
               gap: '12px'
             }}>
               {/* Cobranzas */}
-              <div style={{
-                background: 'rgba(30, 41, 59, 0.4)',
-                borderRadius: '12px',
-                padding: '14px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
-              }}>
+              <div
+                className={getAlertSurfaceClassName((briefing.finanzas_cobranzas?.total_cobros_hoy || 0) > 0 ? 'warning' : 'success')}
+                style={{
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <DollarSign size={18} color="#10b981" />
                   <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>Cobros del Día</span>
                 </div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#10b981', marginBottom: '4px' }}>
+                <div className="tabular-nums" style={{ fontSize: '1.3rem', fontWeight: 900, color: (briefing.finanzas_cobranzas?.total_cobros_hoy || 0) > 0 ? '#fcd34d' : '#10b981', marginBottom: '4px' }}>
                   ${(briefing.finanzas_cobranzas?.total_cobros_hoy || 0).toLocaleString('es-CO')} COP
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
@@ -440,17 +435,18 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
               </div>
 
               {/* Taller / Entregas */}
-              <div style={{
-                background: 'rgba(30, 41, 59, 0.4)',
-                borderRadius: '12px',
-                padding: '14px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
-              }}>
+              <div
+                className={getAlertSurfaceClassName((briefing.taller_operaciones?.conteo_ots_entrega_hoy || 0) > 0 ? 'info' : 'neutral')}
+                style={{
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
                   <Clock size={18} color="#38bdf8" />
                   <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>Entregas Hoy (OTs)</span>
                 </div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: '#38bdf8', marginBottom: '4px' }}>
+                <div className="tabular-nums" style={{ fontSize: '1.3rem', fontWeight: 900, color: '#38bdf8', marginBottom: '4px' }}>
                   {briefing.taller_operaciones?.conteo_ots_entrega_hoy || 0} órdenes
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>
@@ -459,17 +455,18 @@ export const DailyBriefingModal: React.FC<DailyBriefingModalProps> = ({
               </div>
 
               {/* Insumos */}
-              <div style={{
-                background: 'rgba(30, 41, 59, 0.4)',
-                borderRadius: '12px',
-                padding: '14px',
-                border: '1px solid rgba(255, 255, 255, 0.08)'
-              }}>
+              <div
+                className={getAlertSurfaceClassName((briefing.insumos_logistica?.conteo_insumos_urgentes || 0) > 0 ? 'danger' : 'success')}
+                style={{
+                  borderRadius: '12px',
+                  padding: '14px',
+                }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
-                  <Package size={18} color="#f59e0b" />
+                  <Package size={18} color={(briefing.insumos_logistica?.conteo_insumos_urgentes || 0) > 0 ? '#ef4444' : '#10b981'} />
                   <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#e2e8f0' }}>Insumos Críticos</span>
                 </div>
-                <div style={{ fontSize: '1.3rem', fontWeight: 900, color: (briefing.insumos_logistica?.conteo_insumos_urgentes || 0) > 0 ? '#f59e0b' : '#10b981', marginBottom: '4px' }}>
+                <div className="tabular-nums" style={{ fontSize: '1.3rem', fontWeight: 900, color: (briefing.insumos_logistica?.conteo_insumos_urgentes || 0) > 0 ? '#fca5a5' : '#10b981', marginBottom: '4px' }}>
                   {(briefing.insumos_logistica?.conteo_insumos_urgentes || 0)} pendientes
                 </div>
                 <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { WjgButton, WjgConfirmModal, WjgSelect, toast } from '../ui';
+import { WjgButton, WjgConfirmModal, WjgProgressBar, WjgSelect, getAlertSurfaceClassName, toast } from '../ui';
 import { 
   CheckCircle2, 
   Clock, 
@@ -549,16 +549,16 @@ export const ProjectPlanView: React.FC = () => {
               const isExpanded = faseExpandida === fase.id;
 
               const badgeStyles = {
-                completada: { bg: 'rgba(34, 197, 94, 0.15)', border: 'rgba(34, 197, 94, 0.4)', text: '#4ade80', label: '✅ Completada' },
-                en_curso: { bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.4)', text: '#fde047', label: '📍 En Curso' },
-                proxima: { bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8', label: '🚀 Próximo Nivel' }
+                completada: { bg: 'rgba(34, 197, 94, 0.15)', border: 'rgba(34, 197, 94, 0.4)', text: '#4ade80', label: '✅ Completada', tone: 'success-soft' as const },
+                en_curso: { bg: 'rgba(234, 179, 8, 0.15)', border: 'rgba(234, 179, 8, 0.4)', text: '#fde047', label: '📍 En Curso', tone: 'warning' as const },
+                proxima: { bg: 'rgba(56, 189, 248, 0.15)', border: 'rgba(56, 189, 248, 0.4)', text: '#38bdf8', label: '🚀 Próximo Nivel', tone: 'info' as const }
               }[fase.estado];
 
               return (
                 <div 
                   key={fase.id} 
-                  className={`glass-card ${fase.estado === 'proxima' ? 'highlight' : ''}`}
-                  style={{ margin: 0, padding: '18px', transition: 'all 0.2s ease' }}
+                  className={getAlertSurfaceClassName(badgeStyles.tone, `glass-card ${fase.estado === 'proxima' ? 'highlight' : ''}`.trim())}
+                  style={{ margin: 0, padding: '18px' }}
                 >
                   {/* Encabezado de la Fase */}
                   <div 
@@ -610,15 +610,9 @@ export const ProjectPlanView: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* Barra de Progreso de la Fase */}
-                  <div style={{ marginTop: '14px', background: 'rgba(255,255,255,0.06)', borderRadius: '6px', height: '6px', overflow: 'hidden' }}>
-                    <div style={{ 
-                      height: '100%', 
-                      width: `${fase.progreso}%`, 
-                      background: fase.estado === 'completada' ? 'var(--accent-success, #22c55e)' : fase.estado === 'en_curso' ? '#eab308' : '#38bdf8',
-                      borderRadius: '6px',
-                      transition: 'width 0.4s ease'
-                    }} />
+                  {/* Barra de Progreso de la Fase (0% Rojo -> 100% Verde) */}
+                  <div style={{ marginTop: '14px' }}>
+                    <WjgProgressBar percent={fase.progreso} label="Avance de Fase" size="sm" />
                   </div>
 
                   {/* Detalle Desplegado */}
@@ -1177,13 +1171,20 @@ export const ProjectPlanView: React.FC = () => {
                     : item.estado === 'en_validacion'
                     ? '#fbbf24'
                     : '#38bdf8';
+                  const backlogTone =
+                    item.estado === 'implementado'
+                      ? 'success-soft'
+                      : item.estado === 'en_validacion'
+                        ? 'info'
+                        : item.prioridad === 'alta'
+                          ? 'danger'
+                          : 'warning';
                   return (
                     <div
                       key={item.id}
+                      className={getAlertSurfaceClassName(backlogTone)}
                       style={{
-                        background: 'rgba(0,0,0,0.28)',
-                        border: `1px solid ${item.estado === 'en_validacion' ? 'rgba(245, 158, 11, 0.35)' : 'rgba(255,255,255,0.08)'}`,
-                        borderLeft: `4px solid ${colorEstado}`,
+                        border: '1px solid var(--border-subtle)',
                         borderRadius: '10px',
                         padding: '12px 14px',
                         display: 'flex',

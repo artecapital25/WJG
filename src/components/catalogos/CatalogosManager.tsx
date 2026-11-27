@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { WjgButton, WjgConfirmModal, WjgSearchInput, WjgSelect, toast } from '../ui';
+import { WjgBadge, WjgButton, WjgConfirmModal, WjgProgressBar, WjgSearchInput, WjgSelect, getAlertSurfaceClassName, resolveStockAlert, toast } from '../ui';
 import { 
   Settings, 
   Layers, 
@@ -1244,8 +1244,20 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
-            {sortedResinas.map(res => (
-              <div key={res.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+            {sortedResinas.map(res => {
+              const pesoActual = Number(res.peso_g) || 0;
+              const stockAlert = resolveStockAlert({
+                actual: pesoActual,
+                tipo: 'resina',
+                capacidadMaxima: 1000,
+                cancelado: res.activo === false,
+              });
+              return (
+              <div
+                key={res.id}
+                className={getAlertSurfaceClassName(stockAlert.tone)}
+                style={{ padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+              >
                 <div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0 }}>
@@ -1317,25 +1329,15 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     </div>
                   </div>
 
-                  {(() => {
-                    const pesoActual = Number(res.peso_g) || 0;
-                    const pctRes = Math.min(100, Math.max(0, (pesoActual / 1000) * 100));
-                    const statusClass = pesoActual < 250 ? 'stock-empty' : pesoActual < 500 ? 'stock-low' : 'stock-ok';
-                    const barColor = pesoActual < 250 ? '#ef4444' : pesoActual < 500 ? '#f59e0b' : '#10b981';
-                    return (
-                      <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-                          <span>Marca: {res.marca} • {res.densidad_g_cm3} g/cm³</span>
-                          <span className={`wjg-stock-pill ${statusClass}`}>
-                            {pesoActual < 250 ? '🔴 Crítico' : pesoActual < 500 ? '🟡 Bajo' : '🟢 Óptimo'}: {pesoActual}g
-                          </span>
-                        </div>
-                        <div className="wjg-progress-track">
-                          <div className="wjg-progress-fill" style={{ width: `${pctRes}%`, background: barColor }} />
-                        </div>
-                      </div>
-                    );
-                  })()}
+                  <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
+                      <span>Marca: {res.marca} • {res.densidad_g_cm3} g/cm³</span>
+                      <WjgBadge variant={stockAlert.badgeVariant}>
+                        {stockAlert.label}: {pesoActual}g
+                      </WjgBadge>
+                    </div>
+                    <WjgProgressBar percent={stockAlert.percent ?? 0} size="sm" showPercent={false} />
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', fontSize: '0.85rem', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
@@ -1347,7 +1349,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                   </span>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -1383,8 +1386,21 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 f.tipo.toLowerCase().includes(searchQuery.toLowerCase()) || 
                 f.color.toLowerCase().includes(searchQuery.toLowerCase())
               )
-              .map(fil => (
-                <div key={fil.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              .map(fil => {
+                const gramosFil = Number(fil.stock_actual_g) || 0;
+                const pesoBobina = fil.peso_bobina_g || 1000;
+                const stockAlert = resolveStockAlert({
+                  actual: gramosFil,
+                  tipo: 'filamento',
+                  capacidadMaxima: pesoBobina,
+                  cancelado: fil.activo === false,
+                });
+                return (
+                <div
+                  key={fil.id}
+                  className={getAlertSurfaceClassName(stockAlert.tone)}
+                  style={{ padding: '14px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                >
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '8px' }}>
                       <div>
@@ -1443,29 +1459,18 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                         <span>{fil.densidad_g_cm3 || 1.24} g/cm³</span>
                       </div>
                       
-                      {/* Barra de Stock con Semáforo */}
-                      {(() => {
-                        const gramosFil = Number(fil.stock_actual_g) || 0;
-                        const pesoBobina = fil.peso_bobina_g || 1000;
-                        const pctFil = Math.min(100, Math.max(0, (gramosFil / pesoBobina) * 100));
-                        const pillCls = gramosFil < 250 ? 'stock-empty' : gramosFil < 450 ? 'stock-low' : 'stock-ok';
-                        const fillCol = gramosFil < 250 ? '#ef4444' : gramosFil < 450 ? '#f59e0b' : '#10b981';
-                        return (
-                          <div style={{ marginTop: '6px' }}>
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', marginBottom: '2px', gap: '6px' }}>
-                              <span className={`wjg-stock-pill ${pillCls}`}>
-                                {gramosFil < 250 ? '🔴 Crítico' : gramosFil < 450 ? '🟡 Bajo' : '🟢 Stock'}: {gramosFil}g
-                              </span>
-                              <span style={{ color: 'var(--text-subtle)' }}>
-                                {pctFil.toFixed(0)}% de bobina ({pesoBobina}g)
-                              </span>
-                            </div>
-                            <div className="wjg-progress-track">
-                              <div className="wjg-progress-fill" style={{ width: `${pctFil}%`, background: fillCol }} />
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      {/* Barra de Stock con Escala 0% -> 100% */}
+                      <div style={{ marginTop: '6px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.72rem', marginBottom: '4px', gap: '6px' }}>
+                          <WjgBadge variant={stockAlert.badgeVariant}>
+                            {stockAlert.label}: {gramosFil}g
+                          </WjgBadge>
+                          <span className="tabular-nums" style={{ color: 'var(--text-subtle)' }}>
+                            {stockAlert.percent ?? 0}% de bobina ({pesoBobina}g)
+                          </span>
+                        </div>
+                        <WjgProgressBar percent={stockAlert.percent ?? 0} size="sm" showPercent={false} />
+                      </div>
                     </div>
                   </div>
 
@@ -1478,7 +1483,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     </span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       )}
@@ -1505,13 +1511,30 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '12px' }}>
             {sortedInsumos
               .filter(i => i.nombre.toLowerCase().includes(searchQuery.toLowerCase()) || i.categoria.toLowerCase().includes(searchQuery.toLowerCase()))
-              .map(ins => (
-                <div key={ins.id} style={{ background: 'rgba(0,0,0,0.25)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
+              .map(ins => {
+                const stockActual = ins.stock_actual !== undefined ? Number(ins.stock_actual) : Number(ins.presentacion) || 0;
+                const stockAlert = resolveStockAlert({
+                  actual: stockActual,
+                  tipo: 'insumo',
+                  capacidadMaxima: Math.max(Number(ins.presentacion) || 6, 6),
+                  cancelado: ins.activo === false,
+                });
+                return (
+                <div
+                  key={ins.id}
+                  className={getAlertSurfaceClassName(stockAlert.tone)}
+                  style={{ padding: '12px', borderRadius: '10px', border: '1px solid var(--border-subtle)', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
+                >
                   <div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                      <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
-                        {ins.categoria}
-                      </span>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                        <span style={{ fontSize: '0.72rem', background: 'rgba(56, 189, 248, 0.15)', color: 'var(--brand-cyan)', padding: '2px 6px', borderRadius: '4px', fontWeight: 600 }}>
+                          {ins.categoria}
+                        </span>
+                        <WjgBadge variant={stockAlert.badgeVariant}>
+                          {stockAlert.label} ({Number(stockActual.toFixed(2))} {ins.unidad_medida || 'und'})
+                        </WjgBadge>
+                      </div>
                       <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
                         {ins.enlace_compra && (
                           <a href={ins.enlace_compra} target="_blank" rel="noreferrer" style={{ color: 'var(--brand-cyan)', padding: '2px 4px' }} title="Ver enlace de compra">
@@ -1593,6 +1616,9 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                         <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginTop: '4px' }}>
                           Marca: {ins.marca} | Presentación: {ins.presentacion} {ins.stock_actual !== undefined ? `| Stock Bodega: ${Number(ins.stock_actual).toFixed(2)}` : ''}
                         </div>
+                        <div style={{ marginTop: '6px' }}>
+                          <WjgProgressBar percent={stockAlert.percent ?? 0} size="sm" showPercent={false} />
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1601,7 +1627,8 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                     ${ins.costo_unitario.toLocaleString('es-CO')} / unidad <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', fontWeight: 400 }}>(Total: ${ins.costo_total.toLocaleString('es-CO')} • 10%: ${Math.round(ins.costo_total * 0.1).toLocaleString('es-CO')})</span>
                   </div>
                 </div>
-              ))}
+                );
+              })}
           </div>
         </div>
       )}
@@ -1656,14 +1683,22 @@ export const CatalogosManager: React.FC<CatalogosManagerProps> = ({
                 esFdmMaq && repuestosActivos.some(r => /fep|lcd|pantalla/i.test(r.nombre))
               );
 
+              const machineAlertTone = (esConsumoInflado || tieneIncompatibles)
+                ? 'danger'
+                : m.estado === 'Disponible'
+                  ? 'success'
+                  : m.estado === 'En Uso'
+                    ? 'warning'
+                    : 'muted';
+
               return (
                 <div 
-                  key={m.id} 
+                  key={m.id}
+                  className={getAlertSurfaceClassName(machineAlertTone)}
                   style={{ 
-                    background: 'rgba(15, 23, 42, 0.45)', 
                     padding: '16px', 
                     borderRadius: '12px', 
-                    border: (esConsumoInflado || tieneIncompatibles) ? '1px solid rgba(239, 68, 68, 0.4)' : '1px solid var(--border-subtle)', 
+                    border: '1px solid var(--border-subtle)',
                     display: 'flex', 
                     flexDirection: 'column', 
                     justifyContent: 'space-between',

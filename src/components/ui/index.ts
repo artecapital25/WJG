@@ -9,6 +9,26 @@ export { WjgModal, type WjgModalProps } from './primitives/WjgModal';
 export { WjgConfirmModal, type WjgConfirmModalProps } from './primitives/WjgConfirmModal';
 export { WjgBadge, type WjgBadgeProps, type WjgBadgeVariant } from './primitives/WjgBadge';
 export { WjgCard, type WjgCardProps } from './primitives/WjgCard';
+export { WjgAlertSurface, type WjgAlertSurfaceProps } from './primitives/WjgAlertSurface';
+export { WjgProgressBar, type WjgProgressBarProps } from './primitives/WjgProgressBar';
+export { WjgAlertBanner, type WjgAlertBannerProps } from './primitives/WjgAlertBanner';
+export {
+  type WjgAlertTone,
+  type WjgAlertTokens,
+  type AlertThresholdsConfig,
+  type ProgressScaleStyle,
+  type ResolvedAlertState,
+  DEFAULT_ALERT_THRESHOLDS,
+  ALERT_TONE_TOKENS,
+  getAlertSurfaceClassName,
+  resolveProgressScale,
+  resolveStockAlert,
+  resolvePaymentAlert,
+  resolveTaskAlert,
+  resolveSupplyRequestAlert,
+  resolveWorkOrderAlert,
+  resolveCalendarEventAlert,
+} from './alertSystem';
 export { WjgSectionHeader, type WjgSectionHeaderProps } from './primitives/WjgSectionHeader';
 export { WjgTabs, type WjgTabsProps, type WjgTabOption } from './primitives/WjgTabs';
 export { WjgEmptyState, type WjgEmptyStateProps } from './primitives/WjgEmptyState';

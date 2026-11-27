@@ -23,7 +23,7 @@ import {
   X
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { WjgButton, WjgSearchInput, WjgSelect, toast } from '../ui';
+import { WjgButton, WjgProgressBar, WjgSearchInput, WjgSelect, getAlertSurfaceClassName, resolvePaymentAlert, toast } from '../ui';
 import { VentaExpress, EstadoPagoExpress, EstadoDisenoPOS } from '../../types/pos';
 import { Cliente, ConfiguracionTaller, OrdenTrabajo, TabType, ProductoStock, Cotizacion } from '../../types';
 import { processAndOptimizeImage } from '../../services/imageService';
@@ -1591,9 +1591,17 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
               {ventasFiltradas.map(venta => {
                 const alerta = calcularAlertaCobro(venta.fecha_prometida_pago, venta.saldo_pendiente);
                 const esPagado = venta.saldo_pendiente <= 0;
+                const payAlert = resolvePaymentAlert({
+                  total: venta.total,
+                  abono: venta.abono,
+                  saldoPendiente: venta.saldo_pendiente,
+                  estadoPago: venta.estado_pago,
+                  vencido: alerta.nivel === 'vencido' || alerta.nivel === 'hoy',
+                  porVencer: alerta.nivel === 'proximo',
+                });
 
                 return (
-                  <div key={venta.id} className="glass-card" style={{ margin: 0, padding: '16px' }}>
+                  <div key={venta.id} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '16px' }}>
                     <div style={{ display: 'flex', gap: '14px', alignItems: 'flex-start' }}>
                       {/* Miniatura Foto */}
                       {venta.foto_url ? (
@@ -1757,6 +1765,15 @@ export const POSExpressView: React.FC<POSExpressViewProps> = ({
                         </div>
 
                         {/* Pie de la tarjeta con acciones */}
+                        <div style={{ marginTop: '10px' }}>
+                          <WjgProgressBar
+                            percent={payAlert.percent ?? 0}
+                            label="Pago"
+                            rightText={`${payAlert.percent ?? 0}% ($${venta.abono.toLocaleString('es-CO')} / $${venta.total.toLocaleString('es-CO')})`}
+                            size="sm"
+                            showPercent={false}
+                          />
+                        </div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '12px', paddingTop: '10px', borderTop: '1px solid var(--border-subtle)', flexWrap: 'wrap', gap: '8px' }}>
                           <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
                             📅 Venta: {venta.fecha_venta} {venta.metodo_pago && `• 💳 ${venta.metodo_pago}`}

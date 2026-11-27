@@ -5,6 +5,7 @@ import {
   ArrowUpRight
 } from 'lucide-react';
 import { CalendarEvent, TipoEventoCalendario } from '../../types';
+import { getAlertSurfaceClassName, resolveCalendarEventAlert } from '../ui';
 
 interface MobileEventCardProps {
   event: CalendarEvent;
@@ -38,15 +39,17 @@ export const MobileEventCard: React.FC<MobileEventCardProps> = ({
   const resp = AVATARES_RESPONSABLE[event.responsable] || { color: '#94a3b8', badge: event.responsable?.charAt(0) || '?' };
 
   const esCobro = event.tipo_evento === 'vencimiento_cobro';
+  const eventAlert = resolveCalendarEventAlert({
+    tipo_evento: event.tipo_evento,
+    estado: event.estado,
+    fecha_inicio: event.fecha_inicio,
+  });
 
   return (
     <div
       onClick={() => onDeepLink(event)}
-      className="mobile-event-card"
+      className={getAlertSurfaceClassName(eventAlert.tone, 'mobile-event-card')}
       style={{
-        background: 'linear-gradient(145deg, rgba(16, 23, 37, 0.88) 0%, rgba(11, 17, 28, 0.95) 100%)',
-        border: '1px solid rgba(255, 255, 255, 0.08)',
-        borderLeft: `5px solid ${cfg.text}`,
         borderRadius: '14px',
         padding: '14px 16px',
         minHeight: '52px',
@@ -55,7 +58,6 @@ export const MobileEventCard: React.FC<MobileEventCardProps> = ({
         display: 'flex',
         flexDirection: 'column',
         gap: '8px',
-        boxShadow: '0 4px 14px rgba(0, 0, 0, 0.35)',
         transition: 'transform 0.15s ease, border-color 0.15s ease',
         userSelect: 'none'
       }}

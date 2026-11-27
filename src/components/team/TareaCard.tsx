@@ -10,6 +10,7 @@ import {
   Edit3
 } from 'lucide-react';
 import { TareaEquipo } from '../../types/tasks';
+import { WjgProgressBar, getAlertSurfaceClassName, resolveTaskAlert } from '../ui';
 
 interface TareaCardProps {
   tarea: TareaEquipo;
@@ -34,24 +35,19 @@ export const TareaCard: React.FC<TareaCardProps> = ({
   const esAlta = tarea.prioridad === 'alta';
   const porcentaje = typeof tarea.porcentaje_completado === 'number' ? tarea.porcentaje_completado : 0;
 
-  // Color de borde de acento según estado y prioridad
-  const borderColor = tarea.completada 
-    ? '#10b981' 
-    : esUrgente 
-      ? '#ef4444' 
-      : esAlta 
-        ? '#f59e0b' 
-        : 'var(--border-subtle)';
+  const taskAlert = resolveTaskAlert({
+    completada: tarea.completada,
+    prioridad: tarea.prioridad,
+    fechaLimite: tarea.fecha_limite,
+    porcentaje,
+  });
 
   return (
     <div 
-      className="glass-card" 
+      className={getAlertSurfaceClassName(taskAlert.tone, 'glass-card')}
       style={{ 
         margin: 0, 
         padding: '14px 16px', 
-        opacity: tarea.completada ? 0.65 : 1,
-        borderLeft: `4px solid ${borderColor}`,
-        transition: 'all 0.2s ease',
         display: 'flex',
         flexDirection: 'column',
         gap: '10px'
@@ -250,39 +246,18 @@ export const TareaCard: React.FC<TareaCardProps> = ({
         paddingTop: '8px',
         borderTop: '1px solid rgba(255, 255, 255, 0.05)'
       }}>
-        {/* Barra de Progreso Compacta */}
+        {/* Barra de Progreso Compacta (0% Rojo -> 100% Verde) */}
         <div style={{ flex: '1 1 180px', minWidth: '140px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '3px' }}>
-            <span style={{ fontSize: '0.68rem', color: 'var(--text-subtle)', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <TrendingUp size={11} color="#38bdf8" />
-              Progreso
-            </span>
-            <span style={{ 
-              fontSize: '0.72rem', 
-              fontWeight: 800, 
-              color: porcentaje >= 100 ? '#4ade80' : '#38bdf8' 
-            }}>
-              {porcentaje}%
-            </span>
-          </div>
-
-          <div style={{
-            height: '5px',
-            width: '100%',
-            backgroundColor: 'rgba(255, 255, 255, 0.08)',
-            borderRadius: '9999px',
-            overflow: 'hidden'
-          }}>
-            <div style={{
-              height: '100%',
-              width: `${porcentaje}%`,
-              background: porcentaje >= 100 
-                ? 'linear-gradient(90deg, #10b981, #4ade80)' 
-                : 'linear-gradient(90deg, #0284c7, #38bdf8)',
-              borderRadius: '9999px',
-              transition: 'width 0.3s ease'
-            }} />
-          </div>
+          <WjgProgressBar
+            percent={tarea.completada ? 100 : porcentaje}
+            label={
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                <TrendingUp size={11} />
+                Progreso
+              </span>
+            }
+            size="sm"
+          />
         </div>
 
         {/* Botones de Bitácora / Avances */}

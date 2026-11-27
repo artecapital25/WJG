@@ -19,7 +19,7 @@ import {
   Store
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
-import { WjgButton, WjgConfirmModal, WjgModal, WjgSearchInput, WjgSelect, WjgSwitch, WjgTextArea, WjgTextInput, toast } from '../ui';
+import { WjgButton, WjgConfirmModal, WjgModal, WjgProgressBar, WjgSearchInput, WjgSelect, WjgSwitch, WjgTextArea, WjgTextInput, getAlertSurfaceClassName, resolveSupplyRequestAlert, toast } from '../ui';
 import {
   TareaEquipo,
   IntegranteEquipo,
@@ -768,6 +768,7 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 const esDetenido = sol.urgencia === 'taller_detenido';
                 const esUrgente = sol.urgencia === 'urgente';
                 const estadoInfo = ESTADOS_ORDEN_CONFIG[sol.estado] || ESTADOS_ORDEN_CONFIG.pendiente;
+                const solAlert = resolveSupplyRequestAlert({ estado: sol.estado, urgencia: sol.urgencia });
                 const tieneRastreoInfo = Boolean(
                   sol.plataforma_tienda || sol.numero_pedido || sol.transportadora || sol.numero_guia || sol.fecha_estimada_llegada || sol.costo_real || sol.costo_estimado
                 );
@@ -775,11 +776,10 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                 return (
                   <div
                     key={sol.id}
-                    className="glass-card"
+                    className={getAlertSurfaceClassName(solAlert.tone, 'glass-card')}
                     style={{
                       margin: 0,
                       padding: '16px',
-                      borderLeft: `4px solid ${sol.estado === 'recibido' ? '#10b981' : esDetenido ? '#ef4444' : esUrgente ? '#f59e0b' : '#38bdf8'}`
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '12px' }}>
@@ -907,6 +907,16 @@ export const TeamTasksView: React.FC<TeamTasksViewProps> = ({
                         {sol.notas && (
                           <div style={{ fontSize: '0.75rem', color: 'var(--text-subtle)', marginTop: '6px' }}>
                             📝 {sol.notas}
+                          </div>
+                        )}
+
+                        {sol.estado !== 'cancelado' && (
+                          <div style={{ marginTop: '10px', maxWidth: '340px' }}>
+                            <WjgProgressBar
+                              percent={solAlert.percent ?? 0}
+                              label={`Estado: ${estadoInfo.label}`}
+                              size="sm"
+                            />
                           </div>
                         )}
                       </div>

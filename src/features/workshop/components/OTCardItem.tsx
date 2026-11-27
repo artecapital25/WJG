@@ -24,7 +24,7 @@ import {
 } from '../../../types';
 import { detect3DPlatform, formatExternalUrl } from '../../../services/platformUtils';
 import { getSiguienteEstado, getHandoffConfig, resolveLinksDeOT, normalizarEstadoOT } from '../utils/workshopUtils';
-import { WjgConfirmModal } from '../../../components/ui';
+import { WjgConfirmModal, WjgProgressBar, getAlertSurfaceClassName, resolvePaymentAlert, resolveWorkOrderAlert } from '../../../components/ui';
 
 interface OTCardItemProps {
   ot: OrdenTrabajo;
@@ -85,8 +85,23 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
                      stlState === 'En Impresora' || 
                      stlState === 'Impreso';
 
+  const otAlert = resolveWorkOrderAlert({
+    estado: estadoValido,
+    estadoPago: ot.estado_pago,
+    total: ot.precio_cobrado || 0,
+    abono: ot.abono || 0,
+    saldoPendiente: ot.saldo_pendiente,
+  });
+  const payAlert = resolvePaymentAlert({
+    total: ot.precio_cobrado || 0,
+    abono: ot.abono || 0,
+    saldoPendiente: ot.saldo_pendiente,
+    estadoPago: ot.estado_pago,
+    cancelado: /cancel/i.test(estadoValido),
+  });
+
   return (
-    <div className="ot-card">
+    <div className={getAlertSurfaceClassName(otAlert.tone, 'ot-card')}>
       {/* Header de la tarjeta */}
       <div className="ot-card-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -490,6 +505,14 @@ export const OTCardItem: React.FC<OTCardItemProps> = React.memo(({
             <span>{handoff.label}</span>
           </button>
         </div>
+      </div>
+
+      {/* Progreso de Producción & Pago (0% -> 100%) */}
+      <div style={{ display: 'grid', gridTemplateColumns: (ot.precio_cobrado || 0) > 0 ? 'repeat(auto-fit, minmax(140px, 1fr))' : '1fr', gap: '10px', margin: '8px 0' }}>
+        <WjgProgressBar percent={otAlert.percent ?? 0} label={`Taller (${estadoValido})`} size="sm" />
+        {(ot.precio_cobrado || 0) > 0 && (
+          <WjgProgressBar percent={payAlert.percent ?? 0} label={`Pago (${payAlert.shortLabel || payAlert.label})`} size="sm" />
+        )}
       </div>
 
       {/* Especificaciones técnicas de taller */}

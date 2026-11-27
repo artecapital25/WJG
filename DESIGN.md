@@ -68,7 +68,18 @@ Sistema de diseño oficial del taller y plataforma de gestión **WJGEEKS 3D PRO*
 - **Búsqueda Automática:** Activa barra de búsqueda interna (`font-size: 16px` en móvil para evitar auto-zoom) cuando la lista supera `6` opciones (`options.length > 6`), y abre directo sin buscador en listas cortas (`<= 6`).
 
 ### Ergonomía de Botones y Modales
-- **Librería Única Centralizada (`src/components/ui/index.ts`):** Todos los componentes base comparten una sola definición visual conectada a los tokens CSS (`WjgButton`, `WjgSelect`, `WjgSearchInput`, `WjgNumberInput`, `WjgTextInput`, `WjgTextArea`, `WjgModal`, `WjgConfirmModal`, `WjgBadge`, `WjgCard`, `WjgSectionHeader`, `WjgTabs`, `WjgEmptyState`, `WjgSwitch`, `WjgStatCard`).
+- **Librería Única Centralizada (`src/components/ui/index.ts`):** Todos los componentes base comparten una sola definición visual conectada a los tokens CSS (`WjgButton`, `WjgSelect`, `WjgSearchInput`, `WjgNumberInput`, `WjgTextInput`, `WjgTextArea`, `WjgModal`, `WjgConfirmModal`, `WjgBadge`, `WjgCard`, `WjgAlertSurface`, `WjgAlertBanner`, `WjgProgressBar`, `WjgSectionHeader`, `WjgTabs`, `WjgEmptyState`, `WjgSwitch`, `WjgStatCard`).
+
+### Patrón Oficial de Alertas Visuales y Sombreados Semánticos (`alertSystem.ts`)
+- **Sombreado Equilibrado por Severidad (`WjgAlertSurface` / `WjgAlertBanner` / `.wjg-alert-surface`):** Fondo glass tintado sutil (`8%–14%`), borde perimetral armónico, **barra lateral izquierda de `4px`** y resplandor suave según el estado:
+  - `danger` (`#ef4444`): Insumo/resina/filamento/producto en `0` (**Agotado**), pago `$0` (**Sin Pago**) o vencido, tarea urgente/vencida, taller detenido.
+  - `warning` (`#f59e0b`): Stock bajo (**Agotándose**: `<= 200g` resina/filamento, `<= 2` insumo/producto), **Abono Parcial**, tarea pendiente o prioridad alta / vence hoy.
+  - `success` (`#10b981`): Stock saludable (**Disponible**), **Pagado 100%**, orden lista y pagada.
+  - `success-soft` (`#10b981` atenuado, opacidad `0.86`): Tareas, entregas o fases **Completadas** sin ruido visual.
+  - `info` (`#38bdf8`): En curso / producción activa / tránsito.
+  - `purple` (`#8b5cf6`): Procesos técnicos especiales (Curado, Post-Proceso, Gestión).
+  - `muted` (`#64748b`, opacidad `0.68`): Registros **Cancelados / Inactivos** en gris neutro atenuado (cero alertas rojas).
+- **Escala Continua `0% → 100%` (`WjgProgressBar` + `resolveProgressScale`):** Interpolación RGB gradual de **Rojo (`#ef4444` en 0%) → Ámbar (`#f59e0b` en 50%) → Verde (`#10b981` en 100%)** para barras de avance de pago, nivel de stock en bodega, avance de tareas, solicitudes S.O.S, OTs y recaudo financiero.
 - **Identidad Semántica en `WjgButton`:**
   - `quote`: Acción hero de negocio (**Generar Cotización** / **Agregar Pieza**).
   - `save`: Acción de confirmación de cambios (**Guardar Cambios**, diferenciada visualmente con tono esmeralda/ámbar según contexto).

@@ -34,7 +34,7 @@ import { ModalEditarVentaExpress } from '../pos/ModalEditarVentaExpress';
 import { ModalConfirmarEliminarCobro, InfoCobroAEliminar } from '../common/ModalConfirmarEliminarCobro';
 import { ModalVisualizadorDocumento } from '../common/ModalVisualizadorDocumento';
 import { CloudSyncService } from '../../services/cloudSyncService';
-import { WjgButton, WjgSearchInput, toast } from '../ui';
+import { WjgAlertBanner, WjgButton, WjgProgressBar, WjgSearchInput, getAlertSurfaceClassName, resolvePaymentAlert, toast } from '../ui';
 
 export * from './cuentasCobroUtils';
 import { 
@@ -703,23 +703,9 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
 
       {/* Notificación flotante de cartera */}
       {notifCartera && (
-        <div style={{
-          background: 'rgba(16, 185, 129, 0.15)',
-          border: '1px solid rgba(16, 185, 129, 0.4)',
-          color: '#34d399',
-          padding: '12px 18px',
-          borderRadius: '10px',
-          marginBottom: '20px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: '10px',
-          fontWeight: 700,
-          fontSize: '0.9rem',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
-        }}>
-          <CheckCircle size={18} />
-          <span>{notifCartera}</span>
-        </div>
+        <WjgAlertBanner tone="success" icon={<CheckCircle size={18} />} style={{ marginBottom: '20px' }}>
+          {notifCartera}
+        </WjgAlertBanner>
       )}
 
       {/* Selector de Pestañas Internas en Cuadrícula Ordenada */}
@@ -789,8 +775,16 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
             </div>
           ) : (
             <div className="cards-grid-mobile">
-              {deudoresConsolidados.map((deudor, idx) => (
-                <div key={idx} className="glass-card" style={{ margin: 0, padding: '20px', border: '1px solid rgba(245, 158, 11, 0.25)', position: 'relative' }}>
+              {deudoresConsolidados.map((deudor, idx) => {
+                const abonadoDeudor = Math.max(0, deudor.total_deuda - deudor.saldo_pendiente);
+                const payAlert = resolvePaymentAlert({
+                  total: deudor.total_deuda,
+                  abono: abonadoDeudor,
+                  saldoPendiente: deudor.saldo_pendiente,
+                  vencido: /vencid|hoy/i.test(deudor.peor_alerta_texto || ''),
+                });
+                return (
+                <div key={idx} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '20px', position: 'relative' }}>
                   {/* Encabezado del Deudor */}
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '12px' }}>
                     <div>
@@ -815,7 +809,7 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
 
                   {/* Badge de alerta de cobro */}
                   {deudor.peor_alerta_texto && (
-                    <div style={{ marginBottom: '12px' }}>
+                    <div style={{ marginBottom: '10px' }}>
                       <span style={{ 
                         fontSize: '0.74rem', 
                         fontWeight: 800, 
@@ -832,6 +826,10 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                       </span>
                     </div>
                   )}
+
+                  <div style={{ marginBottom: '12px' }}>
+                    <WjgProgressBar percent={payAlert.percent ?? 0} label="Recaudado" size="sm" />
+                  </div>
 
                   {/* Lista de Conceptos Pendientes Consolidados (Sin Duplicados) */}
                   <div style={{ background: 'rgba(0,0,0,0.25)', borderRadius: '10px', padding: '10px 12px', marginBottom: '14px', fontSize: '0.78rem' }}>
@@ -946,7 +944,8 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                     </button>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -995,9 +994,15 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
             ordenesPendientes.map(ot => {
               const saldoOT = ot.saldo_pendiente ?? Math.max(0, (ot.precio_cobrado || 0) - (ot.abono || 0));
               const totalOT = ot.precio_cobrado || ((ot.abono || 0) + saldoOT);
+              const payAlert = resolvePaymentAlert({
+                total: totalOT,
+                abono: ot.abono || 0,
+                saldoPendiente: saldoOT,
+                estadoPago: ot.estado_pago,
+              });
 
               return (
-                <div key={ot.id} className="glass-card" style={{ margin: 0, padding: '18px', border: '1px solid rgba(56, 189, 248, 0.25)' }}>
+                <div key={ot.id} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '18px' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px', marginBottom: '12px' }}>
                     <div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
@@ -1062,6 +1067,11 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                         Total: ${totalOT.toLocaleString('es-CO')} | Abono: ${(ot.abono || 0).toLocaleString('es-CO')}
                       </div>
                     </div>
+                  </div>
+
+                  {/* Barra de Pago 0% -> 100% */}
+                  <div style={{ marginBottom: '12px' }}>
+                    <WjgProgressBar percent={payAlert.percent ?? 0} label="Avance de Pago" size="sm" />
                   </div>
 
                   {/* Acciones Rápidas */}
@@ -1164,9 +1174,17 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
             ventasExpress.map(v => {
               const alerta = calcularAlertaCobro(v.fecha_prometida_pago, v.saldo_pendiente);
               const esPagado = v.saldo_pendiente <= 0;
+              const payAlert = resolvePaymentAlert({
+                total: v.total,
+                abono: v.abono,
+                saldoPendiente: v.saldo_pendiente,
+                estadoPago: v.estado_pago,
+                vencido: alerta.nivel === 'vencido' || alerta.nivel === 'hoy',
+                porVencer: alerta.nivel === 'proximo',
+              });
 
               return (
-                <div key={v.id} className="glass-card" style={{ margin: 0, padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+                <div key={v.id} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                     {v.foto_url && (
                       <img src={v.foto_url} alt={v.nombre_producto} style={{ width: '50px', height: '50px', borderRadius: '8px', objectFit: 'cover' }} />
@@ -1198,13 +1216,14 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                   </div>
 
                   <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                    <div style={{ textAlign: 'right' }}>
+                    <div style={{ textAlign: 'right', minWidth: '140px' }}>
                       <div style={{ fontSize: '1.1rem', fontWeight: 800, color: esPagado ? '#34d399' : '#fbbf24' }}>
                         {esPagado ? 'PAGADO ✓' : `Debe: $${v.saldo_pendiente.toLocaleString('es-CO')}`}
                       </div>
-                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)' }}>
+                      <div style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '4px' }}>
                         Total: ${v.total.toLocaleString('es-CO')} | Abono: ${v.abono.toLocaleString('es-CO')}
                       </div>
+                      <WjgProgressBar percent={payAlert.percent ?? 0} size="sm" showPercent={true} />
                     </div>
 
                     <div style={{ display: 'flex', gap: '6px' }}>
@@ -1294,8 +1313,15 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
               </p>
             </div>
           ) : (
-            cuentas.map(cuenta => (
-              <div key={cuenta.id} className="glass-card" style={{ margin: 0, padding: '18px' }}>
+            cuentas.map(cuenta => {
+              const payAlert = resolvePaymentAlert({
+                total: cuenta.total,
+                abono: cuenta.abono,
+                saldoPendiente: cuenta.saldo_pendiente,
+                estadoPago: cuenta.estado_pago,
+              });
+              return (
+              <div key={cuenta.id} className={getAlertSurfaceClassName(payAlert.tone, 'glass-card')} style={{ margin: 0, padding: '18px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', marginBottom: '12px' }}>
                   <div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1324,6 +1350,10 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                       Total: ${cuenta.total.toLocaleString('es-CO')} | Abono: ${cuenta.abono.toLocaleString('es-CO')}
                     </div>
                   </div>
+                </div>
+
+                <div style={{ marginBottom: '12px' }}>
+                  <WjgProgressBar percent={payAlert.percent ?? 0} label="Avance de Pago" size="sm" />
                 </div>
 
                 <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', borderTop: '1px solid var(--border-subtle)', paddingTop: '12px' }}>
@@ -1424,7 +1454,8 @@ Agradecemos nos compartas el soporte una vez realizado el abono para actualizar 
                   )}
                 </div>
               </div>
-            ))
+              );
+            })
           )}
         </div>
       )}
